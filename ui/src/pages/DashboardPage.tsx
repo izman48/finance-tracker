@@ -108,8 +108,8 @@ export default function DashboardPage() {
   const handleSyncTransactions = async () => {
     setSyncing(true)
     try {
-      // Request 730 days (2 years) - will fallback to 90 days if unavailable
-      const response = await bankingAPI.syncTransactions(730)
+      // Request 1825 days (5 years) - will fallback to 90 days if unavailable
+      const response = await bankingAPI.syncTransactions(1825)
       setMessage(response.data.message)
     } catch (error: any) {
       setMessage('Failed to sync transactions: ' + (error.response?.data?.detail || error.message))

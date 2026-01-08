@@ -35,6 +35,14 @@ export default function TransactionsPage() {
   const [sortField, setSortField] = useState<'date' | 'amount' | null>('date')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
 
+  // Bulk category update
+  const [selectedTransactionIds, setSelectedTransactionIds] = useState<Set<string>>(new Set())
+  const [isBulkCategoryMode, setIsBulkCategoryMode] = useState(false)
+  const [bulkCategory, setBulkCategory] = useState<string>('')
+  const [isBulkAddingCategory, setIsBulkAddingCategory] = useState(false)
+  const [bulkNewCategoryName, setBulkNewCategoryName] = useState('')
+  const [isUpdatingBulk, setIsUpdatingBulk] = useState(false)
+
   // Filters
   const [selectedAccount, setSelectedAccount] = useState<string>('')
   const [searchTerm, setSearchTerm] = useState('')
@@ -55,7 +63,7 @@ export default function TransactionsPage() {
   // Reset to page 1 when filters or sort changes
   useEffect(() => {
     setPage(1)
-  }, [searchTerm, selectedCategories, startDate, endDate, minAmount, maxAmount, selectedMerchant, selectedType, sortField, sortDirection])
+  }, [searchTerm, selectedCategories, startDate, endDate, minAmount, maxAmount, selectedMerchant, selectedType, hideInternalTransfers, sortField, sortDirection])
 
   const loadAccounts = async () => {
     try {
@@ -69,12 +77,12 @@ export default function TransactionsPage() {
   const loadAllTransactions = async () => {
     setLoading(true)
     try {
-      // Load all transactions (up to 5000) for client-side filtering and sorting
+      // Load all transactions (up to 10000) for client-side filtering and sorting
       let transactions: Transaction[] = []
       let currentPage = 1
       const fetchPageSize = 100
 
-      while (transactions.length < 5000) {
+      while (transactions.length < 10000) {
         const params: any = { page: currentPage, page_size: fetchPageSize }
         if (selectedAccount) {
           params.account_id = selectedAccount
@@ -165,6 +173,118 @@ export default function TransactionsPage() {
     }
   }
 
+  const handleToggleTransaction = (transactionId: string) => {
+    const newSelected = new Set(selectedTransactionIds)
+    if (newSelected.has(transactionId)) {
+      newSelected.delete(transactionId)
+    } else {
+      newSelected.add(transactionId)
+    }
+    setSelectedTransactionIds(newSelected)
+  }
+
+  const handleSelectAll = () => {
+    // Select ALL filtered transactions (across all pages)
+    const newSelected = new Set<string>()
+    filteredAndSortedTransactions.forEach(tx => newSelected.add(tx.id))
+    setSelectedTransactionIds(newSelected)
+  }
+
+  const handleDeselectAll = () => {
+    setSelectedTransactionIds(new Set())
+  }
+
+  const handleAddBulkCustomCategory = () => {
+    if (bulkNewCategoryName.trim()) {
+      setCustomCategories([...customCategories, bulkNewCategoryName.trim()])
+      setBulkCategory(bulkNewCategoryName.trim())
+      setIsBulkAddingCategory(false)
+      setBulkNewCategoryName('')
+    }
+  }
+
+  const handleBulkUpdateCategory = async () => {
+    if (selectedTransactionIds.size === 0) {
+      alert('Please select at least one transaction')
+      return
+    }
+
+    setIsUpdatingBulk(true)
+    try {
+      // Update all selected transactions
+      const updates = Array.from(selectedTransactionIds).map(id =>
+        bankingAPI.updateTransaction(id, {
+          category: bulkCategory || null
+        })
+      )
+
+      await Promise.all(updates)
+
+      // Update local state
+      setAllTransactions(allTransactions.map(tx =>
+        selectedTransactionIds.has(tx.id)
+          ? { ...tx, category: bulkCategory || null }
+          : tx
+      ))
+
+      // Reset bulk mode
+      setIsBulkCategoryMode(false)
+      setBulkCategory('')
+      setSelectedTransactionIds(new Set())
+      setIsBulkAddingCategory(false)
+      setBulkNewCategoryName('')
+    } catch (error) {
+      console.error('Failed to update categories:', error)
+      alert('Failed to update some transactions')
+    } finally {
+      setIsUpdatingBulk(false)
+    }
+  }
+
+  const handleCancelBulkMode = () => {
+    setIsBulkCategoryMode(false)
+    setBulkCategory('')
+    setSelectedTransactionIds(new Set())
+    setIsBulkAddingCategory(false)
+    setBulkNewCategoryName('')
+  }
+
+  const handleDownloadCSV = () => {
+    // Create CSV header
+    const headers = ['Date', 'Description', 'Merchant', 'Account', 'Category', 'Type', 'Amount', 'Currency']
+
+    // Create CSV rows from filtered transactions
+    const rows = filteredAndSortedTransactions.map(tx => [
+      new Date(tx.transaction_date).toLocaleDateString('en-GB'),
+      `"${(tx.description || '').replace(/"/g, '""')}"`, // Escape quotes
+      `"${(tx.merchant_name || '').replace(/"/g, '""')}"`,
+      `"${getAccountName(tx.account_id).replace(/"/g, '""')}"`,
+      `"${(tx.category || 'Uncategorized').replace(/"/g, '""')}"`,
+      tx.transaction_type,
+      tx.amount.toFixed(2),
+      tx.currency
+    ])
+
+    // Combine headers and rows
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.join(','))
+    ].join('\n')
+
+    // Create blob and download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    const url = URL.createObjectURL(blob)
+
+    link.setAttribute('href', url)
+    link.setAttribute('download', `transactions_${new Date().toISOString().split('T')[0]}.csv`)
+    link.style.visibility = 'hidden'
+
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
   // Filter and sort ALL transactions, then paginate client-side
   const filteredAndSortedTransactions = React.useMemo(() => {
     console.log(`Processing ${allTransactions.length} total transactions`)
@@ -180,47 +300,53 @@ export default function TransactionsPage() {
       })))
     }
 
-    // Detect internal transfers (same amount, opposite type, same day, different accounts)
+    // Detect internal transfers (same amount, opposite type, within 2-day range, different accounts)
     let transactionsToFilter = allTransactions
     if (hideInternalTransfers) {
       const internalTransferIds = new Set<string>()
 
-      // Group transactions by date
-      const txByDate = new Map<string, Transaction[]>()
-      allTransactions.forEach(tx => {
-        const dateKey = tx.transaction_date.split('T')[0] // Get just the date part
-        if (!txByDate.has(dateKey)) {
-          txByDate.set(dateKey, [])
-        }
-        txByDate.get(dateKey)!.push(tx)
-      })
+      // Sort transactions by date for efficient processing
+      const sortedTxs = [...allTransactions].sort((a, b) =>
+        new Date(a.transaction_date).getTime() - new Date(b.transaction_date).getTime()
+      )
 
-      // Find matching pairs within each day
-      txByDate.forEach(dayTransactions => {
-        for (let i = 0; i < dayTransactions.length; i++) {
-          for (let j = i + 1; j < dayTransactions.length; j++) {
-            const tx1 = dayTransactions[i]
-            const tx2 = dayTransactions[j]
+      // Find matching pairs within 2-day window
+      for (let i = 0; i < sortedTxs.length; i++) {
+        const tx1 = sortedTxs[i]
+        const tx1Date = new Date(tx1.transaction_date)
 
-            // Check if they're internal transfers:
-            // 1. Same amount
-            // 2. Opposite transaction types (one debit, one credit)
-            // 3. Different accounts
-            const sameAmount = Math.abs(tx1.amount - tx2.amount) < 0.01 // Allow for small rounding differences
-            const oppositeTypes = (tx1.transaction_type === 'debit' && tx2.transaction_type === 'credit') ||
-                                  (tx1.transaction_type === 'credit' && tx2.transaction_type === 'debit')
-            const differentAccounts = tx1.account_id !== tx2.account_id
+        // Only look ahead at transactions within 2 days
+        for (let j = i + 1; j < sortedTxs.length; j++) {
+          const tx2 = sortedTxs[j]
+          const tx2Date = new Date(tx2.transaction_date)
 
-            if (sameAmount && oppositeTypes && differentAccounts) {
-              // Mark both as internal transfers to be filtered out
-              internalTransferIds.add(tx1.id)
-              internalTransferIds.add(tx2.id)
-            }
+          // Calculate difference in days
+          const daysDiff = Math.abs((tx2Date.getTime() - tx1Date.getTime()) / (1000 * 60 * 60 * 24))
+
+          // Stop looking if we've gone beyond 2 days
+          if (daysDiff > 2) {
+            break
+          }
+
+          // Check if they're internal transfers:
+          // 1. Same amount
+          // 2. Opposite transaction types (one debit, one credit)
+          // 3. Different accounts
+          // 4. Within 2 days
+          const sameAmount = Math.abs(tx1.amount - tx2.amount) < 0.01 // Allow for small rounding differences
+          const oppositeTypes = (tx1.transaction_type === 'debit' && tx2.transaction_type === 'credit') ||
+                                (tx1.transaction_type === 'credit' && tx2.transaction_type === 'debit')
+          const differentAccounts = tx1.account_id !== tx2.account_id
+
+          if (sameAmount && oppositeTypes && differentAccounts) {
+            // Mark both as internal transfers to be filtered out
+            internalTransferIds.add(tx1.id)
+            internalTransferIds.add(tx2.id)
           }
         }
-      })
+      }
 
-      console.log(`Detected ${internalTransferIds.size} internal transfer transactions`)
+      console.log(`Detected ${internalTransferIds.size} internal transfer transactions (within 2-day window)`)
       transactionsToFilter = allTransactions.filter(tx => !internalTransferIds.has(tx.id))
     }
 
@@ -302,7 +428,7 @@ export default function TransactionsPage() {
     }
 
     return sorted
-  }, [allTransactions, searchTerm, selectedCategories, selectedType, startDate, endDate, minAmount, maxAmount, selectedMerchant, sortField, sortDirection])
+  }, [allTransactions, searchTerm, selectedCategories, selectedType, startDate, endDate, minAmount, maxAmount, selectedMerchant, hideInternalTransfers, sortField, sortDirection])
 
   // Get unique categories from all loaded transactions + custom ones
   const categories = Array.from(new Set([
@@ -338,8 +464,21 @@ export default function TransactionsPage() {
     <div className="max-w-7xl mx-auto px-4 py-8">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-bold">Transactions</h1>
-        <div className="text-sm text-gray-600">
-          {allTransactions.length} total transactions
+        <div className="flex items-center gap-4">
+          <div className="text-sm text-gray-600">
+            {allTransactions.length} total transactions
+          </div>
+          <button
+            onClick={handleDownloadCSV}
+            disabled={filteredAndSortedTransactions.length === 0}
+            className="px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+            title={`Download ${filteredAndSortedTransactions.length} filtered transactions as CSV`}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Download CSV
+          </button>
         </div>
       </div>
 
@@ -474,12 +613,13 @@ export default function TransactionsPage() {
                 setStartDate('')
                 setEndDate('')
                 setSearchTerm('')
-                setSelectedCategory('')
+                setSelectedCategories([])
                 setSelectedAccount('')
                 setMinAmount('')
                 setMaxAmount('')
                 setSelectedMerchant('')
                 setSelectedType('')
+                setHideInternalTransfers(false)
               }}
               className="w-full px-4 py-2 text-sm text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
             >
@@ -551,7 +691,130 @@ export default function TransactionsPage() {
             </select>
           </div>
         </div>
+
+        {/* Internal Transfers Toggle */}
+        <div className="mt-4 pt-4 border-t border-gray-200">
+          <label className="flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={hideInternalTransfers}
+              onChange={(e) => setHideInternalTransfers(e.target.checked)}
+              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+            />
+            <span className="ml-2 text-sm text-gray-700">
+              Hide internal transfers between accounts
+            </span>
+            <span className="ml-2 text-xs text-gray-500">
+              (Filters out matching debit/credit pairs within 2 days)
+            </span>
+          </label>
+        </div>
       </div>
+
+      {/* Bulk Category Update Bar */}
+      {!loading && paginatedTransactions.length > 0 && (
+        <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
+          {!isBulkCategoryMode ? (
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-gray-600">
+                {selectedTransactionIds.size > 0 ? (
+                  <span>{selectedTransactionIds.size} transaction{selectedTransactionIds.size !== 1 ? 's' : ''} selected</span>
+                ) : (
+                  <span>Select transactions to update their category</span>
+                )}
+              </div>
+              <div className="flex gap-2">
+                {selectedTransactionIds.size > 0 && (
+                  <button
+                    onClick={handleDeselectAll}
+                    className="px-3 py-1.5 text-sm text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                  >
+                    Deselect All
+                  </button>
+                )}
+                <button
+                  onClick={() => setIsBulkCategoryMode(true)}
+                  disabled={selectedTransactionIds.size === 0}
+                  className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Set Category
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-medium text-gray-700">
+                  Setting category for {selectedTransactionIds.size} transaction{selectedTransactionIds.size !== 1 ? 's' : ''}
+                </div>
+                <button
+                  onClick={handleCancelBulkMode}
+                  className="text-sm text-gray-600 hover:text-gray-800"
+                >
+                  Cancel
+                </button>
+              </div>
+
+              {isBulkAddingCategory ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={bulkNewCategoryName}
+                    onChange={(e) => setBulkNewCategoryName(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleAddBulkCustomCategory()}
+                    placeholder="New category name"
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    autoFocus
+                  />
+                  <button
+                    onClick={handleAddBulkCustomCategory}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                  >
+                    Add
+                  </button>
+                  <button
+                    onClick={() => { setIsBulkAddingCategory(false); setBulkNewCategoryName('') }}
+                    className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <select
+                    value={bulkCategory}
+                    onChange={(e) => {
+                      if (e.target.value === '__ADD_NEW__') {
+                        setIsBulkAddingCategory(true)
+                      } else {
+                        setBulkCategory(e.target.value)
+                      }
+                    }}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="">Uncategorized</option>
+                    {categories.map(cat => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                    <option value="__ADD_NEW__" className="font-semibold text-blue-600">
+                      + Add New Category
+                    </option>
+                  </select>
+                  <button
+                    onClick={handleBulkUpdateCategory}
+                    disabled={isUpdatingBulk}
+                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isUpdatingBulk ? 'Updating...' : 'Apply'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Transactions List */}
       <div className="bg-white rounded-lg shadow-sm overflow-hidden">
@@ -568,6 +831,15 @@ export default function TransactionsPage() {
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
+                  <th className="px-4 py-3 text-left">
+                    <button
+                      onClick={handleSelectAll}
+                      className="text-xs font-medium text-blue-600 hover:text-blue-800 uppercase"
+                      title={`Select all ${filteredAndSortedTransactions.length} filtered transactions`}
+                    >
+                      Select All ({filteredAndSortedTransactions.length})
+                    </button>
+                  </th>
                   <th
                     className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
                     onClick={() => {
@@ -614,6 +886,14 @@ export default function TransactionsPage() {
               <tbody className="divide-y divide-gray-200">
                 {paginatedTransactions.map((transaction) => (
                   <tr key={transaction.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedTransactionIds.has(transaction.id)}
+                        onChange={() => handleToggleTransaction(transaction.id)}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                    </td>
                     <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">
                       {formatDate(transaction.transaction_date)}
                     </td>

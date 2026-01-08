@@ -23,8 +23,14 @@ interface MonthlySpending {
 }
 
 export default function InsightsPage() {
-  const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [allTransactions, setAllTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
+
+  // Filters
+  const [startDate, setStartDate] = useState<string>('')
+  const [endDate, setEndDate] = useState<string>('')
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([])
+  const [hideInternalTransfers, setHideInternalTransfers] = useState<boolean>(false)
 
   useEffect(() => {
     loadAllTransactions()
@@ -33,31 +39,100 @@ export default function InsightsPage() {
   const loadAllTransactions = async () => {
     setLoading(true)
     try {
-      // Load transactions in batches to avoid validation issues
-      let allTransactions: Transaction[] = []
+      // Load all transactions (up to 10000) for comprehensive insights
+      let transactions: Transaction[] = []
       let page = 1
       const pageSize = 100
 
-      while (true) {
+      while (transactions.length < 10000) {
         const response = await bankingAPI.getTransactions({ page, page_size: pageSize })
         const items = response.data.items || []
-        allTransactions = [...allTransactions, ...items]
+        transactions = [...transactions, ...items]
 
-        // Stop if we got fewer items than requested (last page) or have enough for analysis
-        if (items.length < pageSize || allTransactions.length >= 2000) {
+        // Stop if we got fewer items than requested (last page)
+        if (items.length < pageSize) {
           break
         }
         page++
       }
 
-      console.log(`Loaded ${allTransactions.length} transactions for insights`)
-      setTransactions(allTransactions)
+      // Deduplicate transactions by ID (in case API returns duplicates)
+      const uniqueTransactions = Array.from(
+        new Map(transactions.map(tx => [tx.id, tx])).values()
+      )
+
+      console.log(`Loaded ${transactions.length} transactions, ${uniqueTransactions.length} unique for insights`)
+      setAllTransactions(uniqueTransactions)
     } catch (error) {
       console.error('Failed to load transactions:', error)
     } finally {
       setLoading(false)
     }
   }
+
+  // Get all unique categories for filter
+  const allCategories = Array.from(new Set(
+    allTransactions.map(tx => tx.category).filter(Boolean)
+  )).sort()
+
+  // Detect internal transfers (same amount, opposite type, within 2-day range, different accounts)
+  let transactionsToFilter = allTransactions
+  if (hideInternalTransfers) {
+    const internalTransferIds = new Set<string>()
+
+    // Sort transactions by date for efficient processing
+    const sortedTxs = [...allTransactions].sort((a, b) =>
+      new Date(a.transaction_date).getTime() - new Date(b.transaction_date).getTime()
+    )
+
+    // Find matching pairs within 2-day window
+    for (let i = 0; i < sortedTxs.length; i++) {
+      const tx1 = sortedTxs[i]
+      const tx1Date = new Date(tx1.transaction_date)
+
+      // Only look ahead at transactions within 2 days
+      for (let j = i + 1; j < sortedTxs.length; j++) {
+        const tx2 = sortedTxs[j]
+        const tx2Date = new Date(tx2.transaction_date)
+
+        // Calculate difference in days
+        const daysDiff = Math.abs((tx2Date.getTime() - tx1Date.getTime()) / (1000 * 60 * 60 * 24))
+
+        // Stop looking if we've gone beyond 2 days
+        if (daysDiff > 2) {
+          break
+        }
+
+        // Check if they're internal transfers:
+        // 1. Same amount
+        // 2. Opposite transaction types (one debit, one credit)
+        // 3. Different accounts
+        // 4. Within 2 days
+        const sameAmount = Math.abs(tx1.amount - tx2.amount) < 0.01 // Allow for small rounding differences
+        const oppositeTypes = (tx1.transaction_type === 'debit' && tx2.transaction_type === 'credit') ||
+                              (tx1.transaction_type === 'credit' && tx2.transaction_type === 'debit')
+        const differentAccounts = tx1.account_id !== tx2.account_id
+
+        if (sameAmount && oppositeTypes && differentAccounts) {
+          // Mark both as internal transfers to be filtered out
+          internalTransferIds.add(tx1.id)
+          internalTransferIds.add(tx2.id)
+        }
+      }
+    }
+
+    console.log(`Insights: Detected ${internalTransferIds.size} internal transfer transactions (within 2-day window)`)
+    transactionsToFilter = allTransactions.filter(tx => !internalTransferIds.has(tx.id))
+  }
+
+  // Apply filters to transactions
+  const transactions = transactionsToFilter.filter(tx => {
+    const txDate = new Date(tx.transaction_date)
+    const matchesStartDate = !startDate || txDate >= new Date(startDate)
+    const matchesEndDate = !endDate || txDate <= new Date(endDate + 'T23:59:59')
+    const matchesCategory = selectedCategories.length === 0 || selectedCategories.includes(tx.category || 'Uncategorized')
+    return matchesStartDate && matchesEndDate && matchesCategory
+  })
 
   // Calculate category breakdown
   const categoryBreakdown: CategorySpending[] = (() => {
@@ -192,7 +267,113 @@ export default function InsightsPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-6">Spending Insights</h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-3xl font-bold">Spending Insights</h1>
+        <div className="text-sm text-gray-600">
+          {allTransactions.length} total transactions
+          {transactions.length !== allTransactions.length && (
+            <span> ({transactions.length} filtered)</span>
+          )}
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="bg-white p-4 rounded-lg shadow-sm mb-6">
+        <div className="grid md:grid-cols-3 gap-4 mb-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Start Date
+            </label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              End Date
+            </label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Categories (select multiple)
+            </label>
+            <div className="border border-gray-300 rounded-lg p-2 max-h-48 overflow-y-auto bg-white">
+              {selectedCategories.length > 0 && (
+                <div className="mb-2 pb-2 border-b border-gray-200">
+                  <button
+                    onClick={() => setSelectedCategories([])}
+                    className="text-xs text-blue-600 hover:text-blue-800"
+                  >
+                    Clear all ({selectedCategories.length})
+                  </button>
+                </div>
+              )}
+              {['Uncategorized', ...allCategories].map(category => {
+                const categoryValue = category === 'Uncategorized' ? 'Uncategorized' : category
+                const isSelected = selectedCategories.includes(categoryValue)
+                return (
+                  <label key={category} className="flex items-center py-1 px-2 hover:bg-gray-50 rounded cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedCategories([...selectedCategories, categoryValue])
+                        } else {
+                          setSelectedCategories(selectedCategories.filter(c => c !== categoryValue))
+                        }
+                      }}
+                      className="mr-2"
+                    />
+                    <span className="text-sm">{category}</span>
+                  </label>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Internal Transfers Toggle */}
+        <div className="pt-4 border-t border-gray-200">
+          <label className="flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={hideInternalTransfers}
+              onChange={(e) => setHideInternalTransfers(e.target.checked)}
+              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+            />
+            <span className="ml-2 text-sm text-gray-700">
+              Hide internal transfers between accounts
+            </span>
+            <span className="ml-2 text-xs text-gray-500">
+              (Filters out matching debit/credit pairs within 2 days)
+            </span>
+          </label>
+        </div>
+
+        <div className="flex justify-end mt-4">
+          <button
+            onClick={() => {
+              setStartDate('')
+              setEndDate('')
+              setSelectedCategories([])
+              setHideInternalTransfers(false)
+            }}
+            className="px-4 py-2 text-sm text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+          >
+            Clear All Filters
+          </button>
+        </div>
+      </div>
 
       {/* Overview Stats */}
       <div className="grid md:grid-cols-3 gap-4 mb-8">
@@ -247,7 +428,7 @@ export default function InsightsPage() {
         {/* Monthly Trend */}
         <div className="bg-white rounded-lg shadow-sm p-6">
           <h2 className="text-xl font-semibold mb-4">Monthly Spending</h2>
-          <div className="space-y-3">
+          <div className="space-y-3 max-h-96 overflow-y-auto">
             {monthlyBreakdown.map((month) => (
               <div key={month.month} className="flex items-center justify-between">
                 <span className="text-sm font-medium text-gray-700">{month.month}</span>

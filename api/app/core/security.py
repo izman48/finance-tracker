@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
+import secrets
 import uuid
 
 from fastapi import Depends, HTTPException, status
@@ -62,6 +63,46 @@ def decode_access_token(token: str) -> TokenData:
             detail="Invalid token",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+
+# How long an OAuth `state` token stays valid (bank authorization is quick).
+OAUTH_STATE_EXPIRE_MINUTES = 10
+
+
+def create_oauth_state(user_id: str) -> str:
+    """Create a signed, short-lived OAuth `state` token.
+
+    Replaces passing the raw user_id as state. The token binds the flow to a
+    user, carries a random nonce, and expires quickly, so a third party cannot
+    forge a callback (CSRF) or read the user_id from the URL.
+    """
+    expire = datetime.now(timezone.utc) + timedelta(minutes=OAUTH_STATE_EXPIRE_MINUTES)
+    payload = {
+        "sub": user_id,
+        "nonce": secrets.token_urlsafe(16),
+        "typ": "oauth_state",
+        "exp": expire,
+    }
+    return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
+
+
+def verify_oauth_state(state: str) -> str:
+    """Validate an OAuth `state` token and return the user_id it was issued for.
+
+    Raises ValueError if the token is missing, expired, tampered with, or not an
+    oauth_state token.
+    """
+    try:
+        payload = jwt.decode(state, settings.secret_key, algorithms=[settings.algorithm])
+    except JWTError as exc:
+        raise ValueError("Invalid or expired OAuth state") from exc
+
+    if payload.get("typ") != "oauth_state":
+        raise ValueError("Wrong token type for OAuth state")
+    user_id = payload.get("sub")
+    if not user_id:
+        raise ValueError("OAuth state missing subject")
+    return user_id
 
 
 def get_current_user(

@@ -63,6 +63,18 @@ After authorization:
 - Pull new transactions
 - Real-time status updates
 
+✅ **Cashflow & safe-to-spend**
+- "Safe to spend" — your cash minus what's committed before next payday
+- Overdraft shown as a separate cushion; net worth and what's "owed (scheduled)"
+- A **balance forecast** graph (payday / 30d / 90d / 6mo / 1yr) with the low point flagged
+- Per-account setup: mark accounts as spending/savings/credit, set overdraft limits, and configure credit-card repayment (full balance, or pay-down installments like Monzo Flex)
+
+### Navigation
+- **Dashboard** — safe-to-spend, forecast graph, planned expenses, accounts
+- **Spending** — where it went: month-by-month trend + category/merchant breakdown (transfers & card payments filtered out)
+- **Commitments** — review auto-detected recurring income/bills (confirm/edit/dismiss) and add one-off or manual items
+- **Transactions** — full list; mark any transaction as recurring with one click
+
 ## Testing with Sandbox Data
 
 The app is configured with TrueLayer Sandbox, which provides:

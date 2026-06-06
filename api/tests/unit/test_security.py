@@ -7,6 +7,8 @@ from app.core.security import (
     verify_password,
     create_access_token,
     decode_access_token,
+    create_oauth_state,
+    verify_oauth_state,
 )
 
 
@@ -88,3 +90,47 @@ class TestJWTTokens:
 
         token_data = decode_access_token(token)
         assert str(token_data.user_id) == user_id
+
+
+class TestOAuthState:
+    """Tests for the signed OAuth state token (CSRF protection)."""
+
+    def test_roundtrip_returns_user_id(self):
+        """A freshly created state verifies back to the same user_id."""
+        state = create_oauth_state("user-abc")
+        assert verify_oauth_state(state) == "user-abc"
+
+    def test_distinct_states_per_call(self):
+        """Random nonce makes each state token unique."""
+        assert create_oauth_state("user-abc") != create_oauth_state("user-abc")
+
+    def test_tampered_state_rejected(self):
+        """A garbage/forged state token is rejected."""
+        with pytest.raises(ValueError):
+            verify_oauth_state("not-a-real-token")
+
+    def test_access_token_not_accepted_as_state(self):
+        """A normal access token must not pass as an oauth_state token."""
+        access = create_access_token(data={"sub": "user-abc"})
+        with pytest.raises(ValueError):
+            verify_oauth_state(access)
+
+    def test_expired_state_rejected(self):
+        """An expired state token is rejected."""
+        from jose import jwt
+        from datetime import datetime, timezone
+        from app.core.config import get_settings
+
+        settings = get_settings()
+        expired = jwt.encode(
+            {
+                "sub": "user-abc",
+                "typ": "oauth_state",
+                "nonce": "x",
+                "exp": datetime.now(timezone.utc) - timedelta(minutes=1),
+            },
+            settings.secret_key,
+            algorithm=settings.algorithm,
+        )
+        with pytest.raises(ValueError):
+            verify_oauth_state(expired)

@@ -39,6 +39,15 @@ class TestAuthEndpoints:
         assert "id" in data
         assert "password" not in data  # Password should not be returned
 
+    def test_register_short_password_rejected(self, client):
+        """Should reject registration with a password shorter than 8 chars."""
+        response = client.post(
+            "/api/v1/auth/register",
+            json={"email": "shortpw@example.com", "password": "short"},
+        )
+
+        assert response.status_code == 422
+
     def test_register_duplicate_email(self, client, test_user_data):
         """Should reject duplicate email registration."""
         # First registration

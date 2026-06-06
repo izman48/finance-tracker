@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { bankingAPI } from '../services/api'
 
 export default function CallbackPage() {
   const [searchParams] = useSearchParams()
@@ -9,49 +8,22 @@ export default function CallbackPage() {
   const [message, setMessage] = useState('Processing bank connection...')
 
   useEffect(() => {
-    const handleCallback = async () => {
-      const code = searchParams.get('code')
-      const error = searchParams.get('error')
+    // The OAuth code exchange is handled server-side by /banking/callback, which
+    // TrueLayer redirects to directly and then forwards to /dashboard. This page
+    // is only a fallback (e.g. a stale redirect_uri pointing at the frontend):
+    // it surfaces any error and sends the user on to the dashboard.
+    const error = searchParams.get('error')
 
-      // Check for OAuth errors
-      if (error) {
-        setStatus('error')
-        setMessage(`Authorization failed: ${error}`)
-        setTimeout(() => navigate('/dashboard?bank_connected=false'), 3000)
-        return
-      }
-
-      // Check for authorization code
-      if (!code) {
-        setStatus('error')
-        setMessage('No authorization code received')
-        setTimeout(() => navigate('/dashboard?bank_connected=false'), 3000)
-        return
-      }
-
-      try {
-        // Exchange code for tokens via backend
-        setMessage('Exchanging authorization code...')
-        await bankingAPI.exchangeOAuthCode(code)
-
-        setStatus('success')
-        setMessage('Bank connected successfully! Redirecting to dashboard...')
-
-        // Redirect to dashboard after success
-        setTimeout(() => {
-          navigate('/dashboard?bank_connected=true')
-        }, 2000)
-      } catch (err: any) {
-        console.error('Failed to exchange OAuth code:', err)
-        setStatus('error')
-        setMessage(
-          err.response?.data?.detail || 'Failed to connect bank. Please try again.'
-        )
-        setTimeout(() => navigate('/dashboard?bank_connected=false'), 3000)
-      }
+    if (error) {
+      setStatus('error')
+      setMessage(`Authorization failed: ${error}`)
+      setTimeout(() => navigate('/dashboard?bank_connected=false'), 3000)
+      return
     }
 
-    handleCallback()
+    setStatus('success')
+    setMessage('Bank connection processed! Redirecting to dashboard...')
+    setTimeout(() => navigate('/dashboard?bank_connected=true'), 1500)
   }, [searchParams, navigate])
 
   return (

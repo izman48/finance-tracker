@@ -1,8 +1,8 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.models.account import AccountType
 from app.models.transaction import TransactionType
@@ -15,7 +15,7 @@ class UserCreate(BaseModel):
     """Schema for creating a user."""
 
     email: EmailStr
-    password: str
+    password: str = Field(min_length=8, max_length=128)
 
 
 class UserResponse(BaseModel):
@@ -169,3 +169,202 @@ class SyncTransactionsResponse(BaseModel):
 
     transactions_synced: int
     message: str
+
+
+# --- Analytics / Cashflow Schemas ---
+
+
+class AccountSettingUpdate(BaseModel):
+    """Patch an account's cashflow settings (all optional)."""
+
+    role: str | None = None  # spending | savings | credit | excluded
+    overdraft_limit: Decimal | None = None
+    repayment_cadence: str | None = None  # monthly | end_of_month | every_n_months | weekly
+    repayment_interval_months: int | None = None
+    repayment_day: int | None = Field(default=None, ge=1, le=31)
+    repayment_anchor_date: date | None = None
+    repayment_strategy: str | None = None  # full_balance | fixed | installments
+    repayment_fixed_amount: Decimal | None = None
+    repayment_installments: int | None = Field(default=None, ge=1, le=120)
+    pay_from_account_id: uuid.UUID | None = None
+
+
+class NextRepayment(BaseModel):
+    account_id: str
+    label: str
+    amount: Decimal
+    due_date: date
+
+
+class CashflowAccount(BaseModel):
+    id: str
+    display_name: str
+    provider_name: str
+    account_type: str
+    role: str
+    current_balance: Decimal | None
+    overdraft_limit: Decimal | None
+    repayment_cadence: str | None = None
+    repayment_day: int | None = None
+    repayment_interval_months: int | None = None
+    repayment_anchor_date: date | None = None
+    repayment_strategy: str | None = None
+    repayment_installments: int | None = None
+    pay_from_account_id: str | None = None
+
+
+class CashflowSummary(BaseModel):
+    available_cash: Decimal
+    overdraft_cushion: Decimal
+    credit_owed: Decimal
+    net_worth: Decimal
+    committed_before_payday: Decimal
+    safe_to_spend: Decimal
+    savable: Decimal
+    next_payday: date | None
+    next_repayments: list[NextRepayment]
+    accounts: list[CashflowAccount]
+
+
+class CommitmentResponse(BaseModel):
+    id: uuid.UUID
+    direction: str
+    label: str
+    amount: Decimal
+    cadence: str
+    interval_days: int | None
+    interval_months: int | None
+    next_date: date
+    source: str
+    status: str
+    account_id: uuid.UUID | None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CommitmentFromTransaction(BaseModel):
+    """Mark an existing transaction as recurring."""
+
+    transaction_id: uuid.UUID
+    cadence: str = "monthly"  # weekly | monthly | every_n_months
+
+
+class CommitmentCreate(BaseModel):
+    """Manually add a commitment."""
+
+    direction: str  # income | expense
+    label: str
+    amount: Decimal
+    cadence: str = "monthly"
+    interval_days: int | None = None
+    interval_months: int | None = None
+    next_date: date
+    account_id: uuid.UUID | None = None
+
+
+class CommitmentUpdate(BaseModel):
+    """Confirm/dismiss or edit a commitment (all optional)."""
+
+    status: str | None = None  # suggested | confirmed | dismissed
+    label: str | None = None
+    amount: Decimal | None = None
+    cadence: str | None = None
+    interval_days: int | None = None
+    interval_months: int | None = None
+    next_date: date | None = None
+    account_id: uuid.UUID | None = None
+
+
+class ForecastEvent(BaseModel):
+    label: str
+    amount: Decimal  # signed: income +, expense/repayment −
+    kind: str        # income | expense | repayment
+
+
+class ForecastPoint(BaseModel):
+    date: date
+    balance: Decimal
+    events: list[ForecastEvent]
+
+
+class ForecastResponse(BaseModel):
+    horizon: str
+    horizon_end: date
+    start_balance: Decimal
+    end_balance: Decimal
+    min_balance: Decimal
+    min_date: date
+    overdraft_limit: Decimal
+    breaches: list[str]
+    timeline: list[ForecastPoint]
+
+
+class CategorySlice(BaseModel):
+    category: str
+    total: Decimal
+    count: int
+
+
+class MerchantSlice(BaseModel):
+    merchant: str
+    total: Decimal
+
+
+class SpendingResponse(BaseModel):
+    period: str
+    period_start: date
+    period_end: date
+    total_spent: Decimal
+    charged_to_credit: Decimal
+    paid_from_cash: Decimal
+    by_category: list[CategorySlice]
+    top_merchants: list[MerchantSlice]
+
+
+class MonthSpend(BaseModel):
+    month: str  # "YYYY-MM"
+    total: Decimal
+    charged_to_credit: Decimal
+    paid_from_cash: Decimal
+
+
+class SpendingTrendResponse(BaseModel):
+    months: list[MonthSpend]
+
+
+class PlannedItemCreate(BaseModel):
+    name: str
+    direction: str = "expense"
+    kind: str  # one_off | recurring | installment_plan
+    start_date: date
+    amount: Decimal | None = None
+    cadence: str | None = None
+    interval_days: int | None = None
+    interval_months: int | None = None
+    end_date: date | None = None
+    total_amount: Decimal | None = None
+    installments: int | None = Field(default=None, ge=1, le=120)
+    apr: Decimal | None = None
+    fee_amount: Decimal | None = None
+    account_id: uuid.UUID | None = None
+
+
+class PlannedItemResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    direction: str
+    kind: str
+    start_date: date
+    amount: Decimal | None
+    cadence: str | None
+    interval_days: int | None
+    interval_months: int | None
+    end_date: date | None
+    total_amount: Decimal | None
+    installments: int | None
+    apr: Decimal | None
+    fee_amount: Decimal | None
+    account_id: uuid.UUID | None
+    active: bool
+
+    model_config = ConfigDict(from_attributes=True)

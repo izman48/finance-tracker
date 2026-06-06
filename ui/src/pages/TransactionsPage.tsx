@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { bankingAPI } from '../services/api'
+import { bankingAPI, analyticsAPI } from '../services/api'
 
 interface Transaction {
   id: string
@@ -19,6 +19,7 @@ interface Account {
   id: string
   display_name: string
   provider_name: string
+  account_type: string
 }
 
 export default function TransactionsPage() {
@@ -29,6 +30,8 @@ export default function TransactionsPage() {
   const [pageSize] = useState(50)
   const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null)
   const [editingCategory, setEditingCategory] = useState<string>('')
+  const [recurringTx, setRecurringTx] = useState<Transaction | null>(null)
+  const [toast, setToast] = useState<string>('')
   const [customCategories, setCustomCategories] = useState<string[]>([])
   const [isAddingCategory, setIsAddingCategory] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState('')
@@ -54,6 +57,7 @@ export default function TransactionsPage() {
   const [selectedMerchant, setSelectedMerchant] = useState<string>('')
   const [selectedType, setSelectedType] = useState<string>('')
   const [hideInternalTransfers, setHideInternalTransfers] = useState<boolean>(false)
+  const [hideCreditCardPayments, setHideCreditCardPayments] = useState<boolean>(false)
 
   useEffect(() => {
     loadAccounts()
@@ -63,7 +67,7 @@ export default function TransactionsPage() {
   // Reset to page 1 when filters or sort changes
   useEffect(() => {
     setPage(1)
-  }, [searchTerm, selectedCategories, startDate, endDate, minAmount, maxAmount, selectedMerchant, selectedType, hideInternalTransfers, sortField, sortDirection])
+  }, [searchTerm, selectedCategories, startDate, endDate, minAmount, maxAmount, selectedMerchant, selectedType, hideInternalTransfers, hideCreditCardPayments, sortField, sortDirection])
 
   const loadAccounts = async () => {
     try {
@@ -350,7 +354,49 @@ export default function TransactionsPage() {
       transactionsToFilter = allTransactions.filter(tx => !internalTransferIds.has(tx.id))
     }
 
-    // First, filter ALL transactions (excluding internal transfers if enabled)
+    // Filter out credit card payments (both sides of the transaction)
+    if (hideCreditCardPayments) {
+      transactionsToFilter = transactionsToFilter.filter(tx => {
+        // Find the account for this transaction
+        const account = accounts.find(acc => acc.id === tx.account_id)
+
+        // Case 1: If it's a credit card account and the transaction is a credit (payment TO the card), hide it
+        if (account && account.account_type === 'CREDIT_CARD' && tx.transaction_type === 'credit') {
+          return false // Hide credit card payments (receiving side)
+        }
+
+        // Case 2: If it's a debit from a non-credit-card account to pay a credit card
+        // Look for "AMERICAN EXPRESS", "AMEX", credit card provider names in description
+        if (account && account.account_type !== 'CREDIT_CARD' && tx.transaction_type === 'debit') {
+          const description = (tx.description || '').toLowerCase()
+          const merchantName = (tx.merchant_name || '').toLowerCase()
+
+          // Common credit card payment indicators
+          const creditCardPaymentIndicators = [
+            'american express',
+            'amex',
+            'monzo flex',
+            'barclaycard',
+            'credit card payment',
+            'cc payment'
+          ]
+
+          const isLikelyCreditCardPayment = creditCardPaymentIndicators.some(indicator =>
+            description.includes(indicator) || merchantName.includes(indicator)
+          )
+
+          if (isLikelyCreditCardPayment) {
+            return false // Hide payments from checking/savings accounts to credit cards
+          }
+        }
+
+        return true // Keep everything else
+      })
+
+      console.log(`After hiding credit card payments: ${transactionsToFilter.length} transactions`)
+    }
+
+    // First, filter ALL transactions (excluding internal transfers and credit card payments if enabled)
     const filtered = transactionsToFilter.filter(tx => {
       // Search filter (description or merchant name)
       const matchesSearch = searchTerm === '' ||
@@ -428,11 +474,11 @@ export default function TransactionsPage() {
     }
 
     return sorted
-  }, [allTransactions, searchTerm, selectedCategories, selectedType, startDate, endDate, minAmount, maxAmount, selectedMerchant, hideInternalTransfers, sortField, sortDirection])
+  }, [allTransactions, accounts, searchTerm, selectedCategories, selectedType, startDate, endDate, minAmount, maxAmount, selectedMerchant, hideInternalTransfers, hideCreditCardPayments, sortField, sortDirection])
 
   // Get unique categories from all loaded transactions + custom ones
   const categories = Array.from(new Set([
-    ...allTransactions.map(tx => tx.category).filter(Boolean),
+    ...allTransactions.map(tx => tx.category).filter((c): c is string => Boolean(c)),
     ...customCategories
   ])).sort()
 
@@ -448,8 +494,6 @@ export default function TransactionsPage() {
   const endIndex = startIndex + pageSize
   const paginatedTransactions = filteredAndSortedTransactions.slice(startIndex, endIndex)
 
-  // Check if sorting is active (always show pagination now since everything is client-side)
-  const isSorted = sortField !== null
 
   // Calculate totals
   const totalSpent = filteredAndSortedTransactions
@@ -620,6 +664,7 @@ export default function TransactionsPage() {
                 setSelectedMerchant('')
                 setSelectedType('')
                 setHideInternalTransfers(false)
+                setHideCreditCardPayments(false)
               }}
               className="w-full px-4 py-2 text-sm text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
             >
@@ -692,8 +737,8 @@ export default function TransactionsPage() {
           </div>
         </div>
 
-        {/* Internal Transfers Toggle */}
-        <div className="mt-4 pt-4 border-t border-gray-200">
+        {/* Filter Toggles */}
+        <div className="mt-4 pt-4 border-t border-gray-200 space-y-3">
           <label className="flex items-center cursor-pointer">
             <input
               type="checkbox"
@@ -706,6 +751,21 @@ export default function TransactionsPage() {
             </span>
             <span className="ml-2 text-xs text-gray-500">
               (Filters out matching debit/credit pairs within 2 days)
+            </span>
+          </label>
+
+          <label className="flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={hideCreditCardPayments}
+              onChange={(e) => setHideCreditCardPayments(e.target.checked)}
+              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+            />
+            <span className="ml-2 text-sm text-gray-700">
+              Hide credit card payments
+            </span>
+            <span className="ml-2 text-xs text-gray-500">
+              (Hides payments TO credit cards, keeps purchases made WITH credit cards)
             </span>
           </label>
         </div>
@@ -881,6 +941,7 @@ export default function TransactionsPage() {
                       )}
                     </div>
                   </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -1008,6 +1069,15 @@ export default function TransactionsPage() {
                       {transaction.transaction_type === 'credit' ? '+' : '-'}
                       {formatCurrency(transaction.amount, transaction.currency)}
                     </td>
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      <button
+                        onClick={() => setRecurringTx(transaction)}
+                        className="text-xs text-gray-400 hover:text-blue-600"
+                        title="Mark as a recurring commitment"
+                      >
+                        ↻ Recurring
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -1125,6 +1195,81 @@ export default function TransactionsPage() {
             </div>
           )
         })()}
+      </div>
+
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-green-600 text-white px-4 py-3 rounded-lg shadow-lg">
+          {toast}
+        </div>
+      )}
+
+      {recurringTx && (
+        <MakeRecurringModal
+          transaction={recurringTx}
+          onClose={() => setRecurringTx(null)}
+          onDone={(label) => {
+            setRecurringTx(null)
+            setToast(`"${label}" added to Commitments`)
+            setTimeout(() => setToast(''), 3500)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function MakeRecurringModal({
+  transaction,
+  onClose,
+  onDone,
+}: {
+  transaction: Transaction
+  onClose: () => void
+  onDone: (label: string) => void
+}) {
+  const [cadence, setCadence] = useState('monthly')
+  const [saving, setSaving] = useState(false)
+  const label = transaction.merchant_name || transaction.description || 'this transaction'
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      await analyticsAPI.markTransactionRecurring(transaction.id, cadence)
+      onDone(label)
+    } catch (e) {
+      console.error('Failed to mark recurring', e)
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-lg w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-lg font-semibold mb-1">Mark as recurring</h3>
+        <p className="text-sm text-gray-500 mb-4">
+          Add <span className="font-medium">{label}</span> ({transaction.transaction_type === 'credit' ? 'income' : 'expense'}) as a
+          confirmed commitment so it feeds your safe-to-spend and forecast.
+        </p>
+        <label className="block text-sm font-medium text-gray-700 mb-1">How often?</label>
+        <select
+          value={cadence}
+          onChange={(e) => setCadence(e.target.value)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg mb-5"
+        >
+          <option value="weekly">Weekly</option>
+          <option value="monthly">Monthly</option>
+          <option value="every_n_months">Every few months</option>
+        </select>
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Cancel</button>
+          <button
+            onClick={save}
+            disabled={saving}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          >
+            {saving ? 'Adding…' : 'Add to commitments'}
+          </button>
+        </div>
       </div>
     </div>
   )

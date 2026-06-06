@@ -28,6 +28,7 @@ from app.models import (
     CommitmentStatus,
     PlannedItem,
     RepaymentStrategy,
+    SavingsGoal,
     Transaction,
 )
 
@@ -551,6 +552,75 @@ def get_summary(db: Session, user) -> dict:
         "next_repayments": repayment_events(db, user, today, today + timedelta(days=92)),
         "accounts": [_account_summary(acc, roles[acc.id], settings.get(acc.id)) for acc in accounts],
     }
+
+
+# --------------------------------------------------------------------------- #
+# Savings goals (passive — fund toward a target)
+# --------------------------------------------------------------------------- #
+def _months_between(start: date, end: date) -> int:
+    """Whole calendar months from start to end (>=0)."""
+    return max(0, (end.year - start.year) * 12 + (end.month - start.month))
+
+
+def get_goals(db: Session, user) -> dict:
+    """Savings goals with progress and how much to set aside per month.
+
+    Progress comes from a linked savings account's balance when set, otherwise
+    the goal's manual `current_amount`. `savable` is the projected monthly surplus
+    that could be put toward goals.
+    """
+    today = _today()
+    savable = _d(get_summary(db, user)["savable"])
+    balances = {
+        a.id: _d(a.current_balance)
+        for a in db.query(Account).filter(Account.user_id == user.id).all()
+    }
+    goals = (
+        db.query(SavingsGoal)
+        .filter(SavingsGoal.user_id == user.id, SavingsGoal.active.is_(True))
+        .order_by(SavingsGoal.created_at)
+        .all()
+    )
+
+    rows = []
+    for g in goals:
+        target = _d(g.target_amount)
+        current = balances.get(g.linked_account_id, _d(g.current_amount)) if g.linked_account_id else _d(g.current_amount)
+        remaining = max(Decimal(0), target - current)
+        progress_pct = float(min(Decimal(100), (current / target * 100) if target > 0 else Decimal(0)))
+        complete = current >= target
+
+        months_left: int | None = None
+        monthly_needed: Decimal | None = None
+        on_track: bool | None = None
+        overdue = False
+        if g.target_date and not complete:
+            if g.target_date < today:
+                overdue = True
+                monthly_needed = remaining
+                on_track = False
+            else:
+                months_left = max(1, _months_between(today, g.target_date))
+                monthly_needed = (remaining / Decimal(months_left)).quantize(Decimal("0.01"))
+                on_track = monthly_needed <= savable
+
+        rows.append({
+            "id": str(g.id),
+            "name": g.name,
+            "target_amount": target,
+            "target_date": g.target_date,
+            "linked_account_id": str(g.linked_account_id) if g.linked_account_id else None,
+            "current": current,
+            "remaining": remaining,
+            "progress_pct": round(progress_pct, 1),
+            "complete": complete,
+            "overdue": overdue,
+            "months_left": months_left,
+            "monthly_needed": monthly_needed,
+            "on_track": on_track,
+        })
+
+    return {"savable": savable, "goals": rows}
 
 
 def _account_summary(acc: Account, role: AccountRole, s: AccountSetting | None) -> dict:

@@ -14,6 +14,7 @@ from app.models import (
     CommitmentSource,
     CommitmentStatus,
     PlannedItem,
+    SavingsGoal,
 )
 from app.schemas import (
     AccountSettingUpdate,
@@ -23,8 +24,12 @@ from app.schemas import (
     CommitmentResponse,
     CommitmentUpdate,
     ForecastResponse,
+    GoalsResponse,
     PlannedItemCreate,
     PlannedItemResponse,
+    SavingsGoalCreate,
+    SavingsGoalResponse,
+    SavingsGoalUpdate,
     SpendingResponse,
     SpendingTrendResponse,
 )
@@ -201,6 +206,67 @@ def delete_planned_item(
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Planned item not found")
     db.delete(item)
+    db.commit()
+    return {"success": True}
+
+
+@router.get("/goals", response_model=GoalsResponse)
+def list_goals(
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> GoalsResponse:
+    """Savings goals with progress and monthly amount needed."""
+    return GoalsResponse(**analytics_service.get_goals(db, current_user))
+
+
+@router.post("/goals", response_model=SavingsGoalResponse, status_code=status.HTTP_201_CREATED)
+def create_goal(
+    data: SavingsGoalCreate,
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> SavingsGoal:
+    goal = SavingsGoal(user_id=current_user.id, **data.model_dump())
+    db.add(goal)
+    db.commit()
+    db.refresh(goal)
+    return goal
+
+
+@router.patch("/goals/{goal_id}", response_model=SavingsGoalResponse)
+def update_goal(
+    goal_id: str,
+    data: SavingsGoalUpdate,
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> SavingsGoal:
+    goal = (
+        db.query(SavingsGoal)
+        .filter(SavingsGoal.id == goal_id, SavingsGoal.user_id == current_user.id)
+        .first()
+    )
+    if not goal:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found")
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(goal, field, value)
+    db.commit()
+    db.refresh(goal)
+    return goal
+
+
+@router.delete("/goals/{goal_id}")
+def delete_goal(
+    goal_id: str,
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    goal = (
+        db.query(SavingsGoal)
+        .filter(SavingsGoal.id == goal_id, SavingsGoal.user_id == current_user.id)
+        .first()
+    )
+    if not goal:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found")
+    db.delete(goal)
     db.commit()
     return {"success": True}
 

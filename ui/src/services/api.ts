@@ -105,6 +105,10 @@ export const analyticsAPI = {
   getPlannedItems: () => api.get('/analytics/planned-items'),
   addPlannedItem: (data: Record<string, unknown>) => api.post('/analytics/planned-items', data),
   deletePlannedItem: (id: string) => api.delete(`/analytics/planned-items/${id}`),
+  getGoals: () => api.get('/analytics/goals'),
+  addGoal: (data: Record<string, unknown>) => api.post('/analytics/goals', data),
+  updateGoal: (id: string, data: Record<string, unknown>) => api.patch(`/analytics/goals/${id}`, data),
+  deleteGoal: (id: string) => api.delete(`/analytics/goals/${id}`),
 }
 
 export default api

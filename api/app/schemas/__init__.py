@@ -332,6 +332,56 @@ class SpendingTrendResponse(BaseModel):
     months: list[MonthSpend]
 
 
+class SavingsGoalCreate(BaseModel):
+    name: str
+    target_amount: Decimal
+    target_date: date | None = None
+    linked_account_id: uuid.UUID | None = None
+    current_amount: Decimal = Decimal("0")
+
+
+class SavingsGoalUpdate(BaseModel):
+    name: str | None = None
+    target_amount: Decimal | None = None
+    target_date: date | None = None
+    linked_account_id: uuid.UUID | None = None
+    current_amount: Decimal | None = None
+    active: bool | None = None
+
+
+class SavingsGoalResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    target_amount: Decimal
+    target_date: date | None
+    linked_account_id: uuid.UUID | None
+    current_amount: Decimal
+    active: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class GoalProgress(BaseModel):
+    id: str
+    name: str
+    target_amount: Decimal
+    target_date: date | None
+    linked_account_id: str | None
+    current: Decimal
+    remaining: Decimal
+    progress_pct: float
+    complete: bool
+    overdue: bool
+    months_left: int | None
+    monthly_needed: Decimal | None
+    on_track: bool | None
+
+
+class GoalsResponse(BaseModel):
+    savable: Decimal
+    goals: list[GoalProgress]
+
+
 class PlannedItemCreate(BaseModel):
     name: str
     direction: str = "expense"

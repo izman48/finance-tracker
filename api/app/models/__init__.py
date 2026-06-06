@@ -16,6 +16,7 @@ from app.models.commitment_rule import (
     CommitmentStatus,
 )
 from app.models.planned_item import PlannedItem, PlannedKind
+from app.models.savings_goal import SavingsGoal
 
 __all__ = [
     "User",
@@ -35,4 +36,5 @@ __all__ = [
     "CommitmentStatus",
     "PlannedItem",
     "PlannedKind",
+    "SavingsGoal",
 ]

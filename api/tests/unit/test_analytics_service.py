@@ -11,6 +11,7 @@ from app.models import (
     CommitmentDirection,
     CommitmentStatus,
     PlannedItem,
+    SavingsGoal,
     Transaction,
     User,
 )
@@ -294,6 +295,47 @@ class TestCreditRepayments:
         repays = [e["amount"] for p in f["timeline"] for e in p["events"] if e["kind"] == "repayment"]
         # 500 at £200/mo -> 200, 200, 100 (totals to the balance)
         assert repays == [Decimal("-200.00"), Decimal("-200.00"), Decimal("-100.00")]
+
+
+class TestGoals:
+    def test_manual_goal_progress_and_monthly_needed(self, db_session):
+        user = _user(db_session)
+        td = svc._add_months(svc._today(), 3)
+        db_session.add(SavingsGoal(
+            user_id=user.id, name="Trip", target_amount=Decimal("1000"),
+            current_amount=Decimal("250"), target_date=td,
+        ))
+        db_session.commit()
+        goal = svc.get_goals(db_session, user)["goals"][0]
+        assert goal["current"] == Decimal("250")
+        assert goal["remaining"] == Decimal("750")
+        assert goal["progress_pct"] == 25.0
+        assert goal["months_left"] == 3
+        assert goal["monthly_needed"] == Decimal("250.00")
+        assert goal["complete"] is False
+
+    def test_linked_account_drives_progress(self, db_session):
+        user = _user(db_session)
+        acc = _account(db_session, user, "SAVINGS", "800", "Savings")
+        db_session.add(SavingsGoal(
+            user_id=user.id, name="Buffer", target_amount=Decimal("1000"),
+            linked_account_id=acc.id, current_amount=Decimal("0"),
+        ))
+        db_session.commit()
+        goal = svc.get_goals(db_session, user)["goals"][0]
+        assert goal["current"] == Decimal("800")     # from the linked account balance
+        assert goal["remaining"] == Decimal("200")
+
+    def test_completed_goal(self, db_session):
+        user = _user(db_session)
+        db_session.add(SavingsGoal(
+            user_id=user.id, name="Done", target_amount=Decimal("500"),
+            current_amount=Decimal("500"),
+        ))
+        db_session.commit()
+        goal = svc.get_goals(db_session, user)["goals"][0]
+        assert goal["complete"] is True
+        assert goal["remaining"] == Decimal("0")
 
 
 class TestInstallments:

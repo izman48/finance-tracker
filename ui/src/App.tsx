@@ -8,6 +8,7 @@ import DashboardPage from './pages/DashboardPage'
 import TransactionsPage from './pages/TransactionsPage'
 import InsightsPage from './pages/InsightsPage'
 import CommitmentsPage from './pages/CommitmentsPage'
+import SavingsPage from './pages/SavingsPage'
 import CallbackPage from './pages/CallbackPage'
 import ProtectedRoute from './components/ProtectedRoute'
 
@@ -48,6 +49,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <CommitmentsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="savings"
+            element={
+              <ProtectedRoute>
+                <SavingsPage />
               </ProtectedRoute>
             }
           />

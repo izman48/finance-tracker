@@ -39,6 +39,12 @@ export default function Layout() {
                 >
                   Commitments
                 </Link>
+                <Link
+                  to="/savings"
+                  className="text-gray-700 hover:text-blue-600"
+                >
+                  Savings
+                </Link>
                 <span className="text-gray-600 ml-2">{user?.email}</span>
                 <button
                   onClick={logout}

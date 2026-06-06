@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   db:
     image: postgres:16-alpine
@@ -26,6 +24,7 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-finance_user}:${POSTGRES_PASSWORD:-finance_pass}@db:5432/${POSTGRES_DB:-finance_db}
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
       TRUELAYER_CLIENT_ID: ${TRUELAYER_CLIENT_ID:-}
       TRUELAYER_CLIENT_SECRET: ${TRUELAYER_CLIENT_SECRET:-}
       TRUELAYER_REDIRECT_URI: ${TRUELAYER_REDIRECT_URI:-http://localhost:8000/api/v1/banking/callback}
@@ -38,7 +37,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    # Apply DB migrations on startup, then run the API (idempotent — safe on every boot)
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
 
   ui:
     build:
@@ -54,6 +54,20 @@ services:
       - VITE_API_URL=http://localhost:8000
     command: npm run dev -- --host 0.0.0.0
 
+  # Optional: produce/verify a production frontend build (tsc && vite build).
+  # Run with:  docker compose run --rm ui-build
+  ui-build:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    container_name: finance_ui_build
+    volumes:
+      - ./ui:/app
+      - /app/node_modules
+    profiles:
+      - build
+    command: npm run build
+
   test:
     build:
       context: ./api
@@ -62,6 +76,7 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-finance_user}:${POSTGRES_PASSWORD:-finance_pass}@db:5432/${POSTGRES_DB:-finance_db}_test
       SECRET_KEY: test-secret-key
+      ENCRYPTION_KEY: oGRxJNK_WkqVxoVJyfsMqY9qSjZQMZd_xJ706DSh62o=
       ENVIRONMENT: test
     depends_on:
       db:

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 from app.core.database import get_db
-from app.core.security import CurrentUser
+from app.core.security import CurrentUser, verify_oauth_state
 from app.schemas import (
     BankConnectionURL,
     SyncAccountsResponse,
@@ -49,7 +49,7 @@ def initiate_bank_connection(current_user: CurrentUser) -> BankConnectionURL:
 async def oauth_callback(
     db: Annotated[Session, Depends(get_db)],
     code: str | None = Query(None, description="OAuth authorization code"),
-    state: str | None = Query(None, description="User ID passed as state"),
+    state: str | None = Query(None, description="Signed OAuth state token"),
     error: str | None = Query(None, description="OAuth error if any"),
 ) -> RedirectResponse:
     """
@@ -70,29 +70,31 @@ async def oauth_callback(
         logger.error("Missing code or state in callback")
         return RedirectResponse(url=f"{frontend_url}/dashboard?bank_connected=false&error=missing_params")
 
+    # Verify the signed state token (CSRF protection) and extract the user_id
     try:
-        # Find user by ID (state contains user_id)
-        user = db.query(User).filter(User.id == state).first()
+        user_id = verify_oauth_state(state)
+    except ValueError:
+        logger.error("Invalid or expired OAuth state in callback")
+        return RedirectResponse(url=f"{frontend_url}/dashboard?bank_connected=false&error=invalid_state")
+
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
         if not user:
-            logger.error(f"User not found for state: {state}")
+            logger.error("User from OAuth state no longer exists")
             return RedirectResponse(url=f"{frontend_url}/dashboard?bank_connected=false&error=user_not_found")
 
         # Exchange code for tokens
         token_data = await truelayer_service.exchange_code_for_token(code)
-        print(f"[CALLBACK] Successfully exchanged OAuth code for tokens", flush=True)
-        logger.info(f"Successfully exchanged OAuth code for tokens")
+        logger.info("Successfully exchanged OAuth code for tokens")
 
         # Get provider info from TrueLayer to identify which bank this is
         try:
-            print(f"[CALLBACK] Calling get_provider_info", flush=True)
             provider_info = await truelayer_service.get_provider_info(token_data["access_token"])
             provider_id = provider_info.get("provider_id", "unknown")
             provider_name = provider_info.get("display_name", "Unknown Bank")
-            print(f"[CALLBACK] Retrieved provider info: {provider_id} - {provider_name}", flush=True)
             logger.info(f"Retrieved provider info: {provider_id} - {provider_name}")
         except Exception as e:
-            print(f"[CALLBACK] Failed to get provider info: {str(e)}", flush=True)
-            logger.error(f"Failed to get provider info: {str(e)}, using unknown")
+            logger.error(f"Failed to get provider info ({type(e).__name__}), using unknown")
             provider_id = "unknown"
             provider_name = "Unknown Bank"
 
@@ -165,43 +167,6 @@ async def oauth_callback(
     except Exception as e:
         logger.error(f"Failed to exchange code: {str(e)}")
         return RedirectResponse(url=f"{frontend_url}/dashboard?bank_connected=false&error=exchange_failed")
-
-
-@router.post("/exchange-code")
-async def exchange_oauth_code(
-    current_user: CurrentUser,
-    db: Annotated[Session, Depends(get_db)],
-    code: str = Query(..., description="OAuth authorization code from TrueLayer"),
-) -> dict:
-    """
-    Exchange TrueLayer OAuth code for access tokens.
-
-    Called by the frontend after receiving the OAuth callback.
-    """
-    try:
-        # Exchange code for tokens
-        token_data = await truelayer_service.exchange_code_for_token(code)
-
-        # Save tokens to user
-        current_user.truelayer_access_token = token_data["access_token"]
-        current_user.truelayer_refresh_token = token_data.get("refresh_token")
-        current_user.truelayer_token_expires_at = datetime.now(timezone.utc) + timedelta(
-            seconds=token_data["expires_in"]
-        )
-
-        db.commit()
-
-        return {
-            "success": True,
-            "message": "Bank connected successfully",
-            "expires_at": current_user.truelayer_token_expires_at.isoformat()
-        }
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to exchange code: {str(e)}"
-        )
 
 
 @router.post("/sync/accounts", response_model=SyncAccountsResponse)
@@ -449,7 +414,7 @@ def get_connection_status(
 
 
 @router.post("/disconnect")
-def disconnect_all_banks(
+async def disconnect_all_banks(
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> dict:
@@ -458,11 +423,18 @@ def disconnect_all_banks(
 
     This allows the user to reconnect and fetch fresh historical data.
     """
-    # Delete all bank connections (cascade will handle accounts and transactions)
-    deleted_count = db.query(BankConnection).filter(
+    connections = db.query(BankConnection).filter(
         BankConnection.user_id == current_user.id
-    ).delete()
+    ).all()
 
+    # Revoke each token at TrueLayer before removing the connection (best-effort),
+    # then delete (cascade handles accounts and transactions).
+    for connection in connections:
+        if connection.access_token:
+            await truelayer_service.revoke_token(connection.access_token)
+        db.delete(connection)
+
+    deleted_count = len(connections)
     db.commit()
 
     logger.info(f"Disconnected {deleted_count} bank(s) for user {current_user.id}")
@@ -474,7 +446,7 @@ def disconnect_all_banks(
 
 
 @router.delete("/connections/{connection_id}")
-def disconnect_specific_bank(
+async def disconnect_specific_bank(
     connection_id: str,
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
@@ -496,7 +468,10 @@ def disconnect_specific_bank(
             detail="Bank connection not found"
         )
 
+    # Revoke the token at TrueLayer before deleting (best-effort)
     provider_name = connection.provider_name
+    if connection.access_token:
+        await truelayer_service.revoke_token(connection.access_token)
     db.delete(connection)
     db.commit()
 

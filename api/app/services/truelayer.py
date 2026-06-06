@@ -8,6 +8,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.security import create_oauth_state
 from app.models import User, Account, Transaction, BankConnection
 
 settings = get_settings()
@@ -51,7 +52,8 @@ class TrueLayerService:
             "client_id": self.client_id,
             "scope": " ".join(scopes),
             "redirect_uri": self.redirect_uri,
-            "state": user_id,  # We'll use user_id as state to identify the user
+            # Signed, short-lived state token (CSRF protection + hides user_id)
+            "state": create_oauth_state(user_id),
             "providers": "uk-ob-all uk-oauth-all",  # Live mode: removed uk-cs-mock
         }
 
@@ -117,80 +119,54 @@ class TrueLayerService:
         Returns:
             Provider information including provider_id and display_name
         """
+        unknown = {"provider_id": "unknown", "display_name": "Unknown Bank"}
+
         async with httpx.AsyncClient() as client:
-            try:
-                # Try multiple endpoints to get provider info
-                # 1. First try accounts endpoint (works for most banks)
-                print(f"[PROVIDER_INFO] Calling TrueLayer /data/v1/accounts endpoint", flush=True)
+            # Try accounts first (most banks), then cards (AMEX/credit cards).
+            for endpoint in ("accounts", "cards"):
                 try:
-                    accounts_response = await client.get(
-                        f"{self.api_url}/data/v1/accounts",
+                    response = await client.get(
+                        f"{self.api_url}/data/v1/{endpoint}",
                         headers={"Authorization": f"Bearer {access_token}"},
                     )
-                    accounts_response.raise_for_status()
-                    accounts_data = accounts_response.json()
-
-                    print(f"[PROVIDER_INFO] Accounts response: {accounts_data}", flush=True)
-
-                    accounts = accounts_data.get("results", [])
-                    if accounts and len(accounts) > 0:
-                        first_account = accounts[0]
-                        print(f"[PROVIDER_INFO] First account: {first_account}", flush=True)
-                        provider = first_account.get("provider", {})
-                        print(f"[PROVIDER_INFO] Provider object: {provider}", flush=True)
+                    response.raise_for_status()
+                    results = response.json().get("results", [])
+                    if results:
+                        provider = results[0].get("provider", {})
                         provider_id = provider.get("provider_id", "unknown")
-                        display_name = provider.get("display_name", "Unknown Bank")
                         if provider_id != "unknown":
-                            print(f"[PROVIDER_INFO] Extracted from accounts: provider_id={provider_id}, display_name={display_name}", flush=True)
+                            logger.info(f"Resolved provider from {endpoint}: {provider_id}")
                             return {
                                 "provider_id": provider_id,
-                                "display_name": display_name,
+                                "display_name": provider.get("display_name", "Unknown Bank"),
                             }
-                except Exception as accounts_error:
-                    print(f"[PROVIDER_INFO] Accounts endpoint failed: {str(accounts_error)}", flush=True)
+                except Exception as e:
+                    logger.warning(f"Provider lookup via {endpoint} failed: {type(e).__name__}")
 
-                # 2. Try cards endpoint (works for AMEX and credit cards)
-                print(f"[PROVIDER_INFO] Trying /data/v1/cards endpoint", flush=True)
-                try:
-                    cards_response = await client.get(
-                        f"{self.api_url}/data/v1/cards",
-                        headers={"Authorization": f"Bearer {access_token}"},
-                    )
-                    cards_response.raise_for_status()
-                    cards_data = cards_response.json()
+            logger.info("Could not resolve provider info; using defaults")
+            return unknown
 
-                    print(f"[PROVIDER_INFO] Cards response: {cards_data}", flush=True)
+    async def revoke_token(self, token: str) -> None:
+        """Revoke an access/refresh token at TrueLayer (best-effort).
 
-                    cards = cards_data.get("results", [])
-                    if cards and len(cards) > 0:
-                        first_card = cards[0]
-                        print(f"[PROVIDER_INFO] First card: {first_card}", flush=True)
-                        provider = first_card.get("provider", {})
-                        print(f"[PROVIDER_INFO] Provider object from card: {provider}", flush=True)
-                        provider_id = provider.get("provider_id", "unknown")
-                        display_name = provider.get("display_name", "Unknown Bank")
-                        if provider_id != "unknown":
-                            print(f"[PROVIDER_INFO] Extracted from cards: provider_id={provider_id}, display_name={display_name}", flush=True)
-                            return {
-                                "provider_id": provider_id,
-                                "display_name": display_name,
-                            }
-                except Exception as cards_error:
-                    print(f"[PROVIDER_INFO] Cards endpoint failed: {str(cards_error)}", flush=True)
-
-                # 3. Fallback to unknown
-                print(f"[PROVIDER_INFO] All endpoints failed, using defaults", flush=True)
-                return {
-                    "provider_id": "unknown",
-                    "display_name": "Unknown Bank",
-                }
-            except Exception as e:
-                print(f"[PROVIDER_INFO] Exception: {str(e)}", flush=True)
-                logger.error(f"Exception in get_provider_info: {str(e)}")
-                return {
-                    "provider_id": "unknown",
-                    "display_name": "Unknown Bank",
-                }
+        Called on disconnect so a deleted connection's token can no longer be
+        used to reach the user's bank data. Failures are logged, not raised.
+        """
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self.auth_url}/connect/token/revoke",
+                    data={
+                        "client_id": self.client_id,
+                        "client_secret": self.client_secret,
+                        "token": token,
+                    },
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                )
+                response.raise_for_status()
+                logger.info("Revoked TrueLayer token on disconnect")
+        except Exception as e:
+            logger.warning(f"Token revocation failed (continuing): {type(e).__name__}")
 
     async def get_accounts(self, access_token: str) -> list[dict[str, Any]]:
         """

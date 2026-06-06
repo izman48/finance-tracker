@@ -1,3 +1,14 @@
+import os
+
+# Populate required settings before importing the app (config is read at import
+# time). Sandbox + non-production keeps the live-mode secret guard disabled, so a
+# throwaway key is fine here. os.environ takes precedence over any .env file.
+os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
+os.environ.setdefault("SECRET_KEY", "test-secret-key-not-for-production")
+os.environ.setdefault("ENCRYPTION_KEY", "oGRxJNK_WkqVxoVJyfsMqY9qSjZQMZd_xJ706DSh62o=")
+os.environ.setdefault("ENVIRONMENT", "test")
+os.environ.setdefault("TRUELAYER_SANDBOX", "true")
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine

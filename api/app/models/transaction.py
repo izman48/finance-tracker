@@ -4,7 +4,6 @@ from decimal import Decimal
 from enum import Enum
 
 from sqlalchemy import Boolean, DateTime, Enum as SQLEnum, ForeignKey, Index, Numeric, String, Text, func
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -22,11 +21,9 @@ class Transaction(Base):
 
     __tablename__ = "transactions"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     account_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"), index=True
+        ForeignKey("accounts.id", ondelete="CASCADE"), index=True
     )
 
     # External identifier from TrueLayer
@@ -50,7 +47,7 @@ class Transaction(Base):
     # Recurring payment detection
     is_recurring: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     recurring_group_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True, index=True
+        nullable=True, index=True
     )
 
     # Timestamps

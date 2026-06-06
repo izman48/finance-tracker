@@ -6,6 +6,7 @@ from sqlalchemy import DateTime, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.core.encryption import EncryptedString
 
 
 class BankConnection(Base):
@@ -20,9 +21,9 @@ class BankConnection(Base):
     provider_id: Mapped[str] = mapped_column(String, nullable=False)  # TrueLayer provider ID
     provider_name: Mapped[str] = mapped_column(String, nullable=False)  # e.g., "Monzo", "Barclays"
 
-    # TrueLayer OAuth tokens for this specific connection
-    access_token: Mapped[str | None] = mapped_column(String, nullable=True)
-    refresh_token: Mapped[str | None] = mapped_column(String, nullable=True)
+    # TrueLayer OAuth tokens for this specific connection (encrypted at rest)
+    access_token: Mapped[str | None] = mapped_column(EncryptedString, nullable=True)
+    refresh_token: Mapped[str | None] = mapped_column(EncryptedString, nullable=True)
     token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Timestamps

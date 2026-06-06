@@ -1,13 +1,18 @@
 # Finance Tracker
 
-Personal finance insights from Open Banking data. Understand where your money goes, detect recurring payments, and calculate opportunity costs.
+Know what's really yours to spend. Finance Tracker connects to your bank via
+TrueLayer Open Banking and turns the raw data into one cashflow projection — a
+trustworthy "safe to spend" figure, a balance forecast, and clear spending insight.
 
-## Features (Planned)
+## Features
 
-- **Bank Connection** - Connect via TrueLayer Open Banking
-- **Spending Analysis** - Categorize and visualize transactions
-- **Recurring Payments** - Automatically detect subscriptions
-- **Opportunity Cost** - Calculate what spending could have become if invested
+- **Bank connection** — connect UK banks & cards via TrueLayer Open Banking
+- **Safe to spend** — cash minus what's committed before your next payday (credit cards kept separate, overdraft shown as a cushion)
+- **Balance forecast** — project your balance up to a year out; see the low point and any overdraft breach
+- **Commitments** — auto-detect recurring income/bills and confirm once; add one-off or manual items, or mark any transaction recurring
+- **Spending** — where your money goes by month / category / merchant, split credit-vs-cash, with internal transfers and card repayments filtered out
+- **Planned expenses & payment plans** — model one-off costs and split purchases into installments (e.g. Monzo Flex)
+- **Credit-card modelling** — per-card repayment: full balance (e.g. Amex) or pay-down installments
 
 ## Tech Stack
 
@@ -37,7 +42,9 @@ cp .env.example .env
 docker compose up --build
 ```
 
-3. **Run database migrations**
+3. **Database migrations**
+
+Migrations run automatically when the API container starts. To run them manually:
 
 ```bash
 docker compose exec api alembic upgrade head
@@ -97,37 +104,41 @@ finance-tracker/
 
 ## API Endpoints
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/v1/health` | Health check |
-| POST | `/api/v1/auth/register` | Register user |
-| POST | `/api/v1/auth/login` | Login (OAuth2) |
-| GET | `/api/v1/auth/me` | Current user info |
+Full interactive docs at `http://localhost:8000/api/docs`. Main groups:
+
+| Group | Examples |
+|-------|----------|
+| Auth | `POST /api/v1/auth/register`, `POST /api/v1/auth/login`, `GET /api/v1/auth/me` |
+| Banking | `GET /api/v1/banking/connect`, `GET /api/v1/banking/callback`, `POST /api/v1/banking/sync/{accounts,transactions}`, `GET /api/v1/banking/transactions` |
+| Analytics | `GET /api/v1/analytics/summary` (safe-to-spend), `/analytics/forecast`, `/analytics/spending`, `/analytics/spending/trend`, `GET/POST/PATCH /analytics/commitments`, `POST /analytics/planned-items` |
 
 ## Security Considerations
 
-- Passwords hashed with bcrypt
+- Passwords hashed with bcrypt; minimum length enforced on registration
 - JWT tokens for authentication
+- Bank OAuth tokens encrypted at rest (Fernet) via `ENCRYPTION_KEY`
+- `SECRET_KEY` strength enforced at startup in live mode (no placeholder keys)
+- OAuth `state` is a signed, short-lived token (CSRF protection)
+- Bank tokens revoked at TrueLayer on disconnect
+- Secrets live only in `.env` files (gitignored); `.env.example` is the committed template
 - CORS restricted to known origins
 - Non-root Docker user
 - Database connection pooling with health checks
 - Environment-based configuration
 
-## Sprint Progress
+### Known tradeoff: JWT storage
 
-### Sprint 1 ✅
+The frontend stores the JWT in `localStorage`, which is readable by JavaScript
+and therefore vulnerable to token theft if an XSS bug is introduced. This is a
+deliberate, documented tradeoff for now; the access-token lifetime is kept short
+(`ACCESS_TOKEN_EXPIRE_MINUTES`, default 30) to limit the blast radius. Migrating
+to httpOnly, SameSite cookies is tracked as a follow-up.
 
-- [x] Docker setup
-- [x] Database schema
-- [x] User authentication
-- [x] React scaffold
-- [x] Basic tests
+## Roadmap
 
-### Sprint 2 (Next)
-
-- [ ] TrueLayer OAuth flow
-- [ ] Account sync
-- [ ] Transaction import
+- Savings goals (fund toward a target with a safe-to-add amount)
+- httpOnly cookie auth (see the JWT tradeoff above)
+- Statement-balance precision and seasonal/one-off awareness for longer forecasts
 
 ## License
 

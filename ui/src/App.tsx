@@ -7,6 +7,7 @@ import RegisterPage from './pages/RegisterPage'
 import DashboardPage from './pages/DashboardPage'
 import TransactionsPage from './pages/TransactionsPage'
 import InsightsPage from './pages/InsightsPage'
+import CommitmentsPage from './pages/CommitmentsPage'
 import CallbackPage from './pages/CallbackPage'
 import ProtectedRoute from './components/ProtectedRoute'
 
@@ -39,6 +40,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <InsightsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="commitments"
+            element={
+              <ProtectedRoute>
+                <CommitmentsPage />
               </ProtectedRoute>
             }
           />

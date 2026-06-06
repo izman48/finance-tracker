@@ -31,7 +31,13 @@ export default function Layout() {
                   to="/insights"
                   className="text-gray-700 hover:text-blue-600"
                 >
-                  Insights
+                  Spending
+                </Link>
+                <Link
+                  to="/commitments"
+                  className="text-gray-700 hover:text-blue-600"
+                >
+                  Commitments
                 </Link>
                 <span className="text-gray-600 ml-2">{user?.email}</span>
                 <button

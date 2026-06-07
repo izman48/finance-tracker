@@ -15,6 +15,7 @@ from app.models import (
     CommitmentStatus,
     PlannedItem,
     SavingsGoal,
+    InvestmentHolding,
 )
 from app.schemas import (
     AccountSettingUpdate,
@@ -25,6 +26,10 @@ from app.schemas import (
     CommitmentUpdate,
     ForecastResponse,
     GoalsResponse,
+    HoldingCreate,
+    HoldingResponse,
+    HoldingsResponse,
+    HoldingUpdate,
     PlannedItemCreate,
     PlannedItemResponse,
     SavingsGoalCreate,
@@ -33,7 +38,9 @@ from app.schemas import (
     SpendingResponse,
     SpendingTrendResponse,
 )
+import uuid
 from datetime import date
+from decimal import Decimal
 from app.services import analytics_service
 
 logger = logging.getLogger(__name__)
@@ -267,6 +274,74 @@ def delete_goal(
     if not goal:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found")
     db.delete(goal)
+    db.commit()
+    return {"success": True}
+
+
+@router.get("/holdings", response_model=HoldingsResponse)
+def list_holdings(
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> HoldingsResponse:
+    """Manually-maintained investment/ISA balances + their total."""
+    holdings = (
+        db.query(InvestmentHolding)
+        .filter(InvestmentHolding.user_id == current_user.id, InvestmentHolding.active.is_(True))
+        .order_by(InvestmentHolding.created_at)
+        .all()
+    )
+    total = sum((h.current_value for h in holdings), Decimal(0))
+    return HoldingsResponse(total=total, holdings=holdings)
+
+
+@router.post("/holdings", response_model=HoldingResponse, status_code=status.HTTP_201_CREATED)
+def create_holding(
+    data: HoldingCreate,
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> InvestmentHolding:
+    holding = InvestmentHolding(user_id=current_user.id, **data.model_dump())
+    db.add(holding)
+    db.commit()
+    db.refresh(holding)
+    return holding
+
+
+@router.patch("/holdings/{holding_id}", response_model=HoldingResponse)
+def update_holding(
+    holding_id: uuid.UUID,
+    data: HoldingUpdate,
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> InvestmentHolding:
+    holding = (
+        db.query(InvestmentHolding)
+        .filter(InvestmentHolding.id == holding_id, InvestmentHolding.user_id == current_user.id)
+        .first()
+    )
+    if not holding:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Holding not found")
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(holding, field, value)
+    db.commit()
+    db.refresh(holding)
+    return holding
+
+
+@router.delete("/holdings/{holding_id}")
+def delete_holding(
+    holding_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    holding = (
+        db.query(InvestmentHolding)
+        .filter(InvestmentHolding.id == holding_id, InvestmentHolding.user_id == current_user.id)
+        .first()
+    )
+    if not holding:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Holding not found")
+    db.delete(holding)
     db.commit()
     return {"success": True}
 

@@ -17,6 +17,7 @@ from app.models.commitment_rule import (
 )
 from app.models.planned_item import PlannedItem, PlannedKind
 from app.models.savings_goal import SavingsGoal
+from app.models.investment_holding import InvestmentHolding
 
 __all__ = [
     "User",
@@ -37,4 +38,5 @@ __all__ = [
     "PlannedItem",
     "PlannedKind",
     "SavingsGoal",
+    "InvestmentHolding",
 ]

@@ -382,6 +382,38 @@ class GoalsResponse(BaseModel):
     goals: list[GoalProgress]
 
 
+class HoldingCreate(BaseModel):
+    name: str
+    current_value: Decimal = Decimal("0")
+    provider: str | None = None
+    external_url: str | None = None
+
+
+class HoldingUpdate(BaseModel):
+    name: str | None = None
+    current_value: Decimal | None = None
+    provider: str | None = None
+    external_url: str | None = None
+    active: bool | None = None
+
+
+class HoldingResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    provider: str | None
+    current_value: Decimal
+    external_url: str | None
+    active: bool
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class HoldingsResponse(BaseModel):
+    total: Decimal
+    holdings: list[HoldingResponse]
+
+
 class PlannedItemCreate(BaseModel):
     name: str
     direction: str = "expense"

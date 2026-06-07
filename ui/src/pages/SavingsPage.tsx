@@ -23,6 +23,15 @@ interface SavingsAccount {
   role: string
 }
 
+interface Holding {
+  id: string
+  name: string
+  provider: string | null
+  current_value: number
+  external_url: string | null
+  updated_at: string
+}
+
 const gbp = (n: number) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(n)
 const longDate = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 
@@ -30,13 +39,20 @@ export default function SavingsPage() {
   const [savable, setSavable] = useState(0)
   const [goals, setGoals] = useState<Goal[]>([])
   const [savingsAccounts, setSavingsAccounts] = useState<SavingsAccount[]>([])
+  const [holdings, setHoldings] = useState<Holding[]>([])
+  const [holdingsTotal, setHoldingsTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<Goal | 'new' | null>(null)
+  const [editingHolding, setEditingHolding] = useState<Holding | 'new' | null>(null)
 
   const load = async () => {
     setLoading(true)
     try {
-      const [g, s] = await Promise.all([analyticsAPI.getGoals(), analyticsAPI.getSummary()])
+      const [g, s, h] = await Promise.all([
+        analyticsAPI.getGoals(),
+        analyticsAPI.getSummary(),
+        analyticsAPI.getHoldings(),
+      ])
       setSavable(Number(g.data.savable))
       setGoals(
         g.data.goals.map((x: any) => ({
@@ -48,6 +64,8 @@ export default function SavingsPage() {
         })),
       )
       setSavingsAccounts((s.data.accounts || []).filter((a: SavingsAccount) => a.role === 'savings'))
+      setHoldings(h.data.holdings.map((x: any) => ({ ...x, current_value: Number(x.current_value) })))
+      setHoldingsTotal(Number(h.data.total))
     } catch (e) {
       console.error('Failed to load savings', e)
     } finally {
@@ -64,6 +82,11 @@ export default function SavingsPage() {
     await load()
   }
 
+  const removeHolding = async (id: string) => {
+    await analyticsAPI.deleteHolding(id)
+    await load()
+  }
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
       <div className="flex items-center justify-between mb-2">
@@ -73,12 +96,65 @@ export default function SavingsPage() {
         </button>
       </div>
 
-      <div className="mb-6 p-5 bg-white rounded-xl shadow-sm border border-gray-200">
-        <div className="text-sm text-gray-500">Savable this period</div>
-        <div className="text-3xl font-bold text-green-600">{gbp(savable)}</div>
-        <div className="text-xs text-gray-400 mt-1">projected surplus you could put toward goals without missing commitments</div>
+      <div className="mb-6 grid sm:grid-cols-2 gap-4">
+        <div className="p-5 bg-white rounded-xl shadow-sm border border-gray-200">
+          <div className="text-sm text-gray-500">Savable this period</div>
+          <div className="text-3xl font-bold text-green-600">{gbp(savable)}</div>
+          <div className="text-xs text-gray-400 mt-1">projected surplus you could put toward goals without missing commitments</div>
+        </div>
+        <div className="p-5 bg-white rounded-xl shadow-sm border border-gray-200">
+          <div className="text-sm text-gray-500">Invested</div>
+          <div className="text-3xl font-bold">{gbp(holdingsTotal)}</div>
+          <div className="text-xs text-gray-400 mt-1">total across your investment / ISA holdings</div>
+        </div>
       </div>
 
+      {/* Investments / ISA */}
+      <div className="mb-8 bg-white rounded-xl shadow-sm border border-gray-200">
+        <div className="px-5 py-3 border-b flex items-center justify-between">
+          <h2 className="font-semibold">Investments &amp; ISA</h2>
+          <button onClick={() => setEditingHolding('new')} className="text-sm text-blue-600 hover:text-blue-800">
+            + Add holding
+          </button>
+        </div>
+        {holdings.length === 0 ? (
+          <p className="p-5 text-sm text-gray-400">
+            Add your ISA or investment value (e.g. InvestEngine). Values are entered manually —
+            providers like InvestEngine don't offer a public balance API yet.
+          </p>
+        ) : (
+          <div className="divide-y">
+            {holdings.map((h) => (
+              <div key={h.id} className="p-5 flex items-center justify-between">
+                <div>
+                  <div className="font-medium">
+                    {h.name}
+                    {h.provider && <span className="text-gray-400 text-sm"> · {h.provider}</span>}
+                  </div>
+                  <div className="text-sm text-gray-500">
+                    as of {longDate(h.updated_at)}
+                    {h.external_url && (
+                      <>
+                        {' · '}
+                        <a href={h.external_url} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-800">
+                          open ↗
+                        </a>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="font-semibold">{gbp(h.current_value)}</span>
+                  <button onClick={() => setEditingHolding(h)} className="text-sm text-gray-400 hover:text-blue-600">Edit</button>
+                  <button onClick={() => removeHolding(h.id)} className="text-sm text-gray-400 hover:text-red-600">Remove</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <h2 className="text-xl font-semibold mb-3">Goals</h2>
       {loading ? (
         <div className="text-center py-12 text-gray-500">Loading…</div>
       ) : goals.length === 0 ? (
@@ -139,6 +215,73 @@ export default function SavingsPage() {
           }}
         />
       )}
+
+      {editingHolding && (
+        <HoldingModal
+          holding={editingHolding === 'new' ? null : editingHolding}
+          onClose={() => setEditingHolding(null)}
+          onSaved={async () => {
+            setEditingHolding(null)
+            await load()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function HoldingModal({
+  holding,
+  onClose,
+  onSaved,
+}: {
+  holding: Holding | null
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [name, setName] = useState(holding?.name ?? '')
+  const [provider, setProvider] = useState(holding?.provider ?? '')
+  const [value, setValue] = useState(holding ? String(holding.current_value) : '')
+  const [url, setUrl] = useState(holding?.external_url ?? '')
+  const [saving, setSaving] = useState(false)
+
+  const save = async () => {
+    if (!name || value === '') return
+    setSaving(true)
+    const payload = {
+      name,
+      provider: provider || null,
+      current_value: Number(value),
+      external_url: url || null,
+    }
+    try {
+      if (holding) await analyticsAPI.updateHolding(holding.id, payload)
+      else await analyticsAPI.addHolding(payload)
+      onSaved()
+    } catch (e) {
+      console.error('Failed to save holding', e)
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-lg font-semibold mb-1">{holding ? 'Update holding' : 'Add investment / ISA'}</h3>
+        <p className="text-sm text-gray-500 mb-4">Enter the current value yourself — update it whenever you check the provider.</p>
+        <div className="space-y-3">
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (e.g. InvestEngine ISA)" className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+          <input value={provider} onChange={(e) => setProvider(e.target.value)} placeholder="Provider (optional, e.g. InvestEngine)" className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+          <input type="number" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Current value (£)" className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Portfolio link (optional)" className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+        </div>
+        <div className="flex justify-end gap-2 mt-5">
+          <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Cancel</button>
+          <button onClick={save} disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

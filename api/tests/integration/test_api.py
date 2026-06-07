@@ -120,3 +120,35 @@ class TestAuthEndpoints:
         response = client.get("/api/v1/auth/me")
 
         assert response.status_code == 401
+
+
+class TestInvestmentHoldings:
+    """CRUD for manually-tracked investment / ISA holdings."""
+
+    def test_create_list_update_delete(self, authenticated_client):
+        # create
+        r = authenticated_client.post(
+            "/api/v1/analytics/holdings",
+            json={"name": "InvestEngine ISA", "provider": "InvestEngine", "current_value": 8450.20},
+        )
+        assert r.status_code == 201
+        hid = r.json()["id"]
+
+        # list + total
+        r = authenticated_client.get("/api/v1/analytics/holdings")
+        assert r.status_code == 200
+        body = r.json()
+        assert float(body["total"]) == 8450.20
+        assert len(body["holdings"]) == 1
+
+        # update value
+        r = authenticated_client.patch(
+            f"/api/v1/analytics/holdings/{hid}", json={"current_value": 9000}
+        )
+        assert r.status_code == 200
+        assert float(r.json()["current_value"]) == 9000.0
+
+        # delete
+        r = authenticated_client.delete(f"/api/v1/analytics/holdings/{hid}")
+        assert r.status_code == 200
+        assert authenticated_client.get("/api/v1/analytics/holdings").json()["holdings"] == []

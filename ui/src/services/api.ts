@@ -109,6 +109,10 @@ export const analyticsAPI = {
   addGoal: (data: Record<string, unknown>) => api.post('/analytics/goals', data),
   updateGoal: (id: string, data: Record<string, unknown>) => api.patch(`/analytics/goals/${id}`, data),
   deleteGoal: (id: string) => api.delete(`/analytics/goals/${id}`),
+  getHoldings: () => api.get('/analytics/holdings'),
+  addHolding: (data: Record<string, unknown>) => api.post('/analytics/holdings', data),
+  updateHolding: (id: string, data: Record<string, unknown>) => api.patch(`/analytics/holdings/${id}`, data),
+  deleteHolding: (id: string) => api.delete(`/analytics/holdings/${id}`),
 }
 
 export default api

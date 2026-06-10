@@ -53,6 +53,48 @@ export const authApi = {
     api.post('/auth/delete-account', { password }),
 }
 
+// Categorization rules & packs
+export interface Rule {
+  id: string
+  pack_id: string | null
+  pattern: string
+  match_type: string
+  match_field: string
+  category: string
+  source: string
+  enabled: boolean
+}
+
+export interface RulePack {
+  id: string
+  name: string
+  description: string | null
+  share_code: string | null
+  imported_from: string | null
+  enabled: boolean
+  rules: Rule[]
+}
+
+export const rulesAPI = {
+  list: () => api.get<{ packs: RulePack[]; personal: Rule[] }>('/rules'),
+  create: (data: { pattern: string; match_type: string; match_field: string; category: string; pack_id?: string | null }) =>
+    api.post('/rules', data),
+  update: (id: string, data: Partial<Pick<Rule, 'pattern' | 'match_type' | 'match_field' | 'category' | 'enabled'>>) =>
+    api.patch(`/rules/${id}`, data),
+  remove: (id: string) => api.delete(`/rules/${id}`),
+  preview: (data: { pattern: string; match_type: string; match_field: string }) =>
+    api.post('/rules/preview', data),
+  applyNow: () => api.post('/rules/apply'),
+  createPack: (data: { name: string; description?: string }) => api.post('/rules/packs', data),
+  updatePack: (id: string, data: { name?: string; description?: string; enabled?: boolean }) =>
+    api.patch(`/rules/packs/${id}`, data),
+  removePack: (id: string) => api.delete(`/rules/packs/${id}`),
+  sharePack: (id: string) => api.post<{ share_code: string; share_url: string }>(`/rules/packs/${id}/share`),
+  unsharePack: (id: string) => api.delete(`/rules/packs/${id}/share`),
+  previewShared: (code: string) => api.get(`/rules/shared/${code}`),
+  importPack: (shareCode: string) => api.post('/rules/import', { share_code: shareCode }),
+}
+
 // Health check
 export const healthApi = {
   check: () => api.get('/health'),

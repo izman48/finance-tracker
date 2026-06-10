@@ -48,6 +48,77 @@ class DeleteAccountRequest(BaseModel):
     password: str
 
 
+# --- Categorization Rule Schemas ---
+
+
+class RuleCreate(BaseModel):
+    """Create a categorization rule."""
+
+    pattern: str = Field(min_length=1, max_length=200)
+    match_type: str = Field(default="contains", pattern="^(exact|contains|regex)$")
+    match_field: str = Field(default="any", pattern="^(any|merchant|description)$")
+    category: str = Field(min_length=1, max_length=100)
+    pack_id: uuid.UUID | None = None
+
+
+class RuleUpdate(BaseModel):
+    """Update a categorization rule."""
+
+    pattern: str | None = Field(default=None, min_length=1, max_length=200)
+    match_type: str | None = Field(default=None, pattern="^(exact|contains|regex)$")
+    match_field: str | None = Field(default=None, pattern="^(any|merchant|description)$")
+    category: str | None = Field(default=None, min_length=1, max_length=100)
+    enabled: bool | None = None
+
+
+class RuleResponse(BaseModel):
+    id: uuid.UUID
+    pack_id: uuid.UUID | None
+    pattern: str
+    match_type: str
+    match_field: str
+    category: str
+    source: str
+    enabled: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RulePackCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    description: str | None = Field(default=None, max_length=500)
+
+
+class RulePackUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    description: str | None = Field(default=None, max_length=500)
+    enabled: bool | None = None
+
+
+class RulePackResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    description: str | None
+    share_code: str | None
+    imported_from: str | None
+    enabled: bool
+    rules: list[RuleResponse] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RulePreviewRequest(BaseModel):
+    """Dry-run a rule against the user's transactions."""
+
+    pattern: str = Field(min_length=1, max_length=200)
+    match_type: str = Field(default="contains", pattern="^(exact|contains|regex)$")
+    match_field: str = Field(default="any", pattern="^(any|merchant|description)$")
+
+
+class RuleImportRequest(BaseModel):
+    share_code: str = Field(min_length=1, max_length=20)
+
+
 # --- Auth Schemas ---
 
 

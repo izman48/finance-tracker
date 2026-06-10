@@ -65,21 +65,28 @@ export default function PlannedItems({ onChanged }: { onChanged: () => void }) {
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold">Planned</h2>
         <button onClick={() => setShowAdd(true)} className="text-sm text-blue-600 hover:text-blue-800">
-          + Add planned expense
+          + Add planned item
         </button>
       </div>
 
       {items.length === 0 ? (
         <p className="text-sm text-gray-400">
-          Nothing planned. Add a one-off cost or split a big purchase to see how it hits your forecast.
+          Nothing planned. Add an upcoming cost, expected income, or split a big purchase to see how it hits your forecast.
         </p>
       ) : (
         <div className="divide-y">
           {items.map((it) => (
             <div key={it.id} className="py-3 flex items-center justify-between">
               <div>
-                <div className="font-medium">{it.name}</div>
-                <div className="text-sm text-gray-500">{describe(it)}</div>
+                <div className="font-medium">
+                  {it.name}
+                  {it.direction === 'income' && (
+                    <span className="ml-2 text-xs px-2 py-0.5 rounded bg-green-100 text-green-700">income</span>
+                  )}
+                </div>
+                <div className={`text-sm ${it.direction === 'income' ? 'text-green-600' : 'text-gray-500'}`}>
+                  {it.direction === 'income' ? '+' : ''}{describe(it)}
+                </div>
               </div>
               <button onClick={() => remove(it.id)} className="text-sm text-gray-400 hover:text-red-600">
                 Remove
@@ -104,6 +111,7 @@ export default function PlannedItems({ onChanged }: { onChanged: () => void }) {
 }
 
 function AddPlannedModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
+  const [direction, setDirection] = useState('expense')
   const [kind, setKind] = useState('one_off')
   const [name, setName] = useState('')
   const [startDate, setStartDate] = useState('')
@@ -122,7 +130,7 @@ function AddPlannedModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
   const save = async () => {
     if (!name || !startDate) return
     setSaving(true)
-    const base: Record<string, unknown> = { name, direction: 'expense', kind, start_date: startDate }
+    const base: Record<string, unknown> = { name, direction, kind, start_date: startDate }
     if (kind === 'installment_plan') {
       Object.assign(base, {
         total_amount: Number(total),
@@ -148,13 +156,40 @@ function AddPlannedModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-lg font-semibold mb-4">Add planned expense</h3>
+        <h3 className="text-lg font-semibold mb-4">
+          Add planned {direction === 'income' ? 'income' : 'expense'}
+        </h3>
 
-        <div className="grid grid-cols-3 gap-2 mb-4">
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          {[
+            { d: 'expense', l: 'Expense' },
+            { d: 'income', l: 'Income' },
+          ].map((o) => (
+            <button
+              key={o.d}
+              onClick={() => {
+                setDirection(o.d)
+                if (o.d === 'income' && kind === 'installment_plan') setKind('one_off')
+              }}
+              className={`py-2 text-sm rounded-lg border ${
+                direction === o.d
+                  ? o.d === 'income'
+                    ? 'border-green-600 bg-green-50'
+                    : 'border-blue-600 bg-blue-50'
+                  : 'border-gray-300'
+              }`}
+            >
+              {o.l}
+            </button>
+          ))}
+        </div>
+
+        <div className={`grid ${direction === 'income' ? 'grid-cols-2' : 'grid-cols-3'} gap-2 mb-4`}>
           {[
             { k: 'one_off', l: 'One-off' },
             { k: 'recurring', l: 'Recurring' },
-            { k: 'installment_plan', l: 'Payment plan' },
+            // Splitting a total into N payments only makes sense for spending
+            ...(direction === 'expense' ? [{ k: 'installment_plan', l: 'Payment plan' }] : []),
           ].map((o) => (
             <button
               key={o.k}
@@ -167,7 +202,12 @@ function AddPlannedModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
         </div>
 
         <div className="space-y-3">
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (e.g. New laptop)" className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={direction === 'income' ? 'Name (e.g. Tax refund)' : 'Name (e.g. New laptop)'}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+          />
 
           {kind === 'installment_plan' ? (
             <>

@@ -1,0 +1,62 @@
+# Production deployment (e.g. Hetzner VPS).
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+# Differences from dev compose: no source mounts, no --reload, production UI
+# build served by Caddy (auto-HTTPS), Postgres not exposed to the host.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set in .env.production}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env.production}
+      POSTGRES_DB: ${POSTGRES_DB:-finance_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB:-finance_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-finance_db}
+      SECRET_KEY: ${SECRET_KEY:?set in .env.production}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?set in .env.production}
+      TRUELAYER_CLIENT_ID: ${TRUELAYER_CLIENT_ID}
+      TRUELAYER_CLIENT_SECRET: ${TRUELAYER_CLIENT_SECRET}
+      TRUELAYER_REDIRECT_URI: https://${DOMAIN}/api/v1/banking/callback
+      TRUELAYER_SANDBOX: ${TRUELAYER_SANDBOX:-true}
+      FRONTEND_URL: https://${DOMAIN}
+      ENVIRONMENT: production
+    depends_on:
+      db:
+        condition: service_healthy
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"
+
+  caddy:
+    build:
+      context: .
+      dockerfile: deploy/ui.Dockerfile
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?set in .env.production}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:

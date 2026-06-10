@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     # Environment
     environment: str = "development"
 
+    # Where to send users after the OAuth callback (the UI's public URL).
+    frontend_url: str = "http://localhost:5173"
+
     @property
     def truelayer_auth_url(self) -> str:
         base = (

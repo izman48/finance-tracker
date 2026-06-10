@@ -1,6 +1,7 @@
 import axios from 'axios'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+// Unset -> local dev default; empty string -> same-origin (production behind Caddy)
+const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
 const api = axios.create({
   baseURL: `${API_URL}/api/v1`,

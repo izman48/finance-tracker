@@ -504,6 +504,93 @@ export default function TransactionsPage() {
     .filter(tx => tx.transaction_type === 'credit')
     .reduce((sum, tx) => sum + tx.amount, 0)
 
+  const renderCategoryEditor = (transaction: Transaction) =>
+    editingTransactionId === transaction.id ? (
+      <div className="flex items-center gap-2">
+        <div className="flex-1">
+          {isAddingCategory ? (
+            <div className="flex items-center gap-1">
+              <input
+                type="text"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleAddCustomCategory()}
+                placeholder="New category name"
+                className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                autoFocus
+              />
+              <button
+                onClick={handleAddCustomCategory}
+                className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
+              >
+                Add
+              </button>
+              <button
+                onClick={() => { setIsAddingCategory(false); setNewCategoryName('') }}
+                className="px-2 py-1 text-xs bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <select
+              value={editingCategory}
+              onChange={(e) => {
+                if (e.target.value === '__ADD_NEW__') {
+                  setIsAddingCategory(true)
+                } else {
+                  setEditingCategory(e.target.value)
+                }
+              }}
+              className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              autoFocus
+            >
+              <option value="">Uncategorized</option>
+              {categories.map(cat => (
+                <option key={cat} value={cat}>
+                  {cat}
+                </option>
+              ))}
+              <option value="__ADD_NEW__" className="font-semibold text-blue-600">
+                + Add New Category
+              </option>
+            </select>
+          )}
+        </div>
+        {!isAddingCategory && (
+          <>
+            <button
+              onClick={() => handleSaveCategory(transaction.id)}
+              className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+            >
+              Save
+            </button>
+            <button
+              onClick={handleCancelEdit}
+              className="px-2 py-1 text-xs bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
+            >
+              Cancel
+            </button>
+          </>
+        )}
+      </div>
+    ) : (
+      <div
+        onClick={() => handleEditCategory(transaction)}
+        className="cursor-pointer group"
+      >
+        {transaction.category ? (
+          <span className="inline-block px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded group-hover:bg-blue-100 group-hover:text-blue-700 transition-colors">
+            {transaction.category}
+          </span>
+        ) : (
+          <span className="text-xs text-gray-400 group-hover:text-blue-600 transition-colors">
+            Click to categorize
+          </span>
+        )}
+      </div>
+    )
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
@@ -887,7 +974,69 @@ export default function TransactionsPage() {
               : 'No transactions match your filters. Try adjusting your filters.'}
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          {/* Mobile card list */}
+          <div className="md:hidden">
+            <div className="px-4 py-2 border-b border-gray-200 bg-gray-50">
+              <button
+                onClick={handleSelectAll}
+                className="text-xs font-medium text-blue-600 hover:text-blue-800 uppercase"
+              >
+                Select All ({filteredAndSortedTransactions.length})
+              </button>
+            </div>
+            <div className="divide-y divide-gray-200">
+              {paginatedTransactions.map((transaction) => (
+                <div key={transaction.id} className="p-4">
+                  <div className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedTransactionIds.has(transaction.id)}
+                      onChange={() => handleToggleTransaction(transaction.id)}
+                      className="mt-1 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="text-sm font-medium text-gray-900 break-words">
+                          {transaction.merchant_name || transaction.description}
+                        </div>
+                        <div className={`text-sm font-semibold whitespace-nowrap ${
+                          transaction.transaction_type === 'credit' ? 'text-green-600' : 'text-red-600'
+                        }`}>
+                          {transaction.transaction_type === 'credit' ? '+' : '-'}
+                          {formatCurrency(transaction.amount, transaction.currency)}
+                        </div>
+                      </div>
+                      {transaction.merchant_name && (
+                        <div className="text-xs text-gray-500 break-words">{transaction.description}</div>
+                      )}
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        {formatDate(transaction.transaction_date)} · {getAccountName(transaction.account_id)}
+                        {transaction.is_recurring && (
+                          <span className="ml-2 px-1.5 py-0.5 bg-purple-100 text-purple-800 rounded">
+                            Recurring
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        <div className="flex-1 min-w-0">{renderCategoryEditor(transaction)}</div>
+                        <button
+                          onClick={() => setRecurringTx(transaction)}
+                          className="text-xs text-gray-400 hover:text-blue-600 whitespace-nowrap"
+                          title="Mark as a recurring commitment"
+                        >
+                          ↻ Recurring
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
@@ -977,91 +1126,7 @@ export default function TransactionsPage() {
                       {getAccountName(transaction.account_id)}
                     </td>
                     <td className="px-4 py-3">
-                      {editingTransactionId === transaction.id ? (
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1">
-                            {isAddingCategory ? (
-                              <div className="flex items-center gap-1">
-                                <input
-                                  type="text"
-                                  value={newCategoryName}
-                                  onChange={(e) => setNewCategoryName(e.target.value)}
-                                  onKeyPress={(e) => e.key === 'Enter' && handleAddCustomCategory()}
-                                  placeholder="New category name"
-                                  className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                  autoFocus
-                                />
-                                <button
-                                  onClick={handleAddCustomCategory}
-                                  className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
-                                >
-                                  Add
-                                </button>
-                                <button
-                                  onClick={() => { setIsAddingCategory(false); setNewCategoryName('') }}
-                                  className="px-2 py-1 text-xs bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            ) : (
-                              <select
-                                value={editingCategory}
-                                onChange={(e) => {
-                                  if (e.target.value === '__ADD_NEW__') {
-                                    setIsAddingCategory(true)
-                                  } else {
-                                    setEditingCategory(e.target.value)
-                                  }
-                                }}
-                                className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                autoFocus
-                              >
-                                <option value="">Uncategorized</option>
-                                {categories.map(cat => (
-                                  <option key={cat} value={cat}>
-                                    {cat}
-                                  </option>
-                                ))}
-                                <option value="__ADD_NEW__" className="font-semibold text-blue-600">
-                                  + Add New Category
-                                </option>
-                              </select>
-                            )}
-                          </div>
-                          {!isAddingCategory && (
-                            <>
-                              <button
-                                onClick={() => handleSaveCategory(transaction.id)}
-                                className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
-                              >
-                                Save
-                              </button>
-                              <button
-                                onClick={handleCancelEdit}
-                                className="px-2 py-1 text-xs bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
-                              >
-                                Cancel
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      ) : (
-                        <div
-                          onClick={() => handleEditCategory(transaction)}
-                          className="cursor-pointer group"
-                        >
-                          {transaction.category ? (
-                            <span className="inline-block px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded group-hover:bg-blue-100 group-hover:text-blue-700 transition-colors">
-                              {transaction.category}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-gray-400 group-hover:text-blue-600 transition-colors">
-                              Click to categorize
-                            </span>
-                          )}
-                        </div>
-                      )}
+                      {renderCategoryEditor(transaction)}
                     </td>
                     <td className={`px-4 py-3 text-sm font-semibold text-right whitespace-nowrap ${
                       transaction.transaction_type === 'credit' ? 'text-green-600' : 'text-red-600'
@@ -1083,6 +1148,7 @@ export default function TransactionsPage() {
               </tbody>
             </table>
           </div>
+          </>
         )}
 
         {/* Pagination */}
@@ -1129,7 +1195,7 @@ export default function TransactionsPage() {
 
           return (
             <div className="px-4 py-3 border-t border-gray-200">
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-3">
                 <div className="text-sm text-gray-700">
                   Showing {startItem}-{endItem} of {totalFiltered} transaction{totalFiltered !== 1 ? 's' : ''}
                   {totalFiltered !== allTransactions.length && (
@@ -1145,7 +1211,7 @@ export default function TransactionsPage() {
                 <button
                   onClick={() => setPage(1)}
                   disabled={page === 1}
-                  className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                  className="hidden sm:block px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
                 >
                   First
                 </button>
@@ -1157,25 +1223,27 @@ export default function TransactionsPage() {
                   Previous
                 </button>
 
-                {getPageNumbers().map((pageNum, idx) => (
-                  pageNum === '...' ? (
-                    <span key={`ellipsis-${idx}`} className="px-2 py-1 text-gray-400">
-                      ...
-                    </span>
-                  ) : (
-                    <button
-                      key={pageNum}
-                      onClick={() => setPage(pageNum as number)}
-                      className={`px-3 py-1 border rounded text-sm ${
-                        page === pageNum
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : 'border-gray-300 hover:bg-gray-50'
-                      }`}
-                    >
-                      {pageNum}
-                    </button>
-                  )
-                ))}
+                <div className="hidden sm:flex items-center gap-1">
+                  {getPageNumbers().map((pageNum, idx) => (
+                    pageNum === '...' ? (
+                      <span key={`ellipsis-${idx}`} className="px-2 py-1 text-gray-400">
+                        ...
+                      </span>
+                    ) : (
+                      <button
+                        key={pageNum}
+                        onClick={() => setPage(pageNum as number)}
+                        className={`px-3 py-1 border rounded text-sm ${
+                          page === pageNum
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    )
+                  ))}
+                </div>
 
                 <button
                   onClick={() => setPage(p => Math.min(totalPages, p + 1))}
@@ -1187,7 +1255,7 @@ export default function TransactionsPage() {
                 <button
                   onClick={() => setPage(totalPages)}
                   disabled={page === totalPages}
-                  className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                  className="hidden sm:block px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
                 >
                   Last
                 </button>

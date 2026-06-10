@@ -506,9 +506,9 @@ export default function TransactionsPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold">Transactions</h1>
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+        <h1 className="text-2xl sm:text-3xl font-bold">Transactions</h1>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <div className="text-sm text-gray-600">
             {allTransactions.length} total transactions
           </div>
@@ -775,7 +775,7 @@ export default function TransactionsPage() {
       {!loading && paginatedTransactions.length > 0 && (
         <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
           {!isBulkCategoryMode ? (
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <div className="text-sm text-gray-600">
                 {selectedTransactionIds.size > 0 ? (
                   <span>{selectedTransactionIds.size} transaction{selectedTransactionIds.size !== 1 ? 's' : ''} selected</span>
@@ -783,7 +783,7 @@ export default function TransactionsPage() {
                   <span>Select transactions to update their category</span>
                 )}
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 {selectedTransactionIds.size > 0 && (
                   <button
                     onClick={handleDeselectAll}

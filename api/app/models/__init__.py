@@ -16,6 +16,7 @@ from app.models.commitment_rule import (
     CommitmentStatus,
 )
 from app.models.planned_item import PlannedItem, PlannedKind
+from app.models.category_rule import CategoryRule, merchant_match_key
 
 __all__ = [
     "User",
@@ -35,4 +36,6 @@ __all__ = [
     "CommitmentStatus",
     "PlannedItem",
     "PlannedKind",
+    "CategoryRule",
+    "merchant_match_key",
 ]

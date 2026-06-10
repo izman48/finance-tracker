@@ -22,6 +22,7 @@ from app.schemas import (
     TransactionListResponse,
     TransactionUpdate,
 )
+from app.services import categorization
 from app.services.truelayer import truelayer_service
 from app.models import Account, Transaction, User, BankConnection
 
@@ -366,6 +367,9 @@ def update_transaction(
     # Update fields
     if update_data.category is not None:
         transaction.category = update_data.category
+        # Learn the rule and spread it to this merchant's other transactions
+        # (empty category = forget the rule).
+        categorization.learn_and_apply(db, current_user.id, transaction)
     if update_data.subcategory is not None:
         transaction.subcategory = update_data.subcategory
 
@@ -392,9 +396,14 @@ def get_connection_status(
     connections_info = []
 
     for conn in bank_connections:
-        is_expired = False
-        if conn.token_expires_at:
-            is_expired = datetime.now(timezone.utc) >= conn.token_expires_at
+        # The short-lived access token auto-refreshes during syncs, so its
+        # expiry is not user-relevant. Only flag connections that can no longer
+        # refresh (no refresh token) — those genuinely need re-authorization.
+        access_expired = bool(
+            conn.token_expires_at
+            and datetime.now(timezone.utc) >= conn.token_expires_at
+        )
+        is_expired = access_expired and not conn.refresh_token
 
         connections_info.append({
             "id": str(conn.id),

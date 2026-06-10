@@ -264,7 +264,19 @@ def detect_recurring(db: Session, user) -> list[dict]:
         avg_amount = sum((_d(t.amount) for t in group), Decimal(0)) / len(group)
         last_date = group[-1].transaction_date.date()
         cadence, interval_days, interval_months = _cadence_from_interval(mean)
+
+        # If the next expected occurrence is well overdue, the pattern has
+        # probably stopped (cancelled sub, ended salary) — don't suggest it.
+        today = _today()
+        if (today - last_date).days > mean * 2 + 7:
+            continue
+
+        # Otherwise surface the first occurrence that is still ahead of us.
         next_date = _step(last_date, cadence, interval_days, interval_months)
+        guard = 0
+        while next_date < today and guard < 600:
+            next_date = _step(next_date, cadence, interval_days, interval_months)
+            guard += 1
 
         candidates.append(
             {
@@ -350,11 +362,19 @@ def commitment_from_transaction(db: Session, user, transaction_id: str, cadence:
 def sync_suggestions(db: Session, user) -> None:
     """Persist newly-detected commitments as `suggested`, without touching ones
     the user has already confirmed or dismissed."""
-    existing_keys = {
-        rule.match_key
-        for rule in db.query(CommitmentRule).filter(CommitmentRule.user_id == user.id).all()
-        if rule.match_key
-    }
+    existing_rules = db.query(CommitmentRule).filter(CommitmentRule.user_id == user.id).all()
+    existing_keys = {rule.match_key for rule in existing_rules if rule.match_key}
+
+    # Maintenance: advance stale next_dates so the review list never shows a
+    # "next" occurrence in the past. (Forecasting already rolls forward the
+    # same way in commitment_occurrences; this just persists it for display.)
+    today = _today()
+    for rule in existing_rules:
+        guard = 0
+        while rule.next_date and rule.next_date < today and guard < 600:
+            rule.next_date = _step(rule.next_date, rule.cadence, rule.interval_days, rule.interval_months)
+            guard += 1
+
     for cand in detect_recurring(db, user):
         if cand["match_key"] in existing_keys:
             continue

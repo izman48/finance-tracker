@@ -29,6 +29,25 @@ class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ForgotPasswordRequest(BaseModel):
+    """Request a password reset email."""
+
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    """Set a new password using an emailed reset token."""
+
+    token: str
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class DeleteAccountRequest(BaseModel):
+    """Confirm account deletion with the current password."""
+
+    password: str
+
+
 # --- Auth Schemas ---
 
 

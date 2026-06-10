@@ -50,10 +50,10 @@ export default function HomePage() {
         </div>
 
         <div className="p-6 bg-white rounded-xl shadow-sm">
-          <h3 className="text-xl font-semibold mb-3">📈 Opportunity Cost</h3>
+          <h3 className="text-xl font-semibold mb-3">💷 Safe to Spend</h3>
           <p className="text-gray-600">
-            See what your spending could have become if invested in the stock
-            market.
+            Know exactly what you can spend before payday, after every bill and
+            repayment is accounted for.
           </p>
         </div>
       </div>

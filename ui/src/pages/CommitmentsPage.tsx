@@ -233,12 +233,14 @@ function ConfirmedList({
   onEdit: (c: Commitment) => void
   positive?: boolean
 }) {
-  // Cadences differ, so total as a monthly equivalent.
+  // Cadences differ, so total as a monthly equivalent. (amount arrives as a
+  // string from the API — coerce before arithmetic.)
   const monthlyEquivalent = (c: Commitment) => {
-    if (c.cadence === 'weekly') return c.amount * (52 / 12)
-    if (c.cadence === 'every_n_months') return c.amount / (c.interval_months || 1)
-    if (c.cadence === 'custom_days') return c.amount * (30.44 / (c.interval_days || 30))
-    return c.amount
+    const amount = Number(c.amount) || 0
+    if (c.cadence === 'weekly') return amount * (52 / 12)
+    if (c.cadence === 'every_n_months') return amount / (c.interval_months || 1)
+    if (c.cadence === 'custom_days') return amount * (30.44 / (c.interval_days || 30))
+    return amount
   }
   const total = items.reduce((sum, c) => sum + monthlyEquivalent(c), 0)
 

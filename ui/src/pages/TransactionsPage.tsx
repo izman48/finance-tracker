@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
-import { bankingAPI, analyticsAPI } from '../services/api'
+import { bankingAPI, analyticsAPI, rulesAPI } from '../services/api'
+import AddRuleModal from '../components/AddRuleModal'
 
 interface Transaction {
   id: string
@@ -31,6 +32,7 @@ export default function TransactionsPage() {
   const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null)
   const [editingCategory, setEditingCategory] = useState<string>('')
   const [recurringTx, setRecurringTx] = useState<Transaction | null>(null)
+  const [ruleTx, setRuleTx] = useState<Transaction | null>(null)
   const [toast, setToast] = useState<string>('')
   const [customCategories, setCustomCategories] = useState<string[]>([])
   const [isAddingCategory, setIsAddingCategory] = useState(false)
@@ -1020,13 +1022,22 @@ export default function TransactionsPage() {
                       </div>
                       <div className="mt-2 flex items-center justify-between gap-2">
                         <div className="flex-1 min-w-0">{renderCategoryEditor(transaction)}</div>
-                        <button
-                          onClick={() => setRecurringTx(transaction)}
-                          className="text-xs text-gray-400 hover:text-blue-600 whitespace-nowrap"
-                          title="Mark as a recurring commitment"
-                        >
-                          ↻ Recurring
-                        </button>
+                        <div className="flex gap-2 whitespace-nowrap">
+                          <button
+                            onClick={() => setRuleTx(transaction)}
+                            className="text-xs text-gray-400 hover:text-blue-600"
+                            title="Create a categorization rule from this transaction"
+                          >
+                            + Rule
+                          </button>
+                          <button
+                            onClick={() => setRecurringTx(transaction)}
+                            className="text-xs text-gray-400 hover:text-blue-600"
+                            title="Mark as a recurring commitment"
+                          >
+                            ↻ Recurring
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1135,6 +1146,13 @@ export default function TransactionsPage() {
                       {formatCurrency(transaction.amount, transaction.currency)}
                     </td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">
+                      <button
+                        onClick={() => setRuleTx(transaction)}
+                        className="text-xs text-gray-400 hover:text-blue-600 mr-2"
+                        title="Create a categorization rule from this transaction"
+                      >
+                        + Rule
+                      </button>
                       <button
                         onClick={() => setRecurringTx(transaction)}
                         className="text-xs text-gray-400 hover:text-blue-600"
@@ -1279,6 +1297,23 @@ export default function TransactionsPage() {
             setRecurringTx(null)
             setToast(`"${label}" added to Commitments`)
             setTimeout(() => setToast(''), 3500)
+          }}
+        />
+      )}
+
+      {ruleTx && (
+        <AddRuleModal
+          initialPattern={(ruleTx.merchant_name || ruleTx.description || '').trim()}
+          initialCategory={ruleTx.category ?? ''}
+          categories={categories}
+          onClose={() => setRuleTx(null)}
+          onAdded={async () => {
+            setRuleTx(null)
+            // Run the rules immediately so the page reflects the new rule.
+            const res = await rulesAPI.applyNow()
+            setToast(res.data.message)
+            setTimeout(() => setToast(''), 3500)
+            await loadAllTransactions()
           }}
         />
       )}

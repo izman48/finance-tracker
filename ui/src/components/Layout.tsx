@@ -7,6 +7,7 @@ const NAV_LINKS = [
   { to: '/transactions', label: 'Transactions' },
   { to: '/insights', label: 'Spending' },
   { to: '/commitments', label: 'Commitments' },
+  { to: '/rules', label: 'Rules' },
 ]
 
 export default function Layout() {

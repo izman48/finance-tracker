@@ -43,6 +43,9 @@ class Transaction(Base):
     # Our categorization (will be populated by categorization engine)
     category: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     subcategory: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # True once the user hand-picked this transaction's category — rules
+    # (including imported packs) never overwrite a locked category.
+    category_locked: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Recurring payment detection
     is_recurring: Mapped[bool] = mapped_column(Boolean, default=False, index=True)

@@ -48,6 +48,54 @@ class DeleteAccountRequest(BaseModel):
     password: str
 
 
+# --- Asset Schemas ---
+
+
+class AssetValuationCreate(BaseModel):
+    """Record an asset's value as of a date (defaults to today)."""
+
+    value: Decimal
+    valued_at: date | None = None
+
+
+class AssetCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    asset_type: str = Field(default="other", pattern="^(isa|savings|investment|pension|property|crypto|other)$")
+    value: Decimal
+    valued_at: date | None = None
+
+
+class AssetUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    asset_type: str | None = Field(
+        default=None, pattern="^(isa|savings|investment|pension|property|crypto|other)$"
+    )
+
+
+class AssetValuationResponse(BaseModel):
+    id: uuid.UUID
+    value: Decimal
+    valued_at: date
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AssetResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    asset_type: str
+    valuations: list[AssetValuationResponse] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class NetWorthPoint(BaseModel):
+    date: date
+    bank: Decimal
+    assets: Decimal
+    net_worth: Decimal
+
+
 # --- Categorization Rule Schemas ---
 
 
@@ -307,6 +355,8 @@ class CashflowSummary(BaseModel):
     available_cash: Decimal
     overdraft_cushion: Decimal
     credit_owed: Decimal
+    savings_total: Decimal = Decimal(0)
+    assets_total: Decimal = Decimal(0)
     net_worth: Decimal
     committed_before_payday: Decimal
     safe_to_spend: Decimal

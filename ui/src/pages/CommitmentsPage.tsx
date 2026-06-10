@@ -243,6 +243,7 @@ function ConfirmedList({
     return amount
   }
   const total = items.reduce((sum, c) => sum + monthlyEquivalent(c), 0)
+  const sorted = [...items].sort((a, b) => monthlyEquivalent(b) - monthlyEquivalent(a))
 
   return (
     <div className="bg-white rounded-lg shadow-sm">
@@ -258,7 +259,7 @@ function ConfirmedList({
         <div className="p-4 text-sm text-gray-400">None confirmed yet.</div>
       ) : (
         <div className="divide-y">
-          {items.map((c) => (
+          {sorted.map((c) => (
             <div key={c.id} className="p-4 flex items-center justify-between">
               <div>
                 <div className="font-medium">{c.label}</div>

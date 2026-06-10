@@ -164,7 +164,7 @@ export default function DashboardPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-8">Dashboard</h1>
+      <h1 className="text-2xl sm:text-3xl font-bold mb-6 sm:mb-8">Dashboard</h1>
 
       {message && (
         <div className={`mb-6 p-4 rounded-lg ${
@@ -180,11 +180,11 @@ export default function DashboardPage() {
           {/* Safe to spend */}
           <div className="lg:col-span-2 p-6 bg-white rounded-xl shadow-sm border border-gray-200">
             <div className="text-sm text-gray-500 mb-1">Safe to spend</div>
-            <div className="text-5xl font-bold text-gray-900">{formatCurrency(summary.safe_to_spend)}</div>
+            <div className="text-4xl sm:text-5xl font-bold text-gray-900">{formatCurrency(summary.safe_to_spend)}</div>
             <div className="text-sm text-gray-500 mt-1">
               until {summary.next_payday ? formatDate(summary.next_payday) : 'next 30 days'}
             </div>
-            <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-2 text-sm">
               <div className="flex justify-between border-t pt-2">
                 <span className="text-gray-600">Available cash</span>
                 <span className="font-semibold">{formatCurrency(summary.available_cash)}</span>
@@ -289,9 +289,9 @@ export default function DashboardPage() {
 
       {/* Bank connections management */}
       <div className="mb-8">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
           <h2 className="text-2xl font-semibold">Connected Banks</h2>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
               onClick={handleConnectBank}

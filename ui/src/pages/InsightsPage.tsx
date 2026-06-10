@@ -62,7 +62,7 @@ export default function InsightsPage() {
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <h1 className="text-3xl font-bold">Where it went</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold">Where it went</h1>
         <div className="flex flex-wrap gap-1">
           {PERIODS.map((p) => (
             <button
@@ -81,7 +81,7 @@ export default function InsightsPage() {
       <MonthlySpendingChart />
 
       {period === 'custom' && (
-        <div className="flex gap-3 mb-6">
+        <div className="flex flex-wrap gap-3 mb-6">
           <input type="date" value={frm} onChange={(e) => setFrm(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg" />
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg" />
         </div>

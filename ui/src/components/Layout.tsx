@@ -1,8 +1,17 @@
+import { useState } from 'react'
 import { Outlet, Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 
+const NAV_LINKS = [
+  { to: '/dashboard', label: 'Dashboard' },
+  { to: '/transactions', label: 'Transactions' },
+  { to: '/insights', label: 'Spending' },
+  { to: '/commitments', label: 'Commitments' },
+]
+
 export default function Layout() {
   const { isAuthenticated, logout, user } = useAuth()
+  const [menuOpen, setMenuOpen] = useState(false)
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -12,34 +21,16 @@ export default function Layout() {
             Finance Tracker
           </Link>
 
-          <div className="flex items-center gap-4">
+          {/* Desktop nav */}
+          <div className="hidden md:flex items-center gap-4">
             {isAuthenticated ? (
               <>
-                <Link
-                  to="/dashboard"
-                  className="text-gray-700 hover:text-blue-600"
-                >
-                  Dashboard
-                </Link>
-                <Link
-                  to="/transactions"
-                  className="text-gray-700 hover:text-blue-600"
-                >
-                  Transactions
-                </Link>
-                <Link
-                  to="/insights"
-                  className="text-gray-700 hover:text-blue-600"
-                >
-                  Spending
-                </Link>
-                <Link
-                  to="/commitments"
-                  className="text-gray-700 hover:text-blue-600"
-                >
-                  Commitments
-                </Link>
-                <span className="text-gray-600 ml-2">{user?.email}</span>
+                {NAV_LINKS.map((link) => (
+                  <Link key={link.to} to={link.to} className="text-gray-700 hover:text-blue-600">
+                    {link.label}
+                  </Link>
+                ))}
+                <span className="text-gray-600 ml-2 hidden lg:inline">{user?.email}</span>
                 <button
                   onClick={logout}
                   className="px-4 py-2 text-gray-700 hover:text-red-600"
@@ -49,10 +40,7 @@ export default function Layout() {
               </>
             ) : (
               <>
-                <Link
-                  to="/login"
-                  className="text-gray-700 hover:text-blue-600"
-                >
+                <Link to="/login" className="text-gray-700 hover:text-blue-600">
                   Login
                 </Link>
                 <Link
@@ -64,7 +52,72 @@ export default function Layout() {
               </>
             )}
           </div>
+
+          {/* Mobile menu button */}
+          <button
+            className="md:hidden p-2 text-gray-700 hover:text-blue-600"
+            onClick={() => setMenuOpen((open) => !open)}
+            aria-label="Toggle menu"
+            aria-expanded={menuOpen}
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              {menuOpen ? (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              )}
+            </svg>
+          </button>
         </nav>
+
+        {/* Mobile nav */}
+        {menuOpen && (
+          <div className="md:hidden border-t border-gray-100 px-4 py-3 space-y-1 bg-white">
+            {isAuthenticated ? (
+              <>
+                {NAV_LINKS.map((link) => (
+                  <Link
+                    key={link.to}
+                    to={link.to}
+                    onClick={() => setMenuOpen(false)}
+                    className="block py-2 text-gray-700 hover:text-blue-600"
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+                <div className="pt-2 mt-2 border-t border-gray-100 flex items-center justify-between">
+                  <span className="text-sm text-gray-500 truncate">{user?.email}</span>
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false)
+                      logout()
+                    }}
+                    className="py-2 pl-4 text-gray-700 hover:text-red-600"
+                  >
+                    Logout
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <Link
+                  to="/login"
+                  onClick={() => setMenuOpen(false)}
+                  className="block py-2 text-gray-700 hover:text-blue-600"
+                >
+                  Login
+                </Link>
+                <Link
+                  to="/register"
+                  onClick={() => setMenuOpen(false)}
+                  className="block py-2 text-blue-600 font-medium"
+                >
+                  Get Started
+                </Link>
+              </>
+            )}
+          </div>
+        )}
       </header>
 
       <main className="flex-1">

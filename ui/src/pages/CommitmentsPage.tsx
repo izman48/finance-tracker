@@ -92,7 +92,7 @@ export default function CommitmentsPage() {
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
       <div className="flex items-center justify-between mb-2">
-        <h1 className="text-3xl font-bold">Commitments</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold">Commitments</h1>
         <button
           onClick={() => setShowAdd(true)}
           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"

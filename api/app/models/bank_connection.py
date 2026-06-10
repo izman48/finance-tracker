@@ -26,6 +26,9 @@ class BankConnection(Base):
     refresh_token: Mapped[str | None] = mapped_column(EncryptedString, nullable=True)
     token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # When accounts/transactions were last successfully pulled from TrueLayer.
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

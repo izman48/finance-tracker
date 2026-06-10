@@ -538,6 +538,7 @@ class TrueLayerService:
 
             categorization.apply_rules(db, bank_connection.user_id, new_transactions)
 
+        bank_connection.last_synced_at = datetime.now(timezone.utc)
         db.commit()
         logger.info(f"Synced {new_count} new transactions for bank connection {bank_connection.id}")
         return new_count

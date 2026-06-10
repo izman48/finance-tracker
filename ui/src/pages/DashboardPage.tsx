@@ -14,8 +14,19 @@ interface BankConnection {
 interface BankStatus {
   is_connected: boolean
   connections_count: number
+  last_synced_at: string | null
   connections: BankConnection[]
   message: string
+}
+
+function timeAgo(iso: string | null) {
+  if (!iso) return null
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 48) return `${hours}h ago`
+  return `${Math.floor(hours / 24)}d ago`
 }
 
 interface NextRepayment {
@@ -291,7 +302,14 @@ export default function DashboardPage() {
       {/* Bank connections management */}
       <div className="mb-8">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-          <h2 className="text-2xl font-semibold">Connected Banks</h2>
+          <div>
+            <h2 className="text-2xl font-semibold">Connected Banks</h2>
+            {bankStatus?.last_synced_at && (
+              <p className="text-sm text-gray-500">
+                Synced {timeAgo(bankStatus.last_synced_at)} · auto-syncs every few hours
+              </p>
+            )}
+          </div>
           <div className="flex flex-wrap gap-2">
             <button
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"

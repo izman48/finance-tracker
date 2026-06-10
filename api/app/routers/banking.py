@@ -410,11 +410,14 @@ def get_connection_status(
             "provider_name": conn.provider_name,
             "is_expired": is_expired,
             "expires_at": conn.token_expires_at.isoformat() if conn.token_expires_at else None,
+            "last_synced_at": conn.last_synced_at.isoformat() if conn.last_synced_at else None,
         })
 
+    synced_dates = [c.last_synced_at for c in bank_connections if c.last_synced_at]
     return {
         "is_connected": is_connected,
         "connections_count": len(bank_connections),
+        "last_synced_at": max(synced_dates).isoformat() if synced_dates else None,
         "connections": connections_info,
         "message": (
             f"{len(bank_connections)} bank(s) connected" if is_connected

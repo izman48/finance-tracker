@@ -95,6 +95,42 @@ export const rulesAPI = {
   importPack: (shareCode: string) => api.post('/rules/import', { share_code: shareCode }),
 }
 
+// Manual assets & net worth
+export interface AssetValuation {
+  id: string
+  value: string
+  valued_at: string
+}
+
+export interface Asset {
+  id: string
+  name: string
+  asset_type: string
+  valuations: AssetValuation[]
+}
+
+export interface NetWorthPoint {
+  date: string
+  bank: string
+  assets: string
+  net_worth: string
+}
+
+export const assetsAPI = {
+  list: () => api.get<Asset[]>('/assets'),
+  create: (data: { name: string; asset_type: string; value: number; valued_at?: string }) =>
+    api.post('/assets', data),
+  update: (id: string, data: { name?: string; asset_type?: string }) =>
+    api.patch(`/assets/${id}`, data),
+  remove: (id: string) => api.delete(`/assets/${id}`),
+  addValuation: (id: string, data: { value: number; valued_at?: string }) =>
+    api.post(`/assets/${id}/valuations`, data),
+  removeValuation: (assetId: string, valuationId: string) =>
+    api.delete(`/assets/${assetId}/valuations/${valuationId}`),
+  netWorthHistory: (months = 12) =>
+    api.get<NetWorthPoint[]>(`/analytics/net-worth-history?months=${months}`),
+}
+
 // Health check
 export const healthApi = {
   check: () => api.get('/health'),

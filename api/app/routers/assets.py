@@ -1,0 +1,138 @@
+"""Manually tracked assets (ISAs, pensions, property …) and their valuations."""
+import logging
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session, joinedload
+
+from app.core.database import get_db
+from app.core.security import CurrentUser
+from app.models import Asset, AssetValuation
+from app.schemas import (
+    AssetCreate,
+    AssetResponse,
+    AssetUpdate,
+    AssetValuationCreate,
+)
+from app.services import analytics_service
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/assets", tags=["assets"])
+
+
+def _own_asset(db: Session, user_id, asset_id: str) -> Asset:
+    asset = (
+        db.query(Asset)
+        .options(joinedload(Asset.valuations))
+        .filter(Asset.id == asset_id, Asset.user_id == user_id)
+        .first()
+    )
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+    return asset
+
+
+@router.get("", response_model=list[AssetResponse])
+def list_assets(current_user: CurrentUser, db: Annotated[Session, Depends(get_db)]) -> list[Asset]:
+    return (
+        db.query(Asset)
+        .options(joinedload(Asset.valuations))
+        .filter(Asset.user_id == current_user.id)
+        .order_by(Asset.created_at)
+        .all()
+    )
+
+
+@router.post("", response_model=AssetResponse, status_code=status.HTTP_201_CREATED)
+def create_asset(
+    body: AssetCreate,
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> Asset:
+    asset = Asset(user_id=current_user.id, name=body.name.strip(), asset_type=body.asset_type)
+    db.add(asset)
+    db.flush()
+    db.add(
+        AssetValuation(
+            asset_id=asset.id,
+            value=body.value,
+            valued_at=body.valued_at or analytics_service._today(),
+        )
+    )
+    db.commit()
+    db.refresh(asset)
+    return asset
+
+
+@router.patch("/{asset_id}", response_model=AssetResponse)
+def update_asset(
+    asset_id: str,
+    body: AssetUpdate,
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> Asset:
+    asset = _own_asset(db, current_user.id, asset_id)
+    if body.name is not None:
+        asset.name = body.name.strip()
+    if body.asset_type is not None:
+        asset.asset_type = body.asset_type
+    db.commit()
+    db.refresh(asset)
+    return asset
+
+
+@router.delete("/{asset_id}")
+def delete_asset(
+    asset_id: str,
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    db.delete(_own_asset(db, current_user.id, asset_id))
+    db.commit()
+    return {"message": "Asset deleted"}
+
+
+@router.post("/{asset_id}/valuations", response_model=AssetResponse, status_code=status.HTTP_201_CREATED)
+def add_valuation(
+    asset_id: str,
+    body: AssetValuationCreate,
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> Asset:
+    """Record a new value for the asset (same-date entries overwrite)."""
+    asset = _own_asset(db, current_user.id, asset_id)
+    valued_at = body.valued_at or analytics_service._today()
+
+    existing = (
+        db.query(AssetValuation)
+        .filter(AssetValuation.asset_id == asset.id, AssetValuation.valued_at == valued_at)
+        .first()
+    )
+    if existing:
+        existing.value = body.value
+    else:
+        db.add(AssetValuation(asset_id=asset.id, value=body.value, valued_at=valued_at))
+    db.commit()
+    db.refresh(asset)
+    return asset
+
+
+@router.delete("/{asset_id}/valuations/{valuation_id}")
+def delete_valuation(
+    asset_id: str,
+    valuation_id: str,
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    asset = _own_asset(db, current_user.id, asset_id)
+    valuation = (
+        db.query(AssetValuation)
+        .filter(AssetValuation.id == valuation_id, AssetValuation.asset_id == asset.id)
+        .first()
+    )
+    if not valuation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Valuation not found")
+    db.delete(valuation)
+    db.commit()
+    return {"message": "Valuation deleted"}

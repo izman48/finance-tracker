@@ -23,6 +23,7 @@ from app.schemas import (
     CommitmentResponse,
     CommitmentUpdate,
     ForecastResponse,
+    NetWorthPoint,
     PlannedItemCreate,
     PlannedItemResponse,
     SpendingResponse,
@@ -43,6 +44,20 @@ def get_summary(
 ) -> CashflowSummary:
     """Dashboard cashflow summary: safe-to-spend, available cash, owed, etc."""
     return CashflowSummary(**analytics_service.get_summary(db, current_user))
+
+
+@router.get("/net-worth-history", response_model=list[NetWorthPoint])
+def get_net_worth_history(
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+    months: int = 12,
+) -> list[NetWorthPoint]:
+    """Net worth at month-ends (bank balances reconstructed + manual assets)."""
+    months = max(1, min(months, 60))
+    return [
+        NetWorthPoint(**point)
+        for point in analytics_service.net_worth_history(db, current_user, months)
+    ]
 
 
 @router.get("/forecast", response_model=ForecastResponse)

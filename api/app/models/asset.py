@@ -1,0 +1,64 @@
+"""Manually tracked assets (ISAs, pensions, property, …).
+
+Open Banking only covers current accounts and cards; everything else the user
+tells us about. Each value update appends an AssetValuation, so net worth can
+be reconstructed at any point in time.
+"""
+import uuid
+from datetime import date, datetime
+from decimal import Decimal
+
+from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.core.database import Base
+
+ASSET_TYPES = ("isa", "savings", "investment", "pension", "property", "crypto", "other")
+
+
+class Asset(Base):
+    """A manually valued asset belonging to a user."""
+
+    __tablename__ = "assets"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+
+    name: Mapped[str] = mapped_column(String(100))
+    asset_type: Mapped[str] = mapped_column(String(20), default="other")
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    valuations: Mapped[list["AssetValuation"]] = relationship(
+        "AssetValuation",
+        back_populates="asset",
+        cascade="all, delete-orphan",
+        order_by="AssetValuation.valued_at",
+    )
+
+
+class AssetValuation(Base):
+    """The asset's value as of a date (negative allowed, e.g. a loan)."""
+
+    __tablename__ = "asset_valuations"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    asset_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("assets.id", ondelete="CASCADE"), index=True
+    )
+
+    value: Mapped[Decimal] = mapped_column(Numeric(precision=14, scale=2))
+    valued_at: Mapped[date] = mapped_column(Date, index=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    asset: Mapped["Asset"] = relationship("Asset", back_populates="valuations")

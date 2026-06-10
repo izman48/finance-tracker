@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.security import CurrentUser, verify_oauth_state
 from app.schemas import (
@@ -58,7 +59,7 @@ async def oauth_callback(
     This endpoint receives the authorization code from TrueLayer,
     exchanges it for tokens, and redirects to the frontend.
     """
-    frontend_url = "http://localhost:5173"
+    frontend_url = get_settings().frontend_url
 
     # Handle OAuth errors
     if error:

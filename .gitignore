@@ -1,6 +1,7 @@
 # Environment — ignore all real env files but keep the committed template
 .env*
 !.env.example
+!.env.production.example
 
 # Python
 __pycache__/

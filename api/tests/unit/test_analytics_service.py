@@ -123,7 +123,9 @@ class TestDetection:
     def test_detects_monthly_expense_and_income(self, db_session):
         user = _user(db_session)
         acc = _account(db_session, user, name="Cur")
-        base = date(2026, 1, 5)
+        # Anchor to today so the patterns read as still-active (detection
+        # skips series whose next occurrence is well overdue).
+        base = svc._add_months(date.today(), -3)
         for i in range(4):
             _tx(db_session, acc, 50, svc._add_months(base, i), ttype="debit", merchant="Netflix")
         for i in range(3):
@@ -133,6 +135,19 @@ class TestDetection:
         assert ("expense", "Netflix") in found
         assert ("income", "Salary") in found
         assert found[("expense", "Netflix")]["cadence"] == "monthly"
+        # Surfaced next dates are never in the past.
+        assert found[("expense", "Netflix")]["next_date"] >= date.today()
+
+    def test_lapsed_pattern_not_suggested(self, db_session):
+        """A series whose next occurrence is months overdue is treated as ended."""
+        user = _user(db_session)
+        acc = _account(db_session, user, name="Cur")
+        base = svc._add_months(date.today(), -9)
+        for i in range(4):  # last occurrence ~5 months ago
+            _tx(db_session, acc, 9.99, svc._add_months(base, i), ttype="debit", merchant="OldGym")
+
+        found = {c["label"] for c in svc.detect_recurring(db_session, user)}
+        assert "OldGym" not in found
 
     def test_mark_transaction_recurring(self, db_session):
         user = _user(db_session)

@@ -233,14 +233,33 @@ function ConfirmedList({
   onEdit: (c: Commitment) => void
   positive?: boolean
 }) {
+  // Cadences differ, so total as a monthly equivalent. (amount arrives as a
+  // string from the API — coerce before arithmetic.)
+  const monthlyEquivalent = (c: Commitment) => {
+    const amount = Number(c.amount) || 0
+    if (c.cadence === 'weekly') return amount * (52 / 12)
+    if (c.cadence === 'every_n_months') return amount / (c.interval_months || 1)
+    if (c.cadence === 'custom_days') return amount * (30.44 / (c.interval_days || 30))
+    return amount
+  }
+  const total = items.reduce((sum, c) => sum + monthlyEquivalent(c), 0)
+  const sorted = [...items].sort((a, b) => monthlyEquivalent(b) - monthlyEquivalent(a))
+
   return (
     <div className="bg-white rounded-lg shadow-sm">
-      <div className="px-4 py-3 border-b font-semibold">{title}</div>
+      <div className="px-4 py-3 border-b flex items-center justify-between">
+        <span className="font-semibold">{title}</span>
+        {items.length > 0 && (
+          <span className={`text-sm font-semibold ${positive ? 'text-green-600' : 'text-gray-900'}`}>
+            {positive ? '+' : ''}{formatCurrency(total)}/mo
+          </span>
+        )}
+      </div>
       {items.length === 0 ? (
         <div className="p-4 text-sm text-gray-400">None confirmed yet.</div>
       ) : (
         <div className="divide-y">
-          {items.map((c) => (
+          {sorted.map((c) => (
             <div key={c.id} className="p-4 flex items-center justify-between">
               <div>
                 <div className="font-medium">{c.label}</div>

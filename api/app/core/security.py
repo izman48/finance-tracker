@@ -105,6 +105,55 @@ def verify_oauth_state(state: str) -> str:
     return user_id
 
 
+# Password reset links are emailed, so keep their lifetime short.
+RESET_TOKEN_EXPIRE_MINUTES = 30
+
+
+def _password_fingerprint(hashed_password: str) -> str:
+    """Short stable digest of the current password hash.
+
+    Embedding it in reset tokens makes them effectively single-use: once the
+    password changes, every previously issued token stops validating.
+    """
+    import hashlib
+
+    return hashlib.sha256(hashed_password.encode()).hexdigest()[:16]
+
+
+def create_password_reset_token(user: User) -> str:
+    """Create a signed, short-lived, single-use password reset token."""
+    expire = datetime.now(timezone.utc) + timedelta(minutes=RESET_TOKEN_EXPIRE_MINUTES)
+    payload = {
+        "sub": str(user.id),
+        "typ": "pwd_reset",
+        "fp": _password_fingerprint(user.hashed_password),
+        "nonce": secrets.token_urlsafe(8),
+        "exp": expire,
+    }
+    return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
+
+
+def verify_password_reset_token(token: str, db: Session) -> User:
+    """Validate a reset token and return its user.
+
+    Raises ValueError if expired, tampered with, the wrong type, or already
+    consumed (password changed since issuance).
+    """
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+    except JWTError as exc:
+        raise ValueError("Invalid or expired reset link") from exc
+
+    if payload.get("typ") != "pwd_reset":
+        raise ValueError("Wrong token type")
+    user = db.query(User).filter(User.id == uuid.UUID(payload.get("sub", ""))).first()
+    if not user:
+        raise ValueError("User not found")
+    if payload.get("fp") != _password_fingerprint(user.hashed_password):
+        raise ValueError("Reset link already used")
+    return user
+
+
 def get_current_user(
     token: Annotated[str, Depends(oauth2_scheme)],
     db: Annotated[Session, Depends(get_db)],

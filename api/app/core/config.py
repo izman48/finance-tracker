@@ -19,7 +19,9 @@ class Settings(BaseSettings):
     # Fernet key (urlsafe base64, 32 bytes) for encrypting bank tokens at rest.
     encryption_key: str = ""
     algorithm: str = "HS256"
-    access_token_expire_minutes: int = 30
+    # 7 days: this is a personal-finance dashboard people open daily; 30-minute
+    # sessions were logging users out mid-use. Override via env if needed.
+    access_token_expire_minutes: int = 60 * 24 * 7
 
     # TrueLayer Open Banking
     truelayer_client_id: str = ""
@@ -32,6 +34,13 @@ class Settings(BaseSettings):
 
     # Where to send users after the OAuth callback (the UI's public URL).
     frontend_url: str = "http://localhost:5173"
+
+    # Outbound email (password resets). Unset SMTP_HOST = log instead of send.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
 
     @property
     def truelayer_auth_url(self) -> str:

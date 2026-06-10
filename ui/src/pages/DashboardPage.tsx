@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { bankingAPI, analyticsAPI, AccountSettingUpdate } from '../services/api'
+import { authApi, bankingAPI, analyticsAPI, AccountSettingUpdate } from '../services/api'
 import ForecastChart from '../components/ForecastChart'
 import SpendingSnapshot from '../components/SpendingSnapshot'
 import PlannedItems from '../components/PlannedItems'
@@ -79,6 +79,7 @@ export default function DashboardPage() {
   const [syncing, setSyncing] = useState(false)
   const [message, setMessage] = useState('')
   const [settingsAccount, setSettingsAccount] = useState<SummaryAccount | null>(null)
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false)
   const [forecastKey, setForecastKey] = useState(0)
 
   useEffect(() => {
@@ -326,7 +327,7 @@ export default function DashboardPage() {
               <div key={conn.id} className="p-5 bg-white rounded-xl shadow-sm border border-gray-200">
                 <h3 className="font-semibold">{conn.provider_name}</h3>
                 <p className={`text-sm mt-1 ${conn.is_expired ? 'text-red-600' : 'text-green-600'}`}>
-                  {conn.is_expired ? 'Token expired' : 'Active'}
+                  {conn.is_expired ? 'Needs reconnection — use Connect Bank' : 'Active'}
                 </p>
               </div>
             ))}
@@ -337,6 +338,20 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Danger zone */}
+      <div className="mt-16 pt-6 border-t border-gray-200">
+        <button
+          onClick={() => setShowDeleteAccount(true)}
+          className="text-sm text-gray-400 hover:text-red-600"
+        >
+          Delete my account and all data
+        </button>
+      </div>
+
+      {showDeleteAccount && (
+        <DeleteAccountModal onClose={() => setShowDeleteAccount(false)} />
+      )}
 
       {settingsAccount && (
         <AccountSettingsModal
@@ -349,6 +364,61 @@ export default function DashboardPage() {
           }}
         />
       )}
+    </div>
+  )
+}
+
+function DeleteAccountModal({ onClose }: { onClose: () => void }) {
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [deleting, setDeleting] = useState(false)
+
+  const handleDelete = async () => {
+    setError('')
+    setDeleting(true)
+    try {
+      await authApi.deleteAccount(password)
+      localStorage.removeItem('token')
+      window.location.href = '/'
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to delete account')
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-lg font-semibold text-red-600 mb-2">Delete account</h3>
+        <p className="text-sm text-gray-600 mb-4">
+          This permanently deletes your account, bank connections, accounts, and every
+          transaction. There is no undo. Enter your password to confirm.
+        </p>
+
+        {error && <div className="mb-3 p-3 bg-red-100 text-red-700 rounded-lg text-sm">{error}</div>}
+
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="Current password"
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg mb-4"
+          autoFocus
+        />
+
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
+            Cancel
+          </button>
+          <button
+            onClick={handleDelete}
+            disabled={deleting || !password}
+            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+          >
+            {deleting ? 'Deleting…' : 'Delete everything'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

@@ -461,6 +461,7 @@ class TrueLayerService:
         from_date = datetime.now(timezone.utc) - timedelta(days=days)
         to_date = datetime.now(timezone.utc)
         new_count = 0
+        new_transactions: list[Transaction] = []
 
         logger.info(f"Syncing transactions from {from_date.date()} to {to_date.date()} ({days} days)")
 
@@ -528,7 +529,14 @@ class TrueLayerService:
                     ),
                 )
                 db.add(transaction)
+                new_transactions.append(transaction)
                 new_count += 1
+
+        # User-defined rules beat TrueLayer's generic categories.
+        if new_transactions:
+            from app.services import categorization
+
+            categorization.apply_rules(db, bank_connection.user_id, new_transactions)
 
         db.commit()
         logger.info(f"Synced {new_count} new transactions for bank connection {bank_connection.id}")

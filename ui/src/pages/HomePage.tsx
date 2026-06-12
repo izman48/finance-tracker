@@ -1,8 +1,24 @@
 import { useLayoutEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import gsap from 'gsap'
-import { Wallet, PieChart, CalendarClock, TrendingUp, SlidersHorizontal, Landmark } from 'lucide-react'
+import { ScrollTrigger } from 'gsap/ScrollTrigger'
+import {
+  Wallet,
+  PieChart,
+  CalendarClock,
+  TrendingUp,
+  SlidersHorizontal,
+  Landmark,
+  ShieldCheck,
+  Lock,
+  KeyRound,
+  EyeOff,
+  Trash2,
+  Building2,
+} from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
+
+gsap.registerPlugin(ScrollTrigger)
 
 const gbp = (n: number) =>
   new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(n)
@@ -81,6 +97,39 @@ const FEATURES = [
   },
 ]
 
+const SECURITY = [
+  {
+    icon: Building2,
+    title: 'Read-only open banking',
+    body: 'We connect through TrueLayer, an FCA-authorised open-banking provider. You log in on your bank’s own page — we never see or store your banking password, and the connection can only read, never move money.',
+  },
+  {
+    icon: Lock,
+    title: 'Bank tokens encrypted at rest',
+    body: 'The access tokens that link to your bank are encrypted in the database with authenticated AES (Fernet), so a database dump alone can’t be used to reach your accounts.',
+  },
+  {
+    icon: KeyRound,
+    title: 'Passwords hashed, traffic encrypted',
+    body: 'Your password is stored only as a salted bcrypt hash — never in plain text. Every request runs over HTTPS with HSTS enforced.',
+  },
+  {
+    icon: EyeOff,
+    title: 'Your data is never sold',
+    body: 'Your finances are yours. We don’t sell or share your data, and we don’t run third-party ad or tracking scripts on your dashboard.',
+  },
+  {
+    icon: Trash2,
+    title: 'Leave whenever you want',
+    body: 'Disconnect a bank in one click, or delete your account and every transaction permanently — no emails, no retention games.',
+  },
+  {
+    icon: ShieldCheck,
+    title: 'Built to be audited',
+    body: 'Scoped access tokens, least-privilege data access, and a security model we review on every change — built with future FCA-grade scrutiny in mind.',
+  },
+]
+
 export default function HomePage() {
   const { isAuthenticated } = useAuth()
   const root = useRef<HTMLDivElement>(null)
@@ -103,6 +152,15 @@ export default function HomePage() {
         duration: 0.6,
         ease: 'power2.out',
         delay: 0.5,
+      })
+      // Security section reveals on scroll into view.
+      gsap.from('[data-sec]', {
+        scrollTrigger: { trigger: '[data-sec]', start: 'top 85%' },
+        y: 24,
+        opacity: 0,
+        stagger: 0.08,
+        duration: 0.6,
+        ease: 'power2.out',
       })
     }, root)
     return () => ctx.revert()
@@ -164,6 +222,40 @@ export default function HomePage() {
               <p className="text-sm text-slate-400 leading-relaxed">{body}</p>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* Security */}
+      <div className="relative border-t border-white/[0.06] bg-ink-950/40">
+        <div className="relative max-w-7xl mx-auto px-4 py-16 sm:py-24">
+          <div className="max-w-2xl mb-12">
+            <div data-sec className="inline-flex items-center gap-2 chip-pos mb-5">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              Security
+            </div>
+            <h2
+              data-sec
+              className="font-display font-bold tracking-tight text-3xl sm:text-4xl text-slate-50 mb-4"
+            >
+              Built for money you can't afford to lose
+            </h2>
+            <p data-sec className="text-lg text-slate-400">
+              You're trusting us with a window into your finances. Here's exactly how we protect it —
+              and what we'll never do with it.
+            </p>
+          </div>
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+            {SECURITY.map(({ icon: Icon, title, body }) => (
+              <div key={title} data-sec className="card-pad hover:border-accent/25 transition-colors">
+                <span className="w-10 h-10 rounded-xl bg-accent/15 border border-accent/20 flex items-center justify-center mb-4">
+                  <Icon className="w-5 h-5 text-accent" />
+                </span>
+                <h3 className="font-display font-semibold text-slate-100 mb-1.5">{title}</h3>
+                <p className="text-sm text-slate-400 leading-relaxed">{body}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

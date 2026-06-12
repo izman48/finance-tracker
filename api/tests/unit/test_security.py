@@ -91,6 +91,56 @@ class TestJWTTokens:
         token_data = decode_access_token(token)
         assert str(token_data.user_id) == user_id
 
+    def test_oauth_state_token_not_accepted_as_access(self):
+        """An oauth_state token must not authenticate as an access token."""
+        from fastapi import HTTPException
+
+        state = create_oauth_state("user-abc")
+        with pytest.raises(HTTPException) as exc_info:
+            decode_access_token(state)
+        assert exc_info.value.status_code == 401
+
+    def test_reset_token_not_accepted_as_access(self):
+        """A password-reset token must not authenticate as an access token."""
+        from fastapi import HTTPException
+        from jose import jwt
+        from datetime import datetime, timezone
+        from app.core.config import get_settings
+
+        # Mint a reset-shaped token directly (avoids needing a User row here).
+        settings = get_settings()
+        reset = jwt.encode(
+            {
+                "sub": "user-abc",
+                "typ": "pwd_reset",
+                "fp": "deadbeefdeadbeef",
+                "nonce": "x",
+                "exp": datetime.now(timezone.utc) + timedelta(minutes=30),
+            },
+            settings.secret_key,
+            algorithm=settings.algorithm,
+        )
+        with pytest.raises(HTTPException) as exc_info:
+            decode_access_token(reset)
+        assert exc_info.value.status_code == 401
+
+    def test_typeless_legacy_token_rejected(self):
+        """A token with no `typ` claim (e.g. pre-fix) is rejected as access."""
+        from fastapi import HTTPException
+        from jose import jwt
+        from datetime import datetime, timezone
+        from app.core.config import get_settings
+
+        settings = get_settings()
+        legacy = jwt.encode(
+            {"sub": "user-abc", "exp": datetime.now(timezone.utc) + timedelta(hours=1)},
+            settings.secret_key,
+            algorithm=settings.algorithm,
+        )
+        with pytest.raises(HTTPException) as exc_info:
+            decode_access_token(legacy)
+        assert exc_info.value.status_code == 401
+
 
 class TestOAuthState:
     """Tests for the signed OAuth state token (CSRF protection)."""

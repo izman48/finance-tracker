@@ -33,24 +33,35 @@ def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
 
 
+# Token type claim ("typ"). Every JWT carries one so a token minted for one
+# purpose can't be replayed for another (e.g. a password-reset or OAuth-state
+# token presented as an API bearer token). Each verifier checks its own type.
+ACCESS_TOKEN_TYPE = "access"
+
+
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     """Create a JWT access token."""
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + (
         expires_delta or timedelta(minutes=settings.access_token_expire_minutes)
     )
-    to_encode.update({"exp": expire})
+    to_encode.update({"exp": expire, "typ": ACCESS_TOKEN_TYPE})
     return jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
 
 
 def decode_access_token(token: str) -> TokenData:
-    """Decode and validate a JWT token."""
+    """Decode and validate a JWT access token.
+
+    Rejects any token whose `typ` is not the access type, so reset and
+    OAuth-state tokens (same signing key, same `sub`) cannot be used as bearer
+    credentials.
+    """
     try:
         payload = jwt.decode(
             token, settings.secret_key, algorithms=[settings.algorithm]
         )
         user_id: str = payload.get("sub")
-        if user_id is None:
+        if user_id is None or payload.get("typ") != ACCESS_TOKEN_TYPE:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token",

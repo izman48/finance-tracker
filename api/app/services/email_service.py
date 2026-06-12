@@ -18,10 +18,21 @@ def send_email(to: str, subject: str, body: str) -> bool:
     settings = get_settings()
 
     if not settings.smtp_host:
-        logger.warning(
-            "SMTP not configured — email to %s not sent. Subject: %r. Body:\n%s",
-            to, subject, body,
-        )
+        # The body can contain account-granting secrets (e.g. a password-reset
+        # link), so only echo it in non-live development. In live mode log the
+        # misconfiguration without the body — and loudly, since flows like
+        # password reset are silently broken until SMTP is set up.
+        if settings.is_live_mode:
+            logger.error(
+                "SMTP not configured — email to %s NOT sent (subject: %r). "
+                "Configure SMTP_HOST to enable password reset and notifications.",
+                to, subject,
+            )
+        else:
+            logger.warning(
+                "SMTP not configured — email to %s not sent. Subject: %r. Body:\n%s",
+                to, subject, body,
+            )
         return False
 
     msg = EmailMessage()

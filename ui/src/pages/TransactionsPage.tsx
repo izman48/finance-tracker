@@ -14,6 +14,7 @@ interface Transaction {
   category: string | null
   subcategory: string | null
   is_recurring: boolean
+  is_commitment: boolean
   transaction_date: string
 }
 
@@ -62,6 +63,7 @@ export default function TransactionsPage() {
   const [selectedType, setSelectedType] = useState<string>('')
   const [hideInternalTransfers, setHideInternalTransfers] = useState<boolean>(false)
   const [hideCreditCardPayments, setHideCreditCardPayments] = useState<boolean>(false)
+  const [hideCommitments, setHideCommitments] = useState<boolean>(false)
 
   useEffect(() => {
     loadAccounts()
@@ -72,7 +74,7 @@ export default function TransactionsPage() {
   // Reset to page 1 when filters or sort changes
   useEffect(() => {
     setPage(1)
-  }, [searchTerm, selectedCategories, startDate, endDate, minAmount, maxAmount, selectedMerchant, selectedType, hideInternalTransfers, hideCreditCardPayments, sortField, sortDirection])
+  }, [searchTerm, selectedCategories, startDate, endDate, minAmount, maxAmount, selectedMerchant, selectedType, hideInternalTransfers, hideCreditCardPayments, hideCommitments, sortField, sortDirection])
 
   const loadAccounts = async () => {
     try {
@@ -384,6 +386,12 @@ export default function TransactionsPage() {
       })
     }
 
+    // Hide transactions that belong to confirmed commitments (rent, salary,
+    // subscriptions…) — flagged by the API — to leave discretionary activity.
+    if (hideCommitments) {
+      transactionsToFilter = transactionsToFilter.filter(tx => !tx.is_commitment)
+    }
+
     // First, filter ALL transactions (excluding internal transfers and credit card payments if enabled)
     const filtered = transactionsToFilter.filter(tx => {
       // Search filter (description or merchant name)
@@ -449,7 +457,7 @@ export default function TransactionsPage() {
     })
 
     return sorted
-  }, [allTransactions, accounts, searchTerm, selectedCategories, selectedType, startDate, endDate, minAmount, maxAmount, selectedMerchant, hideInternalTransfers, hideCreditCardPayments, sortField, sortDirection])
+  }, [allTransactions, accounts, searchTerm, selectedCategories, selectedType, startDate, endDate, minAmount, maxAmount, selectedMerchant, hideInternalTransfers, hideCreditCardPayments, hideCommitments, sortField, sortDirection])
 
   // Get unique categories from all loaded transactions + custom ones
   const categories = Array.from(new Set([
@@ -488,6 +496,7 @@ export default function TransactionsPage() {
     !!selectedType,
     hideInternalTransfers,
     hideCreditCardPayments,
+    hideCommitments,
   ].filter(Boolean).length
 
   const clearFilters = () => {
@@ -502,6 +511,7 @@ export default function TransactionsPage() {
     setSelectedType('')
     setHideInternalTransfers(false)
     setHideCreditCardPayments(false)
+    setHideCommitments(false)
   }
 
   const renderCategoryEditor = (transaction: Transaction) =>
@@ -765,6 +775,19 @@ export default function TransactionsPage() {
                   <span className="ml-1 text-xs text-slate-500">(keeps purchases made with the cards)</span>
                 </span>
               </label>
+
+              <label className="flex items-start sm:items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={hideCommitments}
+                  onChange={(e) => setHideCommitments(e.target.checked)}
+                  className="checkbox mt-0.5 sm:mt-0"
+                />
+                <span className="ml-2 text-sm text-slate-300">
+                  Hide commitments
+                  <span className="ml-1 text-xs text-slate-500">(rent, salary, subscriptions — show only discretionary activity)</span>
+                </span>
+              </label>
             </div>
 
             <button onClick={clearFilters} className="btn-ghost">
@@ -910,6 +933,7 @@ export default function TransactionsPage() {
                       )}
                       <div className="text-xs text-slate-500 mt-0.5">
                         {formatDate(transaction.transaction_date)} · {getAccountName(transaction.account_id)}
+                        {transaction.is_commitment && <span className="ml-2 chip-warn">Bill</span>}
                         {transaction.is_recurring && <span className="ml-2 chip-info">Recurring</span>}
                       </div>
                       <div className="mt-2 flex items-center justify-between gap-2">
@@ -1011,6 +1035,7 @@ export default function TransactionsPage() {
                           {transaction.description}
                         </div>
                       )}
+                      {transaction.is_commitment && <span className="chip-warn mt-1 mr-1">Bill</span>}
                       {transaction.is_recurring && <span className="chip-info mt-1">Recurring</span>}
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-400">

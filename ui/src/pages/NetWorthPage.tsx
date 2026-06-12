@@ -9,6 +9,8 @@ import {
   YAxis,
 } from 'recharts'
 import { assetsAPI, analyticsAPI, Asset, NetWorthPoint } from '../services/api'
+import AnimatedNumber from '../components/ui/AnimatedNumber'
+import useReveal from '../components/ui/useReveal'
 
 const ASSET_TYPE_LABEL: Record<string, string> = {
   isa: 'ISA',
@@ -33,6 +35,20 @@ const gbp = (n: number) =>
 const latestValue = (a: Asset) =>
   a.valuations.length ? Number(a.valuations[a.valuations.length - 1].value) : 0
 
+function NetWorthTooltip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="bg-card2 border border-white/10 rounded-xl shadow-pop p-3 text-sm">
+      <div className="font-medium text-slate-200">{label}</div>
+      {payload.map((p: any) => (
+        <div key={p.name} className="text-slate-300 tnum">
+          {p.name}: {gbp(Number(p.value))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function NetWorthPage() {
   const [history, setHistory] = useState<NetWorthPoint[]>([])
   const [assets, setAssets] = useState<Asset[]>([])
@@ -41,6 +57,8 @@ export default function NetWorthPage() {
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [updating, setUpdating] = useState<Asset | null>(null)
+
+  const revealRef = useReveal(!loading)
 
   const load = async (m = months) => {
     try {
@@ -76,7 +94,7 @@ export default function NetWorthPage() {
   }
 
   if (loading) {
-    return <div className="max-w-5xl mx-auto px-4 py-8 text-center text-gray-600">Calculating net worth…</div>
+    return <div className="max-w-5xl mx-auto px-4 py-8 text-center text-slate-500">Calculating net worth…</div>
   }
 
   const current = history.length ? Number(history[history.length - 1].net_worth) : 0
@@ -90,58 +108,53 @@ export default function NetWorthPage() {
   }))
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8">
+    <div ref={revealRef} className="max-w-5xl mx-auto px-4 py-6 sm:py-10">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-        <h1 className="text-2xl sm:text-3xl font-bold">Net worth</h1>
-        <button
-          onClick={() => setShowAdd(true)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-        >
+        <h1 className="font-display font-bold text-2xl sm:text-3xl text-slate-50">Wealth</h1>
+        <button onClick={() => setShowAdd(true)} className="btn-primary">
           Add asset
         </button>
       </div>
 
       {/* Headline */}
-      <div className="mb-6 p-6 bg-white rounded-xl shadow-sm border border-gray-200">
-        <div className="text-sm text-gray-500 mb-1">Total net worth</div>
-        <div className="text-4xl sm:text-5xl font-bold text-gray-900">{gbp(current)}</div>
-        <div className={`text-sm mt-1 ${change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-          {change >= 0 ? '+' : ''}{gbp(change)} over the period
-        </div>
-        {summary && (
-          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-2 text-sm">
-            <div className="flex justify-between border-t pt-2">
-              <span className="text-gray-600">Cash</span>
-              <span className="font-semibold">{gbp(Number(summary.available_cash))}</span>
-            </div>
-            <div className="flex justify-between border-t pt-2">
-              <span className="text-gray-600">Savings accounts</span>
-              <span className="font-semibold">{gbp(Number(summary.savings_total ?? 0))}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Other assets</span>
-              <span className="font-semibold">{gbp(Number(summary.assets_total ?? 0))}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Credit owed</span>
-              <span className="font-semibold text-red-600">−{gbp(Number(summary.credit_owed))}</span>
-            </div>
+      <div className="card p-6 sm:p-8 mb-6 relative overflow-hidden" data-reveal>
+        <div className="orb w-72 h-72 bg-sky2/10 -top-24 -right-16" />
+        <div className="relative">
+          <div className="text-sm text-slate-400 mb-2">Total net worth</div>
+          <div className="stat-figure text-5xl sm:text-6xl text-slate-50">
+            <AnimatedNumber value={current} format={gbp} />
           </div>
-        )}
+          <div className={`text-sm mt-2 tnum ${change >= 0 ? 'text-pos' : 'text-neg'}`}>
+            {change >= 0 ? '+' : ''}{gbp(change)} over the period
+          </div>
+          {summary && (
+            <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+              {[
+                { label: 'Cash', value: gbp(Number(summary.available_cash)), tone: 'text-slate-100' },
+                { label: 'Savings accounts', value: gbp(Number(summary.savings_total ?? 0)), tone: 'text-slate-100' },
+                { label: 'Other assets', value: gbp(Number(summary.assets_total ?? 0)), tone: 'text-slate-100' },
+                { label: 'Credit owed', value: `−${gbp(Number(summary.credit_owed))}`, tone: 'text-neg' },
+              ].map((s) => (
+                <div key={s.label}>
+                  <div className="text-xs text-slate-500 mb-1">{s.label}</div>
+                  <div className={`font-semibold tnum ${s.tone}`}>{s.value}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* History chart */}
-      <div className="mb-6 p-4 sm:p-6 bg-white rounded-xl shadow-sm border border-gray-200">
+      <div className="card-pad mb-6" data-reveal>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold">Over time</h2>
-          <div className="flex gap-1">
+          <h2 className="font-display font-semibold text-slate-100">Over time</h2>
+          <div className="flex gap-0.5">
             {RANGES.map((r) => (
               <button
                 key={r.months}
                 onClick={() => changeRange(r.months)}
-                className={`px-3 py-1 text-sm rounded-lg ${
-                  months === r.months ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
+                className={months === r.months ? 'seg-active' : 'seg'}
               >
                 {r.label}
               </button>
@@ -152,50 +165,52 @@ export default function NetWorthPage() {
           <AreaChart data={chartData}>
             <defs>
               <linearGradient id="nw" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#2563eb" stopOpacity={0.25} />
-                <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
+                <stop offset="5%" stopColor="#38BDF8" stopOpacity={0.3} />
+                <stop offset="95%" stopColor="#38BDF8" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-            <XAxis dataKey="date" fontSize={12} />
-            <YAxis tickFormatter={(v) => gbp(v)} width={70} fontSize={12} />
-            <Tooltip formatter={(v) => gbp(Number(v))} />
-            <Area type="monotone" dataKey="Net worth" stroke="#2563eb" strokeWidth={2} fill="url(#nw)" />
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="date" fontSize={12} tickLine={false} axisLine={false} />
+            <YAxis tickFormatter={(v) => gbp(v)} width={70} fontSize={12} tickLine={false} axisLine={false} />
+            <Tooltip content={<NetWorthTooltip />} />
+            <Area type="monotone" dataKey="Net worth" stroke="#38BDF8" strokeWidth={2} fill="url(#nw)" />
           </AreaChart>
         </ResponsiveContainer>
       </div>
 
       {/* Manual assets */}
-      <h2 className="text-xl font-semibold mb-3">Your assets</h2>
+      <h2 className="font-display font-semibold text-lg text-slate-100 mb-3" data-reveal>
+        Your assets
+      </h2>
       {assets.length === 0 ? (
-        <div className="p-8 bg-white rounded-xl shadow-sm text-center text-gray-500">
+        <div className="card p-8 text-center text-slate-500 text-sm" data-reveal>
           Track things your bank doesn't know about — ISAs, pensions, property, crypto.
           They'll be included in your net worth above.
         </div>
       ) : (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4" data-reveal>
           {assets.map((asset) => (
-            <div key={asset.id} className="p-5 bg-white rounded-xl shadow-sm border border-gray-200">
+            <div key={asset.id} className="card p-5">
               <div className="flex items-start justify-between mb-2">
                 <div>
-                  <h3 className="font-semibold">{asset.name}</h3>
-                  <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded">
+                  <h3 className="font-semibold text-slate-100">{asset.name}</h3>
+                  <span className="chip-info mt-1">
                     {ASSET_TYPE_LABEL[asset.asset_type] ?? asset.asset_type}
                   </span>
                 </div>
               </div>
-              <p className="text-2xl font-bold">{gbp(latestValue(asset))}</p>
+              <p className="stat-figure text-2xl text-slate-50">{gbp(latestValue(asset))}</p>
               {asset.valuations.length > 1 && (
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-slate-500 mt-1">
                   {asset.valuations.length} valuations since{' '}
                   {new Date(asset.valuations[0].valued_at).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}
                 </p>
               )}
-              <div className="mt-3 flex gap-3 text-sm">
-                <button onClick={() => setUpdating(asset)} className="text-blue-600 hover:text-blue-800">
+              <div className="mt-3 flex gap-4 text-sm">
+                <button onClick={() => setUpdating(asset)} className="btn-link">
                   Update value
                 </button>
-                <button onClick={() => removeAsset(asset)} className="text-gray-400 hover:text-red-600">
+                <button onClick={() => removeAsset(asset)} className="text-slate-500 hover:text-neg transition-colors">
                   Delete
                 </button>
               </div>
@@ -247,22 +262,18 @@ function AssetModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => 
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-lg font-semibold mb-4">Add asset</h3>
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-lg font-semibold text-slate-50 mb-4">Add asset</h3>
         <div className="space-y-3">
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Name (e.g. Vanguard S&S ISA)"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+            className="input"
             autoFocus
           />
-          <select
-            value={assetType}
-            onChange={(e) => setAssetType(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-          >
+          <select value={assetType} onChange={(e) => setAssetType(e.target.value)} className="input">
             {Object.entries(ASSET_TYPE_LABEL).map(([k, l]) => (
               <option key={k} value={k}>{l}</option>
             ))}
@@ -272,25 +283,16 @@ function AssetModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => 
             value={value}
             onChange={(e) => setValue(e.target.value)}
             placeholder="Current value (£)"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+            className="input"
           />
           <div>
-            <label className="block text-sm text-gray-600 mb-1">Valued as of (optional, defaults to today)</label>
-            <input
-              type="date"
-              value={valuedAt}
-              onChange={(e) => setValuedAt(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-            />
+            <label className="label">Valued as of (optional, defaults to today)</label>
+            <input type="date" value={valuedAt} onChange={(e) => setValuedAt(e.target.value)} className="input" />
           </div>
         </div>
         <div className="flex justify-end gap-2 mt-5">
-          <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Cancel</button>
-          <button
-            onClick={save}
-            disabled={saving || !name.trim() || value === ''}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-          >
+          <button onClick={onClose} className="btn-ghost">Cancel</button>
+          <button onClick={save} disabled={saving || !name.trim() || value === ''} className="btn-primary">
             {saving ? 'Saving…' : 'Add asset'}
           </button>
         </div>
@@ -312,10 +314,10 @@ function UpdateValueModal({ asset, onClose, onSaved }: { asset: Asset; onClose: 
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-lg font-semibold mb-1">{asset.name}</h3>
-        <p className="text-sm text-gray-500 mb-4">
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-lg font-semibold text-slate-50 mb-1">{asset.name}</h3>
+        <p className="text-sm text-slate-400 mb-4">
           Record its value — past entries stay, building the history behind the chart.
         </p>
         <div className="space-y-3">
@@ -324,22 +326,17 @@ function UpdateValueModal({ asset, onClose, onSaved }: { asset: Asset; onClose: 
             value={value}
             onChange={(e) => setValue(e.target.value)}
             placeholder="Value (£)"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+            className="input"
             autoFocus
           />
           <div>
-            <label className="block text-sm text-gray-600 mb-1">As of (optional, defaults to today)</label>
-            <input
-              type="date"
-              value={valuedAt}
-              onChange={(e) => setValuedAt(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-            />
+            <label className="label">As of (optional, defaults to today)</label>
+            <input type="date" value={valuedAt} onChange={(e) => setValuedAt(e.target.value)} className="input" />
           </div>
           {asset.valuations.length > 0 && (
-            <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-500 max-h-28 overflow-y-auto">
+            <div className="bg-white/[0.04] border border-white/[0.06] rounded-xl p-3 text-xs text-slate-500 max-h-28 overflow-y-auto">
               {[...asset.valuations].reverse().map((v) => (
-                <div key={v.id} className="flex justify-between py-0.5">
+                <div key={v.id} className="flex justify-between py-0.5 tnum">
                   <span>{new Date(v.valued_at).toLocaleDateString('en-GB')}</span>
                   <span>{gbp(Number(v.value))}</span>
                 </div>
@@ -348,12 +345,8 @@ function UpdateValueModal({ asset, onClose, onSaved }: { asset: Asset; onClose: 
           )}
         </div>
         <div className="flex justify-end gap-2 mt-5">
-          <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Cancel</button>
-          <button
-            onClick={save}
-            disabled={saving || value === ''}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-          >
+          <button onClick={onClose} className="btn-ghost">Cancel</button>
+          <button onClick={save} disabled={saving || value === ''} className="btn-primary">
             {saving ? 'Saving…' : 'Save value'}
           </button>
         </div>

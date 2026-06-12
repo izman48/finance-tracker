@@ -1,6 +1,7 @@
 import { useState, FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
+import AuthShell from '../components/ui/AuthShell'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -32,56 +33,50 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="max-w-md mx-auto px-4 py-16">
-      <h1 className="text-3xl font-bold text-center mb-8">Login</h1>
-
+    <AuthShell title="Welcome back" subtitle="Log in to see today's numbers.">
       <form onSubmit={handleSubmit} className="space-y-4">
-        {error && (
-          <div className="p-3 bg-red-100 text-red-700 rounded-lg">{error}</div>
-        )}
+        {error && <div className="banner-err">{error}</div>}
 
         <div>
-          <label className="block text-gray-700 mb-1">Email</label>
+          <label className="label">Email</label>
           <input
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            className="input"
+            autoComplete="email"
             required
           />
         </div>
 
         <div>
-          <label className="block text-gray-700 mb-1">Password</label>
+          <label className="label">Password</label>
           <input
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            className="input"
+            autoComplete="current-password"
             required
           />
         </div>
 
-        <button
-          type="submit"
-          disabled={isLoading}
-          className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-        >
-          {isLoading ? 'Logging in...' : 'Login'}
+        <button type="submit" disabled={isLoading} className="btn-primary w-full !py-3">
+          {isLoading ? 'Logging in…' : 'Log in'}
         </button>
       </form>
 
-      <p className="mt-4 text-center text-gray-600">
+      <p className="mt-6 text-center text-sm text-slate-400">
         Don't have an account?{' '}
-        <Link to="/register" className="text-blue-600 hover:underline">
-          Register
+        <Link to="/register" className="btn-link">
+          Create one
         </Link>
       </p>
       <p className="mt-2 text-center">
-        <Link to="/forgot-password" className="text-sm text-gray-500 hover:text-blue-600">
+        <Link to="/forgot-password" className="text-sm text-slate-500 hover:text-accent transition-colors">
           Forgot password?
         </Link>
       </p>
-    </div>
+    </AuthShell>
   )
 }

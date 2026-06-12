@@ -319,7 +319,12 @@ def commitment_from_transaction(db: Session, user, transaction_id: str, cadence:
         else CommitmentDirection.EXPENSE.value
     )
     label = (tx.merchant_name or tx.description or "Recurring").strip()
-    interval_months = 3 if cadence == CommitmentCadence.EVERY_N_MONTHS.value else None
+    # "yearly" is an alias clients may send — stored as every-12-months.
+    if cadence == "yearly":
+        cadence = CommitmentCadence.EVERY_N_MONTHS.value
+        interval_months = 12
+    else:
+        interval_months = 3 if cadence == CommitmentCadence.EVERY_N_MONTHS.value else None
 
     # Next occurrence: step from the transaction date forward until it's in the future.
     d = tx.transaction_date.date()

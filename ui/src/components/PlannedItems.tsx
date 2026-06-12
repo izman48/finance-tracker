@@ -61,34 +61,32 @@ export default function PlannedItems({ onChanged }: { onChanged: () => void }) {
   }
 
   return (
-    <div className="p-6 bg-white rounded-xl shadow-sm border border-gray-200">
+    <div className="card-pad">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold">Planned</h2>
-        <button onClick={() => setShowAdd(true)} className="text-sm text-blue-600 hover:text-blue-800">
+        <h2 className="font-display font-semibold text-slate-100">Planned</h2>
+        <button onClick={() => setShowAdd(true)} className="btn-link">
           + Add planned item
         </button>
       </div>
 
       {items.length === 0 ? (
-        <p className="text-sm text-gray-400">
+        <p className="text-sm text-slate-500">
           Nothing planned. Add an upcoming cost, expected income, or split a big purchase to see how it hits your forecast.
         </p>
       ) : (
-        <div className="divide-y">
+        <div className="divide-y divide-white/[0.06]">
           {items.map((it) => (
             <div key={it.id} className="py-3 flex items-center justify-between">
               <div>
-                <div className="font-medium">
+                <div className="font-medium text-slate-200">
                   {it.name}
-                  {it.direction === 'income' && (
-                    <span className="ml-2 text-xs px-2 py-0.5 rounded bg-green-100 text-green-700">income</span>
-                  )}
+                  {it.direction === 'income' && <span className="ml-2 chip-pos">income</span>}
                 </div>
-                <div className={`text-sm ${it.direction === 'income' ? 'text-green-600' : 'text-gray-500'}`}>
+                <div className={`text-sm tnum ${it.direction === 'income' ? 'text-pos' : 'text-slate-500'}`}>
                   {it.direction === 'income' ? '+' : ''}{describe(it)}
                 </div>
               </div>
-              <button onClick={() => remove(it.id)} className="text-sm text-gray-400 hover:text-red-600">
+              <button onClick={() => remove(it.id)} className="text-sm text-slate-500 hover:text-neg transition-colors">
                 Remove
               </button>
             </div>
@@ -153,10 +151,19 @@ function AddPlannedModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
     }
   }
 
+  const toggle = (active: boolean, tone: 'pos' | 'accent' = 'accent') =>
+    `py-2 text-sm rounded-xl border transition-colors ${
+      active
+        ? tone === 'pos'
+          ? 'border-pos/60 bg-pos/10 text-pos'
+          : 'border-accent/60 bg-accent/10 text-accent'
+        : 'border-white/10 text-slate-300 hover:bg-white/[0.04]'
+    }`
+
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-lg font-semibold mb-4">
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-lg font-semibold text-slate-50 mb-4">
           Add planned {direction === 'income' ? 'income' : 'expense'}
         </h3>
 
@@ -171,13 +178,7 @@ function AddPlannedModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
                 setDirection(o.d)
                 if (o.d === 'income' && kind === 'installment_plan') setKind('one_off')
               }}
-              className={`py-2 text-sm rounded-lg border ${
-                direction === o.d
-                  ? o.d === 'income'
-                    ? 'border-green-600 bg-green-50'
-                    : 'border-blue-600 bg-blue-50'
-                  : 'border-gray-300'
-              }`}
+              className={toggle(direction === o.d, o.d === 'income' ? 'pos' : 'accent')}
             >
               {o.l}
             </button>
@@ -191,11 +192,7 @@ function AddPlannedModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
             // Splitting a total into N payments only makes sense for spending
             ...(direction === 'expense' ? [{ k: 'installment_plan', l: 'Payment plan' }] : []),
           ].map((o) => (
-            <button
-              key={o.k}
-              onClick={() => setKind(o.k)}
-              className={`py-2 text-sm rounded-lg border ${kind === o.k ? 'border-blue-600 bg-blue-50' : 'border-gray-300'}`}
-            >
+            <button key={o.k} onClick={() => setKind(o.k)} className={toggle(kind === o.k)}>
               {o.l}
             </button>
           ))}
@@ -206,47 +203,47 @@ function AddPlannedModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder={direction === 'income' ? 'Name (e.g. Tax refund)' : 'Name (e.g. New laptop)'}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+            className="input"
           />
 
           {kind === 'installment_plan' ? (
             <>
-              <input type="number" value={total} onChange={(e) => setTotal(e.target.value)} placeholder="Total amount (£)" className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+              <input type="number" value={total} onChange={(e) => setTotal(e.target.value)} placeholder="Total amount (£)" className="input" />
               <div className="grid grid-cols-2 gap-3">
-                <input type="number" min={1} value={installments} onChange={(e) => setInstallments(e.target.value)} placeholder="Payments" className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
-                <select value={cadence} onChange={(e) => setCadence(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                <input type="number" min={1} value={installments} onChange={(e) => setInstallments(e.target.value)} placeholder="Payments" className="input" />
+                <select value={cadence} onChange={(e) => setCadence(e.target.value)} className="input">
                   <option value="weekly">Weekly</option>
                   <option value="monthly">Monthly</option>
                 </select>
               </div>
-              <label className="flex items-center text-sm text-gray-700">
-                <input type="checkbox" checked={withInterest} onChange={(e) => setWithInterest(e.target.checked)} className="mr-2" />
+              <label className="flex items-center text-sm text-slate-300">
+                <input type="checkbox" checked={withInterest} onChange={(e) => setWithInterest(e.target.checked)} className="checkbox mr-2" />
                 Add interest / fees
               </label>
               {withInterest && (
                 <div className="grid grid-cols-2 gap-3">
-                  <input type="number" value={apr} onChange={(e) => setApr(e.target.value)} placeholder="APR %" className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
-                  <input type="number" value={fee} onChange={(e) => setFee(e.target.value)} placeholder="Fee (£)" className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                  <input type="number" value={apr} onChange={(e) => setApr(e.target.value)} placeholder="APR %" className="input" />
+                  <input type="number" value={fee} onChange={(e) => setFee(e.target.value)} placeholder="Fee (£)" className="input" />
                 </div>
               )}
               {n > 0 && Number(total) > 0 && (
-                <div className="bg-gray-50 rounded-lg p-3 text-sm">
-                  <div className="font-medium">{gbp(per)} × {n} payments</div>
-                  <div className="text-gray-500 mt-1">
+                <div className="bg-white/[0.04] border border-white/[0.06] rounded-xl p-3 text-sm">
+                  <div className="font-medium text-slate-200 tnum">{gbp(per)} × {n} payments</div>
+                  <div className="text-slate-500 mt-1">
                     {Array.from({ length: Math.min(n, 4) }).map((_, i) => (
                       <span key={i}>{addMonths(startDate || new Date().toISOString(), i)}{i < Math.min(n, 4) - 1 ? ' · ' : ''}</span>
                     ))}
                     {n > 4 && ' …'}
                   </div>
-                  <div className="text-gray-400 mt-1">Total payable {gbp(per * n)}</div>
+                  <div className="text-slate-600 mt-1 tnum">Total payable {gbp(per * n)}</div>
                 </div>
               )}
             </>
           ) : (
             <>
-              <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Amount (£)" className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+              <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Amount (£)" className="input" />
               {kind === 'recurring' && (
-                <select value={cadence} onChange={(e) => setCadence(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                <select value={cadence} onChange={(e) => setCadence(e.target.value)} className="input">
                   <option value="weekly">Weekly</option>
                   <option value="monthly">Monthly</option>
                 </select>
@@ -255,14 +252,14 @@ function AddPlannedModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
           )}
 
           <div>
-            <label className="block text-sm text-gray-600 mb-1">{kind === 'one_off' ? 'Date' : 'Start date'}</label>
-            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+            <label className="label">{kind === 'one_off' ? 'Date' : 'Start date'}</label>
+            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="input" />
           </div>
         </div>
 
         <div className="flex justify-end gap-2 mt-5">
-          <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Cancel</button>
-          <button onClick={save} disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+          <button onClick={onClose} className="btn-ghost">Cancel</button>
+          <button onClick={save} disabled={saving} className="btn-primary">
             {saving ? 'Saving…' : 'Add'}
           </button>
         </div>

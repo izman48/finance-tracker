@@ -1,6 +1,7 @@
 import { useState, FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
+import AuthShell from '../components/ui/AuthShell'
 
 export default function RegisterPage() {
   const [email, setEmail] = useState('')
@@ -44,62 +45,57 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="max-w-md mx-auto px-4 py-16">
-      <h1 className="text-3xl font-bold text-center mb-8">Create Account</h1>
-
+    <AuthShell title="Create your account" subtitle="Free, self-hosted, and your data stays yours.">
       <form onSubmit={handleSubmit} className="space-y-4">
-        {error && (
-          <div className="p-3 bg-red-100 text-red-700 rounded-lg">{error}</div>
-        )}
+        {error && <div className="banner-err">{error}</div>}
 
         <div>
-          <label className="block text-gray-700 mb-1">Email</label>
+          <label className="label">Email</label>
           <input
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            className="input"
+            autoComplete="email"
             required
           />
         </div>
 
         <div>
-          <label className="block text-gray-700 mb-1">Password</label>
+          <label className="label">Password</label>
           <input
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            className="input"
+            autoComplete="new-password"
             required
           />
         </div>
 
         <div>
-          <label className="block text-gray-700 mb-1">Confirm Password</label>
+          <label className="label">Confirm password</label>
           <input
             type="password"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
-            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            className="input"
+            autoComplete="new-password"
             required
           />
         </div>
 
-        <button
-          type="submit"
-          disabled={isLoading}
-          className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-        >
-          {isLoading ? 'Creating account...' : 'Create Account'}
+        <button type="submit" disabled={isLoading} className="btn-primary w-full !py-3">
+          {isLoading ? 'Creating account…' : 'Create account'}
         </button>
       </form>
 
-      <p className="mt-4 text-center text-gray-600">
+      <p className="mt-6 text-center text-sm text-slate-400">
         Already have an account?{' '}
-        <Link to="/login" className="text-blue-600 hover:underline">
-          Login
+        <Link to="/login" className="btn-link">
+          Log in
         </Link>
       </p>
-    </div>
+    </AuthShell>
   )
 }

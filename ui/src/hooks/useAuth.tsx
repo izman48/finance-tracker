@@ -74,6 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- provider + hook intentionally share a file
 export function useAuth() {
   const context = useContext(AuthContext)
   if (!context) {

@@ -112,7 +112,7 @@ def forgot_password(
         reset_url = f"{get_settings().frontend_url}/reset-password?token={token}"
         send_email(
             to=user.email,
-            subject="Reset your Finance Tracker password",
+            subject="Reset your nilu. password",
             body=(
                 "Someone (hopefully you) requested a password reset.\n\n"
                 f"Reset it here (link valid for 30 minutes):\n{reset_url}\n\n"

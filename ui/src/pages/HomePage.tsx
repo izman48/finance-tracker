@@ -1,60 +1,169 @@
+import { useLayoutEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
+import gsap from 'gsap'
+import { Wallet, PieChart, CalendarClock, TrendingUp, SlidersHorizontal, Landmark } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
+
+const gbp = (n: number) =>
+  new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(n)
+
+/** Static preview of the dashboard, built from the real design system. */
+function HeroPreview() {
+  const bars = [62, 38, 81, 55, 47, 70, 90]
+  return (
+    <div className="card p-5 sm:p-6 w-full max-w-md mx-auto" data-hero="preview">
+      <div className="text-xs text-slate-500 mb-1">Safe to spend until payday</div>
+      <div className="stat-figure text-4xl text-slate-50" data-hero="amount">
+        {gbp(1247)}
+      </div>
+      <div className="mt-4 flex items-end gap-1.5 h-20" aria-hidden>
+        {bars.map((h, i) => (
+          <div
+            key={i}
+            data-hero="bar"
+            className={`flex-1 rounded-t-md ${i === bars.length - 1 ? 'bg-accent' : 'bg-accent/25'}`}
+            style={{ height: `${h}%` }}
+          />
+        ))}
+      </div>
+      <div className="mt-4 pt-4 border-t border-white/[0.06] space-y-2 text-sm">
+        {[
+          { label: 'Rent', amount: -1100, date: '1 Jul' },
+          { label: 'Salary', amount: 3200, date: '28 Jun' },
+          { label: 'Credit card bill', amount: -430, date: '15 Jun' },
+        ].map((r) => (
+          <div key={r.label} className="flex items-center justify-between" data-hero="row">
+            <span className="text-slate-300">{r.label}</span>
+            <span className="tnum">
+              <span className={r.amount > 0 ? 'text-pos' : 'text-slate-400'}>
+                {r.amount > 0 ? '+' : ''}
+                {gbp(r.amount)}
+              </span>
+              <span className="text-slate-600 text-xs ml-2">{r.date}</span>
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+const FEATURES = [
+  {
+    icon: Wallet,
+    title: 'How much can I spend?',
+    body: 'One honest number — your cash minus every bill, repayment and planned cost before payday.',
+  },
+  {
+    icon: PieChart,
+    title: 'Where did it go?',
+    body: 'Spending by category, merchant and month, with cash and credit kept honest and separate.',
+  },
+  {
+    icon: CalendarClock,
+    title: "What's coming?",
+    body: 'A day-by-day balance forecast from your recurring bills, income and payment plans — months ahead.',
+  },
+  {
+    icon: TrendingUp,
+    title: 'Am I growing?',
+    body: 'Net worth over time across banks, savings, and the assets your bank can’t see — ISAs, pensions, property.',
+  },
+  {
+    icon: SlidersHorizontal,
+    title: 'Categorize once',
+    body: 'Rules tidy every future sync automatically, and you can share rule packs with friends.',
+  },
+  {
+    icon: Landmark,
+    title: 'All your banks',
+    body: 'Connect your current accounts, savings and credit cards via TrueLayer open banking.',
+  },
+]
 
 export default function HomePage() {
   const { isAuthenticated } = useAuth()
+  const root = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    const ctx = gsap.context(() => {
+      const tl = gsap.timeline({ defaults: { ease: 'power3.out' } })
+      tl.from('[data-hero="kicker"]', { y: 16, opacity: 0, duration: 0.5 })
+        .from('[data-hero="title"]', { y: 24, opacity: 0, duration: 0.7 }, '-=0.25')
+        .from('[data-hero="sub"]', { y: 18, opacity: 0, duration: 0.6 }, '-=0.4')
+        .from('[data-hero="cta"]', { y: 14, opacity: 0, duration: 0.5 }, '-=0.35')
+        .from('[data-hero="preview"]', { y: 30, opacity: 0, duration: 0.8 }, '-=0.3')
+        .from('[data-hero="bar"]', { scaleY: 0, transformOrigin: 'bottom', stagger: 0.06, duration: 0.5 }, '-=0.5')
+        .from('[data-hero="row"]', { x: -12, opacity: 0, stagger: 0.1, duration: 0.4 }, '-=0.3')
+      gsap.from('[data-feature]', {
+        y: 24,
+        opacity: 0,
+        stagger: 0.08,
+        duration: 0.6,
+        ease: 'power2.out',
+        delay: 0.5,
+      })
+    }, root)
+    return () => ctx.revert()
+  }, [])
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-10 sm:py-16">
-      <div className="text-center">
-        <h1 className="text-3xl sm:text-5xl font-bold text-gray-900 mb-6">
-          Understand Where Your Money Goes
-        </h1>
-        <p className="text-lg sm:text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
-          Connect your bank accounts and get insights into your spending patterns,
-          recurring payments, and the opportunity cost of your expenses.
-        </p>
+    <div ref={root} className="relative overflow-hidden">
+      {/* Ambient orbs */}
+      <div className="orb w-[36rem] h-[36rem] bg-accent/15 -top-48 -right-40 animate-float-slow" />
+      <div className="orb w-[28rem] h-[28rem] bg-sky2/10 top-64 -left-48 animate-float-slower" />
 
-        {isAuthenticated ? (
-          <Link
-            to="/dashboard"
-            className="inline-block px-8 py-4 bg-blue-600 text-white text-lg font-semibold rounded-lg hover:bg-blue-700"
-          >
-            Go to Dashboard
-          </Link>
-        ) : (
-          <Link
-            to="/register"
-            className="inline-block px-8 py-4 bg-blue-600 text-white text-lg font-semibold rounded-lg hover:bg-blue-700"
-          >
-            Get Started Free
-          </Link>
-        )}
-      </div>
+      <div className="relative max-w-7xl mx-auto px-4 pt-14 sm:pt-24 pb-16">
+        <div className="grid lg:grid-cols-2 gap-12 items-center">
+          <div className="text-center lg:text-left">
+            <div data-hero="kicker" className="chip-pos mb-5">
+              Open banking · your data stays yours
+            </div>
+            <h1
+              data-hero="title"
+              className="font-display font-bold tracking-tight text-4xl sm:text-5xl lg:text-6xl text-slate-50 leading-[1.05] mb-6"
+            >
+              Know what's truly{' '}
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-accent to-sky2">
+                safe to spend
+              </span>
+            </h1>
+            <p data-hero="sub" className="text-lg text-slate-400 max-w-xl mx-auto lg:mx-0 mb-8">
+              Connect your banks and see one honest picture: how much you have, where it went, and
+              exactly where it's going — before payday catches you out.
+            </p>
+            <div data-hero="cta" className="flex flex-wrap gap-3 justify-center lg:justify-start">
+              {isAuthenticated ? (
+                <Link to="/dashboard" className="btn-primary !px-7 !py-3 !text-base">
+                  Go to dashboard
+                </Link>
+              ) : (
+                <>
+                  <Link to="/register" className="btn-primary !px-7 !py-3 !text-base">
+                    Get started free
+                  </Link>
+                  <Link to="/login" className="btn-ghost !px-7 !py-3 !text-base">
+                    Log in
+                  </Link>
+                </>
+              )}
+            </div>
+          </div>
 
-      <div className="mt-12 sm:mt-20 grid md:grid-cols-3 gap-6 sm:gap-8">
-        <div className="p-6 bg-white rounded-xl shadow-sm">
-          <h3 className="text-xl font-semibold mb-3">📊 Spending Analysis</h3>
-          <p className="text-gray-600">
-            Categorize and visualize your transactions to see exactly where your
-            money is going.
-          </p>
+          <HeroPreview />
         </div>
 
-        <div className="p-6 bg-white rounded-xl shadow-sm">
-          <h3 className="text-xl font-semibold mb-3">🔄 Recurring Payments</h3>
-          <p className="text-gray-600">
-            Automatically detect subscriptions and recurring expenses you might
-            have forgotten about.
-          </p>
-        </div>
-
-        <div className="p-6 bg-white rounded-xl shadow-sm">
-          <h3 className="text-xl font-semibold mb-3">💷 Safe to Spend</h3>
-          <p className="text-gray-600">
-            Know exactly what you can spend before payday, after every bill and
-            repayment is accounted for.
-          </p>
+        <div className="mt-20 sm:mt-28 grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+          {FEATURES.map(({ icon: Icon, title, body }) => (
+            <div key={title} data-feature className="card-pad hover:border-accent/25 transition-colors">
+              <span className="w-10 h-10 rounded-xl bg-accent/15 border border-accent/20 flex items-center justify-center mb-4">
+                <Icon className="w-5 h-5 text-accent" />
+              </span>
+              <h3 className="font-display font-semibold text-slate-100 mb-1.5">{title}</h3>
+              <p className="text-sm text-slate-400 leading-relaxed">{body}</p>
+            </div>
+          ))}
         </div>
       </div>
     </div>

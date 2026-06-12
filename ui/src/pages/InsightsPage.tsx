@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { analyticsAPI } from '../services/api'
 import MonthlySpendingChart from '../components/MonthlySpendingChart'
+import AnimatedNumber from '../components/ui/AnimatedNumber'
+import useReveal from '../components/ui/useReveal'
 
 interface CategorySlice {
   category: string
@@ -32,12 +34,16 @@ const PERIODS = [
 const gbp = (n: number) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(n)
 const longDate = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 
+const BAR_COLORS = ['#2DD4A7', '#38BDF8', '#A78BFA', '#FBBF24', '#FB7185', '#34D399', '#818CF8', '#F472B6']
+
 export default function InsightsPage() {
   const [period, setPeriod] = useState('since_payday')
   const [frm, setFrm] = useState('')
   const [to, setTo] = useState('')
   const [data, setData] = useState<Spending | null>(null)
   const [loading, setLoading] = useState(true)
+
+  const revealRef = useReveal(!loading && !!data)
 
   useEffect(() => {
     if (period === 'custom' && (!frm || !to)) return
@@ -60,17 +66,15 @@ export default function InsightsPage() {
   const maxCat = data?.by_category[0]?.total ?? 1
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8">
+    <div ref={revealRef} className="max-w-6xl mx-auto px-4 py-6 sm:py-10">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <h1 className="text-2xl sm:text-3xl font-bold">Where it went</h1>
-        <div className="flex flex-wrap gap-1">
+        <h1 className="font-display font-bold text-2xl sm:text-3xl text-slate-50">Where it went</h1>
+        <div className="flex flex-wrap gap-0.5">
           {PERIODS.map((p) => (
             <button
               key={p.key}
               onClick={() => setPeriod(p.key)}
-              className={`px-3 py-1.5 text-sm rounded-lg ${
-                period === p.key ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+              className={period === p.key ? 'seg-active' : 'seg'}
             >
               {p.label}
             </button>
@@ -82,71 +86,85 @@ export default function InsightsPage() {
 
       {period === 'custom' && (
         <div className="flex flex-wrap gap-3 mb-6">
-          <input type="date" value={frm} onChange={(e) => setFrm(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg" />
-          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg" />
+          <input type="date" value={frm} onChange={(e) => setFrm(e.target.value)} className="input !w-auto" />
+          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="input !w-auto" />
         </div>
       )}
 
       {loading || !data ? (
-        <div className="text-center py-16 text-gray-500">Loading spending…</div>
+        <div className="text-center py-16 text-slate-500">Loading spending…</div>
       ) : data.total_spent === 0 ? (
-        <div className="text-center py-16 text-gray-500">
+        <div className="text-center py-16 text-slate-500">
           No spending in this period ({longDate(data.period_start)} – {longDate(data.period_end)}).
         </div>
       ) : (
         <>
-          <p className="text-sm text-gray-500 mb-4">
+          <p className="text-sm text-slate-500 mb-4">
             {longDate(data.period_start)} – {longDate(data.period_end)}
           </p>
 
           {/* Headline split */}
-          <div className="grid sm:grid-cols-3 gap-4 mb-8">
-            <div className="p-6 bg-white rounded-xl shadow-sm border border-gray-200">
-              <div className="text-sm text-gray-500 mb-1">Total spent</div>
-              <div className="text-3xl font-bold">{gbp(data.total_spent)}</div>
+          <div className="grid sm:grid-cols-3 gap-4 mb-6">
+            <div className="card-pad" data-reveal>
+              <div className="text-sm text-slate-400 mb-1">Total spent</div>
+              <div className="stat-figure text-3xl text-slate-50">
+                <AnimatedNumber value={data.total_spent} />
+              </div>
             </div>
-            <div className="p-6 bg-white rounded-xl shadow-sm border border-gray-200">
-              <div className="text-sm text-gray-500 mb-1">Paid from cash</div>
-              <div className="text-3xl font-bold text-gray-900">{gbp(data.paid_from_cash)}</div>
+            <div className="card-pad" data-reveal>
+              <div className="text-sm text-slate-400 mb-1">Paid from cash</div>
+              <div className="stat-figure text-3xl text-slate-100">{gbp(data.paid_from_cash)}</div>
             </div>
-            <div className="p-6 bg-white rounded-xl shadow-sm border border-gray-200">
-              <div className="text-sm text-gray-500 mb-1">Charged to credit</div>
-              <div className="text-3xl font-bold text-amber-600">{gbp(data.charged_to_credit)}</div>
-              <div className="text-xs text-gray-400 mt-1">deferred — paid later on your cards</div>
+            <div className="card-pad" data-reveal>
+              <div className="text-sm text-slate-400 mb-1">Charged to credit</div>
+              <div className="stat-figure text-3xl text-warn">{gbp(data.charged_to_credit)}</div>
+              <div className="text-xs text-slate-500 mt-1">deferred — paid later on your cards</div>
             </div>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-6">
+          <div className="grid md:grid-cols-2 gap-4 sm:gap-6">
             {/* Categories */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <h2 className="text-lg font-semibold mb-4">By category</h2>
-              <div className="space-y-3">
-                {data.by_category.map((c) => (
+            <div className="card-pad" data-reveal>
+              <h2 className="font-display font-semibold text-slate-100 mb-4">By category</h2>
+              <div className="space-y-4">
+                {data.by_category.map((c, i) => (
                   <div key={c.category}>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className="font-medium text-gray-700">{c.category}</span>
-                      <span className="font-semibold">{gbp(c.total)}</span>
+                    <div className="flex justify-between text-sm mb-1.5">
+                      <span className="font-medium text-slate-300">{c.category}</span>
+                      <span className="font-semibold text-slate-100 tnum">{gbp(c.total)}</span>
                     </div>
-                    <div className="bg-gray-100 rounded-full h-2">
-                      <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${(c.total / maxCat) * 100}%` }} />
+                    <div className="bg-white/[0.06] rounded-full h-2 overflow-hidden">
+                      <div
+                        className="h-2 rounded-full"
+                        style={{
+                          width: `${(c.total / maxCat) * 100}%`,
+                          backgroundColor: BAR_COLORS[i % BAR_COLORS.length],
+                        }}
+                      />
                     </div>
-                    <div className="text-xs text-gray-400 mt-0.5">{c.count} transaction{c.count !== 1 ? 's' : ''}</div>
+                    <div className="text-xs text-slate-600 mt-1">
+                      {c.count} transaction{c.count !== 1 ? 's' : ''}
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
 
             {/* Top merchants */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <h2 className="text-lg font-semibold mb-4">Top merchants</h2>
+            <div className="card-pad" data-reveal>
+              <h2 className="font-display font-semibold text-slate-100 mb-4">Top merchants</h2>
               <div className="space-y-3">
                 {data.top_merchants.map((m, i) => (
                   <div key={m.merchant} className="flex items-center gap-3">
-                    <div className="w-6 h-6 flex items-center justify-center bg-gray-100 rounded-full text-xs font-bold text-gray-600">
+                    <div
+                      className={`w-7 h-7 flex items-center justify-center rounded-lg text-xs font-bold ${
+                        i < 3 ? 'bg-accent/15 text-accent' : 'bg-white/[0.06] text-slate-500'
+                      }`}
+                    >
                       {i + 1}
                     </div>
-                    <div className="flex-1 text-sm font-medium text-gray-900">{m.merchant}</div>
-                    <div className="text-sm font-semibold">{gbp(m.total)}</div>
+                    <div className="flex-1 text-sm font-medium text-slate-200 truncate">{m.merchant}</div>
+                    <div className="text-sm font-semibold text-slate-100 tnum">{gbp(m.total)}</div>
                   </div>
                 ))}
               </div>

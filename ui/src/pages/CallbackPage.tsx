@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { CheckCircle2, Loader2, XCircle } from 'lucide-react'
 
 export default function CallbackPage() {
   const [searchParams] = useSearchParams()
@@ -27,99 +28,29 @@ export default function CallbackPage() {
   }, [searchParams, navigate])
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="max-w-md w-full p-8 bg-white rounded-xl shadow-lg">
-        <div className="text-center">
-          {/* Loading Spinner */}
-          {status === 'loading' && (
-            <div className="mb-4">
-              <svg
-                className="animate-spin h-12 w-12 mx-auto text-blue-600"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                ></circle>
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
-              </svg>
-            </div>
-          )}
+    <div className="min-h-[70vh] flex items-center justify-center px-4">
+      <div className="max-w-md w-full card p-8 text-center animate-fade-up">
+        {status === 'loading' && <Loader2 className="animate-spin h-12 w-12 mx-auto text-accent mb-4" />}
+        {status === 'success' && <CheckCircle2 className="h-12 w-12 mx-auto text-pos mb-4" />}
+        {status === 'error' && <XCircle className="h-12 w-12 mx-auto text-neg mb-4" />}
 
-          {/* Success Icon */}
-          {status === 'success' && (
-            <div className="mb-4">
-              <svg
-                className="h-12 w-12 mx-auto text-green-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                ></path>
-              </svg>
-            </div>
-          )}
+        <h2
+          className={`font-display text-xl font-semibold mb-2 ${
+            status === 'success' ? 'text-pos' : status === 'error' ? 'text-neg' : 'text-slate-100'
+          }`}
+        >
+          {status === 'loading' && 'Connecting your bank'}
+          {status === 'success' && 'Success!'}
+          {status === 'error' && 'Connection failed'}
+        </h2>
 
-          {/* Error Icon */}
-          {status === 'error' && (
-            <div className="mb-4">
-              <svg
-                className="h-12 w-12 mx-auto text-red-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
-                ></path>
-              </svg>
-            </div>
-          )}
+        <p className="text-slate-400">{message}</p>
 
-          {/* Message */}
-          <h2
-            className={`text-xl font-semibold mb-2 ${
-              status === 'success'
-                ? 'text-green-800'
-                : status === 'error'
-                ? 'text-red-800'
-                : 'text-gray-800'
-            }`}
-          >
-            {status === 'loading' && 'Connecting Your Bank'}
-            {status === 'success' && 'Success!'}
-            {status === 'error' && 'Connection Failed'}
-          </h2>
-
-          <p className="text-gray-600">{message}</p>
-
-          {status === 'error' && (
-            <button
-              onClick={() => navigate('/dashboard')}
-              className="mt-6 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
-              Return to Dashboard
-            </button>
-          )}
-        </div>
+        {status === 'error' && (
+          <button onClick={() => navigate('/dashboard')} className="btn-primary mt-6">
+            Return to dashboard
+          </button>
+        )}
       </div>
     </div>
   )

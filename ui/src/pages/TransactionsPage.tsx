@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { ArrowDownToLine, ChevronDown, Repeat, SlidersHorizontal, Wand2 } from 'lucide-react'
 import { bankingAPI, analyticsAPI, rulesAPI } from '../services/api'
 import AddRuleModal from '../components/AddRuleModal'
 
@@ -49,6 +50,7 @@ export default function TransactionsPage() {
   const [isUpdatingBulk, setIsUpdatingBulk] = useState(false)
 
   // Filters
+  const [showFilters, setShowFilters] = useState(false)
   const [selectedAccount, setSelectedAccount] = useState<string>('')
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
@@ -64,6 +66,7 @@ export default function TransactionsPage() {
   useEffect(() => {
     loadAccounts()
     loadAllTransactions()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch only when the account filter changes
   }, [selectedAccount])
 
   // Reset to page 1 when filters or sort changes
@@ -108,7 +111,6 @@ export default function TransactionsPage() {
         new Map(transactions.map(tx => [tx.id, tx])).values()
       )
 
-      console.log(`Loaded ${transactions.length} transactions, ${uniqueTransactions.length} unique`)
       setAllTransactions(uniqueTransactions)
     } catch (error) {
       console.error('Failed to load transactions:', error)
@@ -293,19 +295,6 @@ export default function TransactionsPage() {
 
   // Filter and sort ALL transactions, then paginate client-side
   const filteredAndSortedTransactions = React.useMemo(() => {
-    console.log(`Processing ${allTransactions.length} total transactions`)
-    console.log(`Active filters:`, { searchTerm, selectedCategories, selectedAccount, startDate, endDate, minAmount, maxAmount, selectedMerchant, selectedType, hideInternalTransfers })
-    console.log(`Active sort:`, { sortField, sortDirection })
-
-    // Debug: Check sample transaction amounts and types
-    if (allTransactions.length > 0) {
-      console.log('Sample transactions:', allTransactions.slice(0, 5).map(tx => ({
-        amount: tx.amount,
-        type: tx.transaction_type,
-        desc: tx.description
-      })))
-    }
-
     // Detect internal transfers (same amount, opposite type, within 2-day range, different accounts)
     let transactionsToFilter = allTransactions
     if (hideInternalTransfers) {
@@ -352,7 +341,6 @@ export default function TransactionsPage() {
         }
       }
 
-      console.log(`Detected ${internalTransferIds.size} internal transfer transactions (within 2-day window)`)
       transactionsToFilter = allTransactions.filter(tx => !internalTransferIds.has(tx.id))
     }
 
@@ -394,8 +382,6 @@ export default function TransactionsPage() {
 
         return true // Keep everything else
       })
-
-      console.log(`After hiding credit card payments: ${transactionsToFilter.length} transactions`)
     }
 
     // First, filter ALL transactions (excluding internal transfers and credit card payments if enabled)
@@ -435,11 +421,8 @@ export default function TransactionsPage() {
              matchesMinAmount && matchesMaxAmount && matchesMerchant
     })
 
-    console.log(`After filtering: ${filtered.length} transactions`)
-
     // Then, sort if a sort field is selected
     if (!sortField) {
-      console.log('No sort field selected, returning filtered results')
       return filtered
     }
 
@@ -465,16 +448,6 @@ export default function TransactionsPage() {
       return sortDirection === 'asc' ? comparison : -comparison
     })
 
-    console.log(`After sorting by ${sortField} (${sortDirection}): ${sorted.length} transactions`)
-    if (sorted.length > 0) {
-      console.log('First 5 after sort:', sorted.slice(0, 5).map(t => ({
-        desc: t.description,
-        amount: t.amount,
-        absAmount: Math.abs(t.amount),
-        date: t.transaction_date
-      })))
-    }
-
     return sorted
   }, [allTransactions, accounts, searchTerm, selectedCategories, selectedType, startDate, endDate, minAmount, maxAmount, selectedMerchant, hideInternalTransfers, hideCreditCardPayments, sortField, sortDirection])
 
@@ -496,7 +469,6 @@ export default function TransactionsPage() {
   const endIndex = startIndex + pageSize
   const paginatedTransactions = filteredAndSortedTransactions.slice(startIndex, endIndex)
 
-
   // Calculate totals
   const totalSpent = filteredAndSortedTransactions
     .filter(tx => tx.transaction_type === 'debit')
@@ -505,6 +477,32 @@ export default function TransactionsPage() {
   const totalIncome = filteredAndSortedTransactions
     .filter(tx => tx.transaction_type === 'credit')
     .reduce((sum, tx) => sum + tx.amount, 0)
+
+  const activeFilterCount = [
+    selectedCategories.length > 0,
+    !!startDate,
+    !!endDate,
+    !!minAmount,
+    !!maxAmount,
+    !!selectedMerchant,
+    !!selectedType,
+    hideInternalTransfers,
+    hideCreditCardPayments,
+  ].filter(Boolean).length
+
+  const clearFilters = () => {
+    setStartDate('')
+    setEndDate('')
+    setSearchTerm('')
+    setSelectedCategories([])
+    setSelectedAccount('')
+    setMinAmount('')
+    setMaxAmount('')
+    setSelectedMerchant('')
+    setSelectedType('')
+    setHideInternalTransfers(false)
+    setHideCreditCardPayments(false)
+  }
 
   const renderCategoryEditor = (transaction: Transaction) =>
     editingTransactionId === transaction.id ? (
@@ -518,18 +516,15 @@ export default function TransactionsPage() {
                 onChange={(e) => setNewCategoryName(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleAddCustomCategory()}
                 placeholder="New category name"
-                className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="input !px-2 !py-1 !text-xs !rounded-lg"
                 autoFocus
               />
-              <button
-                onClick={handleAddCustomCategory}
-                className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
-              >
+              <button onClick={handleAddCustomCategory} className="btn-primary !px-2 !py-1 !text-xs !rounded-lg">
                 Add
               </button>
               <button
                 onClick={() => { setIsAddingCategory(false); setNewCategoryName('') }}
-                className="px-2 py-1 text-xs bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
+                className="btn-ghost !px-2 !py-1 !text-xs !rounded-lg"
               >
                 Cancel
               </button>
@@ -544,7 +539,7 @@ export default function TransactionsPage() {
                   setEditingCategory(e.target.value)
                 }
               }}
-              className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="input !px-2 !py-1 !text-xs !rounded-lg"
               autoFocus
             >
               <option value="">Uncategorized</option>
@@ -553,9 +548,7 @@ export default function TransactionsPage() {
                   {cat}
                 </option>
               ))}
-              <option value="__ADD_NEW__" className="font-semibold text-blue-600">
-                + Add New Category
-              </option>
+              <option value="__ADD_NEW__">+ Add New Category</option>
             </select>
           )}
         </div>
@@ -563,30 +556,24 @@ export default function TransactionsPage() {
           <>
             <button
               onClick={() => handleSaveCategory(transaction.id)}
-              className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+              className="btn-primary !px-2 !py-1 !text-xs !rounded-lg"
             >
               Save
             </button>
-            <button
-              onClick={handleCancelEdit}
-              className="px-2 py-1 text-xs bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
-            >
+            <button onClick={handleCancelEdit} className="btn-ghost !px-2 !py-1 !text-xs !rounded-lg">
               Cancel
             </button>
           </>
         )}
       </div>
     ) : (
-      <div
-        onClick={() => handleEditCategory(transaction)}
-        className="cursor-pointer group"
-      >
+      <div onClick={() => handleEditCategory(transaction)} className="cursor-pointer group/cat">
         {transaction.category ? (
-          <span className="inline-block px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded group-hover:bg-blue-100 group-hover:text-blue-700 transition-colors">
+          <span className="chip group-hover/cat:bg-accent/15 group-hover/cat:text-accent transition-colors">
             {transaction.category}
           </span>
         ) : (
-          <span className="text-xs text-gray-400 group-hover:text-blue-600 transition-colors">
+          <span className="text-xs text-slate-600 group-hover/cat:text-accent transition-colors">
             Click to categorize
           </span>
         )}
@@ -594,278 +581,205 @@ export default function TransactionsPage() {
     )
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
+    <div className="max-w-7xl mx-auto px-4 py-6 sm:py-10">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-        <h1 className="text-2xl sm:text-3xl font-bold">Transactions</h1>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <div className="text-sm text-gray-600">
-            {allTransactions.length} total transactions
-          </div>
-          <button
-            onClick={handleDownloadCSV}
-            disabled={filteredAndSortedTransactions.length === 0}
-            className="px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-            title={`Download ${filteredAndSortedTransactions.length} filtered transactions as CSV`}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            Download CSV
-          </button>
+        <div className="flex items-baseline gap-3">
+          <h1 className="font-display font-bold text-2xl sm:text-3xl text-slate-50">Activity</h1>
+          <span className="text-sm text-slate-500">{allTransactions.length} transactions</span>
         </div>
+        <button
+          onClick={handleDownloadCSV}
+          disabled={filteredAndSortedTransactions.length === 0}
+          className="btn-ghost"
+          title={`Download ${filteredAndSortedTransactions.length} filtered transactions as CSV`}
+        >
+          <ArrowDownToLine className="w-4 h-4" />
+          Download CSV
+        </button>
       </div>
 
       {/* Summary Cards */}
-      <div className="grid md:grid-cols-3 gap-4 mb-6">
-        <div className="p-4 bg-red-50 rounded-lg border border-red-200">
-          <div className="text-sm text-red-600 mb-1">Total Spent</div>
-          <div className="text-2xl font-bold text-red-700">
-            {formatCurrency(totalSpent)}
-          </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <div className="card p-4">
+          <div className="text-sm text-slate-400 mb-1">Spent</div>
+          <div className="stat-figure text-2xl text-neg">−{formatCurrency(totalSpent)}</div>
         </div>
-        <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-          <div className="text-sm text-green-600 mb-1">Total Income</div>
-          <div className="text-2xl font-bold text-green-700">
-            {formatCurrency(totalIncome)}
-          </div>
+        <div className="card p-4">
+          <div className="text-sm text-slate-400 mb-1">Income</div>
+          <div className="stat-figure text-2xl text-pos">+{formatCurrency(totalIncome)}</div>
         </div>
-        <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-          <div className="text-sm text-blue-600 mb-1">Net</div>
-          <div className={`text-2xl font-bold ${totalIncome - totalSpent >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+        <div className="card p-4">
+          <div className="text-sm text-slate-400 mb-1">Net</div>
+          <div className={`stat-figure text-2xl ${totalIncome - totalSpent >= 0 ? 'text-pos' : 'text-neg'}`}>
             {formatCurrency(totalIncome - totalSpent)}
           </div>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="bg-white p-4 rounded-lg shadow-sm mb-6">
-        <div className="grid md:grid-cols-3 gap-4 mb-4">
-          {/* Search */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Search
-            </label>
-            <input
-              type="text"
-              placeholder="Search description or merchant..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-
-          {/* Account Filter */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Account
-            </label>
-            <select
-              value={selectedAccount}
-              onChange={(e) => setSelectedAccount(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">All Accounts</option>
-              {accounts.map(account => (
-                <option key={account.id} value={account.id}>
-                  {account.display_name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Category Filter */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Categories (select multiple)
-            </label>
-            <div className="border border-gray-300 rounded-lg p-2 max-h-48 overflow-y-auto bg-white">
-              {selectedCategories.length > 0 && (
-                <div className="mb-2 pb-2 border-b border-gray-200">
-                  <button
-                    onClick={() => setSelectedCategories([])}
-                    className="text-xs text-blue-600 hover:text-blue-800"
-                  >
-                    Clear all ({selectedCategories.length})
-                  </button>
-                </div>
-              )}
-              {['Uncategorized', ...categories].map(category => {
-                const categoryValue = category === 'Uncategorized' ? 'Uncategorized' : category
-                const isSelected = selectedCategories.includes(categoryValue)
-                return (
-                  <label key={category} className="flex items-center py-1 px-2 hover:bg-gray-50 rounded cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setSelectedCategories([...selectedCategories, categoryValue])
-                        } else {
-                          setSelectedCategories(selectedCategories.filter(c => c !== categoryValue))
-                        }
-                      }}
-                      className="mr-2"
-                    />
-                    <span className="text-sm">{category}</span>
-                  </label>
-                )
-              })}
-            </div>
-          </div>
+      {/* Search + filter bar */}
+      <div className="card p-4 mb-6">
+        <div className="flex flex-col md:flex-row gap-3">
+          <input
+            type="text"
+            placeholder="Search description or merchant…"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="input flex-1"
+          />
+          <select
+            value={selectedAccount}
+            onChange={(e) => setSelectedAccount(e.target.value)}
+            className="input md:!w-56"
+          >
+            <option value="">All accounts</option>
+            {accounts.map(account => (
+              <option key={account.id} value={account.id}>
+                {account.display_name}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => setShowFilters((s) => !s)}
+            className={`btn ${showFilters || activeFilterCount > 0 ? 'bg-accent/15 text-accent' : 'bg-white/[0.06] text-slate-200 hover:bg-white/[0.1]'}`}
+            aria-expanded={showFilters}
+          >
+            <SlidersHorizontal className="w-4 h-4" />
+            Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+            <ChevronDown className={`w-4 h-4 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
+          </button>
         </div>
 
-        {/* Date Range Filter */}
-        <div className="grid md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Start Date
-            </label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
+        {showFilters && (
+          <div className="mt-4 pt-4 border-t border-white/[0.06]">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+              <div>
+                <label className="label">Start date</label>
+                <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="input" />
+              </div>
+              <div>
+                <label className="label">End date</label>
+                <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="input" />
+              </div>
+              <div>
+                <label className="label">Min amount</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={minAmount}
+                  onChange={(e) => setMinAmount(e.target.value)}
+                  className="input"
+                />
+              </div>
+              <div>
+                <label className="label">Max amount</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="999999.99"
+                  value={maxAmount}
+                  onChange={(e) => setMaxAmount(e.target.value)}
+                  className="input"
+                />
+              </div>
+            </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              End Date
-            </label>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+              <div>
+                <label className="label">Merchant</label>
+                <select value={selectedMerchant} onChange={(e) => setSelectedMerchant(e.target.value)} className="input">
+                  <option value="">All merchants</option>
+                  {merchants.map(merchant => (
+                    <option key={merchant} value={merchant}>
+                      {merchant}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="label">Type</label>
+                <select value={selectedType} onChange={(e) => setSelectedType(e.target.value)} className="input">
+                  <option value="">All transactions</option>
+                  <option value="debit">Expenses only</option>
+                  <option value="credit">Income only</option>
+                </select>
+              </div>
+              <div>
+                <label className="label">Categories</label>
+                <div className="border border-white/10 rounded-xl p-2 max-h-40 overflow-y-auto bg-white/[0.03]">
+                  {selectedCategories.length > 0 && (
+                    <div className="mb-2 pb-2 border-b border-white/[0.06]">
+                      <button onClick={() => setSelectedCategories([])} className="text-xs text-accent hover:text-accent-bright">
+                        Clear all ({selectedCategories.length})
+                      </button>
+                    </div>
+                  )}
+                  {['Uncategorized', ...categories].map(category => {
+                    const categoryValue = category === 'Uncategorized' ? 'Uncategorized' : category
+                    const isSelected = selectedCategories.includes(categoryValue)
+                    return (
+                      <label key={category} className="flex items-center py-1 px-2 hover:bg-white/[0.04] rounded-lg cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedCategories([...selectedCategories, categoryValue])
+                            } else {
+                              setSelectedCategories(selectedCategories.filter(c => c !== categoryValue))
+                            }
+                          }}
+                          className="checkbox mr-2"
+                        />
+                        <span className="text-sm text-slate-300">{category}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
 
-          <div className="flex items-end">
-            <button
-              onClick={() => {
-                setStartDate('')
-                setEndDate('')
-                setSearchTerm('')
-                setSelectedCategories([])
-                setSelectedAccount('')
-                setMinAmount('')
-                setMaxAmount('')
-                setSelectedMerchant('')
-                setSelectedType('')
-                setHideInternalTransfers(false)
-                setHideCreditCardPayments(false)
-              }}
-              className="w-full px-4 py-2 text-sm text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-            >
-              Clear Filters
+            <div className="space-y-3 mb-4">
+              <label className="flex items-start sm:items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={hideInternalTransfers}
+                  onChange={(e) => setHideInternalTransfers(e.target.checked)}
+                  className="checkbox mt-0.5 sm:mt-0"
+                />
+                <span className="ml-2 text-sm text-slate-300">
+                  Hide internal transfers between accounts
+                  <span className="ml-1 text-xs text-slate-500">(matching debit/credit pairs within 2 days)</span>
+                </span>
+              </label>
+
+              <label className="flex items-start sm:items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={hideCreditCardPayments}
+                  onChange={(e) => setHideCreditCardPayments(e.target.checked)}
+                  className="checkbox mt-0.5 sm:mt-0"
+                />
+                <span className="ml-2 text-sm text-slate-300">
+                  Hide credit card payments
+                  <span className="ml-1 text-xs text-slate-500">(keeps purchases made with the cards)</span>
+                </span>
+              </label>
+            </div>
+
+            <button onClick={clearFilters} className="btn-ghost">
+              Clear all filters
             </button>
           </div>
-        </div>
-
-        {/* Amount Range and Merchant Filter */}
-        <div className="grid md:grid-cols-4 gap-4 mt-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Min Amount
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              placeholder="0.00"
-              value={minAmount}
-              onChange={(e) => setMinAmount(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Max Amount
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              placeholder="999999.99"
-              value={maxAmount}
-              onChange={(e) => setMaxAmount(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Merchant
-            </label>
-            <select
-              value={selectedMerchant}
-              onChange={(e) => setSelectedMerchant(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">All Merchants</option>
-              {merchants.map(merchant => (
-                <option key={merchant} value={merchant}>
-                  {merchant}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Transaction Type
-            </label>
-            <select
-              value={selectedType}
-              onChange={(e) => setSelectedType(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">All Transactions</option>
-              <option value="debit">Expenses Only</option>
-              <option value="credit">Income Only</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Filter Toggles */}
-        <div className="mt-4 pt-4 border-t border-gray-200 space-y-3">
-          <label className="flex items-center cursor-pointer">
-            <input
-              type="checkbox"
-              checked={hideInternalTransfers}
-              onChange={(e) => setHideInternalTransfers(e.target.checked)}
-              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
-            />
-            <span className="ml-2 text-sm text-gray-700">
-              Hide internal transfers between accounts
-            </span>
-            <span className="ml-2 text-xs text-gray-500">
-              (Filters out matching debit/credit pairs within 2 days)
-            </span>
-          </label>
-
-          <label className="flex items-center cursor-pointer">
-            <input
-              type="checkbox"
-              checked={hideCreditCardPayments}
-              onChange={(e) => setHideCreditCardPayments(e.target.checked)}
-              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
-            />
-            <span className="ml-2 text-sm text-gray-700">
-              Hide credit card payments
-            </span>
-            <span className="ml-2 text-xs text-gray-500">
-              (Hides payments TO credit cards, keeps purchases made WITH credit cards)
-            </span>
-          </label>
-        </div>
+        )}
       </div>
 
       {/* Bulk Category Update Bar */}
       {!loading && paginatedTransactions.length > 0 && (
-        <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
+        <div className="card p-4 mb-4">
           {!isBulkCategoryMode ? (
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-              <div className="text-sm text-gray-600">
+              <div className="text-sm text-slate-400">
                 {selectedTransactionIds.size > 0 ? (
                   <span>{selectedTransactionIds.size} transaction{selectedTransactionIds.size !== 1 ? 's' : ''} selected</span>
                 ) : (
@@ -874,32 +788,26 @@ export default function TransactionsPage() {
               </div>
               <div className="flex flex-wrap gap-2">
                 {selectedTransactionIds.size > 0 && (
-                  <button
-                    onClick={handleDeselectAll}
-                    className="px-3 py-1.5 text-sm text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-                  >
-                    Deselect All
+                  <button onClick={handleDeselectAll} className="btn-ghost !py-1.5">
+                    Deselect all
                   </button>
                 )}
                 <button
                   onClick={() => setIsBulkCategoryMode(true)}
                   disabled={selectedTransactionIds.size === 0}
-                  className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="btn-primary !py-1.5"
                 >
-                  Set Category
+                  Set category
                 </button>
               </div>
             </div>
           ) : (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <div className="text-sm font-medium text-gray-700">
+                <div className="text-sm font-medium text-slate-200">
                   Setting category for {selectedTransactionIds.size} transaction{selectedTransactionIds.size !== 1 ? 's' : ''}
                 </div>
-                <button
-                  onClick={handleCancelBulkMode}
-                  className="text-sm text-gray-600 hover:text-gray-800"
-                >
+                <button onClick={handleCancelBulkMode} className="text-sm text-slate-400 hover:text-slate-200">
                   Cancel
                 </button>
               </div>
@@ -912,18 +820,15 @@ export default function TransactionsPage() {
                     onChange={(e) => setBulkNewCategoryName(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && handleAddBulkCustomCategory()}
                     placeholder="New category name"
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="input flex-1"
                     autoFocus
                   />
-                  <button
-                    onClick={handleAddBulkCustomCategory}
-                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-                  >
+                  <button onClick={handleAddBulkCustomCategory} className="btn-primary">
                     Add
                   </button>
                   <button
                     onClick={() => { setIsBulkAddingCategory(false); setBulkNewCategoryName('') }}
-                    className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400"
+                    className="btn-ghost"
                   >
                     Cancel
                   </button>
@@ -939,7 +844,7 @@ export default function TransactionsPage() {
                         setBulkCategory(e.target.value)
                       }
                     }}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="input flex-1"
                   >
                     <option value="">Uncategorized</option>
                     {categories.map(cat => (
@@ -947,16 +852,10 @@ export default function TransactionsPage() {
                         {cat}
                       </option>
                     ))}
-                    <option value="__ADD_NEW__" className="font-semibold text-blue-600">
-                      + Add New Category
-                    </option>
+                    <option value="__ADD_NEW__">+ Add New Category</option>
                   </select>
-                  <button
-                    onClick={handleBulkUpdateCategory}
-                    disabled={isUpdatingBulk}
-                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isUpdatingBulk ? 'Updating...' : 'Apply'}
+                  <button onClick={handleBulkUpdateCategory} disabled={isUpdatingBulk} className="btn-primary">
+                    {isUpdatingBulk ? 'Updating…' : 'Apply'}
                   </button>
                 </div>
               )}
@@ -966,11 +865,11 @@ export default function TransactionsPage() {
       )}
 
       {/* Transactions List */}
-      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+      <div className="card overflow-hidden">
         {loading ? (
-          <div className="p-8 text-center text-gray-500">Loading transactions...</div>
+          <div className="p-8 text-center text-slate-500">Loading transactions…</div>
         ) : paginatedTransactions.length === 0 ? (
-          <div className="p-8 text-center text-gray-500">
+          <div className="p-8 text-center text-slate-500">
             {allTransactions.length === 0
               ? 'No transactions found. Sync transactions first.'
               : 'No transactions match your filters. Try adjusting your filters.'}
@@ -979,15 +878,12 @@ export default function TransactionsPage() {
           <>
           {/* Mobile card list */}
           <div className="md:hidden">
-            <div className="px-4 py-2 border-b border-gray-200 bg-gray-50">
-              <button
-                onClick={handleSelectAll}
-                className="text-xs font-medium text-blue-600 hover:text-blue-800 uppercase"
-              >
+            <div className="px-4 py-2 border-b border-white/[0.06] bg-white/[0.02]">
+              <button onClick={handleSelectAll} className="text-xs font-medium text-accent hover:text-accent-bright uppercase">
                 Select All ({filteredAndSortedTransactions.length})
               </button>
             </div>
-            <div className="divide-y divide-gray-200">
+            <div className="divide-y divide-white/[0.06]">
               {paginatedTransactions.map((transaction) => (
                 <div key={transaction.id} className="p-4">
                   <div className="flex items-start gap-3">
@@ -995,47 +891,43 @@ export default function TransactionsPage() {
                       type="checkbox"
                       checked={selectedTransactionIds.has(transaction.id)}
                       onChange={() => handleToggleTransaction(transaction.id)}
-                      className="mt-1 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      className="checkbox mt-1"
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">
-                        <div className="text-sm font-medium text-gray-900 break-words">
+                        <div className="text-sm font-medium text-slate-100 break-words">
                           {transaction.merchant_name || transaction.description}
                         </div>
-                        <div className={`text-sm font-semibold whitespace-nowrap ${
-                          transaction.transaction_type === 'credit' ? 'text-green-600' : 'text-red-600'
+                        <div className={`text-sm font-semibold whitespace-nowrap tnum ${
+                          transaction.transaction_type === 'credit' ? 'text-pos' : 'text-slate-200'
                         }`}>
-                          {transaction.transaction_type === 'credit' ? '+' : '-'}
+                          {transaction.transaction_type === 'credit' ? '+' : '−'}
                           {formatCurrency(transaction.amount, transaction.currency)}
                         </div>
                       </div>
                       {transaction.merchant_name && (
-                        <div className="text-xs text-gray-500 break-words">{transaction.description}</div>
+                        <div className="text-xs text-slate-500 break-words">{transaction.description}</div>
                       )}
-                      <div className="text-xs text-gray-500 mt-0.5">
+                      <div className="text-xs text-slate-500 mt-0.5">
                         {formatDate(transaction.transaction_date)} · {getAccountName(transaction.account_id)}
-                        {transaction.is_recurring && (
-                          <span className="ml-2 px-1.5 py-0.5 bg-purple-100 text-purple-800 rounded">
-                            Recurring
-                          </span>
-                        )}
+                        {transaction.is_recurring && <span className="ml-2 chip-info">Recurring</span>}
                       </div>
                       <div className="mt-2 flex items-center justify-between gap-2">
                         <div className="flex-1 min-w-0">{renderCategoryEditor(transaction)}</div>
-                        <div className="flex gap-2 whitespace-nowrap">
+                        <div className="flex gap-3 whitespace-nowrap">
                           <button
                             onClick={() => setRuleTx(transaction)}
-                            className="text-xs text-gray-400 hover:text-blue-600"
+                            className="text-xs text-slate-500 hover:text-accent transition-colors inline-flex items-center gap-1"
                             title="Create a categorization rule from this transaction"
                           >
-                            + Rule
+                            <Wand2 className="w-3.5 h-3.5" /> Rule
                           </button>
                           <button
                             onClick={() => setRecurringTx(transaction)}
-                            className="text-xs text-gray-400 hover:text-blue-600"
+                            className="text-xs text-slate-500 hover:text-accent transition-colors inline-flex items-center gap-1"
                             title="Mark as a recurring commitment"
                           >
-                            ↻ Recurring
+                            <Repeat className="w-3.5 h-3.5" /> Recurring
                           </button>
                         </div>
                       </div>
@@ -1049,23 +941,21 @@ export default function TransactionsPage() {
           {/* Desktop table */}
           <div className="hidden md:block overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
+              <thead className="bg-white/[0.02] border-b border-white/[0.06]">
                 <tr>
                   <th className="px-4 py-3 text-left">
                     <button
                       onClick={handleSelectAll}
-                      className="text-xs font-medium text-blue-600 hover:text-blue-800 uppercase"
+                      className="text-xs font-medium text-accent hover:text-accent-bright uppercase tracking-wider"
                       title={`Select all ${filteredAndSortedTransactions.length} filtered transactions`}
                     >
                       Select All ({filteredAndSortedTransactions.length})
                     </button>
                   </th>
                   <th
-                    className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
+                    className="th cursor-pointer hover:bg-white/[0.04] select-none"
                     onClick={() => {
-                      console.log('Date clicked. Current:', { sortField, sortDirection })
                       const newDirection = sortField === 'date' && sortDirection === 'asc' ? 'desc' : 'asc'
-                      console.log('Setting direction to:', newDirection)
                       setSortField('date')
                       setSortDirection(newDirection)
                     }}
@@ -1073,21 +963,17 @@ export default function TransactionsPage() {
                     <div className="flex items-center gap-1">
                       Date
                       {sortField === 'date' && (
-                        <span className="text-blue-600">
-                          {sortDirection === 'asc' ? '↑' : '↓'}
-                        </span>
+                        <span className="text-accent">{sortDirection === 'asc' ? '↑' : '↓'}</span>
                       )}
                     </div>
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Account</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
+                  <th className="th">Description</th>
+                  <th className="th">Account</th>
+                  <th className="th">Category</th>
                   <th
-                    className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
+                    className="th !text-right cursor-pointer hover:bg-white/[0.04] select-none"
                     onClick={() => {
-                      console.log('Amount clicked. Current:', { sortField, sortDirection })
                       const newDirection = sortField === 'amount' && sortDirection === 'asc' ? 'desc' : 'asc'
-                      console.log('Setting direction to:', newDirection)
                       setSortField('amount')
                       setSortDirection(newDirection)
                     }}
@@ -1095,67 +981,61 @@ export default function TransactionsPage() {
                     <div className="flex items-center justify-end gap-1">
                       Amount
                       {sortField === 'amount' && (
-                        <span className="text-blue-600">
-                          {sortDirection === 'asc' ? '↑' : '↓'}
-                        </span>
+                        <span className="text-accent">{sortDirection === 'asc' ? '↑' : '↓'}</span>
                       )}
                     </div>
                   </th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase"></th>
+                  <th className="th !text-right"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-white/[0.06]">
                 {paginatedTransactions.map((transaction) => (
-                  <tr key={transaction.id} className="hover:bg-gray-50">
+                  <tr key={transaction.id} className="hover:bg-white/[0.03] transition-colors">
                     <td className="px-4 py-3">
                       <input
                         type="checkbox"
                         checked={selectedTransactionIds.has(transaction.id)}
                         onChange={() => handleToggleTransaction(transaction.id)}
-                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        className="checkbox"
                       />
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">
+                    <td className="px-4 py-3 text-sm text-slate-400 whitespace-nowrap tnum">
                       {formatDate(transaction.transaction_date)}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="text-sm font-medium text-gray-900">
+                      <div className="text-sm font-medium text-slate-100">
                         {transaction.merchant_name || transaction.description}
                       </div>
                       {transaction.merchant_name && (
-                        <div className="text-xs text-gray-500">
+                        <div className="text-xs text-slate-500">
                           {transaction.description}
                         </div>
                       )}
-                      {transaction.is_recurring && (
-                        <span className="inline-block mt-1 px-2 py-0.5 text-xs bg-purple-100 text-purple-800 rounded">
-                          Recurring
-                        </span>
-                      )}
+                      {transaction.is_recurring && <span className="chip-info mt-1">Recurring</span>}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
+                    <td className="px-4 py-3 text-sm text-slate-400">
                       {getAccountName(transaction.account_id)}
                     </td>
                     <td className="px-4 py-3">
                       {renderCategoryEditor(transaction)}
                     </td>
-                    <td className={`px-4 py-3 text-sm font-semibold text-right whitespace-nowrap ${
-                      transaction.transaction_type === 'credit' ? 'text-green-600' : 'text-red-600'
+                    <td className={`px-4 py-3 text-sm font-semibold text-right whitespace-nowrap tnum ${
+                      transaction.transaction_type === 'credit' ? 'text-pos' : 'text-slate-200'
                     }`}>
-                      {transaction.transaction_type === 'credit' ? '+' : '-'}
+                      {transaction.transaction_type === 'credit' ? '+' : '−'}
                       {formatCurrency(transaction.amount, transaction.currency)}
                     </td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">
                       <button
                         onClick={() => setRuleTx(transaction)}
-                        className="text-xs text-gray-400 hover:text-blue-600 mr-2"
+                        className="text-xs text-slate-500 hover:text-accent transition-colors mr-3"
                         title="Create a categorization rule from this transaction"
                       >
                         + Rule
                       </button>
                       <button
                         onClick={() => setRecurringTx(transaction)}
-                        className="text-xs text-gray-400 hover:text-blue-600"
+                        className="text-xs text-slate-500 hover:text-accent transition-colors"
                         title="Mark as a recurring commitment"
                       >
                         ↻ Recurring
@@ -1211,51 +1091,45 @@ export default function TransactionsPage() {
             return pages
           }
 
+          const pageBtn = 'px-3 py-1 rounded-lg text-sm border border-white/10 text-slate-300 hover:bg-white/[0.06] disabled:opacity-40 disabled:cursor-not-allowed transition-colors'
+
           return (
-            <div className="px-4 py-3 border-t border-gray-200">
+            <div className="px-4 py-3 border-t border-white/[0.06]">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-3">
-                <div className="text-sm text-gray-700">
+                <div className="text-sm text-slate-400">
                   Showing {startItem}-{endItem} of {totalFiltered} transaction{totalFiltered !== 1 ? 's' : ''}
                   {totalFiltered !== allTransactions.length && (
-                    <span className="text-gray-500"> (filtered from {allTransactions.length} total)</span>
+                    <span className="text-slate-600"> (filtered from {allTransactions.length} total)</span>
                   )}
                 </div>
-                <div className="text-sm text-gray-600">
+                <div className="text-sm text-slate-500">
                   Page {page} of {totalPages}
                 </div>
               </div>
 
               <div className="flex items-center justify-center gap-1">
-                <button
-                  onClick={() => setPage(1)}
-                  disabled={page === 1}
-                  className="hidden sm:block px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-                >
+                <button onClick={() => setPage(1)} disabled={page === 1} className={`hidden sm:block ${pageBtn}`}>
                   First
                 </button>
-                <button
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                  className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-                >
+                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className={pageBtn}>
                   Previous
                 </button>
 
                 <div className="hidden sm:flex items-center gap-1">
                   {getPageNumbers().map((pageNum, idx) => (
                     pageNum === '...' ? (
-                      <span key={`ellipsis-${idx}`} className="px-2 py-1 text-gray-400">
+                      <span key={`ellipsis-${idx}`} className="px-2 py-1 text-slate-600">
                         ...
                       </span>
                     ) : (
                       <button
                         key={pageNum}
                         onClick={() => setPage(pageNum as number)}
-                        className={`px-3 py-1 border rounded text-sm ${
+                        className={
                           page === pageNum
-                            ? 'bg-blue-600 text-white border-blue-600'
-                            : 'border-gray-300 hover:bg-gray-50'
-                        }`}
+                            ? 'px-3 py-1 rounded-lg text-sm bg-accent text-ink-950 font-medium'
+                            : pageBtn
+                        }
                       >
                         {pageNum}
                       </button>
@@ -1266,14 +1140,14 @@ export default function TransactionsPage() {
                 <button
                   onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                   disabled={page === totalPages}
-                  className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                  className={pageBtn}
                 >
                   Next
                 </button>
                 <button
                   onClick={() => setPage(totalPages)}
                   disabled={page === totalPages}
-                  className="hidden sm:block px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                  className={`hidden sm:block ${pageBtn}`}
                 >
                   Last
                 </button>
@@ -1284,7 +1158,7 @@ export default function TransactionsPage() {
       </div>
 
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 bg-green-600 text-white px-4 py-3 rounded-lg shadow-lg">
+        <div className="fixed bottom-24 md:bottom-6 right-4 sm:right-6 z-50 bg-accent text-ink-950 font-medium px-4 py-3 rounded-xl shadow-pop">
           {toast}
         </div>
       )}
@@ -1295,7 +1169,7 @@ export default function TransactionsPage() {
           onClose={() => setRecurringTx(null)}
           onDone={(label) => {
             setRecurringTx(null)
-            setToast(`"${label}" added to Commitments`)
+            setToast(`"${label}" added to Plan`)
             setTimeout(() => setToast(''), 3500)
           }}
         />
@@ -1346,31 +1220,24 @@ function MakeRecurringModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-lg w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-lg font-semibold mb-1">Mark as recurring</h3>
-        <p className="text-sm text-gray-500 mb-4">
-          Add <span className="font-medium">{label}</span> ({transaction.transaction_type === 'credit' ? 'income' : 'expense'}) as a
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-panel !max-w-sm" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-lg font-semibold text-slate-50 mb-1">Mark as recurring</h3>
+        <p className="text-sm text-slate-400 mb-4">
+          Add <span className="font-medium text-slate-200">{label}</span> ({transaction.transaction_type === 'credit' ? 'income' : 'expense'}) as a
           confirmed commitment so it feeds your safe-to-spend and forecast.
         </p>
-        <label className="block text-sm font-medium text-gray-700 mb-1">How often?</label>
-        <select
-          value={cadence}
-          onChange={(e) => setCadence(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg mb-5"
-        >
+        <label className="label">How often?</label>
+        <select value={cadence} onChange={(e) => setCadence(e.target.value)} className="input mb-5">
           <option value="weekly">Weekly</option>
           <option value="monthly">Monthly</option>
           <option value="every_n_months">Every few months</option>
+          <option value="yearly">Yearly</option>
         </select>
         <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Cancel</button>
-          <button
-            onClick={save}
-            disabled={saving}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-          >
-            {saving ? 'Adding…' : 'Add to commitments'}
+          <button onClick={onClose} className="btn-ghost">Cancel</button>
+          <button onClick={save} disabled={saving} className="btn-primary">
+            {saving ? 'Adding…' : 'Add to plan'}
           </button>
         </div>
       </div>

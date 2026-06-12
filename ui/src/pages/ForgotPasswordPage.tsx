@@ -1,6 +1,7 @@
 import { useState, FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { authApi } from '../services/api'
+import AuthShell from '../components/ui/AuthShell'
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('')
@@ -21,43 +22,35 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="max-w-md mx-auto px-4 py-16">
-      <h1 className="text-3xl font-bold text-center mb-8">Reset Password</h1>
-
+    <AuthShell title="Reset password" subtitle="We'll email you a link to set a new one.">
       {sent ? (
-        <div className="p-4 bg-green-100 text-green-800 rounded-lg text-center">
+        <div className="banner-ok text-center">
           If that email has an account, a reset link is on its way. Check your inbox.
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
-          <p className="text-gray-600">
-            Enter your email and we'll send you a link to set a new password.
-          </p>
           <div>
-            <label className="block text-gray-700 mb-1">Email</label>
+            <label className="label">Email</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              className="input"
+              autoComplete="email"
               required
             />
           </div>
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-          >
-            {isLoading ? 'Sending...' : 'Send reset link'}
+          <button type="submit" disabled={isLoading} className="btn-primary w-full !py-3">
+            {isLoading ? 'Sending…' : 'Send reset link'}
           </button>
         </form>
       )}
 
-      <p className="mt-4 text-center text-gray-600">
-        <Link to="/login" className="text-blue-600 hover:underline">
+      <p className="mt-6 text-center">
+        <Link to="/login" className="btn-link">
           Back to login
         </Link>
       </p>
-    </div>
+    </AuthShell>
   )
 }

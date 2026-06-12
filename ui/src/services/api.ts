@@ -183,6 +183,7 @@ export const analyticsAPI = {
     label: string
     amount: number
     cadence?: string
+    interval_months?: number | null
     next_date: string
     account_id?: string | null
   }) => api.post('/analytics/commitments', data),

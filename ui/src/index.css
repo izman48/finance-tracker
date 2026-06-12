@@ -2,6 +2,159 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  @apply bg-gray-50 text-gray-900;
+@layer base {
+  html {
+    color-scheme: dark;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-ink-900 text-slate-200 font-sans;
+    background-image:
+      radial-gradient(1200px 600px at 80% -10%, rgba(45, 212, 167, 0.07), transparent 60%),
+      radial-gradient(900px 500px at -10% 10%, rgba(56, 189, 248, 0.06), transparent 55%);
+    background-attachment: fixed;
+  }
+
+  ::selection {
+    @apply bg-accent/30 text-white;
+  }
+
+  /* Slimmer, darker scrollbars where supported */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.25) transparent;
+  }
+}
+
+@layer components {
+  /* Surfaces */
+  .card {
+    @apply bg-card border border-white/[0.06] rounded-2xl shadow-card;
+  }
+  .card-pad {
+    @apply card p-5 sm:p-6;
+  }
+
+  /* Buttons */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-medium
+      transition-colors disabled:opacity-50 disabled:cursor-not-allowed
+      focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent/60;
+  }
+  .btn-primary {
+    @apply btn bg-accent text-ink-950 hover:bg-accent-bright font-semibold;
+  }
+  .btn-ghost {
+    @apply btn bg-white/[0.06] text-slate-200 hover:bg-white/[0.1];
+  }
+  .btn-danger {
+    @apply btn bg-neg/10 text-neg hover:bg-neg/20;
+  }
+  .btn-link {
+    @apply text-sm text-accent hover:text-accent-bright transition-colors;
+  }
+
+  /* Forms */
+  .input {
+    @apply w-full px-3 py-2 rounded-xl bg-white/[0.05] border border-white/10 text-slate-100
+      placeholder:text-slate-500 transition-colors
+      focus:outline-none focus:border-accent/50 focus:ring-2 focus:ring-accent/15;
+  }
+  select.input {
+    @apply pr-8 appearance-none bg-no-repeat;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-position: right 0.65rem center;
+  }
+  .label {
+    @apply block text-sm font-medium text-slate-400 mb-1;
+  }
+  .checkbox {
+    @apply w-4 h-4 rounded border-white/20 bg-white/[0.05] text-accent
+      focus:ring-accent/40 focus:ring-offset-0;
+  }
+
+  /* Small period/segment pickers */
+  .seg {
+    @apply px-2.5 py-1 text-sm rounded-lg transition-colors text-slate-400 hover:text-slate-200 hover:bg-white/[0.06];
+  }
+  .seg-active {
+    @apply px-2.5 py-1 text-sm rounded-lg bg-accent/15 text-accent font-medium;
+  }
+
+  /* Chips / tags */
+  .chip {
+    @apply inline-flex items-center px-2 py-0.5 text-xs rounded-md bg-white/[0.07] text-slate-300;
+  }
+  .chip-pos {
+    @apply inline-flex items-center px-2 py-0.5 text-xs rounded-md bg-pos/15 text-pos;
+  }
+  .chip-neg {
+    @apply inline-flex items-center px-2 py-0.5 text-xs rounded-md bg-neg/15 text-neg;
+  }
+  .chip-warn {
+    @apply inline-flex items-center px-2 py-0.5 text-xs rounded-md bg-warn/15 text-warn;
+  }
+  .chip-info {
+    @apply inline-flex items-center px-2 py-0.5 text-xs rounded-md bg-sky2/15 text-sky2;
+  }
+
+  /* Modals */
+  .modal-backdrop {
+    @apply fixed inset-0 bg-ink-950/70 backdrop-blur-sm flex items-center justify-center z-50 p-4;
+  }
+  .modal-panel {
+    @apply bg-card2 border border-white/10 rounded-3xl shadow-pop w-full max-w-md p-6 max-h-[90vh] overflow-y-auto;
+  }
+
+  /* Table */
+  .th {
+    @apply px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider;
+  }
+
+  /* Big display numbers */
+  .stat-figure {
+    @apply font-display font-semibold tracking-tight tabular-nums;
+  }
+
+  /* Alert banners */
+  .banner-ok {
+    @apply p-4 rounded-xl bg-pos/10 border border-pos/20 text-pos text-sm;
+  }
+  .banner-err {
+    @apply p-4 rounded-xl bg-neg/10 border border-neg/20 text-neg text-sm;
+  }
+
+  /* Decorative floating orbs (landing / auth) */
+  .orb {
+    @apply absolute rounded-full blur-3xl opacity-50 pointer-events-none;
+  }
+}
+
+@layer utilities {
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Recharts dark-theme polish */
+.recharts-cartesian-axis-tick text {
+  fill: #64748b;
+}
+.recharts-cartesian-grid line {
+  stroke: rgba(148, 163, 184, 0.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

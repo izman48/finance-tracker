@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { analyticsAPI } from '../services/api'
-
-const gbp = (n: number) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(n)
+import AnimatedNumber from './ui/AnimatedNumber'
 
 export default function SpendingSnapshot({ refreshKey }: { refreshKey?: number }) {
   const [data, setData] = useState<{ total_spent: number; charged_to_credit: number; paid_from_cash: number } | null>(null)
@@ -23,23 +22,39 @@ export default function SpendingSnapshot({ refreshKey }: { refreshKey?: number }
 
   if (!data) return null
 
+  const gbp = (n: number) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(n)
+  const creditShare = data.total_spent > 0 ? (data.charged_to_credit / data.total_spent) * 100 : 0
+
   return (
-    <div className="p-6 bg-white rounded-xl shadow-sm border border-gray-200">
+    <div className="card-pad h-full flex flex-col">
       <div className="flex items-baseline justify-between mb-3">
-        <h2 className="text-lg font-semibold">Spent since payday</h2>
-        <Link to="/insights" className="text-sm text-blue-600 hover:text-blue-800">
+        <h2 className="font-display font-semibold text-slate-100">Spent since payday</h2>
+        <Link to="/insights" className="btn-link whitespace-nowrap">
           Where it went →
         </Link>
       </div>
-      <div className="text-3xl font-bold mb-3">{gbp(data.total_spent)}</div>
+      <div className="stat-figure text-4xl text-slate-50 mb-4">
+        <AnimatedNumber value={data.total_spent} />
+      </div>
+
+      {/* Cash vs credit split bar */}
+      <div className="h-2 rounded-full bg-white/[0.06] overflow-hidden flex mb-3" aria-hidden>
+        <div className="bg-accent h-full" style={{ width: `${100 - creditShare}%` }} />
+        <div className="bg-warn h-full" style={{ width: `${creditShare}%` }} />
+      </div>
+
       <div className="flex gap-6 text-sm">
         <div>
-          <div className="text-gray-500">From cash</div>
-          <div className="font-semibold">{gbp(data.paid_from_cash)}</div>
+          <div className="flex items-center gap-1.5 text-slate-500">
+            <span className="w-2 h-2 rounded-full bg-accent inline-block" /> From cash
+          </div>
+          <div className="font-semibold text-slate-100 tnum">{gbp(data.paid_from_cash)}</div>
         </div>
         <div>
-          <div className="text-gray-500">On credit</div>
-          <div className="font-semibold text-amber-600">{gbp(data.charged_to_credit)}</div>
+          <div className="flex items-center gap-1.5 text-slate-500">
+            <span className="w-2 h-2 rounded-full bg-warn inline-block" /> On credit
+          </div>
+          <div className="font-semibold text-warn tnum">{gbp(data.charged_to_credit)}</div>
         </div>
       </div>
     </div>

@@ -73,16 +73,16 @@ export default function AddRuleModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-lg font-semibold mb-4">New rule</h3>
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-lg font-semibold text-slate-50 mb-4">New rule</h3>
 
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <select
               value={matchField}
               onChange={(e) => { setMatchField(e.target.value); runPreview(pattern, matchType, e.target.value) }}
-              className="px-3 py-2 border border-gray-300 rounded-lg"
+              className="input"
             >
               <option value="any">Merchant or description</option>
               <option value="merchant">Merchant only</option>
@@ -91,7 +91,7 @@ export default function AddRuleModal({
             <select
               value={matchType}
               onChange={(e) => { setMatchType(e.target.value); runPreview(pattern, e.target.value, matchField) }}
-              className="px-3 py-2 border border-gray-300 rounded-lg"
+              className="input"
             >
               <option value="contains">contains</option>
               <option value="exact">is exactly</option>
@@ -103,17 +103,17 @@ export default function AddRuleModal({
             value={pattern}
             onChange={(e) => { setPattern(e.target.value); runPreview(e.target.value, matchType, matchField) }}
             placeholder={matchType === 'regex' ? 'e.g. ^AMZN.*MKTP' : 'e.g. deliveroo'}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono"
+            className="input font-mono"
             autoFocus={!initialPattern}
           />
 
           {preview && (
-            <div className="bg-gray-50 rounded-lg p-3 text-sm">
-              <div className="font-medium">
+            <div className="bg-white/[0.04] border border-white/[0.06] rounded-xl p-3 text-sm">
+              <div className="font-medium text-slate-200">
                 Matches {preview.match_count} of your {preview.total_transactions} transactions
               </div>
               {preview.samples.length > 0 && (
-                <ul className="mt-1 text-gray-500 text-xs space-y-0.5">
+                <ul className="mt-1 text-slate-500 text-xs space-y-0.5">
                   {preview.samples.map((s, i) => (
                     <li key={i} className="truncate">• {s.merchant_name || s.description}</li>
                   ))}
@@ -121,7 +121,7 @@ export default function AddRuleModal({
               )}
             </div>
           )}
-          {error && <div className="p-2 bg-red-100 text-red-700 rounded text-sm">{error}</div>}
+          {error && <div className="banner-err !p-2">{error}</div>}
 
           <div>
             <input
@@ -129,7 +129,7 @@ export default function AddRuleModal({
               onChange={(e) => setCategory(e.target.value)}
               placeholder="Category (e.g. Food & Drink)"
               list="rule-category-options"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              className="input"
               autoFocus={!!initialPattern}
             />
             <datalist id="rule-category-options">
@@ -143,8 +143,8 @@ export default function AddRuleModal({
                   <button
                     key={c}
                     onClick={() => setCategory(c)}
-                    className={`px-2 py-0.5 text-xs rounded ${
-                      category === c ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    className={`px-2 py-0.5 text-xs rounded-md transition-colors ${
+                      category === c ? 'bg-accent text-ink-950 font-medium' : 'bg-white/[0.07] text-slate-300 hover:bg-white/[0.12]'
                     }`}
                   >
                     {c}
@@ -157,7 +157,7 @@ export default function AddRuleModal({
           <select
             value={packId ?? ''}
             onChange={(e) => setPackId(e.target.value || null)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+            className="input"
           >
             <option value="">No pack (personal rule)</option>
             {packs.map((p) => (
@@ -167,12 +167,8 @@ export default function AddRuleModal({
         </div>
 
         <div className="flex justify-end gap-2 mt-5">
-          <button onClick={onClose} className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Cancel</button>
-          <button
-            onClick={save}
-            disabled={saving || !pattern.trim() || !category.trim()}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-          >
+          <button onClick={onClose} className="btn-ghost">Cancel</button>
+          <button onClick={save} disabled={saving || !pattern.trim() || !category.trim()} className="btn-primary">
             {saving ? 'Saving…' : 'Add rule'}
           </button>
         </div>

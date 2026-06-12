@@ -36,20 +36,36 @@ const longDate = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: '
 
 const BAR_COLORS = ['#2DD4A7', '#38BDF8', '#A78BFA', '#FBBF24', '#FB7185', '#34D399', '#818CF8', '#F472B6']
 
+const EXCLUDE_COMMITMENTS_KEY = 'insights.excludeCommitments'
+
 export default function InsightsPage() {
   const [period, setPeriod] = useState('since_payday')
   const [frm, setFrm] = useState('')
   const [to, setTo] = useState('')
   const [data, setData] = useState<Spending | null>(null)
   const [loading, setLoading] = useState(true)
+  // Persisted: "how am I spending the rest of my money" is a standing question.
+  const [excludeCommitments, setExcludeCommitments] = useState(
+    () => localStorage.getItem(EXCLUDE_COMMITMENTS_KEY) === '1',
+  )
 
   const revealRef = useReveal(!loading && !!data)
+
+  const toggleExcludeCommitments = (on: boolean) => {
+    setExcludeCommitments(on)
+    localStorage.setItem(EXCLUDE_COMMITMENTS_KEY, on ? '1' : '0')
+  }
 
   useEffect(() => {
     if (period === 'custom' && (!frm || !to)) return
     setLoading(true)
     analyticsAPI
-      .getSpending(period, period === 'custom' ? frm : undefined, period === 'custom' ? to : undefined)
+      .getSpending(
+        period,
+        period === 'custom' ? frm : undefined,
+        period === 'custom' ? to : undefined,
+        excludeCommitments,
+      )
       .then((res) => {
         const d = res.data as Spending
         d.total_spent = Number(d.total_spent)
@@ -61,13 +77,13 @@ export default function InsightsPage() {
       })
       .catch((e) => console.error('Failed to load spending', e))
       .finally(() => setLoading(false))
-  }, [period, frm, to])
+  }, [period, frm, to, excludeCommitments])
 
   const maxCat = data?.by_category[0]?.total ?? 1
 
   return (
     <div ref={revealRef} className="max-w-6xl mx-auto px-4 py-6 sm:py-10">
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <h1 className="font-display font-bold text-2xl sm:text-3xl text-slate-50">Where it went</h1>
         <div className="flex flex-wrap gap-0.5">
           {PERIODS.map((p) => (
@@ -82,7 +98,21 @@ export default function InsightsPage() {
         </div>
       </div>
 
-      <MonthlySpendingChart />
+      {/* Bills are predictable — hide them to see the spending you can change. */}
+      <label className="inline-flex items-center gap-2 mb-5 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={excludeCommitments}
+          onChange={(e) => toggleExcludeCommitments(e.target.checked)}
+          className="checkbox"
+        />
+        <span className="text-sm text-slate-300">Exclude commitments</span>
+        <span className="text-xs text-slate-500">
+          (rent, salary, subscriptions — show only the spending I control)
+        </span>
+      </label>
+
+      <MonthlySpendingChart excludeCommitments={excludeCommitments} />
 
       {period === 'custom' && (
         <div className="flex flex-wrap gap-3 mb-6">

@@ -171,10 +171,14 @@ export const analyticsAPI = {
   getSummary: () => api.get('/analytics/summary'),
   getForecast: (horizon: string = 'payday') =>
     api.get('/analytics/forecast', { params: { horizon } }),
-  getSpending: (period: string = 'since_payday', frm?: string, to?: string) =>
-    api.get('/analytics/spending', { params: { period, frm, to } }),
-  getSpendingTrend: (months: number = 6) =>
-    api.get('/analytics/spending/trend', { params: { months } }),
+  getSpending: (period: string = 'since_payday', frm?: string, to?: string, excludeCommitments = false) =>
+    api.get('/analytics/spending', {
+      params: { period, frm, to, exclude_commitments: excludeCommitments || undefined },
+    }),
+  getSpendingTrend: (months: number = 6, excludeCommitments = false) =>
+    api.get('/analytics/spending/trend', {
+      params: { months, exclude_commitments: excludeCommitments || undefined },
+    }),
   getCommitments: () => api.get('/analytics/commitments'),
   markTransactionRecurring: (transactionId: string, cadence: string = 'monthly') =>
     api.post('/analytics/commitments/from-transaction', { transaction_id: transactionId, cadence }),

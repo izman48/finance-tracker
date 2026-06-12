@@ -217,6 +217,9 @@ class TransactionResponse(BaseModel):
     category: str | None
     subcategory: str | None
     is_recurring: bool
+    # Computed: matches a confirmed commitment (rent, salary, subscriptions…),
+    # so the UI can separate bills from discretionary spending.
+    is_commitment: bool = False
     transaction_date: datetime
 
     model_config = ConfigDict(from_attributes=True)

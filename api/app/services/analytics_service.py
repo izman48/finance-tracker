@@ -224,6 +224,38 @@ def _match_key(direction: str, merchant: str) -> str:
     return f"{direction}:{merchant.strip().lower()}"
 
 
+def transaction_match_key(tx: Transaction) -> str:
+    """The key a transaction would group under in recurring detection."""
+    direction = (
+        CommitmentDirection.INCOME.value
+        if tx.transaction_type == "credit"
+        else CommitmentDirection.EXPENSE.value
+    )
+    return _match_key(direction, (tx.merchant_name or tx.description or "Unknown").strip())
+
+
+def commitment_match_keys(db: Session, user) -> set[str]:
+    """Match keys of confirmed commitments, for flagging/excluding their transactions.
+
+    Detected commitments carry the match_key they were grouped under; manual ones
+    fall back to their label, which catches commitments added from a transaction.
+    """
+    rules = (
+        db.query(CommitmentRule)
+        .filter(
+            CommitmentRule.user_id == user.id,
+            CommitmentRule.status == CommitmentStatus.CONFIRMED.value,
+        )
+        .all()
+    )
+    keys: set[str] = set()
+    for r in rules:
+        if r.match_key:
+            keys.add(r.match_key)
+        keys.add(_match_key(r.direction, r.label))
+    return keys
+
+
 def detect_recurring(db: Session, user) -> list[dict]:
     """Detect recurring income (credits) and expenses (debits) from history."""
     txns = (
@@ -864,17 +896,20 @@ def _detect_internal_transfers(txns: list[Transaction]) -> set:
 def get_spending(
     db: Session, user, period: str = "since_payday",
     frm: date | None = None, to: date | None = None,
+    exclude_commitments: bool = False,
 ) -> dict:
     """Spending breakdown for a period, aware of credit vs cash.
 
     Real spending = card purchases (debits on credit accounts) + cash purchases
     (debits on spending accounts), excluding internal transfers and card
-    repayments (which just settle existing spending).
+    repayments (which just settle existing spending). With exclude_commitments,
+    confirmed recurring bills are dropped too, leaving only discretionary spend.
     """
     accounts, settings = _load(db, user)
     roles = resolve_roles(accounts, settings)
     today = _today()
     start, end = _spending_range(db, user, period, frm, to, today)
+    commitment_keys = commitment_match_keys(db, user) if exclude_commitments else set()
 
     txns = (
         db.query(Transaction)
@@ -895,6 +930,8 @@ def get_spending(
 
     for tx in txns:
         if tx.id in transfers or tx.transaction_type != "debit":
+            continue
+        if commitment_keys and transaction_match_key(tx) in commitment_keys:
             continue
         role = roles.get(tx.account_id)
         amount = _d(tx.amount)
@@ -940,7 +977,9 @@ def _month_key(d: date) -> str:
     return f"{d.year}-{d.month:02d}"
 
 
-def get_spending_trend(db: Session, user, months: int = 6) -> dict:
+def get_spending_trend(
+    db: Session, user, months: int = 6, exclude_commitments: bool = False
+) -> dict:
     """Real spending per calendar month over the last `months` months.
 
     Same noise-filtering as get_spending: internal transfers and card repayments
@@ -949,6 +988,7 @@ def get_spending_trend(db: Session, user, months: int = 6) -> dict:
     months = max(1, min(months, 24))
     accounts, settings = _load(db, user)
     roles = resolve_roles(accounts, settings)
+    commitment_keys = commitment_match_keys(db, user) if exclude_commitments else set()
     today = _today()
     first_of_this_month = date(today.year, today.month, 1)
     start_month = _add_months(first_of_this_month, -(months - 1))
@@ -974,6 +1014,8 @@ def get_spending_trend(db: Session, user, months: int = 6) -> dict:
 
     for tx in txns:
         if tx.id in transfers or tx.transaction_type != "debit":
+            continue
+        if commitment_keys and transaction_match_key(tx) in commitment_keys:
             continue
         role = roles.get(tx.account_id)
         amount = _d(tx.amount)

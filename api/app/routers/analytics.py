@@ -77,10 +77,11 @@ def get_spending(
     period: str = "since_payday",
     frm: date | None = None,
     to: date | None = None,
+    exclude_commitments: bool = False,
 ) -> SpendingResponse:
     """Spending breakdown for a period (since_payday|this_month|last_30|custom)."""
     return SpendingResponse(
-        **analytics_service.get_spending(db, current_user, period, frm, to)
+        **analytics_service.get_spending(db, current_user, period, frm, to, exclude_commitments)
     )
 
 
@@ -89,9 +90,12 @@ def get_spending_trend(
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
     months: int = 6,
+    exclude_commitments: bool = False,
 ) -> SpendingTrendResponse:
     """Real spending per month over the last `months` months (noise excluded)."""
-    return SpendingTrendResponse(**analytics_service.get_spending_trend(db, current_user, months))
+    return SpendingTrendResponse(
+        **analytics_service.get_spending_trend(db, current_user, months, exclude_commitments)
+    )
 
 
 @router.get("/commitments", response_model=list[CommitmentResponse])

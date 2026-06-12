@@ -29,7 +29,11 @@ function TrendTooltip({ active, payload }: any) {
   )
 }
 
-export default function MonthlySpendingChart() {
+export default function MonthlySpendingChart({
+  excludeCommitments = false,
+}: {
+  excludeCommitments?: boolean
+}) {
   const [months, setMonths] = useState(6)
   const [data, setData] = useState<MonthSpend[]>([])
   const [loading, setLoading] = useState(true)
@@ -37,7 +41,7 @@ export default function MonthlySpendingChart() {
   useEffect(() => {
     setLoading(true)
     analyticsAPI
-      .getSpendingTrend(months)
+      .getSpendingTrend(months, excludeCommitments)
       .then((res) => {
         setData(
           res.data.months.map((m: any) => ({
@@ -50,7 +54,7 @@ export default function MonthlySpendingChart() {
       })
       .catch((e) => console.error('Failed to load spending trend', e))
       .finally(() => setLoading(false))
-  }, [months])
+  }, [months, excludeCommitments])
 
   const max = Math.max(0, ...data.map((d) => d.total))
   const worst = data.find((d) => d.total === max && max > 0)

@@ -22,7 +22,7 @@ from app.schemas import (
     TransactionListResponse,
     TransactionUpdate,
 )
-from app.services import categorization
+from app.services import analytics_service, categorization
 from app.services.truelayer import truelayer_service
 from app.models import Account, Transaction, User, BankConnection
 
@@ -325,12 +325,17 @@ def get_transactions(
     offset = (page - 1) * page_size
     transactions = query.offset(offset).limit(page_size).all()
 
-    # Debug: log transaction types
-    if transactions:
-        logger.info(f"First transaction type: {transactions[0].transaction_type} (type: {type(transactions[0].transaction_type)})")
+    # Flag transactions that belong to confirmed commitments so the UI can
+    # separate bills from discretionary spending.
+    commitment_keys = analytics_service.commitment_match_keys(db, current_user)
+    items = []
+    for tx in transactions:
+        item = TransactionResponse.model_validate(tx)
+        item.is_commitment = analytics_service.transaction_match_key(tx) in commitment_keys
+        items.append(item)
 
     return TransactionListResponse(
-        items=[TransactionResponse.model_validate(tx) for tx in transactions],
+        items=items,
         total=total,
         page=page,
         page_size=page_size,

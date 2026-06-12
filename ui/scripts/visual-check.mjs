@@ -115,6 +115,7 @@ const transactions = Array.from({ length: 60 }, (_, i) => ({
   category: cats[i % cats.length],
   subcategory: null,
   is_recurring: i % 11 === 0,
+  is_commitment: i % 6 === 0,
   transaction_date: daysFromNow(-i),
 }))
 

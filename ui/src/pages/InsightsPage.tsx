@@ -134,7 +134,7 @@ export default function InsightsPage() {
           </p>
 
           {/* Headline split */}
-          <div className="grid sm:grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             <div className="card-pad" data-reveal>
               <div className="text-sm text-slate-400 mb-1">Total spent</div>
               <div className="stat-figure text-3xl text-slate-50">
@@ -152,16 +152,16 @@ export default function InsightsPage() {
             </div>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-4 sm:gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
             {/* Categories */}
             <div className="card-pad" data-reveal>
               <h2 className="font-display font-semibold text-slate-100 mb-4">By category</h2>
               <div className="space-y-4">
                 {data.by_category.map((c, i) => (
                   <div key={c.category}>
-                    <div className="flex justify-between text-sm mb-1.5">
-                      <span className="font-medium text-slate-300">{c.category}</span>
-                      <span className="font-semibold text-slate-100 tnum">{gbp(c.total)}</span>
+                    <div className="flex justify-between gap-3 text-sm mb-1.5">
+                      <span className="font-medium text-slate-300 min-w-0 truncate">{c.category}</span>
+                      <span className="font-semibold text-slate-100 tnum shrink-0">{gbp(c.total)}</span>
                     </div>
                     <div className="bg-white/[0.06] rounded-full h-2 overflow-hidden">
                       <div
@@ -187,14 +187,14 @@ export default function InsightsPage() {
                 {data.top_merchants.map((m, i) => (
                   <div key={m.merchant} className="flex items-center gap-3">
                     <div
-                      className={`w-7 h-7 flex items-center justify-center rounded-lg text-xs font-bold ${
+                      className={`w-7 h-7 shrink-0 flex items-center justify-center rounded-lg text-xs font-bold ${
                         i < 3 ? 'bg-accent/15 text-accent' : 'bg-white/[0.06] text-slate-500'
                       }`}
                     >
                       {i + 1}
                     </div>
-                    <div className="flex-1 text-sm font-medium text-slate-200 truncate">{m.merchant}</div>
-                    <div className="text-sm font-semibold text-slate-100 tnum">{gbp(m.total)}</div>
+                    <div className="flex-1 min-w-0 text-sm font-medium text-slate-200 truncate">{m.merchant}</div>
+                    <div className="text-sm font-semibold text-slate-100 tnum shrink-0">{gbp(m.total)}</div>
                   </div>
                 ))}
               </div>

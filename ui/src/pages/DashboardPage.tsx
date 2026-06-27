@@ -62,6 +62,7 @@ interface SummaryAccount {
   repayment_interval_months: number | null
   repayment_anchor_date: string | null
   repayment_strategy: string | null
+  repayment_fixed_amount: number | null
   repayment_installments: number | null
   pay_from_account_id: string | null
 }
@@ -507,6 +508,7 @@ function AccountSettingsModal({
     repayment_interval_months: account.repayment_interval_months ?? undefined,
     repayment_anchor_date: account.repayment_anchor_date ?? undefined,
     repayment_strategy: account.repayment_strategy ?? 'full_balance',
+    repayment_fixed_amount: account.repayment_fixed_amount ?? undefined,
     repayment_installments: account.repayment_installments ?? 3,
     pay_from_account_id: account.pay_from_account_id ?? undefined,
   })
@@ -572,11 +574,35 @@ function AccountSettingsModal({
                 className="input"
               >
                 <option value="full_balance">Pay the full balance each cycle (e.g. Amex)</option>
+                <option value="fixed">Pay a fixed amount each month</option>
                 <option value="installments">Pay the balance off in installments (e.g. Monzo Flex)</option>
               </select>
             </div>
 
-            {form.repayment_strategy === 'full_balance' && (
+            {form.repayment_strategy === 'fixed' && (
+              <div>
+                <label className="label">Amount paid each cycle (£)</label>
+                <input
+                  type="number" min={0} step="0.01"
+                  value={form.repayment_fixed_amount ?? ''}
+                  onChange={(e) => set({ repayment_fixed_amount: e.target.value === '' ? null : Number(e.target.value) })}
+                  className="input"
+                  placeholder="e.g. 200"
+                />
+                {account.current_balance && form.repayment_fixed_amount ? (
+                  <p className="text-xs text-slate-500 mt-1">
+                    {(() => {
+                      const owed = Math.abs(account.current_balance)
+                      const months = Math.ceil(owed / Math.max(form.repayment_fixed_amount, 1))
+                      const gbp = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(owed)
+                      return `≈ ${months} month${months !== 1 ? 's' : ''} to clear the current ${gbp} balance`
+                    })()}
+                  </p>
+                ) : null}
+              </div>
+            )}
+
+            {(form.repayment_strategy === 'full_balance' || form.repayment_strategy === 'fixed') && (
               <>
                 <div>
                   <label className="label">Repayment cycle</label>

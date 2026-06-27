@@ -148,6 +148,7 @@ def create_commitment(
         interval_months=data.interval_months,
         next_date=data.next_date,
         account_id=data.account_id,
+        match_key=analytics_service.merchant_match_key(data.direction, data.match_merchant),
         source=CommitmentSource.MANUAL.value,
         status=CommitmentStatus.CONFIRMED.value,
     )
@@ -173,7 +174,13 @@ def update_commitment(
     if not rule:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Commitment not found")
 
-    for field, value in data.model_dump(exclude_unset=True).items():
+    updates = data.model_dump(exclude_unset=True)
+    # match_merchant is a virtual field — translate it into the stored match_key.
+    if "match_merchant" in updates:
+        merchant = updates.pop("match_merchant")
+        direction = updates.get("direction") or rule.direction
+        rule.match_key = analytics_service.merchant_match_key(direction, merchant)
+    for field, value in updates.items():
         setattr(rule, field, value)
     db.commit()
     db.refresh(rule)

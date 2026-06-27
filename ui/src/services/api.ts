@@ -190,6 +190,7 @@ export const analyticsAPI = {
     interval_months?: number | null
     next_date: string
     account_id?: string | null
+    match_merchant?: string | null
   }) => api.post('/analytics/commitments', data),
   updateCommitment: (id: string, data: Record<string, unknown>) =>
     api.patch(`/analytics/commitments/${id}`, data),

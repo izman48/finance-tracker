@@ -14,7 +14,12 @@ interface Commitment {
   source: 'detected' | 'manual'
   status: 'suggested' | 'confirmed' | 'dismissed'
   account_id: string | null
+  match_key: string | null
 }
+
+// match_key is stored as "<direction>:<merchant>". Show just the merchant part.
+const merchantFromKey = (key: string | null) =>
+  key ? key.split(':').slice(1).join(':') : ''
 
 interface PlannedOneOff {
   id: string
@@ -377,7 +382,10 @@ function EditCommitmentModal({
   const [amount, setAmount] = useState(String(commitment.amount))
   const [cadence, setCadence] = useState(isYearly(commitment) ? 'yearly' : commitment.cadence)
   const [nextDate, setNextDate] = useState(commitment.next_date)
+  const [matchMerchant, setMatchMerchant] = useState(merchantFromKey(commitment.match_key))
   const [saving, setSaving] = useState(false)
+
+  const isExpense = commitment.direction === 'expense'
 
   const save = async () => {
     setSaving(true)
@@ -394,6 +402,10 @@ function EditCommitmentModal({
             ? (Number(commitment.interval_months) >= 12 ? 3 : commitment.interval_months ?? 3)
             : null,
         next_date: nextDate,
+        // Only send when it changed, so we never blank an auto-detected key.
+        ...(matchMerchant !== merchantFromKey(commitment.match_key)
+          ? { match_merchant: matchMerchant }
+          : {}),
       })
       onSaved()
     } catch (e) {
@@ -420,6 +432,21 @@ function EditCommitmentModal({
             <label className="label">Next date</label>
             <input type="date" value={nextDate} onChange={(e) => setNextDate(e.target.value)} className="input" />
           </div>
+          {isExpense && (
+            <div>
+              <label className="label">Matches transactions from</label>
+              <input
+                value={matchMerchant}
+                onChange={(e) => setMatchMerchant(e.target.value)}
+                placeholder="e.g. the name on your rent payment"
+                className="input"
+              />
+              <p className="text-xs text-slate-500 mt-1">
+                The merchant or description as it appears on the transaction. This is how
+                “Exclude commitments” knows to hide it from spending.
+              </p>
+            </div>
+          )}
         </div>
         <div className="flex justify-end gap-2 mt-5">
           <button onClick={onClose} className="btn-ghost">Cancel</button>
@@ -438,9 +465,11 @@ function AddCommitmentModal({ onClose, onAdded }: { onClose: () => void; onAdded
   const [amount, setAmount] = useState('')
   const [frequency, setFrequency] = useState('monthly') // one_time | weekly | monthly | every_n_months
   const [theDate, setTheDate] = useState('')
+  const [matchMerchant, setMatchMerchant] = useState('')
   const [saving, setSaving] = useState(false)
 
   const isOneTime = frequency === 'one_time'
+  const isExpense = direction === 'expense'
 
   const save = async () => {
     if (!label || !amount || !theDate) return
@@ -463,6 +492,7 @@ function AddCommitmentModal({ onClose, onAdded }: { onClose: () => void; onAdded
           cadence: frequency === 'yearly' ? 'every_n_months' : frequency,
           interval_months: frequency === 'yearly' ? 12 : undefined,
           next_date: theDate,
+          match_merchant: isExpense && matchMerchant ? matchMerchant : undefined,
         })
       }
       onAdded()
@@ -517,6 +547,21 @@ function AddCommitmentModal({ onClose, onAdded }: { onClose: () => void; onAdded
               className="input"
             />
           </div>
+          {isExpense && !isOneTime && (
+            <div>
+              <label className="label">Matches transactions from <span className="text-slate-500 font-normal">(optional)</span></label>
+              <input
+                value={matchMerchant} onChange={(e) => setMatchMerchant(e.target.value)}
+                placeholder="e.g. the name on your rent payment"
+                className="input"
+              />
+              <p className="text-xs text-slate-500 mt-1">
+                Enter the merchant/description as it shows on the transaction so “Exclude
+                commitments” can hide it. Tip: you can also tap a transaction in Activity
+                and “Mark as recurring” to capture it exactly.
+              </p>
+            </div>
+          )}
         </div>
         <div className="flex justify-end gap-2 mt-5">
           <button onClick={onClose} className="btn-ghost">Cancel</button>

@@ -14,6 +14,7 @@ from app.models import (
     CommitmentSource,
     CommitmentStatus,
     PlannedItem,
+    RepaymentScheduleItem,
 )
 from app.schemas import (
     AccountSettingUpdate,
@@ -26,6 +27,8 @@ from app.schemas import (
     NetWorthPoint,
     PlannedItemCreate,
     PlannedItemResponse,
+    RepaymentScheduleItemCreate,
+    RepaymentScheduleItemResponse,
     SpendingResponse,
     SpendingTrendResponse,
 )
@@ -226,6 +229,83 @@ def delete_planned_item(
     )
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Planned item not found")
+    db.delete(item)
+    db.commit()
+    return {"success": True}
+
+
+def _owned_account(db: Session, user, account_id: str) -> Account:
+    account = (
+        db.query(Account)
+        .filter(Account.id == account_id, Account.user_id == user.id)
+        .first()
+    )
+    if not account:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
+    return account
+
+
+@router.get("/accounts/{account_id}/repayments", response_model=list[RepaymentScheduleItemResponse])
+def list_repayments(
+    account_id: str,
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> list[RepaymentScheduleItem]:
+    """Scheduled repayments for a credit account (for the `scheduled` strategy)."""
+    _owned_account(db, current_user, account_id)
+    return (
+        db.query(RepaymentScheduleItem)
+        .filter(
+            RepaymentScheduleItem.user_id == current_user.id,
+            RepaymentScheduleItem.account_id == account_id,
+        )
+        .order_by(RepaymentScheduleItem.due_date)
+        .all()
+    )
+
+
+@router.post(
+    "/accounts/{account_id}/repayments",
+    response_model=RepaymentScheduleItemResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def add_repayment(
+    account_id: str,
+    data: RepaymentScheduleItemCreate,
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> RepaymentScheduleItem:
+    account = _owned_account(db, current_user, account_id)
+    item = RepaymentScheduleItem(
+        user_id=current_user.id,
+        account_id=account.id,
+        due_date=data.due_date,
+        amount=data.amount,
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.delete("/accounts/{account_id}/repayments/{item_id}")
+def delete_repayment(
+    account_id: str,
+    item_id: str,
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    item = (
+        db.query(RepaymentScheduleItem)
+        .filter(
+            RepaymentScheduleItem.id == item_id,
+            RepaymentScheduleItem.account_id == account_id,
+            RepaymentScheduleItem.user_id == current_user.id,
+        )
+        .first()
+    )
+    if not item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Repayment not found")
     db.delete(item)
     db.commit()
     return {"success": True}

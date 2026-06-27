@@ -324,7 +324,7 @@ class AccountSettingUpdate(BaseModel):
     repayment_interval_months: int | None = None
     repayment_day: int | None = Field(default=None, ge=1, le=31)
     repayment_anchor_date: date | None = None
-    repayment_strategy: str | None = None  # full_balance | fixed | installments
+    repayment_strategy: str | None = None  # full_balance | fixed | installments | scheduled
     repayment_fixed_amount: Decimal | None = None
     repayment_installments: int | None = Field(default=None, ge=1, le=120)
     pay_from_account_id: uuid.UUID | None = None
@@ -517,5 +517,21 @@ class PlannedItemResponse(BaseModel):
     fee_amount: Decimal | None
     account_id: uuid.UUID | None
     active: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RepaymentScheduleItemCreate(BaseModel):
+    """A single scheduled credit-card repayment (for the `scheduled` strategy)."""
+
+    due_date: date
+    amount: Decimal = Field(gt=0)
+
+
+class RepaymentScheduleItemResponse(BaseModel):
+    id: uuid.UUID
+    account_id: uuid.UUID
+    due_date: date
+    amount: Decimal
 
     model_config = ConfigDict(from_attributes=True)

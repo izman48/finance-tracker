@@ -1050,24 +1050,12 @@ def get_spending(
     by_category: dict[str, dict] = defaultdict(lambda: {"total": Decimal(0), "count": 0})
     by_merchant: dict[str, Decimal] = defaultdict(Decimal)
 
-    for tx in txns:
-        if tx.id in transfers or tx.transaction_type != "debit":
-            continue
-        if tx.id in financed:
-            continue  # moved to a payment plan — counted via its installments
-        if commitment_keys and transaction_match_key(tx) in commitment_keys:
-            continue
-        role = roles.get(tx.account_id)
+    for tx, kind in _iter_spending(txns, transfers, roles, financed, commitment_keys):
         amount = _d(tx.amount)
-        if role == AccountRole.CREDIT:
+        if kind == "credit":
             charged_to_credit += amount
-        elif role == AccountRole.SPENDING:
-            desc = f"{tx.description or ''} {tx.merchant_name or ''}".lower()
-            if any(ind in desc for ind in _CARD_PAYMENT_INDICATORS):
-                continue  # repayment, not new spending
-            paid_from_cash += amount
         else:
-            continue  # savings / excluded
+            paid_from_cash += amount
 
         category = tx.category or "Uncategorized"
         by_category[category]["total"] += amount
@@ -1080,10 +1068,11 @@ def get_spending(
         ({"category": k, "total": v["total"], "count": v["count"]} for k, v in by_category.items()),
         key=lambda c: c["total"], reverse=True,
     )
+    # All merchants, biggest first — the UI shows the top few and expands on demand.
     merchants = sorted(
         ({"merchant": k, "total": v} for k, v in by_merchant.items()),
         key=lambda m: m["total"], reverse=True,
-    )[:10]
+    )
 
     return {
         "period": period,
@@ -1095,6 +1084,84 @@ def get_spending(
         "by_category": categories,
         "top_merchants": merchants,
     }
+
+
+def _iter_spending(txns, transfers, roles, financed, commitment_keys):
+    """Yield (tx, kind) for each transaction that counts as real spending.
+
+    kind is "credit" (a card purchase) or "cash" (paid from a spending account).
+    Shared by the breakdown and the drill-down so the two can never disagree:
+    same exclusions (internal transfers, card repayments, financed purchases,
+    and — when requested — confirmed commitments).
+    """
+    for tx in txns:
+        if tx.id in transfers or tx.transaction_type != "debit":
+            continue
+        if tx.id in financed:
+            continue  # moved to a payment plan — counted via its installments
+        if commitment_keys and transaction_match_key(tx) in commitment_keys:
+            continue
+        role = roles.get(tx.account_id)
+        if role == AccountRole.CREDIT:
+            yield tx, "credit"
+        elif role == AccountRole.SPENDING:
+            desc = f"{tx.description or ''} {tx.merchant_name or ''}".lower()
+            if any(ind in desc for ind in _CARD_PAYMENT_INDICATORS):
+                continue  # repayment, not new spending
+            yield tx, "cash"
+        # savings / excluded accounts: not spending
+
+
+def spending_transactions(
+    db: Session, user, period: str = "since_payday",
+    frm: date | None = None, to: date | None = None,
+    exclude_commitments: bool = False,
+    category: str | None = None, merchant: str | None = None, kind: str | None = None,
+) -> list[dict]:
+    """The individual transactions behind a spending figure (a category, a
+    merchant, or the cash/credit split) — for drilling into "what makes this up"."""
+    accounts, settings = _load(db, user)
+    roles = resolve_roles(accounts, settings)
+    acc_names = {a.id: a.display_name for a in accounts}
+    today = _today()
+    start, end = _spending_range(db, user, period, frm, to, today)
+    commitment_keys = commitment_match_keys(db, user) if exclude_commitments else set()
+    financed = financed_transaction_ids(db, user)
+
+    txns = (
+        db.query(Transaction)
+        .join(Account)
+        .filter(
+            Account.user_id == user.id,
+            Transaction.transaction_date >= datetime.combine(start, datetime.min.time(), timezone.utc),
+            Transaction.transaction_date <= datetime.combine(end, datetime.max.time(), timezone.utc),
+        )
+        .all()
+    )
+    transfers = _detect_internal_transfers(txns)
+
+    out: list[dict] = []
+    for tx, k in _iter_spending(txns, transfers, roles, financed, commitment_keys):
+        if kind and k != kind:
+            continue
+        cat = tx.category or "Uncategorized"
+        if category is not None and cat != category:
+            continue
+        mer = tx.merchant_name or tx.description or "Unknown"
+        if merchant is not None and mer != merchant:
+            continue
+        out.append({
+            "id": str(tx.id),
+            "date": tx.transaction_date.date(),
+            "description": tx.description,
+            "merchant": tx.merchant_name,
+            "amount": _d(tx.amount),
+            "category": cat,
+            "account": acc_names.get(tx.account_id, ""),
+            "kind": k,
+        })
+    out.sort(key=lambda r: r["date"], reverse=True)
+    return out
 
 
 def _month_key(d: date) -> str:

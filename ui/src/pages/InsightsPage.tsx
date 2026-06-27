@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 import { analyticsAPI } from '../services/api'
 import MonthlySpendingChart from '../components/MonthlySpendingChart'
 import AnimatedNumber from '../components/ui/AnimatedNumber'
@@ -156,6 +157,7 @@ export default function InsightsPage() {
             {/* Categories */}
             <div className="card-pad" data-reveal>
               <h2 className="font-display font-semibold text-slate-100 mb-4">By category</h2>
+              <CategoryDonut categories={data.by_category} total={data.total_spent} />
               <div className="space-y-4">
                 {data.by_category.map((c, i) => (
                   <div key={c.category}>
@@ -202,6 +204,76 @@ export default function InsightsPage() {
           </div>
         </>
       )}
+    </div>
+  )
+}
+
+// Donut of category proportions. Top slices are kept; the long tail is grouped
+// into "Other" so the chart reads at a glance — the bars below carry the detail.
+function CategoryDonut({ categories, total }: { categories: CategorySlice[]; total: number }) {
+  if (!categories.length || total <= 0) return null
+
+  const TOP = 6
+  const sorted = [...categories].sort((a, b) => b.total - a.total)
+  const head = sorted.slice(0, TOP)
+  const tail = sorted.slice(TOP)
+  const slices = head.map((c, i) => ({
+    name: c.category,
+    value: c.total,
+    color: BAR_COLORS[i % BAR_COLORS.length],
+  }))
+  if (tail.length) {
+    slices.push({
+      name: `Other (${tail.length})`,
+      value: tail.reduce((s, c) => s + c.total, 0),
+      color: '#475569',
+    })
+  }
+
+  return (
+    <div className="flex flex-col sm:flex-row items-center gap-4 mb-6">
+      <div className="relative w-44 h-44 shrink-0">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={slices}
+              dataKey="value"
+              nameKey="name"
+              innerRadius="62%"
+              outerRadius="100%"
+              paddingAngle={2}
+              stroke="none"
+            >
+              {slices.map((s) => (
+                <Cell key={s.name} fill={s.color} />
+              ))}
+            </Pie>
+            <Tooltip
+              formatter={(v, n) => {
+                const num = Number(v)
+                return [`${gbp(num)} · ${Math.round((num / total) * 100)}%`, n as string]
+              }}
+              contentStyle={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, fontSize: 13 }}
+              itemStyle={{ color: '#e2e8f0' }}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+          <span className="text-[11px] text-slate-500">Total</span>
+          <span className="font-display font-semibold text-slate-100 tnum text-sm">{gbp(total)}</span>
+        </div>
+      </div>
+      <ul className="flex-1 min-w-0 grid grid-cols-1 gap-1.5 w-full">
+        {slices.map((s) => (
+          <li key={s.name} className="flex items-center gap-2 text-sm">
+            <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: s.color }} />
+            <span className="min-w-0 truncate text-slate-300">{s.name}</span>
+            <span className="ml-auto shrink-0 text-slate-500 tnum text-xs">
+              {Math.round((s.value / total) * 100)}%
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }

@@ -350,6 +350,7 @@ class CashflowAccount(BaseModel):
     repayment_interval_months: int | None = None
     repayment_anchor_date: date | None = None
     repayment_strategy: str | None = None
+    repayment_fixed_amount: Decimal | None = None
     repayment_installments: int | None = None
     pay_from_account_id: str | None = None
 
@@ -381,6 +382,7 @@ class CommitmentResponse(BaseModel):
     source: str
     status: str
     account_id: uuid.UUID | None
+    match_key: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -403,6 +405,10 @@ class CommitmentCreate(BaseModel):
     interval_months: int | None = None
     next_date: date
     account_id: uuid.UUID | None = None
+    # Optional merchant/description text to match transactions against, so a
+    # manually-added commitment (e.g. "Rent") actually excludes its real
+    # transactions even when their description differs from the label.
+    match_merchant: str | None = None
 
 
 class CommitmentUpdate(BaseModel):
@@ -416,6 +422,8 @@ class CommitmentUpdate(BaseModel):
     interval_months: int | None = None
     next_date: date | None = None
     account_id: uuid.UUID | None = None
+    # See CommitmentCreate.match_merchant. Empty string clears the match key.
+    match_merchant: str | None = None
 
 
 class ForecastEvent(BaseModel):

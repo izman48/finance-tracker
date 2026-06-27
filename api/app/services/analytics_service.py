@@ -224,6 +224,17 @@ def _match_key(direction: str, merchant: str) -> str:
     return f"{direction}:{merchant.strip().lower()}"
 
 
+def merchant_match_key(direction: str, merchant: str | None) -> str | None:
+    """Public: match key for a user-supplied merchant/description, or None if blank.
+
+    Lets a manually-added commitment be tied to the real transactions it should
+    exclude, using the same keying as auto-detection.
+    """
+    if not merchant or not merchant.strip():
+        return None
+    return _match_key(direction, merchant)
+
+
 def transaction_match_key(tx: Transaction) -> str:
     """The key a transaction would group under in recurring detection."""
     direction = (
@@ -706,6 +717,7 @@ def _account_summary(acc: Account, role: AccountRole, s: AccountSetting | None) 
         "repayment_interval_months": s.repayment_interval_months if s else None,
         "repayment_anchor_date": s.repayment_anchor_date if s else None,
         "repayment_strategy": s.repayment_strategy if s else None,
+        "repayment_fixed_amount": s.repayment_fixed_amount if s else None,
         "repayment_installments": s.repayment_installments if s else None,
         "pay_from_account_id": str(s.pay_from_account_id) if s and s.pay_from_account_id else None,
     }

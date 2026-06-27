@@ -53,6 +53,12 @@ class PlannedItem(Base):
     account_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True
     )
+    # When this plan was created by converting a purchase to finance, the source
+    # transaction — lets spending drop the original lump so it isn't double-counted
+    # (the installments show in the forecast instead).
+    source_transaction_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("transactions.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     created_at: Mapped[datetime] = mapped_column(

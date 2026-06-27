@@ -328,10 +328,12 @@ def get_transactions(
     # Flag transactions that belong to confirmed commitments so the UI can
     # separate bills from discretionary spending.
     commitment_keys = analytics_service.commitment_match_keys(db, current_user)
+    financed = analytics_service.financed_transaction_ids(db, current_user)
     items = []
     for tx in transactions:
         item = TransactionResponse.model_validate(tx)
         item.is_commitment = analytics_service.transaction_match_key(tx) in commitment_keys
+        item.is_financed = tx.id in financed
         items.append(item)
 
     return TransactionListResponse(

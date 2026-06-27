@@ -205,6 +205,9 @@ export const analyticsAPI = {
     api.post(`/analytics/accounts/${accountId}/repayments`, data),
   deleteRepayment: (accountId: string, itemId: string) =>
     api.delete(`/analytics/accounts/${accountId}/repayments/${itemId}`),
+  // Convert a purchase into a payment plan ("pay on finance").
+  payOnFinance: (data: { transaction_id: string; months: number; monthly_amount: number; start_date: string }) =>
+    api.post('/analytics/planned/from-transaction', data),
 }
 
 export default api

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { ArrowDownToLine, ChevronDown, Repeat, SlidersHorizontal, Wand2 } from 'lucide-react'
+import { ArrowDownToLine, ChevronDown, CreditCard, Repeat, SlidersHorizontal, Wand2 } from 'lucide-react'
 import { bankingAPI, analyticsAPI, rulesAPI } from '../services/api'
 import AddRuleModal from '../components/AddRuleModal'
 
@@ -15,6 +15,7 @@ interface Transaction {
   subcategory: string | null
   is_recurring: boolean
   is_commitment: boolean
+  is_financed: boolean
   transaction_date: string
 }
 
@@ -34,6 +35,7 @@ export default function TransactionsPage() {
   const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null)
   const [editingCategory, setEditingCategory] = useState<string>('')
   const [recurringTx, setRecurringTx] = useState<Transaction | null>(null)
+  const [financeTx, setFinanceTx] = useState<Transaction | null>(null)
   const [ruleTx, setRuleTx] = useState<Transaction | null>(null)
   const [toast, setToast] = useState<string>('')
   const [customCategories, setCustomCategories] = useState<string[]>([])
@@ -935,6 +937,7 @@ export default function TransactionsPage() {
                         {formatDate(transaction.transaction_date)} · {getAccountName(transaction.account_id)}
                         {transaction.is_commitment && <span className="ml-2 chip-warn">Bill</span>}
                         {transaction.is_recurring && <span className="ml-2 chip-info">Recurring</span>}
+                        {transaction.is_financed && <span className="ml-2 chip-info">On finance</span>}
                       </div>
                       <div className="mt-2 flex items-center justify-between gap-2">
                         <div className="flex-1 min-w-0">{renderCategoryEditor(transaction)}</div>
@@ -953,6 +956,15 @@ export default function TransactionsPage() {
                           >
                             <Repeat className="w-3.5 h-3.5" /> Recurring
                           </button>
+                          {transaction.transaction_type === 'debit' && (
+                            <button
+                              onClick={() => setFinanceTx(transaction)}
+                              className="text-xs text-slate-500 hover:text-accent transition-colors inline-flex items-center gap-1"
+                              title="Pay this off over time on a payment plan"
+                            >
+                              <CreditCard className="w-3.5 h-3.5" /> Finance
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1036,7 +1048,8 @@ export default function TransactionsPage() {
                         </div>
                       )}
                       {transaction.is_commitment && <span className="chip-warn mt-1 mr-1">Bill</span>}
-                      {transaction.is_recurring && <span className="chip-info mt-1">Recurring</span>}
+                      {transaction.is_recurring && <span className="chip-info mt-1 mr-1">Recurring</span>}
+                      {transaction.is_financed && <span className="chip-info mt-1">On finance</span>}
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-400">
                       {getAccountName(transaction.account_id)}
@@ -1065,6 +1078,15 @@ export default function TransactionsPage() {
                       >
                         ↻ Recurring
                       </button>
+                      {transaction.transaction_type === 'debit' && (
+                        <button
+                          onClick={() => setFinanceTx(transaction)}
+                          className="text-xs text-slate-500 hover:text-accent transition-colors ml-3"
+                          title="Pay this off over time on a payment plan"
+                        >
+                          ⊞ Finance
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -1200,6 +1222,19 @@ export default function TransactionsPage() {
         />
       )}
 
+      {financeTx && (
+        <PayOnFinanceModal
+          transaction={financeTx}
+          onClose={() => setFinanceTx(null)}
+          onDone={(label) => {
+            setFinanceTx(null)
+            setToast(`"${label}" moved to a payment plan`)
+            setTimeout(() => setToast(''), 3500)
+            loadAllTransactions()
+          }}
+        />
+      )}
+
       {ruleTx && (
         <AddRuleModal
           initialPattern={(ruleTx.merchant_name || ruleTx.description || '').trim()}
@@ -1263,6 +1298,104 @@ function MakeRecurringModal({
           <button onClick={onClose} className="btn-ghost">Cancel</button>
           <button onClick={save} disabled={saving} className="btn-primary">
             {saving ? 'Adding…' : 'Add to plan'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PayOnFinanceModal({
+  transaction,
+  onClose,
+  onDone,
+}: {
+  transaction: Transaction
+  onClose: () => void
+  onDone: (label: string) => void
+}) {
+  const label = transaction.merchant_name || transaction.description || 'this purchase'
+  const [months, setMonths] = useState(12)
+  // Default the per-month amount to an even split of the purchase, rounded to pennies.
+  const [monthly, setMonthly] = useState(() => (transaction.amount / 12).toFixed(2))
+  // First payment defaults to ~a month out.
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date()
+    d.setMonth(d.getMonth() + 1)
+    return d.toISOString().slice(0, 10)
+  })
+  const [saving, setSaving] = useState(false)
+
+  const setMonthsAndSplit = (m: number) => {
+    setMonths(m)
+    setMonthly((transaction.amount / Math.max(m, 1)).toFixed(2))
+  }
+
+  const total = (Number(monthly) || 0) * months
+  const gbp = (n: number) =>
+    new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(n)
+
+  const save = async () => {
+    if (!months || !monthly || Number(monthly) <= 0 || !startDate) return
+    setSaving(true)
+    try {
+      await analyticsAPI.payOnFinance({
+        transaction_id: transaction.id,
+        months,
+        monthly_amount: Number(monthly),
+        start_date: startDate,
+      })
+      onDone(label)
+    } catch (e) {
+      console.error('Failed to move to a payment plan', e)
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-panel !max-w-sm" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-lg font-semibold text-slate-50 mb-1">Pay on finance</h3>
+        <p className="text-sm text-slate-400 mb-4">
+          Split <span className="font-medium text-slate-200">{label}</span> ({gbp(transaction.amount)})
+          into a payment plan. It leaves your Spending totals and the installments show in your forecast.
+        </p>
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div>
+            <label className="label">Number of months</label>
+            <input
+              type="number" min={1} max={120} value={months}
+              onChange={(e) => setMonthsAndSplit(Number(e.target.value))}
+              className="input"
+            />
+          </div>
+          <div>
+            <label className="label">Amount per month (£)</label>
+            <input
+              type="number" min={0} step="0.01" value={monthly}
+              onChange={(e) => setMonthly(e.target.value)}
+              className="input"
+            />
+          </div>
+          <div className="col-span-2">
+            <label className="label">First payment</label>
+            <input
+              type="date" value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="input"
+            />
+          </div>
+        </div>
+        <p className="text-xs text-slate-500 mb-4">
+          {gbp(Number(monthly) || 0)} × {months} = {gbp(total)} total
+          {Math.abs(total - transaction.amount) > 0.5 && (
+            <span className="text-slate-400"> · {gbp(total - transaction.amount)} vs the purchase</span>
+          )}
+        </p>
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="btn-ghost">Cancel</button>
+          <button onClick={save} disabled={saving} className="btn-primary">
+            {saving ? 'Saving…' : 'Move to plan'}
           </button>
         </div>
       </div>

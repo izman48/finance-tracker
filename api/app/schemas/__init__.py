@@ -220,6 +220,9 @@ class TransactionResponse(BaseModel):
     # Computed: matches a confirmed commitment (rent, salary, subscriptions…),
     # so the UI can separate bills from discretionary spending.
     is_commitment: bool = False
+    # Computed: converted to a payment plan ("paid on finance") — the UI badges
+    # it and spending excludes it (counted via its installments instead).
+    is_financed: bool = False
     transaction_date: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -516,9 +519,19 @@ class PlannedItemResponse(BaseModel):
     apr: Decimal | None
     fee_amount: Decimal | None
     account_id: uuid.UUID | None
+    source_transaction_id: uuid.UUID | None = None
     active: bool
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class PlanFromTransaction(BaseModel):
+    """Convert a purchase into a payment plan: pay `monthly_amount` for `months`."""
+
+    transaction_id: uuid.UUID
+    months: int = Field(ge=1, le=120)
+    monthly_amount: Decimal = Field(gt=0)
+    start_date: date
 
 
 class RepaymentScheduleItemCreate(BaseModel):

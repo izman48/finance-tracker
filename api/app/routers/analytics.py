@@ -25,6 +25,7 @@ from app.schemas import (
     CommitmentUpdate,
     ForecastResponse,
     NetWorthPoint,
+    PlanFromTransaction,
     PlannedItemCreate,
     PlannedItemResponse,
     RepaymentScheduleItemCreate,
@@ -213,6 +214,26 @@ def create_planned_item(
     db.add(item)
     db.commit()
     db.refresh(item)
+    return item
+
+
+@router.post(
+    "/planned/from-transaction",
+    response_model=PlannedItemResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def plan_from_transaction(
+    data: PlanFromTransaction,
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> PlannedItem:
+    """Convert a purchase into a payment plan ("pay on finance"). Excludes the
+    original transaction from spending; the installments show in the forecast."""
+    item = analytics_service.convert_transaction_to_plan(
+        db, current_user, str(data.transaction_id), data.months, data.monthly_amount, data.start_date
+    )
+    if not item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found")
     return item
 
 

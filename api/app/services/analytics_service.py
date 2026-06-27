@@ -28,6 +28,7 @@ from app.models import (
     CommitmentSource,
     CommitmentStatus,
     PlannedItem,
+    PlannedKind,
     RepaymentScheduleItem,
     RepaymentStrategy,
     Transaction,
@@ -407,6 +408,67 @@ def commitment_from_transaction(db: Session, user, transaction_id: str, cadence:
     db.commit()
     db.refresh(rule)
     return rule
+
+
+def convert_transaction_to_plan(
+    db: Session, user, transaction_id: str, months: int, monthly_amount, start_date: date
+):
+    """Convert a purchase into a payment plan: pay `monthly_amount` for `months`.
+
+    The original transaction is linked so spending drops the lump (the installments
+    show in the forecast instead). Re-converting the same transaction updates the
+    existing plan rather than duplicating it.
+    """
+    try:
+        tid = transaction_id if isinstance(transaction_id, _uuid.UUID) else _uuid.UUID(str(transaction_id))
+    except (ValueError, AttributeError):
+        return None
+    tx = (
+        db.query(Transaction)
+        .join(Account)
+        .filter(Transaction.id == tid, Account.user_id == user.id)
+        .first()
+    )
+    if not tx:
+        return None
+
+    months = max(1, int(months))
+    monthly = _d(monthly_amount)
+    total = (monthly * months).quantize(Decimal("0.01"))
+    name = (tx.merchant_name or tx.description or "Payment plan").strip()
+
+    item = (
+        db.query(PlannedItem)
+        .filter(PlannedItem.user_id == user.id, PlannedItem.source_transaction_id == tx.id)
+        .first()
+    )
+    if item:
+        item.name = name
+        item.kind = PlannedKind.INSTALLMENT_PLAN.value
+        item.direction = CommitmentDirection.EXPENSE.value
+        item.start_date = start_date
+        item.total_amount = total
+        item.installments = months
+        item.cadence = "monthly"
+        item.account_id = tx.account_id
+        item.active = True
+    else:
+        item = PlannedItem(
+            user_id=user.id,
+            name=name,
+            direction=CommitmentDirection.EXPENSE.value,
+            kind=PlannedKind.INSTALLMENT_PLAN.value,
+            start_date=start_date,
+            total_amount=total,
+            installments=months,
+            cadence="monthly",
+            account_id=tx.account_id,
+            source_transaction_id=tx.id,
+        )
+        db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
 
 
 def sync_suggestions(db: Session, user) -> None:
@@ -934,6 +996,24 @@ def _detect_internal_transfers(txns: list[Transaction]) -> set:
     return excluded
 
 
+def financed_transaction_ids(db: Session, user) -> set:
+    """Transaction ids that have been converted to an active payment plan.
+
+    These are excluded from spending: the purchase is now paid in installments
+    (which show in the forecast), so counting the original lump would double it.
+    """
+    rows = (
+        db.query(PlannedItem.source_transaction_id)
+        .filter(
+            PlannedItem.user_id == user.id,
+            PlannedItem.active.is_(True),
+            PlannedItem.source_transaction_id.isnot(None),
+        )
+        .all()
+    )
+    return {r[0] for r in rows}
+
+
 def get_spending(
     db: Session, user, period: str = "since_payday",
     frm: date | None = None, to: date | None = None,
@@ -951,6 +1031,7 @@ def get_spending(
     today = _today()
     start, end = _spending_range(db, user, period, frm, to, today)
     commitment_keys = commitment_match_keys(db, user) if exclude_commitments else set()
+    financed = financed_transaction_ids(db, user)
 
     txns = (
         db.query(Transaction)
@@ -972,6 +1053,8 @@ def get_spending(
     for tx in txns:
         if tx.id in transfers or tx.transaction_type != "debit":
             continue
+        if tx.id in financed:
+            continue  # moved to a payment plan — counted via its installments
         if commitment_keys and transaction_match_key(tx) in commitment_keys:
             continue
         role = roles.get(tx.account_id)
@@ -1030,6 +1113,7 @@ def get_spending_trend(
     accounts, settings = _load(db, user)
     roles = resolve_roles(accounts, settings)
     commitment_keys = commitment_match_keys(db, user) if exclude_commitments else set()
+    financed = financed_transaction_ids(db, user)
     today = _today()
     first_of_this_month = date(today.year, today.month, 1)
     start_month = _add_months(first_of_this_month, -(months - 1))
@@ -1056,6 +1140,8 @@ def get_spending_trend(
     for tx in txns:
         if tx.id in transfers or tx.transaction_type != "debit":
             continue
+        if tx.id in financed:
+            continue  # moved to a payment plan — counted via its installments
         if commitment_keys and transaction_match_key(tx) in commitment_keys:
             continue
         role = roles.get(tx.account_id)

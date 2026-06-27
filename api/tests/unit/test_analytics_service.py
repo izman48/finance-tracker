@@ -360,6 +360,67 @@ class TestScheduledRepayments:
         assert repays == [Decimal("-2000.00"), Decimal("-900.00")]
 
 
+class TestPayOnFinance:
+    def test_convert_sets_monthly_x_months_and_links_source(self, db_session):
+        user = _user(db_session)
+        cur = _account(db_session, user, "TRANSACTION", "5000", "Current")
+        today = svc._today()
+        tx = _tx(db_session, cur, 1200, today - timedelta(days=3), "debit", "Laptop")
+        db_session.commit()
+
+        item = svc.convert_transaction_to_plan(
+            db_session, user, str(tx.id), months=12,
+            monthly_amount=Decimal("110"), start_date=today + timedelta(days=5),
+        )
+        assert item.installments == 12
+        assert item.total_amount == Decimal("1320.00")  # 110 × 12
+        assert item.source_transaction_id == tx.id
+        assert item.kind == "installment_plan"
+
+        # re-converting the same transaction updates, never duplicates
+        item2 = svc.convert_transaction_to_plan(
+            db_session, user, str(tx.id), months=6,
+            monthly_amount=Decimal("200"), start_date=today + timedelta(days=5),
+        )
+        assert item2.id == item.id and item2.installments == 6
+        assert db_session.query(PlannedItem).filter(
+            PlannedItem.source_transaction_id == tx.id
+        ).count() == 1
+
+    def test_financed_purchase_excluded_from_spending(self, db_session):
+        user = _user(db_session)
+        cur = _account(db_session, user, "TRANSACTION", "5000", "Current")
+        db_session.add(AccountSetting(user_id=user.id, account_id=cur.id, role="spending"))
+        today = svc._today()
+        big = _tx(db_session, cur, 1200, today - timedelta(days=3), "debit", "Laptop")
+        _tx(db_session, cur, 60, today - timedelta(days=2), "debit", "Tesco")
+        db_session.commit()
+
+        assert svc.get_spending(db_session, user, period="last_30")["total_spent"] == Decimal("1260")
+        svc.convert_transaction_to_plan(
+            db_session, user, str(big.id), months=12,
+            monthly_amount=Decimal("100"), start_date=today + timedelta(days=5),
+        )
+        # lump gone; only the Tesco cash purchase remains
+        assert svc.get_spending(db_session, user, period="last_30")["total_spent"] == Decimal("60")
+
+    def test_financed_installments_hit_the_forecast(self, db_session):
+        user = _user(db_session)
+        cur = _account(db_session, user, "TRANSACTION", "5000", "Current")
+        db_session.add(AccountSetting(user_id=user.id, account_id=cur.id, role="spending"))
+        today = svc._today()
+        tx = _tx(db_session, cur, 600, today - timedelta(days=3), "debit", "Sofa")
+        db_session.commit()
+        svc.convert_transaction_to_plan(
+            db_session, user, str(tx.id), months=3,
+            monthly_amount=Decimal("200"), start_date=today + timedelta(days=5),
+        )
+        f = svc.get_forecast(db_session, user, horizon="90")
+        planned = [e for p in f["timeline"] for e in p["events"] if e["kind"] == "planned"]
+        assert len(planned) == 3
+        assert all(e["amount"] == Decimal("-200.00") for e in planned)
+
+
 class TestInstallments:
     def test_even_split(self):
         assert svc.installment_amount(600, 3) == Decimal("200.00")

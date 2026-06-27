@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { ArrowDownToLine, ChevronDown, CreditCard, Repeat, SlidersHorizontal, Wand2 } from 'lucide-react'
-import { bankingAPI, analyticsAPI, rulesAPI } from '../services/api'
+import { bankingAPI, analyticsAPI } from '../services/api'
 import AddRuleModal from '../components/AddRuleModal'
 
 interface Transaction {
@@ -1241,11 +1241,14 @@ export default function TransactionsPage() {
           initialCategory={ruleTx.category ?? ''}
           categories={categories}
           onClose={() => setRuleTx(null)}
-          onAdded={async () => {
+          onAdded={async (result) => {
             setRuleTx(null)
-            // Run the rules immediately so the page reflects the new rule.
-            const res = await rulesAPI.applyNow()
-            setToast(res.data.message)
+            // The modal already backfilled (if opted in) — just reflect the result.
+            setToast(
+              result?.applied
+                ? `Rule added · recategorized ${result.changed} transaction${result.changed !== 1 ? 's' : ''}`
+                : 'Rule added',
+            )
             setTimeout(() => setToast(''), 3500)
             await loadAllTransactions()
           }}

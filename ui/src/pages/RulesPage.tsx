@@ -114,7 +114,7 @@ export default function RulesPage() {
           Apply all rules now
         </button>
         <span className="text-sm text-slate-500">
-          Re-runs every enabled rule over your uncategorized history. Hand-set categories are never touched.
+          Backfill: re-runs every enabled rule across your transaction history. Categories you set by hand are kept.
         </span>
       </div>
 
@@ -168,8 +168,11 @@ export default function RulesPage() {
             new Set([...packs.flatMap((p) => p.rules), ...personal].map((r) => r.category))
           ).sort()}
           onClose={() => setShowAddRule(null)}
-          onAdded={async () => {
+          onAdded={async (result) => {
             setShowAddRule(null)
+            if (result?.applied) {
+              setMessage(`Rule added — recategorized ${result.changed} transaction${result.changed !== 1 ? 's' : ''}.`)
+            }
             await load()
           }}
         />

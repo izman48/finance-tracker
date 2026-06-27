@@ -31,6 +31,7 @@ from app.schemas import (
     RepaymentScheduleItemCreate,
     RepaymentScheduleItemResponse,
     SpendingResponse,
+    SpendingTransaction,
     SpendingTrendResponse,
 )
 from datetime import date
@@ -100,6 +101,28 @@ def get_spending_trend(
     return SpendingTrendResponse(
         **analytics_service.get_spending_trend(db, current_user, months, exclude_commitments)
     )
+
+
+@router.get("/spending/transactions", response_model=list[SpendingTransaction])
+def get_spending_transactions(
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+    period: str = "since_payday",
+    frm: date | None = None,
+    to: date | None = None,
+    exclude_commitments: bool = False,
+    category: str | None = None,
+    merchant: str | None = None,
+    kind: str | None = None,
+) -> list[SpendingTransaction]:
+    """The individual transactions behind a spending figure — drill into a
+    category, a merchant, or the cash/credit split."""
+    return [
+        SpendingTransaction(**t)
+        for t in analytics_service.spending_transactions(
+            db, current_user, period, frm, to, exclude_commitments, category, merchant, kind
+        )
+    ]
 
 
 @router.get("/commitments", response_model=list[CommitmentResponse])

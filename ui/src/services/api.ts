@@ -179,6 +179,21 @@ export const analyticsAPI = {
     api.get('/analytics/spending/trend', {
       params: { months, exclude_commitments: excludeCommitments || undefined },
     }),
+  // Drill into a spending figure: the transactions behind a category, merchant,
+  // or the cash/credit split.
+  getSpendingTransactions: (
+    params: {
+      period: string; frm?: string; to?: string; excludeCommitments?: boolean
+      category?: string; merchant?: string; kind?: string
+    },
+  ) =>
+    api.get('/analytics/spending/transactions', {
+      params: {
+        period: params.period, frm: params.frm, to: params.to,
+        exclude_commitments: params.excludeCommitments || undefined,
+        category: params.category, merchant: params.merchant, kind: params.kind,
+      },
+    }),
   getCommitments: () => api.get('/analytics/commitments'),
   markTransactionRecurring: (transactionId: string, cadence: string = 'monthly') =>
     api.post('/analytics/commitments/from-transaction', { transaction_id: transactionId, cadence }),

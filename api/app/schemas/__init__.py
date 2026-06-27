@@ -475,6 +475,19 @@ class SpendingResponse(BaseModel):
     top_merchants: list[MerchantSlice]
 
 
+class SpendingTransaction(BaseModel):
+    """One transaction behind a spending figure (drill-down)."""
+
+    id: str
+    date: date
+    description: str
+    merchant: str | None
+    amount: Decimal
+    category: str
+    account: str
+    kind: str  # cash | credit
+
+
 class MonthSpend(BaseModel):
     month: str  # "YYYY-MM"
     total: Decimal

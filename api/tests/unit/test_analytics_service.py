@@ -312,6 +312,46 @@ class TestCreditRepayments:
         assert repays == [Decimal("-200.00"), Decimal("-200.00"), Decimal("-100.00")]
 
 
+class TestSpendingDrilldown:
+    def test_filters_by_kind_category_merchant(self, db_session):
+        user = _user(db_session)
+        cur = _account(db_session, user, "TRANSACTION", "1000", "Current")
+        amex = _account(db_session, user, "CREDIT_CARD", "0", "Amex")
+        db_session.add_all([
+            AccountSetting(user_id=user.id, account_id=cur.id, role="spending"),
+            AccountSetting(user_id=user.id, account_id=amex.id, role="credit"),
+        ])
+        db_session.commit()
+        today = svc._today()
+        t1 = _tx(db_session, cur, 60, today - timedelta(days=2), "debit", "Tesco")
+        t2 = _tx(db_session, amex, 120, today - timedelta(days=2), "debit", "Amazon")
+        t1.category, t2.category = "Groceries", "Shopping"
+        db_session.commit()
+
+        alltx = svc.spending_transactions(db_session, user, period="last_30")
+        assert {r["merchant"] for r in alltx} == {"Tesco", "Amazon"}
+        assert [r["merchant"] for r in svc.spending_transactions(db_session, user, period="last_30", kind="cash")] == ["Tesco"]
+        assert [r["merchant"] for r in svc.spending_transactions(db_session, user, period="last_30", kind="credit")] == ["Amazon"]
+        assert [r["merchant"] for r in svc.spending_transactions(db_session, user, period="last_30", category="Groceries")] == ["Tesco"]
+        assert [r["amount"] for r in svc.spending_transactions(db_session, user, period="last_30", merchant="Amazon")] == [Decimal("120")]
+
+    def test_drilldown_excludes_noise_and_sums_to_breakdown(self, db_session):
+        user = _user(db_session)
+        cur = _account(db_session, user, "TRANSACTION", "1000", "Current")
+        db_session.add(AccountSetting(user_id=user.id, account_id=cur.id, role="spending"))
+        db_session.commit()
+        today = svc._today()
+        _tx(db_session, cur, 60, today - timedelta(days=2), "debit", "Tesco")
+        _tx(db_session, cur, 200, today - timedelta(days=1), "debit", "AMEX payment")  # repayment — excluded
+        _tx(db_session, cur, 500, today - timedelta(days=1), "credit", "Salary")       # income — excluded
+
+        txns = svc.spending_transactions(db_session, user, period="last_30")
+        assert [r["merchant"] for r in txns] == ["Tesco"]
+        # the drill-down is exactly the breakdown, itemised
+        s = svc.get_spending(db_session, user, period="last_30")
+        assert sum(r["amount"] for r in txns) == s["total_spent"]
+
+
 class TestScheduledRepayments:
     def test_emits_user_listed_amounts_in_range(self, db_session):
         user = _user(db_session)

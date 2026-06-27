@@ -25,6 +25,24 @@ interface Spending {
   top_merchants: MerchantSlice[]
 }
 
+interface DrillFilter {
+  category?: string
+  merchant?: string
+  kind?: string // 'cash' | 'credit'
+}
+interface DrillTxn {
+  id: string
+  date: string
+  description: string
+  merchant: string | null
+  amount: number
+  category: string
+  account: string
+  kind: string
+}
+
+const MERCHANTS_DEFAULT = 10
+
 const PERIODS = [
   { key: 'since_payday', label: 'Since payday' },
   { key: 'this_month', label: 'This month' },
@@ -49,6 +67,9 @@ export default function InsightsPage() {
   const [excludeCommitments, setExcludeCommitments] = useState(
     () => localStorage.getItem(EXCLUDE_COMMITMENTS_KEY) === '1',
   )
+
+  const [drill, setDrill] = useState<{ title: string; filter: DrillFilter } | null>(null)
+  const [showAllMerchants, setShowAllMerchants] = useState(false)
 
   const revealRef = useReveal(!loading && !!data)
 
@@ -134,23 +155,41 @@ export default function InsightsPage() {
             {longDate(data.period_start)} – {longDate(data.period_end)}
           </p>
 
-          {/* Headline split */}
+          {/* Headline split — each tile drills into its transactions. */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-            <div className="card-pad" data-reveal>
-              <div className="text-sm text-slate-400 mb-1">Total spent</div>
+            <button
+              type="button" data-reveal
+              onClick={() => setDrill({ title: 'All spending', filter: {} })}
+              className="card-pad text-left w-full hover:bg-white/[0.03] transition-colors group"
+            >
+              <div className="text-sm text-slate-400 mb-1 flex items-center justify-between">
+                Total spent <span className="text-xs text-slate-600 group-hover:text-accent transition-colors">View →</span>
+              </div>
               <div className="stat-figure text-3xl text-slate-50">
                 <AnimatedNumber value={data.total_spent} />
               </div>
-            </div>
-            <div className="card-pad" data-reveal>
-              <div className="text-sm text-slate-400 mb-1">Paid from cash</div>
+            </button>
+            <button
+              type="button" data-reveal
+              onClick={() => setDrill({ title: 'Paid from cash', filter: { kind: 'cash' } })}
+              className="card-pad text-left w-full hover:bg-white/[0.03] transition-colors group"
+            >
+              <div className="text-sm text-slate-400 mb-1 flex items-center justify-between">
+                Paid from cash <span className="text-xs text-slate-600 group-hover:text-accent transition-colors">View →</span>
+              </div>
               <div className="stat-figure text-3xl text-slate-100">{gbp(data.paid_from_cash)}</div>
-            </div>
-            <div className="card-pad" data-reveal>
-              <div className="text-sm text-slate-400 mb-1">Charged to credit</div>
+            </button>
+            <button
+              type="button" data-reveal
+              onClick={() => setDrill({ title: 'Charged to credit', filter: { kind: 'credit' } })}
+              className="card-pad text-left w-full hover:bg-white/[0.03] transition-colors group"
+            >
+              <div className="text-sm text-slate-400 mb-1 flex items-center justify-between">
+                Charged to credit <span className="text-xs text-slate-600 group-hover:text-accent transition-colors">View →</span>
+              </div>
               <div className="stat-figure text-3xl text-warn">{gbp(data.charged_to_credit)}</div>
               <div className="text-xs text-slate-500 mt-1">deferred — paid later on your cards</div>
-            </div>
+            </button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
@@ -160,9 +199,14 @@ export default function InsightsPage() {
               <CategoryDonut categories={data.by_category} total={data.total_spent} />
               <div className="space-y-4">
                 {data.by_category.map((c, i) => (
-                  <div key={c.category}>
+                  <button
+                    type="button"
+                    key={c.category}
+                    onClick={() => setDrill({ title: c.category, filter: { category: c.category } })}
+                    className="block w-full text-left group"
+                  >
                     <div className="flex justify-between gap-3 text-sm mb-1.5">
-                      <span className="font-medium text-slate-300 min-w-0 truncate">{c.category}</span>
+                      <span className="font-medium text-slate-300 min-w-0 truncate group-hover:text-accent transition-colors">{c.category}</span>
                       <span className="font-semibold text-slate-100 tnum shrink-0">{gbp(c.total)}</span>
                     </div>
                     <div className="bg-white/[0.06] rounded-full h-2 overflow-hidden">
@@ -177,17 +221,24 @@ export default function InsightsPage() {
                     <div className="text-xs text-slate-600 mt-1">
                       {c.count} transaction{c.count !== 1 ? 's' : ''}
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
 
             {/* Top merchants */}
             <div className="card-pad" data-reveal>
-              <h2 className="font-display font-semibold text-slate-100 mb-4">Top merchants</h2>
+              <h2 className="font-display font-semibold text-slate-100 mb-4">
+                {showAllMerchants ? 'All merchants' : 'Top merchants'}
+              </h2>
               <div className="space-y-3">
-                {data.top_merchants.map((m, i) => (
-                  <div key={m.merchant} className="flex items-center gap-3">
+                {(showAllMerchants ? data.top_merchants : data.top_merchants.slice(0, MERCHANTS_DEFAULT)).map((m, i) => (
+                  <button
+                    type="button"
+                    key={m.merchant}
+                    onClick={() => setDrill({ title: m.merchant, filter: { merchant: m.merchant } })}
+                    className="flex items-center gap-3 w-full text-left group"
+                  >
                     <div
                       className={`w-7 h-7 shrink-0 flex items-center justify-center rounded-lg text-xs font-bold ${
                         i < 3 ? 'bg-accent/15 text-accent' : 'bg-white/[0.06] text-slate-500'
@@ -195,14 +246,34 @@ export default function InsightsPage() {
                     >
                       {i + 1}
                     </div>
-                    <div className="flex-1 min-w-0 text-sm font-medium text-slate-200 truncate">{m.merchant}</div>
+                    <div className="flex-1 min-w-0 text-sm font-medium text-slate-200 truncate group-hover:text-accent transition-colors">{m.merchant}</div>
                     <div className="text-sm font-semibold text-slate-100 tnum shrink-0">{gbp(m.total)}</div>
-                  </div>
+                  </button>
                 ))}
               </div>
+              {data.top_merchants.length > MERCHANTS_DEFAULT && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllMerchants((v) => !v)}
+                  className="mt-4 text-sm text-accent hover:underline"
+                >
+                  {showAllMerchants
+                    ? 'Show less'
+                    : `Show all ${data.top_merchants.length} merchants`}
+                </button>
+              )}
             </div>
           </div>
         </>
+      )}
+
+      {drill && (
+        <DrillModal
+          title={drill.title}
+          filter={drill.filter}
+          context={{ period, frm, to, excludeCommitments }}
+          onClose={() => setDrill(null)}
+        />
       )}
     </div>
   )
@@ -274,6 +345,79 @@ function CategoryDonut({ categories, total }: { categories: CategorySlice[]; tot
           </li>
         ))}
       </ul>
+    </div>
+  )
+}
+
+// Lists the individual transactions behind a clicked figure (category / merchant
+// / cash / credit). Fetches with the same period + exclude-commitments context so
+// the list always reconciles with the number that was clicked.
+function DrillModal({
+  title,
+  filter,
+  context,
+  onClose,
+}: {
+  title: string
+  filter: DrillFilter
+  context: { period: string; frm: string; to: string; excludeCommitments: boolean }
+  onClose: () => void
+}) {
+  const [txns, setTxns] = useState<DrillTxn[] | null>(null)
+
+  useEffect(() => {
+    analyticsAPI
+      .getSpendingTransactions({
+        period: context.period,
+        frm: context.period === 'custom' ? context.frm : undefined,
+        to: context.period === 'custom' ? context.to : undefined,
+        excludeCommitments: context.excludeCommitments,
+        ...filter,
+      })
+      .then((res) => setTxns(res.data.map((t: DrillTxn) => ({ ...t, amount: Number(t.amount) }))))
+      .catch((e) => {
+        console.error('Failed to load drill-down', e)
+        setTxns([])
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const total = (txns ?? []).reduce((s, t) => s + t.amount, 0)
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-panel !max-w-lg" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3 mb-1">
+          <h3 className="text-lg font-semibold text-slate-50 min-w-0 truncate">{title}</h3>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-200 shrink-0" aria-label="Close">✕</button>
+        </div>
+        {txns === null ? (
+          <div className="py-10 text-center text-slate-500">Loading…</div>
+        ) : txns.length === 0 ? (
+          <div className="py-10 text-center text-slate-500">No transactions.</div>
+        ) : (
+          <>
+            <p className="text-sm text-slate-400 mb-3">
+              {txns.length} transaction{txns.length !== 1 ? 's' : ''} · {gbp(total)}
+            </p>
+            <ul className="space-y-1 max-h-[60vh] overflow-y-auto -mr-2 pr-2">
+              {txns.map((t) => (
+                <li key={t.id} className="flex items-center gap-3 py-2 border-b border-white/[0.05] last:border-0">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm text-slate-200 truncate">{t.merchant || t.description}</div>
+                    <div className="text-xs text-slate-500 truncate">
+                      {longDate(t.date)} · {t.category}
+                      {t.kind === 'credit' && <span className="ml-1 text-warn">· credit</span>}
+                      <span className="text-slate-600"> · {t.account}</span>
+                    </div>
+                  </div>
+                  <div className="text-sm font-semibold text-slate-100 tnum shrink-0">{gbp(t.amount)}</div>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </div>
     </div>
   )
 }

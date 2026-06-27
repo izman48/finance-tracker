@@ -16,6 +16,7 @@ from app.models.commitment_rule import (
     CommitmentStatus,
 )
 from app.models.planned_item import PlannedItem, PlannedKind
+from app.models.repayment_schedule_item import RepaymentScheduleItem
 from app.models.category_rule import CategoryRule, RulePack, merchant_match_key
 from app.models.asset import Asset, AssetValuation, ASSET_TYPES
 
@@ -37,6 +38,7 @@ __all__ = [
     "CommitmentStatus",
     "PlannedItem",
     "PlannedKind",
+    "RepaymentScheduleItem",
     "CategoryRule",
     "RulePack",
     "merchant_match_key",

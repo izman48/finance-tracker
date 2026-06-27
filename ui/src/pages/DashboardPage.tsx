@@ -576,6 +576,7 @@ function AccountSettingsModal({
                 <option value="full_balance">Pay the full balance each cycle (e.g. Amex)</option>
                 <option value="fixed">Pay a fixed amount each month</option>
                 <option value="installments">Pay the balance off in installments (e.g. Monzo Flex)</option>
+                <option value="scheduled">Scheduled payments (set each amount &amp; date)</option>
               </select>
             </div>
 
@@ -661,6 +662,10 @@ function AccountSettingsModal({
               </div>
             )}
 
+            {form.repayment_strategy === 'scheduled' && (
+              <ScheduledRepaymentsEditor accountId={account.id} />
+            )}
+
             <div>
               <label className="label">Paid from</label>
               <select
@@ -686,6 +691,115 @@ function AccountSettingsModal({
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+interface RepaymentItem {
+  id: string
+  due_date: string
+  amount: number
+}
+
+// Editor for the `scheduled` repayment strategy: a list of explicit
+// date+amount payments the user intends to make. Each add/remove hits the API
+// immediately (they belong to the account, not the settings form being saved).
+function ScheduledRepaymentsEditor({ accountId }: { accountId: string }) {
+  const [items, setItems] = useState<RepaymentItem[]>([])
+  const [date, setDate] = useState('')
+  const [amount, setAmount] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const gbp = (n: number) =>
+    new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(n)
+
+  const load = async () => {
+    try {
+      const res = await analyticsAPI.getRepayments(accountId)
+      setItems(res.data.map((r: RepaymentItem) => ({ ...r, amount: Number(r.amount) })))
+    } catch (e) {
+      console.error('Failed to load scheduled repayments', e)
+    }
+  }
+
+  useEffect(() => {
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountId])
+
+  const add = async () => {
+    if (!date || !amount || Number(amount) <= 0) return
+    setBusy(true)
+    try {
+      await analyticsAPI.addRepayment(accountId, { due_date: date, amount: Number(amount) })
+      setDate('')
+      setAmount('')
+      await load()
+    } catch (e) {
+      console.error('Failed to add repayment', e)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const remove = async (id: string) => {
+    setBusy(true)
+    try {
+      await analyticsAPI.deleteRepayment(accountId, id)
+      setItems((xs) => xs.filter((x) => x.id !== id))
+    } catch (e) {
+      console.error('Failed to remove repayment', e)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const total = items.reduce((s, x) => s + x.amount, 0)
+
+  return (
+    <div>
+      <label className="label">Scheduled payments</label>
+      {items.length > 0 ? (
+        <ul className="space-y-1.5 mb-2">
+          {items.map((it) => (
+            <li key={it.id} className="flex items-center gap-2 text-sm">
+              <span className="text-slate-300 tnum">
+                {new Date(it.due_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+              </span>
+              <span className="ml-auto text-slate-100 tnum">{gbp(it.amount)}</span>
+              <button
+                onClick={() => remove(it.id)}
+                disabled={busy}
+                className="text-slate-500 hover:text-neg transition-colors"
+                aria-label="Remove payment"
+              >
+                ✕
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-xs text-slate-500 mb-2">No payments scheduled yet.</p>
+      )}
+      <div className="flex items-end gap-2">
+        <div className="flex-1">
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="input" />
+        </div>
+        <div className="flex-1">
+          <input
+            type="number" min={0} step="0.01" placeholder="£ amount"
+            value={amount} onChange={(e) => setAmount(e.target.value)} className="input"
+          />
+        </div>
+        <button onClick={add} disabled={busy || !date || !amount} className="btn-ghost shrink-0">
+          Add
+        </button>
+      </div>
+      {items.length > 0 && (
+        <p className="text-xs text-slate-500 mt-1">
+          {items.length} payment{items.length !== 1 ? 's' : ''} · {gbp(total)} total scheduled
+        </p>
+      )}
     </div>
   )
 }

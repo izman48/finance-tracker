@@ -28,6 +28,7 @@ from app.models import (
     CommitmentSource,
     CommitmentStatus,
     PlannedItem,
+    RepaymentScheduleItem,
     RepaymentStrategy,
     Transaction,
 )
@@ -514,16 +515,44 @@ def _repayment_schedule(s: AccountSetting, balance: Decimal) -> list[Decimal]:
     return amounts
 
 
+def _scheduled_repayments(db: Session, user) -> dict:
+    """User-listed scheduled repayments grouped by account_id (for `scheduled` cards)."""
+    items = (
+        db.query(RepaymentScheduleItem)
+        .filter(RepaymentScheduleItem.user_id == user.id)
+        .all()
+    )
+    by_account: dict = {}
+    for item in items:
+        by_account.setdefault(item.account_id, []).append(item)
+    return by_account
+
+
 def repayment_events(db: Session, user, start: date, end: date) -> list[dict]:
     """Credit-card repayments due in [start, end] that pay the balance down to zero."""
     accounts, settings = _load(db, user)
     roles = resolve_roles(accounts, settings)
+    scheduled = _scheduled_repayments(db, user)
     out: list[dict] = []
     for acc in accounts:
         if roles[acc.id] != AccountRole.CREDIT:
             continue
         s = settings.get(acc.id)
-        if not s or not s.repayment_cadence:
+        if not s:
+            continue
+
+        # Scheduled strategy: emit exactly what the user listed, ignoring cadence.
+        if s.repayment_strategy == RepaymentStrategy.SCHEDULED.value:
+            for item in scheduled.get(acc.id, []):
+                amt = _d(item.amount)
+                if start <= item.due_date <= end and amt > 0:
+                    out.append({
+                        "account_id": str(acc.id), "label": acc.display_name,
+                        "amount": amt, "due_date": item.due_date,
+                    })
+            continue
+
+        if not s.repayment_cadence:
             continue
         balance = abs(_d(acc.current_balance))
         amounts = _repayment_schedule(s, balance)

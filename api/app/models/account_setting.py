@@ -39,6 +39,7 @@ class RepaymentStrategy(str, Enum):
     FIXED = "fixed"                    # repayment_fixed_amount each time
     INSTALLMENTS = "installments"      # split the balance over N payments (e.g. Monzo Flex)
     MINIMUM_PERCENT = "minimum_percent"  # a percentage of the balance
+    SCHEDULED = "scheduled"            # explicit user-listed amounts on specific dates
 
 
 class AccountSetting(Base):

@@ -199,6 +199,12 @@ export const analyticsAPI = {
   getPlannedItems: () => api.get('/analytics/planned-items'),
   addPlannedItem: (data: Record<string, unknown>) => api.post('/analytics/planned-items', data),
   deletePlannedItem: (id: string) => api.delete(`/analytics/planned-items/${id}`),
+  // Scheduled credit-card repayments (the `scheduled` repayment strategy).
+  getRepayments: (accountId: string) => api.get(`/analytics/accounts/${accountId}/repayments`),
+  addRepayment: (accountId: string, data: { due_date: string; amount: number }) =>
+    api.post(`/analytics/accounts/${accountId}/repayments`, data),
+  deleteRepayment: (accountId: string, itemId: string) =>
+    api.delete(`/analytics/accounts/${accountId}/repayments/${itemId}`),
 }
 
 export default api

@@ -11,6 +11,7 @@ from app.models import (
     CommitmentDirection,
     CommitmentStatus,
     PlannedItem,
+    RepaymentScheduleItem,
     Transaction,
     User,
 )
@@ -309,6 +310,54 @@ class TestCreditRepayments:
         repays = [e["amount"] for p in f["timeline"] for e in p["events"] if e["kind"] == "repayment"]
         # 500 at £200/mo -> 200, 200, 100 (totals to the balance)
         assert repays == [Decimal("-200.00"), Decimal("-200.00"), Decimal("-100.00")]
+
+
+class TestScheduledRepayments:
+    def test_emits_user_listed_amounts_in_range(self, db_session):
+        user = _user(db_session)
+        card = _account(db_session, user, "CREDIT_CARD", "5000", "Amex")
+        db_session.add(AccountSetting(
+            user_id=user.id, account_id=card.id, role="credit",
+            repayment_strategy="scheduled",
+        ))
+        today = svc._today()
+        d1, d2 = today + timedelta(days=5), today + timedelta(days=40)
+        d_out = today + timedelta(days=400)
+        db_session.add_all([
+            # added out of order to prove the result is sorted by date
+            RepaymentScheduleItem(user_id=user.id, account_id=card.id, due_date=d2, amount=Decimal("900")),
+            RepaymentScheduleItem(user_id=user.id, account_id=card.id, due_date=d1, amount=Decimal("2000")),
+            RepaymentScheduleItem(user_id=user.id, account_id=card.id, due_date=d_out, amount=Decimal("500")),
+        ])
+        db_session.commit()
+
+        events = svc.repayment_events(db_session, user, today, today + timedelta(days=92))
+        assert [(e["due_date"], e["amount"]) for e in events] == [
+            (d1, Decimal("2000")),
+            (d2, Decimal("900")),  # the +400d item is out of range and excluded
+        ]
+
+    def test_scheduled_amounts_hit_the_forecast(self, db_session):
+        user = _user(db_session)
+        _account(db_session, user, "TRANSACTION", "5000", "Current")
+        card = _account(db_session, user, "CREDIT_CARD", "5000", "Amex")
+        db_session.add_all([
+            AccountSetting(user_id=user.id, account_id=card.id, role="credit",
+                           repayment_strategy="scheduled"),
+        ])
+        today = svc._today()
+        db_session.add_all([
+            RepaymentScheduleItem(user_id=user.id, account_id=card.id,
+                                  due_date=today + timedelta(days=5), amount=Decimal("2000")),
+            RepaymentScheduleItem(user_id=user.id, account_id=card.id,
+                                  due_date=today + timedelta(days=40), amount=Decimal("900")),
+        ])
+        db_session.commit()
+
+        f = svc.get_forecast(db_session, user, horizon="90")
+        repays = [e["amount"] for p in f["timeline"] for e in p["events"] if e["kind"] == "repayment"]
+        # exactly what the user scheduled, not a balance-derived formula
+        assert repays == [Decimal("-2000.00"), Decimal("-900.00")]
 
 
 class TestInstallments:

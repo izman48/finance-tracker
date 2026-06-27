@@ -18,7 +18,7 @@ export default function AddRuleModal({
   initialCategory?: string
   categories?: string[]
   onClose: () => void
-  onAdded: () => void
+  onAdded: (result?: { applied: boolean; changed: number }) => void
 }) {
   const [packs, setPacks] = useState<RulePack[]>([])
   const [pattern, setPattern] = useState(initialPattern)
@@ -27,6 +27,7 @@ export default function AddRuleModal({
   const [category, setCategory] = useState(initialCategory)
   const [packId, setPackId] = useState<string | null>(initialPackId)
   const [preview, setPreview] = useState<{ match_count: number; total_transactions: number; samples: any[] } | null>(null)
+  const [applyToExisting, setApplyToExisting] = useState(true)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const previewTimer = useRef<ReturnType<typeof setTimeout>>()
@@ -65,7 +66,14 @@ export default function AddRuleModal({
     setError('')
     try {
       await rulesAPI.create({ pattern, match_type: matchType, match_field: matchField, category, pack_id: packId })
-      onAdded()
+      // Backfill: by default apply the new rule across existing transactions too,
+      // so "make a rule" fixes history, not just future syncs.
+      let changed = 0
+      if (applyToExisting) {
+        const res = await rulesAPI.applyNow()
+        changed = res.data?.changed ?? 0
+      }
+      onAdded({ applied: applyToExisting, changed })
     } catch (e: any) {
       setError(e.response?.data?.detail || 'Failed to save rule')
       setSaving(false)
@@ -165,6 +173,19 @@ export default function AddRuleModal({
             ))}
           </select>
         </div>
+
+        <label className="flex items-center gap-2 mt-4 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={applyToExisting}
+            onChange={(e) => setApplyToExisting(e.target.checked)}
+            className="checkbox"
+          />
+          <span className="text-sm text-slate-300">Apply to existing transactions</span>
+          {preview && applyToExisting && (
+            <span className="text-xs text-slate-500">(recategorises {preview.match_count} now)</span>
+          )}
+        </label>
 
         <div className="flex justify-end gap-2 mt-5">
           <button onClick={onClose} className="btn-ghost">Cancel</button>

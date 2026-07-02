@@ -15,6 +15,7 @@ import {
   EyeOff,
   Trash2,
   Building2,
+  Sparkles,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 
@@ -127,6 +128,11 @@ const SECURITY = [
     icon: ShieldCheck,
     title: 'Built to be audited',
     body: 'Scoped access tokens, least-privilege data access, and a security model we review on every change — built with future FCA-grade scrutiny in mind.',
+  },
+  {
+    icon: Sparkles,
+    title: 'A fresh start, on purpose',
+    body: 'In July 2026 we wiped our databases as part of a security upgrade. We’re moving towards per-user encryption where only you hold the key to your data — bank tokens are encrypted today, and full per-user encryption of transactions is in progress. Starting clean means no legacy data sits around under the old model.',
   },
 ]
 

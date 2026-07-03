@@ -3,10 +3,11 @@ from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 
-from sqlalchemy import Boolean, DateTime, Enum as SQLEnum, ForeignKey, Index, Numeric, String, Text, func
+from sqlalchemy import Boolean, DateTime, Enum as SQLEnum, ForeignKey, Index, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.core.encryption import UserEncryptedDecimal, UserEncryptedString
 
 
 class TransactionType(str, Enum):
@@ -33,12 +34,15 @@ class Transaction(Base):
     transaction_type: Mapped[TransactionType] = mapped_column(
         SQLEnum(TransactionType, values_callable=lambda obj: [e.value for e in obj])
     )
-    amount: Mapped[Decimal] = mapped_column(Numeric(precision=12, scale=2))
+    # Amount, description and merchant are encrypted with the user's DEK —
+    # SQL never filters or aggregates on them; analytics loads rows and
+    # computes in Python.
+    amount: Mapped[Decimal] = mapped_column(UserEncryptedDecimal)
     currency: Mapped[str] = mapped_column(String(3), default="GBP")
 
     # Description and categorization
-    description: Mapped[str] = mapped_column(Text)
-    merchant_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    description: Mapped[str] = mapped_column(UserEncryptedString)
+    merchant_name: Mapped[str | None] = mapped_column(UserEncryptedString, nullable=True)
 
     # Our categorization (will be populated by categorization engine)
     category: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)

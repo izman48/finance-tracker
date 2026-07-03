@@ -2,12 +2,14 @@ import { useState, FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import AuthShell from '../components/ui/AuthShell'
+import RecoveryCodeCard from '../components/RecoveryCodeCard'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [recoveryCode, setRecoveryCode] = useState<string | null>(null)
 
   const { login } = useAuth()
   const navigate = useNavigate()
@@ -18,7 +20,13 @@ export default function LoginPage() {
     setIsLoading(true)
 
     try {
-      await login(email, password)
+      // A recovery code comes back when this login upgraded the account to
+      // per-user encryption — hold here so it's seen (it's shown only once).
+      const code = await login(email, password)
+      if (code) {
+        setRecoveryCode(code)
+        return
+      }
       navigate('/dashboard')
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
@@ -30,6 +38,21 @@ export default function LoginPage() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  if (recoveryCode) {
+    return (
+      <AuthShell
+        title="Save your recovery code"
+        subtitle="Your account now has per-user encryption — this code is new."
+      >
+        <RecoveryCodeCard
+          code={recoveryCode}
+          continueLabel="I've saved it — go to my dashboard"
+          onContinue={() => navigate('/dashboard')}
+        />
+      </AuthShell>
+    )
   }
 
   return (

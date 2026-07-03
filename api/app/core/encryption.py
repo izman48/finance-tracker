@@ -1,14 +1,22 @@
-"""Transparent encryption for sensitive columns (bank OAuth tokens).
+"""Transparent encryption for sensitive columns.
 
-Provides an ``EncryptedString`` SQLAlchemy type that encrypts values with
-Fernet (AES-128-CBC + HMAC) on the way into the database and decrypts them on
-the way out, so callers and queries see plain strings while data at rest is
-ciphertext.
+``EncryptedString`` encrypts with the server-wide Fernet key — it protects
+against database leaks but the operator can decrypt.
+
+``UserEncryptedString`` / ``UserEncryptedDecimal`` encrypt with the current
+user's DEK (see ``core/user_crypto.py``), which the server only holds during
+an authenticated session — the operator cannot decrypt these at rest.
+``UserEncryptedToken`` adds the server key as an outer layer on top of the
+DEK layer (used for bank OAuth tokens, which were already server-encrypted).
+
+All types fail closed: touching a user-encrypted column without a session DEK
+raises ``DEKUnavailableError`` (mapped to a 401 asking to re-login).
 """
+from decimal import Decimal
 from functools import lru_cache
 
 from cryptography.fernet import Fernet, InvalidToken
-from sqlalchemy import String, TypeDecorator
+from sqlalchemy import String, Text, TypeDecorator
 
 from app.core.config import get_settings
 
@@ -52,3 +60,71 @@ class EncryptedString(TypeDecorator):
             # different key. Return as-is so reads don't hard-fail; such rows
             # should be re-created via a fresh bank connection.
             return value
+
+
+def _user_fernet() -> Fernet:
+    """Fernet cipher over the current session's DEK (fail-closed)."""
+    from app.core.user_crypto import require_dek
+
+    return Fernet(require_dek())
+
+
+class UserEncryptedString(TypeDecorator):
+    """A Text column encrypted with the user's DEK at rest."""
+
+    impl = Text
+    cache_ok = True
+
+    def process_bind_param(self, value: str | None, dialect) -> str | None:
+        if value is None:
+            return None
+        return _user_fernet().encrypt(str(value).encode()).decode()
+
+    def process_result_value(self, value: str | None, dialect) -> str | None:
+        if value is None:
+            return None
+        return _user_fernet().decrypt(value.encode()).decode()
+
+
+class UserEncryptedDecimal(TypeDecorator):
+    """A Decimal stored as DEK-encrypted text.
+
+    SQL cannot aggregate or compare it — all arithmetic on these columns
+    happens in Python (which is how the analytics engine already works).
+    """
+
+    impl = Text
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect) -> str | None:
+        if value is None:
+            return None
+        return _user_fernet().encrypt(str(Decimal(str(value))).encode()).decode()
+
+    def process_result_value(self, value: str | None, dialect) -> Decimal | None:
+        if value is None:
+            return None
+        return Decimal(_user_fernet().decrypt(value.encode()).decode())
+
+
+class UserEncryptedToken(TypeDecorator):
+    """DEK layer inside, server-key layer outside (bank OAuth tokens).
+
+    Keeps the pre-existing server-side Fernet layer while adding the per-user
+    one, so a leaked database needs both the server key *and* a user secret.
+    """
+
+    impl = Text
+    cache_ok = True
+
+    def process_bind_param(self, value: str | None, dialect) -> str | None:
+        if value is None:
+            return None
+        inner = _user_fernet().encrypt(value.encode())
+        return _get_fernet().encrypt(inner).decode()
+
+    def process_result_value(self, value: str | None, dialect) -> str | None:
+        if value is None:
+            return None
+        inner = _get_fernet().decrypt(value.encode())
+        return _user_fernet().decrypt(inner).decode()

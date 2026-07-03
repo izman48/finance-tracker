@@ -6,7 +6,7 @@ from sqlalchemy import DateTime, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
-from app.core.encryption import EncryptedString
+from app.core.encryption import UserEncryptedString, UserEncryptedToken
 
 
 class BankConnection(Base):
@@ -17,13 +17,15 @@ class BankConnection(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
 
-    # Provider information
-    provider_id: Mapped[str] = mapped_column(String, nullable=False)  # TrueLayer provider ID
-    provider_name: Mapped[str] = mapped_column(String, nullable=False)  # e.g., "Monzo", "Barclays"
+    # Provider information — which bank a user banks with is user data, so
+    # both fields are DEK-encrypted (dedupe on provider_id happens in Python).
+    provider_id: Mapped[str] = mapped_column(UserEncryptedString, nullable=False)  # TrueLayer provider ID
+    provider_name: Mapped[str] = mapped_column(UserEncryptedString, nullable=False)  # e.g., "Monzo", "Barclays"
 
-    # TrueLayer OAuth tokens for this specific connection (encrypted at rest)
-    access_token: Mapped[str | None] = mapped_column(EncryptedString, nullable=True)
-    refresh_token: Mapped[str | None] = mapped_column(EncryptedString, nullable=True)
+    # TrueLayer OAuth tokens: DEK layer inside, server Fernet layer outside.
+    # At rest they need both the server key and a user secret to read.
+    access_token: Mapped[str | None] = mapped_column(UserEncryptedToken, nullable=True)
+    refresh_token: Mapped[str | None] = mapped_column(UserEncryptedToken, nullable=True)
     token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # When accounts/transactions were last successfully pulled from TrueLayer.

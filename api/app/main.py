@@ -1,7 +1,10 @@
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.core.config import get_settings
+from app.core.security import set_session_dek
+from app.core.user_crypto import DEKUnavailableError
 from app.routers import (
     health_router,
     auth_router,
@@ -19,7 +22,21 @@ app = FastAPI(
     version="0.1.0",
     docs_url="/api/docs" if settings.environment != "production" else None,
     redoc_url="/api/redoc" if settings.environment != "production" else None,
+    # Unwraps the per-user data-encryption key from the bearer token into the
+    # request context on every request (no-op when absent).
+    dependencies=[Depends(set_session_dek)],
 )
+
+
+@app.exception_handler(DEKUnavailableError)
+async def dek_unavailable_handler(request: Request, exc: DEKUnavailableError):
+    """Touched encrypted data without a session key: the token predates
+    per-user encryption. A fresh login mints one, so ask for that."""
+    return JSONResponse(
+        status_code=401,
+        content={"detail": str(exc)},
+        headers={"WWW-Authenticate": "Bearer"},
+    )
 
 # CORS middleware - restrict in production
 origins = (

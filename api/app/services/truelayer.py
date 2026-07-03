@@ -25,12 +25,14 @@ class TrueLayerService:
         self.auth_url = settings.truelayer_auth_url
         self.api_url = settings.truelayer_api_url
 
-    def get_auth_link(self, user_id: str) -> str:
+    def get_auth_link(self, user_id: str, dek: bytes) -> str:
         """
         Generate TrueLayer OAuth authorization URL.
 
         Args:
             user_id: The user ID to include in state parameter
+            dek: The session data-encryption key, carried (server-encrypted)
+                 in the state token so the callback can encrypt what it stores
 
         Returns:
             Authorization URL for the user to visit
@@ -53,7 +55,7 @@ class TrueLayerService:
             "scope": " ".join(scopes),
             "redirect_uri": self.redirect_uri,
             # Signed, short-lived state token (CSRF protection + hides user_id)
-            "state": create_oauth_state(user_id),
+            "state": create_oauth_state(user_id, dek),
             "providers": "uk-ob-all uk-oauth-all",  # Live mode: removed uk-cs-mock
         }
 
@@ -383,10 +385,15 @@ class TrueLayerService:
             except Exception as e:
                 logger.warning(f"Could not fetch balance for {tl_account.get('display_name')}: {str(e)}")
 
-            # Check if account already exists
+            # Check if account already exists. Scoped to this user: another
+            # user's row can't be decrypted with (or re-encrypted under) this
+            # session's key.
             account = (
                 db.query(Account)
-                .filter(Account.external_id == tl_account["account_id"])
+                .filter(
+                    Account.external_id == tl_account["account_id"],
+                    Account.user_id == bank_connection.user_id,
+                )
                 .first()
             )
 
@@ -501,9 +508,11 @@ class TrueLayerService:
                 logger.info(f"Received {len(tl_transactions)} transactions from TrueLayer for account {account.external_id}")
 
             for tl_tx in tl_transactions:
-                # Check if transaction already exists
+                # Dedupe on external_id. Select only the id: loading the full
+                # row would decrypt its user-encrypted columns, which fails if
+                # the id collides with a row owned by another user.
                 existing = (
-                    db.query(Transaction)
+                    db.query(Transaction.id)
                     .filter(Transaction.external_id == tl_tx["transaction_id"])
                     .first()
                 )

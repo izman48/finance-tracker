@@ -3,10 +3,11 @@ from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, String, func
+from sqlalchemy import DateTime, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.core.encryption import UserEncryptedDecimal, UserEncryptedString
 
 
 class AccountType(str, Enum):
@@ -33,21 +34,24 @@ class Account(Base):
         ForeignKey("bank_connections.id", ondelete="CASCADE"), index=True
     )
 
-    # External identifiers from TrueLayer
+    # External identifiers from TrueLayer. external_id stays plaintext: it is
+    # an opaque TrueLayer id and the sync dedupe relies on its unique index.
     external_id: Mapped[str] = mapped_column(String(255), unique=True, index=True)
-    provider_name: Mapped[str] = mapped_column(String(255))  # e.g., "HSBC", "Monzo"
+    # Which bank, what the account is called, and its balances are user data —
+    # encrypted with the DEK like transaction details.
+    provider_name: Mapped[str] = mapped_column(UserEncryptedString)  # e.g., "HSBC", "Monzo"
 
     # Account details
     account_type: Mapped[AccountType] = mapped_column(String(50))
-    display_name: Mapped[str] = mapped_column(String(255))
+    display_name: Mapped[str] = mapped_column(UserEncryptedString)
     currency: Mapped[str] = mapped_column(String(3), default="GBP")
 
     # Balance (updated periodically)
     current_balance: Mapped[Decimal | None] = mapped_column(
-        Numeric(precision=12, scale=2), nullable=True
+        UserEncryptedDecimal, nullable=True
     )
     available_balance: Mapped[Decimal | None] = mapped_column(
-        Numeric(precision=12, scale=2), nullable=True
+        UserEncryptedDecimal, nullable=True
     )
     balance_updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

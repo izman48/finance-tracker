@@ -106,13 +106,13 @@ const SECURITY = [
   },
   {
     icon: Lock,
-    title: 'Bank tokens encrypted at rest',
-    body: 'The access tokens that link to your bank are encrypted in the database with authenticated AES (Fernet), so a database dump alone can’t be used to reach your accounts.',
+    title: 'Encrypted with your key, not ours',
+    body: 'Your transactions, balances and bank details are encrypted with a key derived from your password — we can’t read them, even with full access to our own database. Bank tokens carry a second server-side layer on top.',
   },
   {
     icon: KeyRound,
-    title: 'Passwords hashed, traffic encrypted',
-    body: 'Your password is stored only as a salted bcrypt hash — never in plain text. Every request runs over HTTPS with HSTS enforced.',
+    title: 'Your key, your responsibility too',
+    body: 'Because only your password unlocks your data, you get a one-time recovery code at sign-up. Reset your password with it and everything survives; lose both and your data can’t be recovered — you reconnect your bank and start fresh. Passwords are stored only as salted bcrypt hashes, and everything runs over HTTPS with HSTS.',
   },
   {
     icon: EyeOff,
@@ -132,7 +132,7 @@ const SECURITY = [
   {
     icon: Sparkles,
     title: 'A fresh start, on purpose',
-    body: 'In July 2026 we wiped our databases as part of a security upgrade. We’re moving towards per-user encryption where only you hold the key to your data — bank tokens are encrypted today, and full per-user encryption of transactions is in progress. Starting clean means no legacy data sits around under the old model.',
+    body: 'In July 2026 we reset our databases to launch per-user encryption. Data collected under the old model was deleted rather than migrated, so nothing about you sits in our systems that isn’t protected by your key.',
   },
 ]
 

@@ -141,15 +141,19 @@ def learn_and_apply(db: Session, user_id, transaction: Transaction) -> int:
     if not key:
         return 0
 
-    rule = (
-        db.query(CategoryRule)
-        .filter(
-            CategoryRule.user_id == user_id,
-            CategoryRule.pattern == key,
-            CategoryRule.match_type == "exact",
-            CategoryRule.source == "learned",
-        )
-        .first()
+    # Patterns are encrypted at rest, so the "existing learned rule for this
+    # merchant" lookup compares in Python over the user's learned rules.
+    rule = next(
+        (
+            r
+            for r in db.query(CategoryRule).filter(
+                CategoryRule.user_id == user_id,
+                CategoryRule.match_type == "exact",
+                CategoryRule.source == "learned",
+            )
+            if r.pattern == key
+        ),
+        None,
     )
 
     if not transaction.category:

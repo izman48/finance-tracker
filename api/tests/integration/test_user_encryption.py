@@ -10,7 +10,16 @@ from sqlalchemy import text
 from app.core import user_crypto
 from app.core.config import get_settings
 from app.core.security import create_password_reset_token, get_password_hash
-from app.models import Account, BankConnection, Transaction, User
+from app.models import (
+    Account,
+    Asset,
+    AssetValuation,
+    BankConnection,
+    CommitmentRule,
+    PlannedItem,
+    Transaction,
+    User,
+)
 
 SECRET = get_settings().secret_key
 
@@ -154,6 +163,55 @@ class TestEncryptedData:
         assert "tl-access-token" not in raw_tokens[0]
         assert "Test Bank" not in raw_tokens[1]
 
+    def test_derived_tables_are_ciphertext_at_rest(self, client, db_session):
+        """Commitments, planned items and assets copy data out of transactions
+        — they must be just as unreadable to the operator."""
+        from datetime import date
+        from app.services import analytics_service
+
+        _register(client)
+        token = _login(client)["access_token"]
+        dek = _dek_from_token(token)
+        user = db_session.query(User).first()
+
+        ctx = user_crypto.current_dek.set(dek)
+        try:
+            db_session.add(
+                CommitmentRule(
+                    user_id=user.id, direction="expense", label="Netflix",
+                    amount=Decimal("15.99"), cadence="monthly",
+                    next_date=date(2026, 8, 1),
+                    match_key=analytics_service._match_key("expense", "Netflix"),
+                )
+            )
+            db_session.add(
+                PlannedItem(
+                    user_id=user.id, name="WOS BATTERSEA LONDON",
+                    kind="installment_plan", start_date=date(2026, 8, 3),
+                    total_amount=Decimal("4100.00"), installments=10,
+                )
+            )
+            asset = Asset(user_id=user.id, name="Vanguard ISA")
+            db_session.add(asset)
+            db_session.flush()
+            db_session.add(
+                AssetValuation(asset_id=asset.id, value=Decimal("25000"), valued_at=date(2026, 7, 1))
+            )
+            db_session.commit()
+        finally:
+            user_crypto.current_dek.reset(ctx)
+
+        checks = [
+            ("SELECT label, amount, match_key FROM commitment_rules", "NETFLIX"),
+            ("SELECT name, total_amount FROM planned_items", "WOS"),
+            ("SELECT name FROM assets", "VANGUARD"),
+            ("SELECT value FROM asset_valuations", "25000"),
+        ]
+        for sql, needle in checks:
+            for stored in db_session.execute(text(sql)).one():
+                assert needle not in str(stored).upper()
+                assert str(stored).startswith("gA")
+
     def test_reading_without_dek_is_401_not_leak(self, client, db_session):
         """A token without a `dk` claim (predates encryption) can't read data."""
         _register(client)
@@ -168,6 +226,79 @@ class TestEncryptedData:
         client.headers["Authorization"] = f"Bearer {legacy_token}"
         res = client.get("/api/v1/banking/transactions")
         assert res.status_code == 401
+
+
+class TestEncryptedRules:
+    def test_learned_rule_matches_and_spreads_in_python(self, client, db_session):
+        """Hand-categorizing learns an (encrypted) merchant rule and spreads it
+        to the merchant's other transactions — all matching now in Python."""
+        _register(client)
+        token = _login(client)["access_token"]
+        dek = _dek_from_token(token)
+        user = db_session.query(User).first()
+        _seed_bank_data(db_session, user.id, dek)
+
+        # A second transaction at the same merchant.
+        ctx = user_crypto.current_dek.set(dek)
+        try:
+            account = db_session.query(Account).first()
+            db_session.add(
+                Transaction(
+                    account_id=account.id, external_id=f"tx-{uuid.uuid4()}",
+                    transaction_type="debit", amount=Decimal("4.50"),
+                    description="COFFEE SHOP LONDON", merchant_name="Coffee Shop",
+                    transaction_date=datetime(2026, 6, 8, tzinfo=timezone.utc),
+                )
+            )
+            db_session.commit()
+        finally:
+            user_crypto.current_dek.reset(ctx)
+
+        client.headers["Authorization"] = f"Bearer {token}"
+        txs = client.get("/api/v1/banking/transactions").json()["items"]
+        first, second = txs[0], txs[1]
+        res = client.patch(
+            f"/api/v1/banking/transactions/{first['id']}", json={"category": "Coffee"}
+        )
+        assert res.status_code == 200
+
+        other = client.get("/api/v1/banking/transactions").json()["items"]
+        assert all(t["category"] == "Coffee" for t in other), second
+        # The learned pattern (the merchant name) is ciphertext at rest.
+        stored = db_session.execute(text("SELECT pattern FROM category_rules")).scalar_one()
+        assert "coffee" not in stored.lower() and stored.startswith("gA")
+
+    def test_pack_sharing_survives_encryption(self, client, db_session):
+        """Importer never holds the owner's key — sharing works via the
+        plaintext snapshot written (with consent) at share time."""
+        _register(client, "owner@example.com")
+        owner_token = _login(client, "owner@example.com")["access_token"]
+        client.headers["Authorization"] = f"Bearer {owner_token}"
+
+        pack_id = client.post("/api/v1/rules/packs", json={"name": "UK Essentials"}).json()["id"]
+        client.post(
+            "/api/v1/rules",
+            json={"pattern": "tesco", "match_type": "contains", "category": "Groceries", "pack_id": pack_id},
+        )
+        share_code = client.post(f"/api/v1/rules/packs/{pack_id}/share").json()["share_code"]
+
+        # Rule pattern is encrypted; the consented share snapshot is plaintext.
+        stored_pattern = db_session.execute(text("SELECT pattern FROM category_rules")).scalar_one()
+        assert stored_pattern.startswith("gA")
+        snapshot = db_session.execute(text("SELECT share_snapshot FROM rule_packs")).scalar_one()
+        assert "tesco" in snapshot
+
+        _register(client, "importer@example.com")
+        importer_token = _login(client, "importer@example.com")["access_token"]
+        client.headers["Authorization"] = f"Bearer {importer_token}"
+
+        preview = client.get(f"/api/v1/rules/shared/{share_code}").json()
+        assert preview["rules"] == [
+            {"pattern": "tesco", "match_type": "contains", "category": "Groceries"}
+        ]
+        imported = client.post("/api/v1/rules/import", json={"share_code": share_code})
+        assert imported.status_code == 201
+        assert imported.json()["rules"][0]["pattern"] == "tesco"
 
 
 class TestPasswordChange:

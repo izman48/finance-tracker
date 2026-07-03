@@ -8,10 +8,11 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, func
+from sqlalchemy import Date, DateTime, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.core.encryption import UserEncryptedDecimal, UserEncryptedString
 
 ASSET_TYPES = ("isa", "savings", "investment", "pension", "property", "crypto", "other")
 
@@ -26,7 +27,8 @@ class Asset(Base):
         ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
 
-    name: Mapped[str] = mapped_column(String(100))
+    # What the user owns and what it's worth is wealth data — DEK-encrypted.
+    name: Mapped[str] = mapped_column(UserEncryptedString)
     asset_type: Mapped[str] = mapped_column(String(20), default="other")
 
     created_at: Mapped[datetime] = mapped_column(
@@ -54,7 +56,7 @@ class AssetValuation(Base):
         ForeignKey("assets.id", ondelete="CASCADE"), index=True
     )
 
-    value: Mapped[Decimal] = mapped_column(Numeric(precision=14, scale=2))
+    value: Mapped[Decimal] = mapped_column(UserEncryptedDecimal)
     valued_at: Mapped[date] = mapped_column(Date, index=True)
 
     created_at: Mapped[datetime] = mapped_column(

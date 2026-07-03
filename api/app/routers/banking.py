@@ -1,5 +1,6 @@
 """Banking endpoints for Open Banking integration."""
 import logging
+import uuid
 from typing import Annotated
 from datetime import datetime, timedelta, timezone
 
@@ -370,11 +371,19 @@ def update_transaction(
 
     Only allows updating transactions that belong to the current user's accounts.
     """
+    try:
+        tid = uuid.UUID(transaction_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Transaction not found"
+        )
+
     # Find the transaction and verify it belongs to the user
     transaction = (
         db.query(Transaction)
         .join(Account)
-        .filter(Transaction.id == transaction_id)
+        .filter(Transaction.id == tid)
         .filter(Account.user_id == current_user.id)
         .first()
     )

@@ -175,7 +175,8 @@ class TestDetection:
         db_session.commit()
 
         svc.commitment_from_transaction(db_session, user, str(tx.id), "monthly")
-        tescos = db_session.query(CommitmentRule).filter(CommitmentRule.label == "Tesco").all()
+        # label is encrypted at rest — match in Python, not SQL.
+        tescos = [r for r in db_session.query(CommitmentRule).all() if r.label == "Tesco"]
         assert len(tescos) == 1          # confirmed the suggestion, didn't duplicate
         assert tescos[0].status == "confirmed"
 

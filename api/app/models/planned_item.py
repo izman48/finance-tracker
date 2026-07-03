@@ -8,10 +8,11 @@ from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
+from app.core.encryption import UserEncryptedDecimal, UserEncryptedString
 
 
 class PlannedKind(str, Enum):
@@ -30,14 +31,16 @@ class PlannedItem(Base):
         ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
 
-    name: Mapped[str] = mapped_column(String(255))
+    # Names are typically merchant names ("paid on finance" copies them from
+    # the transaction) and every amount is spending data — DEK-encrypted.
+    name: Mapped[str] = mapped_column(UserEncryptedString)
     direction: Mapped[str] = mapped_column(String(10), default="expense")  # income | expense
     kind: Mapped[str] = mapped_column(String(20))  # PlannedKind
 
     start_date: Mapped[date] = mapped_column(Date)
 
     # one_off / recurring: amount per occurrence.
-    amount: Mapped[Decimal | None] = mapped_column(Numeric(precision=12, scale=2), nullable=True)
+    amount: Mapped[Decimal | None] = mapped_column(UserEncryptedDecimal, nullable=True)
     # recurring: cadence + interval.
     cadence: Mapped[str | None] = mapped_column(String(20), nullable=True)
     interval_days: Mapped[int | None] = mapped_column(nullable=True)
@@ -45,10 +48,10 @@ class PlannedItem(Base):
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     # installment_plan: split total over N payments, optionally with interest/fees.
-    total_amount: Mapped[Decimal | None] = mapped_column(Numeric(precision=12, scale=2), nullable=True)
+    total_amount: Mapped[Decimal | None] = mapped_column(UserEncryptedDecimal, nullable=True)
     installments: Mapped[int | None] = mapped_column(nullable=True)
-    apr: Mapped[Decimal | None] = mapped_column(Numeric(precision=6, scale=3), nullable=True)
-    fee_amount: Mapped[Decimal | None] = mapped_column(Numeric(precision=12, scale=2), nullable=True)
+    apr: Mapped[Decimal | None] = mapped_column(UserEncryptedDecimal, nullable=True)
+    fee_amount: Mapped[Decimal | None] = mapped_column(UserEncryptedDecimal, nullable=True)
 
     account_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True

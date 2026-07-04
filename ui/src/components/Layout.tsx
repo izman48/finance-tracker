@@ -12,6 +12,7 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
+import AnnouncementBanner from './AnnouncementBanner'
 
 const NAV_LINKS = [
   { to: '/dashboard', label: 'Today', icon: Wallet },
@@ -43,6 +44,9 @@ function Logo() {
       </span>
       <span className="font-display font-bold text-xl text-slate-100 tracking-tight">
         nilu<span className="text-accent">.</span>
+      </span>
+      <span className="px-1.5 py-0.5 rounded-md bg-sky2/15 border border-sky2/30 text-sky2 text-[10px] font-semibold uppercase tracking-wider">
+        Beta
       </span>
     </Link>
   )
@@ -110,6 +114,7 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen flex flex-col">
+      <AnnouncementBanner />
       <header className="sticky top-0 z-40 bg-ink-900/80 backdrop-blur-xl border-b border-white/[0.06]">
         <nav className="max-w-7xl mx-auto px-4 h-16 flex justify-between items-center">
           <Logo />

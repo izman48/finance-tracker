@@ -1,5 +1,6 @@
 """Banking endpoints for Open Banking integration."""
 import logging
+import uuid
 from typing import Annotated
 from datetime import datetime, timedelta, timezone
 
@@ -12,6 +13,7 @@ logger = logging.getLogger(__name__)
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.security import CurrentUser, verify_oauth_state
+from app.core.user_crypto import current_dek, require_dek
 from app.schemas import (
     BankConnectionURL,
     SyncAccountsResponse,
@@ -39,7 +41,10 @@ def initiate_bank_connection(current_user: CurrentUser) -> BankConnectionURL:
     This returns a URL that the user should visit to authorize
     access to their bank account via Open Banking.
     """
-    auth_url = truelayer_service.get_auth_link(str(current_user.id))
+    # The state token carries the session DEK (server-encrypted) so the
+    # callback — which arrives from TrueLayer with no bearer token — can
+    # encrypt the new connection's tokens and synced data.
+    auth_url = truelayer_service.get_auth_link(str(current_user.id), require_dek())
 
     return BankConnectionURL(
         auth_url=auth_url,
@@ -73,11 +78,16 @@ async def oauth_callback(
         return RedirectResponse(url=f"{frontend_url}/dashboard?bank_connected=false&error=missing_params")
 
     # Verify the signed state token (CSRF protection) and extract the user_id
+    # plus the session DEK needed to encrypt everything this callback stores.
     try:
-        user_id = verify_oauth_state(state)
+        user_id, dek = verify_oauth_state(state)
     except ValueError:
         logger.error("Invalid or expired OAuth state in callback")
         return RedirectResponse(url=f"{frontend_url}/dashboard?bank_connected=false&error=invalid_state")
+    if dek is None:
+        logger.error("OAuth state has no session key; user must reconnect from a fresh login")
+        return RedirectResponse(url=f"{frontend_url}/dashboard?bank_connected=false&error=invalid_state")
+    current_dek.set(dek)
 
     try:
         user = db.query(User).filter(User.id == user_id).first()
@@ -100,11 +110,16 @@ async def oauth_callback(
             provider_id = "unknown"
             provider_name = "Unknown Bank"
 
-        # Check if connection already exists for this provider
-        existing_connection = db.query(BankConnection).filter(
-            BankConnection.user_id == user.id,
-            BankConnection.provider_id == provider_id
-        ).first()
+        # Check if connection already exists for this provider. provider_id is
+        # encrypted at rest (non-deterministically), so match in Python.
+        existing_connection = next(
+            (
+                c
+                for c in db.query(BankConnection).filter(BankConnection.user_id == user.id)
+                if c.provider_id == provider_id
+            ),
+            None,
+        )
 
         if existing_connection:
             # Update existing connection
@@ -356,11 +371,19 @@ def update_transaction(
 
     Only allows updating transactions that belong to the current user's accounts.
     """
+    try:
+        tid = uuid.UUID(transaction_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Transaction not found"
+        )
+
     # Find the transaction and verify it belongs to the user
     transaction = (
         db.query(Transaction)
         .join(Account)
-        .filter(Transaction.id == transaction_id)
+        .filter(Transaction.id == tid)
         .filter(Account.user_id == current_user.id)
         .first()
     )

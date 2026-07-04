@@ -15,6 +15,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.core import user_crypto
 from app.core.database import Base, get_db
 from app.main import app
 
@@ -28,6 +29,19 @@ engine = create_engine(
     poolclass=StaticPool,
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+@pytest.fixture(autouse=True)
+def _test_dek():
+    """Give direct-DB test code a session DEK for user-encrypted columns.
+
+    Only affects the test's own thread: TestClient requests run in a separate
+    thread, where the DEK comes from the bearer token via set_session_dek —
+    the same path as production.
+    """
+    token = user_crypto.current_dek.set(user_crypto.generate_dek())
+    yield
+    user_crypto.current_dek.reset(token)
 
 
 @pytest.fixture(scope="function")

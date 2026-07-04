@@ -141,15 +141,19 @@ def learn_and_apply(db: Session, user_id, transaction: Transaction) -> int:
     if not key:
         return 0
 
-    rule = (
-        db.query(CategoryRule)
-        .filter(
-            CategoryRule.user_id == user_id,
-            CategoryRule.pattern == key,
-            CategoryRule.match_type == "exact",
-            CategoryRule.source == "learned",
-        )
-        .first()
+    # Patterns are encrypted at rest, so the "existing learned rule for this
+    # merchant" lookup compares in Python over the user's learned rules.
+    rule = next(
+        (
+            r
+            for r in db.query(CategoryRule).filter(
+                CategoryRule.user_id == user_id,
+                CategoryRule.match_type == "exact",
+                CategoryRule.source == "learned",
+            )
+            if r.pattern == key
+        ),
+        None,
     )
 
     if not transaction.category:
@@ -185,17 +189,15 @@ def learn_and_apply(db: Session, user_id, transaction: Transaction) -> int:
 def _same_merchant(db: Session, user_id, key: str) -> list[Transaction]:
     """All of the user's transactions whose merchant key equals `key`.
 
-    SQL mirror of merchant_match_key: merchant_name unless null/empty, else
-    description; trimmed and lowercased.
+    merchant_name/description are encrypted at rest, so the match runs in
+    Python over the user's (decrypted) transactions rather than in SQL.
     """
-    from sqlalchemy import func
-
-    sql_key = func.lower(
-        func.trim(func.coalesce(func.nullif(Transaction.merchant_name, ""), Transaction.description))
-    )
-    return (
+    txns = (
         db.query(Transaction)
         .join(Account)
-        .filter(Account.user_id == user_id, sql_key == key)
+        .filter(Account.user_id == user_id)
         .all()
     )
+    return [
+        tx for tx in txns if merchant_match_key(tx.merchant_name, tx.description) == key
+    ]

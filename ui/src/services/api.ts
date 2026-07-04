@@ -33,21 +33,41 @@ api.interceptors.response.use(
 
 // Auth endpoints
 export const authApi = {
+  // Returns the one-time recovery code — shown once, never retrievable again.
   register: (email: string, password: string) =>
-    api.post('/auth/register', { email, password }),
-
-  login: (email: string, password: string) =>
-    api.post('/auth/login', new URLSearchParams({ username: email, password }), {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    api.post<{ id: string; email: string; recovery_code: string }>('/auth/register', {
+      email,
+      password,
     }),
 
+  // recovery_code is set only when login provisioned encryption for an
+  // account that predates it — show it like the signup one.
+  login: (email: string, password: string) =>
+    api.post<{ access_token: string; token_type: string; recovery_code: string | null }>(
+      '/auth/login',
+      new URLSearchParams({ username: email, password }),
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+    ),
+
   me: () => api.get('/auth/me'),
+
+  changePassword: (currentPassword: string, newPassword: string) =>
+    api.post('/auth/change-password', {
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
 
   forgotPassword: (email: string) =>
     api.post('/auth/forgot-password', { email }),
 
-  resetPassword: (token: string, newPassword: string) =>
-    api.post('/auth/reset-password', { token, new_password: newPassword }),
+  // Without the recovery code, resetting issues a new encryption key: bank
+  // data is purged (rebuilt by re-syncing) and a fresh code comes back.
+  resetPassword: (token: string, newPassword: string, recoveryCode?: string) =>
+    api.post<{ message: string; recovery_code?: string }>('/auth/reset-password', {
+      token,
+      new_password: newPassword,
+      recovery_code: recoveryCode || undefined,
+    }),
 
   deleteAccount: (password: string) =>
     api.post('/auth/delete-account', { password }),

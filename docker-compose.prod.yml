@@ -44,30 +44,9 @@ services:
         condition: service_healthy
     command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"
 
-  # Background worker: refreshes accounts + recent transactions for every
-  # bank connection on an interval, so data stays fresh without manual syncs.
-  sync:
-    build:
-      context: ./api
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-finance_db}
-      SECRET_KEY: ${SECRET_KEY:?set in .env.production}
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?set in .env.production}
-      TRUELAYER_CLIENT_ID: ${TRUELAYER_CLIENT_ID}
-      TRUELAYER_CLIENT_SECRET: ${TRUELAYER_CLIENT_SECRET}
-      TRUELAYER_REDIRECT_URI: https://${DOMAIN}/api/v1/banking/callback
-      TRUELAYER_SANDBOX: ${TRUELAYER_SANDBOX:-true}
-      FRONTEND_URL: https://${DOMAIN}
-      ENVIRONMENT: production
-      SYNC_INTERVAL_HOURS: ${SYNC_INTERVAL_HOURS:-6}
-    depends_on:
-      db:
-        condition: service_healthy
-      api:
-        condition: service_started
-    command: python -m app.tasks.background_sync
+  # No background sync worker: bank tokens are encrypted with per-user keys
+  # the server only holds during an active session, so syncs happen at login
+  # and on demand (see core/user_crypto.py).
 
   caddy:
     build:

@@ -148,7 +148,16 @@ class TestOAuthState:
     def test_roundtrip_returns_user_id(self):
         """A freshly created state verifies back to the same user_id."""
         state = create_oauth_state("user-abc")
-        assert verify_oauth_state(state) == "user-abc"
+        assert verify_oauth_state(state) == ("user-abc", None)
+
+    def test_roundtrip_carries_session_dek(self):
+        """The state token transports the session DEK to the OAuth callback."""
+        from app.core.user_crypto import generate_dek
+
+        dek = generate_dek()
+        state = create_oauth_state("user-abc", dek)
+        assert dek.decode() not in state  # never in the clear in a URL
+        assert verify_oauth_state(state) == ("user-abc", dek)
 
     def test_distinct_states_per_call(self):
         """Random nonce makes each state token unique."""

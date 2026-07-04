@@ -9,6 +9,7 @@ import {
   SlidersHorizontal,
   LogOut,
   ChevronDown,
+  RefreshCw,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 
@@ -99,7 +100,7 @@ function UserMenu() {
 }
 
 export default function Layout() {
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, isSyncing } = useAuth()
   const location = useLocation()
 
   // Scroll back to the top on page change (mobile tab switches especially).
@@ -147,6 +148,17 @@ export default function Layout() {
             </div>
           )}
         </nav>
+        {/* Post-login sync: banks can only be pulled while the session holds
+            the user's encryption key, so it happens now rather than in the
+            background. */}
+        {isAuthenticated && isSyncing && (
+          <div className="border-t border-accent/20 bg-accent/[0.07]">
+            <div className="max-w-7xl mx-auto px-4 py-1.5 flex items-center gap-2 text-xs text-accent">
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              Syncing your banks — figures update as data lands…
+            </div>
+          </div>
+        )}
       </header>
 
       <main className={`flex-1 ${isAuthenticated ? 'pb-24 lg:pb-0' : ''}`}>

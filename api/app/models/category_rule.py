@@ -7,10 +7,11 @@ another user's shared pack.
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.core.encryption import UserEncryptedString
 
 
 def merchant_match_key(merchant_name: str | None, description: str | None) -> str | None:
@@ -33,6 +34,11 @@ class RulePack(Base):
     description: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # Set when the owner shares the pack; the import URL is /r/<share_code>.
     share_code: Mapped[str | None] = mapped_column(String(20), unique=True, nullable=True, index=True)
+    # Plaintext JSON snapshot of the rules, written when the owner shares (an
+    # explicit consent to publish them). Rule patterns are DEK-encrypted, so
+    # importers — who never hold the owner's key — read this instead. Cleared
+    # on unshare; refreshed each time the owner re-opens sharing.
+    share_snapshot: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Provenance note for imported packs, e.g. "Imported from 'UK Essentials'".
     imported_from: Mapped[str | None] = mapped_column(String(150), nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -62,7 +68,9 @@ class CategoryRule(Base):
         ForeignKey("rule_packs.id", ondelete="CASCADE"), nullable=True, index=True
     )
 
-    pattern: Mapped[str] = mapped_column(String(255))
+    # Patterns embed merchant names (learned rules literally are the merchant
+    # key) — DEK-encrypted; matching runs in Python, never in SQL.
+    pattern: Mapped[str] = mapped_column(UserEncryptedString)
     # exact | contains | regex
     match_type: Mapped[str] = mapped_column(String(10), default="exact")
     # any | merchant | description

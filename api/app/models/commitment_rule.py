@@ -9,8 +9,10 @@ from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 
-from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, func
+from sqlalchemy import Date, DateTime, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column
+
+from app.core.encryption import UserEncryptedDecimal, UserEncryptedString
 
 
 class CommitmentDirection(str, Enum):
@@ -50,8 +52,10 @@ class CommitmentRule(Base):
     )
 
     direction: Mapped[str] = mapped_column(String(10))  # CommitmentDirection
-    label: Mapped[str] = mapped_column(String(255))
-    amount: Mapped[Decimal] = mapped_column(Numeric(precision=12, scale=2))
+    # Labels are merchant names and amounts are spending data — DEK-encrypted
+    # like the transactions they derive from.
+    label: Mapped[str] = mapped_column(UserEncryptedString)
+    amount: Mapped[Decimal] = mapped_column(UserEncryptedDecimal)
 
     cadence: Mapped[str] = mapped_column(String(20))  # CommitmentCadence
     interval_days: Mapped[int | None] = mapped_column(nullable=True)   # for custom_days
@@ -62,8 +66,9 @@ class CommitmentRule(Base):
     status: Mapped[str] = mapped_column(String(10), default=CommitmentStatus.SUGGESTED.value)
 
     # Stable key derived from merchant/description, used to dedupe re-detection so a
-    # dismissed/confirmed commitment is never re-suggested.
-    match_key: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    # dismissed/confirmed commitment is never re-suggested. Encrypted (it embeds the
+    # merchant), so matching happens in Python over the user's rules, never in SQL.
+    match_key: Mapped[str | None] = mapped_column(UserEncryptedString, nullable=True)
 
     # Which account this hits (optional; defaults handled in the projection).
     account_id: Mapped[uuid.UUID | None] = mapped_column(

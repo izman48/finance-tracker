@@ -2,6 +2,7 @@ import { useState, FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import AuthShell from '../components/ui/AuthShell'
+import RecoveryCodeCard from '../components/RecoveryCodeCard'
 
 export default function RegisterPage() {
   const [email, setEmail] = useState('')
@@ -9,6 +10,7 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [recoveryCode, setRecoveryCode] = useState<string | null>(null)
 
   const { register } = useAuth()
   const navigate = useNavigate()
@@ -30,8 +32,9 @@ export default function RegisterPage() {
     setIsLoading(true)
 
     try {
-      await register(email, password)
-      navigate('/dashboard')
+      // The account is created and logged in, but hold at the recovery-code
+      // screen until it's acknowledged — it is shown exactly once.
+      setRecoveryCode(await register(email, password))
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
         const axiosError = err as { response?: { data?: { detail?: string } } }
@@ -42,6 +45,21 @@ export default function RegisterPage() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  if (recoveryCode) {
+    return (
+      <AuthShell
+        title="Save your recovery code"
+        subtitle="Your account is ready — this is the one thing to keep safe."
+      >
+        <RecoveryCodeCard
+          code={recoveryCode}
+          continueLabel="I've saved it — go to my dashboard"
+          onContinue={() => navigate('/dashboard')}
+        />
+      </AuthShell>
+    )
   }
 
   return (

@@ -29,6 +29,16 @@ class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class RegisterResponse(UserResponse):
+    """Registration result: the user plus their one-time recovery code.
+
+    The recovery code is shown exactly once — it is never stored in a
+    recoverable form, only used to wrap the user's data-encryption key.
+    """
+
+    recovery_code: str
+
+
 class ForgotPasswordRequest(BaseModel):
     """Request a password reset email."""
 
@@ -36,9 +46,22 @@ class ForgotPasswordRequest(BaseModel):
 
 
 class ResetPasswordRequest(BaseModel):
-    """Set a new password using an emailed reset token."""
+    """Set a new password using an emailed reset token.
+
+    Without the recovery code the user's data-encryption key cannot be
+    recovered: a new one is issued and existing bank data is purged (it can be
+    rebuilt by re-syncing from the bank).
+    """
 
     token: str
+    new_password: str = Field(min_length=8, max_length=128)
+    recovery_code: str | None = None
+
+
+class ChangePasswordRequest(BaseModel):
+    """Change password while logged in (rewraps the DEK — no data loss)."""
+
+    current_password: str
     new_password: str = Field(min_length=8, max_length=128)
 
 
@@ -171,10 +194,16 @@ class RuleImportRequest(BaseModel):
 
 
 class Token(BaseModel):
-    """JWT token response."""
+    """JWT token response.
+
+    `recovery_code` is only present when logging in provisioned a fresh
+    data-encryption key for an account that predates per-user encryption —
+    the UI must show it once and require acknowledgement.
+    """
 
     access_token: str
     token_type: str = "bearer"
+    recovery_code: str | None = None
 
 
 class TokenData(BaseModel):

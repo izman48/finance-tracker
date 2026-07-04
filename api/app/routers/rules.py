@@ -1,4 +1,5 @@
 """Categorization rules and shareable rule packs."""
+import json
 import logging
 import secrets
 import uuid
@@ -28,10 +29,20 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/rules", tags=["rules"])
 
 
+def _as_uuid(value: str, not_found: str) -> uuid.UUID:
+    try:
+        return uuid.UUID(str(value))
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=not_found)
+
+
 def _own_rule(db: Session, user_id, rule_id: str) -> CategoryRule:
     rule = (
         db.query(CategoryRule)
-        .filter(CategoryRule.id == rule_id, CategoryRule.user_id == user_id)
+        .filter(
+            CategoryRule.id == _as_uuid(rule_id, "Rule not found"),
+            CategoryRule.user_id == user_id,
+        )
         .first()
     )
     if not rule:
@@ -42,7 +53,10 @@ def _own_rule(db: Session, user_id, rule_id: str) -> CategoryRule:
 def _own_pack(db: Session, user_id, pack_id: str) -> RulePack:
     pack = (
         db.query(RulePack)
-        .filter(RulePack.id == pack_id, RulePack.user_id == user_id)
+        .filter(
+            RulePack.id == _as_uuid(pack_id, "Pack not found"),
+            RulePack.user_id == user_id,
+        )
         .first()
     )
     if not pack:
@@ -240,11 +254,29 @@ def share_pack(
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> dict:
-    """Generate (or return) the pack's share code and import URL."""
+    """Generate (or return) the pack's share code and import URL.
+
+    Rule patterns are encrypted with the owner's key, which importers never
+    hold — so sharing writes a plaintext snapshot of the rules onto the pack.
+    Sharing is the explicit consent to publish them; calling this again
+    refreshes the snapshot to the current rules.
+    """
     pack = _own_pack(db, current_user.id, pack_id)
     if not pack.share_code:
         pack.share_code = secrets.token_urlsafe(6)
-        db.commit()
+    pack.share_snapshot = json.dumps(
+        [
+            {
+                "pattern": r.pattern,
+                "match_type": r.match_type,
+                "match_field": r.match_field,
+                "category": r.category,
+                "enabled": r.enabled,
+            }
+            for r in pack.rules
+        ]
+    )
+    db.commit()
     return {
         "share_code": pack.share_code,
         "share_url": f"{get_settings().frontend_url}/r/{pack.share_code}",
@@ -260,6 +292,7 @@ def unshare_pack(
     """Revoke the share code — existing imports keep their copies."""
     pack = _own_pack(db, current_user.id, pack_id)
     pack.share_code = None
+    pack.share_snapshot = None
     db.commit()
     return {"message": "Sharing disabled"}
 
@@ -270,22 +303,26 @@ def preview_shared_pack(
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> dict:
-    """What a share link contains, before importing."""
+    """What a share link contains, before importing.
+
+    Reads the share-time snapshot: the live rules are encrypted with the
+    owner's key, which this viewer doesn't hold.
+    """
     pack = (
         db.query(RulePack)
-        .options(joinedload(RulePack.rules))
         .filter(RulePack.share_code == share_code)
         .first()
     )
     if not pack:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Share link not found or revoked")
+    rules = json.loads(pack.share_snapshot or "[]")
     return {
         "name": pack.name,
         "description": pack.description,
-        "rule_count": len(pack.rules),
+        "rule_count": len(rules),
         "rules": [
-            {"pattern": r.pattern, "match_type": r.match_type, "category": r.category}
-            for r in pack.rules
+            {"pattern": r["pattern"], "match_type": r["match_type"], "category": r["category"]}
+            for r in rules
         ],
         "already_owned": pack.user_id == current_user.id,
     }
@@ -297,10 +334,13 @@ def import_pack(
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> RulePack:
-    """Copy a shared pack into my account (a snapshot I own and can edit)."""
+    """Copy a shared pack into my account (a snapshot I own and can edit).
+
+    Copies from the share-time snapshot — the copied rules are re-encrypted
+    under the importer's own key on write.
+    """
     source = (
         db.query(RulePack)
-        .options(joinedload(RulePack.rules))
         .filter(RulePack.share_code == body.share_code)
         .first()
     )
@@ -309,6 +349,7 @@ def import_pack(
     if source.user_id == current_user.id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This is already your pack")
 
+    rules = json.loads(source.share_snapshot or "[]")
     copy = RulePack(
         user_id=current_user.id,
         name=source.name,
@@ -317,20 +358,20 @@ def import_pack(
     )
     db.add(copy)
     db.flush()
-    for r in source.rules:
+    for r in rules:
         db.add(
             CategoryRule(
                 user_id=current_user.id,
                 pack_id=copy.id,
-                pattern=r.pattern,
-                match_type=r.match_type,
-                match_field=r.match_field,
-                category=r.category,
+                pattern=r["pattern"],
+                match_type=r["match_type"],
+                match_field=r["match_field"],
+                category=r["category"],
                 source="imported",
-                enabled=r.enabled,
+                enabled=r["enabled"],
             )
         )
     db.commit()
     db.refresh(copy)
-    logger.info(f"User {current_user.id} imported pack {source.id} ({len(source.rules)} rules)")
+    logger.info(f"User {current_user.id} imported pack {source.id} ({len(rules)} rules)")
     return copy

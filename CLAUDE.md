@@ -98,10 +98,20 @@ quick overflow check, navigate a page and compare `document.documentElement
 - **Auth/security**: every API endpoint filters by `current_user` (no IDOR). JWTs
   carry a `typ` claim — `access`, `pwd_reset`, `oauth_state` — and
   `decode_access_token` rejects anything that isn't `access`, so reset/oauth
-  tokens can't be replayed as bearer credentials. Bank tokens are Fernet-
-  encrypted at rest (`core/encryption.py`); passwords are bcrypt. Never log
-  secrets or token-bearing URLs (the no-SMTP email fallback only echoes the body
-  in non-live mode).
+  tokens can't be replayed as bearer credentials. Passwords are bcrypt. Never
+  log secrets or token-bearing URLs (the no-SMTP email fallback only echoes the
+  body in non-live mode).
+- **Per-user encryption** (`core/user_crypto.py` + `core/encryption.py`):
+  transaction text/amounts, account details, and bank tokens are encrypted with
+  a per-user DEK the server only holds during a session (Argon2id password-
+  wrapped at rest; the JWT `dk` claim carries it, server-Fernet-encrypted, into
+  a request contextvar). Consequences to respect: no SQL filtering/aggregation
+  on encrypted columns (compute in Python); no background jobs can read bank
+  data (sync happens at login/on demand); loading another user's row through an
+  un-scoped query raises `InvalidToken` — always scope queries by user; a
+  missing session key raises `DEKUnavailableError` → 401 (fail closed).
+  Recovery codes are shown once; password reset without one purges bank data
+  by design.
 
 ## Workflow
 

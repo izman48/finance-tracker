@@ -380,10 +380,14 @@ def commitment_from_transaction(db: Session, user, transaction_id: str, cadence:
         guard += 1
 
     key = _match_key(direction, label)
-    rule = (
-        db.query(CommitmentRule)
-        .filter(CommitmentRule.user_id == user.id, CommitmentRule.match_key == key)
-        .first()
+    # match_key is encrypted at rest — dedupe against the user's rules in Python.
+    rule = next(
+        (
+            r
+            for r in db.query(CommitmentRule).filter(CommitmentRule.user_id == user.id)
+            if r.match_key == key
+        ),
+        None,
     )
     if rule:
         rule.status = CommitmentStatus.CONFIRMED.value

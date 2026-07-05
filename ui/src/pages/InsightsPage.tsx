@@ -3,6 +3,8 @@ import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 import { analyticsAPI } from '../services/api'
 import MonthlySpendingChart from '../components/MonthlySpendingChart'
 import AnimatedNumber from '../components/ui/AnimatedNumber'
+import InfoTip from '../components/ui/InfoTip'
+import { EXPLAIN } from '../copy/statExplainers'
 import useReveal from '../components/ui/useReveal'
 
 interface CategorySlice {
@@ -163,7 +165,11 @@ export default function InsightsPage() {
               className="card-pad text-left w-full hover:bg-white/[0.03] transition-colors group"
             >
               <div className="text-sm text-slate-400 mb-1 flex items-center justify-between">
-                Total spent <span className="text-xs text-slate-600 group-hover:text-accent transition-colors">View →</span>
+                <span className="flex items-center gap-1.5">
+                  Total spent
+                  <InfoTip text={EXPLAIN.spentInPeriod} side="bottom" align="left" />
+                </span>
+                <span className="text-xs text-slate-600 group-hover:text-accent transition-colors">View →</span>
               </div>
               <div className="stat-figure text-3xl text-slate-50">
                 <AnimatedNumber value={data.total_spent} />
@@ -175,7 +181,11 @@ export default function InsightsPage() {
               className="card-pad text-left w-full hover:bg-white/[0.03] transition-colors group"
             >
               <div className="text-sm text-slate-400 mb-1 flex items-center justify-between">
-                Paid from cash <span className="text-xs text-slate-600 group-hover:text-accent transition-colors">View →</span>
+                <span className="flex items-center gap-1.5">
+                  Paid from cash
+                  <InfoTip text={EXPLAIN.paidFromCash} side="bottom" align="left" />
+                </span>
+                <span className="text-xs text-slate-600 group-hover:text-accent transition-colors">View →</span>
               </div>
               <div className="stat-figure text-3xl text-slate-100">{gbp(data.paid_from_cash)}</div>
             </button>
@@ -185,7 +195,11 @@ export default function InsightsPage() {
               className="card-pad text-left w-full hover:bg-white/[0.03] transition-colors group"
             >
               <div className="text-sm text-slate-400 mb-1 flex items-center justify-between">
-                Charged to credit <span className="text-xs text-slate-600 group-hover:text-accent transition-colors">View →</span>
+                <span className="flex items-center gap-1.5">
+                  Charged to credit
+                  <InfoTip text={EXPLAIN.chargedToCredit} side="bottom" align="left" />
+                </span>
+                <span className="text-xs text-slate-600 group-hover:text-accent transition-colors">View →</span>
               </div>
               <div className="stat-figure text-3xl text-warn">{gbp(data.charged_to_credit)}</div>
               <div className="text-xs text-slate-500 mt-1">deferred — paid later on your cards</div>

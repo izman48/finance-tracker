@@ -10,6 +10,8 @@ import {
   YAxis,
 } from 'recharts'
 import { analyticsAPI } from '../services/api'
+import InfoTip from './ui/InfoTip'
+import { EXPLAIN } from '../copy/statExplainers'
 
 interface ForecastEvent {
   label: string
@@ -92,7 +94,10 @@ export default function ForecastChart({ refreshKey }: { refreshKey?: number }) {
   return (
     <div className="card-pad h-full">
       <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
-        <h2 className="font-display font-semibold text-slate-100">Where it's going</h2>
+        <h2 className="font-display font-semibold text-slate-100 flex items-center gap-1.5">
+          Where it's going
+          <InfoTip text={EXPLAIN.forecast} side="bottom" align="left" />
+        </h2>
         <div className="flex gap-0.5">
           {HORIZONS.map((h) => (
             <button

@@ -15,6 +15,8 @@ import ForecastChart from '../components/ForecastChart'
 import SpendingSnapshot from '../components/SpendingSnapshot'
 import PlannedItems from '../components/PlannedItems'
 import AnimatedNumber from '../components/ui/AnimatedNumber'
+import InfoTip from '../components/ui/InfoTip'
+import { EXPLAIN } from '../copy/statExplainers'
 import useReveal from '../components/ui/useReveal'
 
 interface BankConnection {
@@ -235,7 +237,10 @@ export default function DashboardPage() {
           <div className="lg:col-span-2 card p-6 sm:p-8 relative overflow-hidden" data-reveal>
             <div className="orb w-72 h-72 bg-accent/15 -top-24 -right-20" />
             <div className="relative">
-              <div className="text-sm text-slate-400 mb-2">Safe to spend</div>
+              <div className="text-sm text-slate-400 mb-2 flex items-center gap-1.5">
+                Safe to spend
+                <InfoTip text={EXPLAIN.safeToSpend} side="bottom" align="left" />
+              </div>
               <div
                 className={`stat-figure text-5xl sm:text-6xl ${
                   safeToSpendNegative ? 'text-neg' : 'text-slate-50'
@@ -249,15 +254,16 @@ export default function DashboardPage() {
 
               <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-4">
                 {[
-                  { icon: Banknote, label: 'Available cash', value: formatCurrency(summary.available_cash), tone: 'text-slate-100' },
-                  { icon: CalendarClock, label: 'Committed soon', value: `−${formatCurrency(summary.committed_before_payday)}`, tone: 'text-neg' },
-                  { icon: PiggyBank, label: 'Savable (30d)', value: formatCurrency(summary.savable), tone: 'text-pos' },
-                  { icon: ShieldAlert, label: 'Overdraft cushion', value: formatCurrency(summary.overdraft_cushion), tone: 'text-slate-400' },
+                  { icon: Banknote, label: 'Available cash', value: formatCurrency(summary.available_cash), tone: 'text-slate-100', explain: EXPLAIN.availableCash },
+                  { icon: CalendarClock, label: 'Committed soon', value: `−${formatCurrency(summary.committed_before_payday)}`, tone: 'text-neg', explain: EXPLAIN.committedSoon },
+                  { icon: PiggyBank, label: 'Savable (30d)', value: formatCurrency(summary.savable), tone: 'text-pos', explain: EXPLAIN.savable },
+                  { icon: ShieldAlert, label: 'Overdraft cushion', value: formatCurrency(summary.overdraft_cushion), tone: 'text-slate-400', explain: EXPLAIN.overdraftCushion },
                 ].map((s) => (
                   <div key={s.label}>
                     <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-1">
                       <s.icon className="w-3.5 h-3.5" />
                       {s.label}
+                      <InfoTip text={s.explain} align="left" />
                     </div>
                     <div className={`font-semibold tnum ${s.tone}`}>{s.value}</div>
                   </div>
@@ -269,7 +275,10 @@ export default function DashboardPage() {
           {/* Owed / scheduled */}
           <div className="card-pad" data-reveal>
             <div className="flex items-baseline justify-between mb-2">
-              <span className="text-sm text-slate-400">Owed on credit</span>
+              <span className="text-sm text-slate-400 flex items-center gap-1.5">
+                Owed on credit
+                <InfoTip text={EXPLAIN.creditOwed} side="bottom" align="left" />
+              </span>
               <span className="stat-figure text-2xl text-slate-50">{formatCurrency(summary.credit_owed)}</span>
             </div>
             {summary.next_repayments.length > 0 ? (
@@ -292,7 +301,10 @@ export default function DashboardPage() {
               </p>
             )}
             <div className="mt-5 pt-4 border-t border-white/[0.06] text-sm flex justify-between items-center">
-              <span className="text-slate-400">Net worth</span>
+              <span className="text-slate-400 flex items-center gap-1.5">
+                Net worth
+                <InfoTip text={EXPLAIN.netWorth} align="left" />
+              </span>
               <Link to="/networth" className="font-semibold text-slate-100 tnum hover:text-accent transition-colors">
                 {formatCurrency(summary.net_worth)} →
               </Link>

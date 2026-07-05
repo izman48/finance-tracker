@@ -10,6 +10,8 @@ import {
 } from 'recharts'
 import { assetsAPI, analyticsAPI, Asset, NetWorthPoint } from '../services/api'
 import AnimatedNumber from '../components/ui/AnimatedNumber'
+import InfoTip from '../components/ui/InfoTip'
+import { EXPLAIN } from '../copy/statExplainers'
 import useReveal from '../components/ui/useReveal'
 
 const ASSET_TYPE_LABEL: Record<string, string> = {
@@ -120,23 +122,30 @@ export default function NetWorthPage() {
       <div className="card p-6 sm:p-8 mb-6 relative overflow-hidden" data-reveal>
         <div className="orb w-72 h-72 bg-sky2/10 -top-24 -right-16" />
         <div className="relative">
-          <div className="text-sm text-slate-400 mb-2">Total net worth</div>
+          <div className="text-sm text-slate-400 mb-2 flex items-center gap-1.5">
+            Total net worth
+            <InfoTip text={EXPLAIN.netWorth} side="bottom" align="left" />
+          </div>
           <div className="stat-figure text-5xl sm:text-6xl text-slate-50">
             <AnimatedNumber value={current} format={gbp} />
           </div>
-          <div className={`text-sm mt-2 tnum ${change >= 0 ? 'text-pos' : 'text-neg'}`}>
+          <div className={`text-sm mt-2 tnum flex items-center gap-1.5 ${change >= 0 ? 'text-pos' : 'text-neg'}`}>
             {change >= 0 ? '+' : ''}{gbp(change)} over the period
+            <InfoTip text={EXPLAIN.netWorthChange} side="bottom" align="left" />
           </div>
           {summary && (
             <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
               {[
-                { label: 'Cash', value: gbp(Number(summary.available_cash)), tone: 'text-slate-100' },
-                { label: 'Savings accounts', value: gbp(Number(summary.savings_total ?? 0)), tone: 'text-slate-100' },
-                { label: 'Other assets', value: gbp(Number(summary.assets_total ?? 0)), tone: 'text-slate-100' },
-                { label: 'Credit owed', value: `−${gbp(Number(summary.credit_owed))}`, tone: 'text-neg' },
+                { label: 'Cash', value: gbp(Number(summary.available_cash)), tone: 'text-slate-100', explain: EXPLAIN.availableCash },
+                { label: 'Savings accounts', value: gbp(Number(summary.savings_total ?? 0)), tone: 'text-slate-100', explain: EXPLAIN.savingsTotal },
+                { label: 'Other assets', value: gbp(Number(summary.assets_total ?? 0)), tone: 'text-slate-100', explain: EXPLAIN.assetsTotal },
+                { label: 'Credit owed', value: `−${gbp(Number(summary.credit_owed))}`, tone: 'text-neg', explain: EXPLAIN.creditOwed },
               ].map((s) => (
                 <div key={s.label}>
-                  <div className="text-xs text-slate-500 mb-1">{s.label}</div>
+                  <div className="text-xs text-slate-500 mb-1 flex items-center gap-1.5">
+                    {s.label}
+                    <InfoTip text={s.explain} align="left" />
+                  </div>
                   <div className={`font-semibold tnum ${s.tone}`}>{s.value}</div>
                 </div>
               ))}

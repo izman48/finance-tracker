@@ -4,7 +4,6 @@ import {
   Wallet,
   ArrowLeftRight,
   PieChart,
-  CalendarClock,
   TrendingUp,
   SlidersHorizontal,
   LogOut,
@@ -19,16 +18,16 @@ import ChangePasswordModal from './ChangePasswordModal'
 import DeleteAccountModal from './DeleteAccountModal'
 
 const NAV_LINKS = [
-  { to: '/dashboard', label: 'Today', icon: Wallet },
+  { to: '/dashboard', label: 'Home', icon: Wallet },
   { to: '/transactions', label: 'Activity', icon: ArrowLeftRight },
   { to: '/insights', label: 'Spending', icon: PieChart },
-  { to: '/commitments', label: 'Plan', icon: CalendarClock },
   { to: '/networth', label: 'Wealth', icon: TrendingUp },
   { to: '/rules', label: 'Rules', icon: SlidersHorizontal },
 ]
 
-// The five tabs that fit a thumb-friendly mobile bar; Rules lives in the user menu.
-const MOBILE_TABS = NAV_LINKS.slice(0, 5)
+// Commitments management is a sub-page reached from Home's "Coming up";
+// Rules lives in the user menu on mobile.
+const MOBILE_TABS = NAV_LINKS.slice(0, 4)
 
 function Logo() {
   return (
@@ -202,7 +201,7 @@ export default function Layout() {
           className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-ink-900/90 backdrop-blur-xl border-t border-white/[0.08] safe-bottom"
           aria-label="Primary"
         >
-          <div className="grid grid-cols-5">
+          <div className="grid grid-cols-4">
             {MOBILE_TABS.map(({ to, label, icon: Icon }) => (
               <NavLink
                 key={to}

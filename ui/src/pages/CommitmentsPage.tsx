@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react'
 import { analyticsAPI } from '../services/api'
-import { Commitment, PlannedItem } from '../types'
+import { Commitment } from '../types'
 import { gbp as formatCurrency, dateLong as formatDate } from '../lib/format'
 import { cadenceLabel, isYearly, monthlyEquivalent } from '../lib/cadence'
 import AddCommitmentModal from '../components/AddCommitmentModal'
 import EditCommitmentModal from '../components/EditCommitmentModal'
+import PlannedItems from '../components/PlannedItems'
 import useReveal from '../components/ui/useReveal'
 
 export default function CommitmentsPage() {
   const [commitments, setCommitments] = useState<Commitment[]>([])
-  const [planned, setPlanned] = useState<PlannedItem[]>([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [editing, setEditing] = useState<Commitment | null>(null)
@@ -19,22 +19,13 @@ export default function CommitmentsPage() {
   const load = async () => {
     setLoading(true)
     try {
-      const [c, p] = await Promise.all([
-        analyticsAPI.getCommitments(),
-        analyticsAPI.getPlannedItems(),
-      ])
+      const c = await analyticsAPI.getCommitments()
       setCommitments(c.data)
-      setPlanned(p.data.filter((x: PlannedItem) => x.kind === 'one_off'))
     } catch (error) {
       console.error('Failed to load commitments:', error)
     } finally {
       setLoading(false)
     }
-  }
-
-  const removePlanned = async (id: string) => {
-    await analyticsAPI.deletePlannedItem(id)
-    await load()
   }
 
   useEffect(() => {
@@ -64,7 +55,7 @@ export default function CommitmentsPage() {
   return (
     <div ref={revealRef} className="max-w-5xl mx-auto px-4 py-6 sm:py-10">
       <div className="flex items-center justify-between mb-2">
-        <h1 className="font-display font-bold text-2xl sm:text-3xl text-slate-50">Plan</h1>
+        <h1 className="font-display font-bold text-2xl sm:text-3xl text-slate-50">Commitments</h1>
         <button onClick={() => setShowAdd(true)} className="btn-primary">
           Add manually
         </button>
@@ -128,39 +119,14 @@ export default function CommitmentsPage() {
         />
       )}
 
-      {/* One-time items */}
-      {planned.length > 0 && (
-        <div className="mt-6 card" data-reveal>
-          <div className="px-4 py-3 border-b border-white/[0.06] font-display font-semibold text-slate-100">One-time</div>
-          <div className="divide-y divide-white/[0.06]">
-            {planned.map((p) => {
-              const isIncome = p.direction === 'income'
-              return (
-                <div key={p.id} className="p-4 flex items-center justify-between">
-                  <div>
-                    <div className="font-medium text-slate-200">
-                      {p.name} <span className={isIncome ? 'chip-pos' : 'chip'}>{p.direction}</span>
-                    </div>
-                    <div className="text-sm text-slate-500">{formatDate(p.start_date)}</div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className={`font-semibold tnum ${isIncome ? 'text-pos' : 'text-slate-100'}`}>
-                      {isIncome ? '+' : ''}{formatCurrency(p.amount ?? 0)}
-                    </span>
-                    <button onClick={() => removePlanned(p.id)} className="text-sm text-slate-500 hover:text-neg transition-colors">
-                      Remove
-                    </button>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
+      {/* One-off costs, expected income, and payment plans */}
+      <div className="mt-6" data-reveal>
+        <PlannedItems onChanged={load} />
+      </div>
 
-      {confirmed.length === 0 && suggested.length === 0 && planned.length === 0 && (
+      {confirmed.length === 0 && suggested.length === 0 && (
         <div className="card p-8 text-center text-slate-500 text-sm mt-6">
-          Nothing yet. Sync more transaction history, or add a commitment / one-time item manually.
+          Nothing yet. Sync more transaction history, or add a commitment manually.
         </div>
       )}
 

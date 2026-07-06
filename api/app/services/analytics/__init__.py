@@ -13,6 +13,7 @@ from .cadence import (  # noqa: F401
     commitment_occurrences,
 )
 from .commitments import (  # noqa: F401
+    _match_key,
     commitment_from_transaction,
     commitment_match_keys,
     convert_transaction_to_plan,
@@ -55,6 +56,7 @@ __all__ = [
     "_step_back",
     "commitment_occurrences",
     # commitments
+    "_match_key",
     "commitment_from_transaction",
     "commitment_match_keys",
     "convert_transaction_to_plan",

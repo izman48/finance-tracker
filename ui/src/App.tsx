@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './hooks/useAuth'
 import { ToastProvider } from './components/ui/Toast'
 import { ConfirmProvider } from './components/ui/ConfirmDialog'
+import AnonymizeListener from './components/AnonymizeListener'
 import Layout from './components/Layout'
 import HomePage from './pages/HomePage'
 import LoginPage from './pages/LoginPage'
@@ -22,6 +23,7 @@ function App() {
     <AuthProvider>
       <ToastProvider>
       <ConfirmProvider>
+      <AnonymizeListener />
       <Routes>
         <Route path="/" element={<Layout />}>
           <Route index element={<HomePage />} />

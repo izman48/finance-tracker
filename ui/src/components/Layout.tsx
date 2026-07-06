@@ -9,10 +9,14 @@ import {
   SlidersHorizontal,
   LogOut,
   ChevronDown,
+  KeyRound,
   RefreshCw,
+  Trash2,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import AnnouncementBanner from './AnnouncementBanner'
+import ChangePasswordModal from './ChangePasswordModal'
+import DeleteAccountModal from './DeleteAccountModal'
 
 const NAV_LINKS = [
   { to: '/dashboard', label: 'Today', icon: Wallet },
@@ -55,6 +59,8 @@ function Logo() {
 function UserMenu() {
   const { user, logout } = useAuth()
   const [open, setOpen] = useState(false)
+  const [showChangePassword, setShowChangePassword] = useState(false)
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -91,6 +97,24 @@ function UserMenu() {
           <button
             onClick={() => {
               setOpen(false)
+              setShowChangePassword(true)
+            }}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-300 hover:bg-white/[0.06]"
+          >
+            <KeyRound className="w-4 h-4" /> Change password
+          </button>
+          <button
+            onClick={() => {
+              setOpen(false)
+              setShowDeleteAccount(true)
+            }}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-300 hover:bg-white/[0.06] hover:text-neg"
+          >
+            <Trash2 className="w-4 h-4" /> Delete account
+          </button>
+          <button
+            onClick={() => {
+              setOpen(false)
               logout()
             }}
             className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-300 hover:bg-white/[0.06] hover:text-neg"
@@ -99,6 +123,8 @@ function UserMenu() {
           </button>
         </div>
       )}
+      {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
+      {showDeleteAccount && <DeleteAccountModal onClose={() => setShowDeleteAccount(false)} />}
     </div>
   )
 }

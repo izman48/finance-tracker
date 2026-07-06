@@ -34,4 +34,8 @@ export const EXPLAIN = {
     'The combined balance of accounts marked as “Savings”.',
   assetsTotal:
     'The total of assets you’ve added manually — ISAs, pensions, property — using each asset’s most recent value.',
+  assetAge:
+    'Manual values only change when you update them — this is how old the latest value is. Tap the row to record a fresh one.',
+  liveBalance:
+    'Synced from your bank via open banking — updated at every login and on demand.',
 } as const

@@ -3,46 +3,28 @@ import { Link } from 'react-router-dom'
 import {
   Banknote,
   CalendarClock,
-  Landmark,
   PiggyBank,
   Plug,
-  RefreshCw,
-  Settings2,
   ShieldAlert,
 } from 'lucide-react'
 import { bankingAPI, analyticsAPI } from '../services/api'
-import { BankStatus, CashflowSummary, SummaryAccount } from '../types'
+import { BankStatus, CashflowSummary } from '../types'
 import { money as formatCurrency, dateDayMonth as formatDate, timeAgo } from '../lib/format'
 import ForecastChart from '../components/ForecastChart'
 import SpendingSnapshot from '../components/SpendingSnapshot'
 import PlannedItems from '../components/PlannedItems'
-import AccountSettingsModal from '../components/AccountSettingsModal'
-import ChangePasswordModal from '../components/ChangePasswordModal'
-import DeleteAccountModal from '../components/DeleteAccountModal'
 import AnimatedNumber from '../components/ui/AnimatedNumber'
 import InfoTip from '../components/ui/InfoTip'
-import { useConfirm } from '../components/ui/ConfirmDialog'
 import { EXPLAIN } from '../copy/statExplainers'
 import useReveal from '../components/ui/useReveal'
-
-const ROLE_META: Record<string, { label: string; chip: string }> = {
-  spending: { label: 'Spending', chip: 'chip-info' },
-  savings: { label: 'Savings', chip: 'chip-pos' },
-  credit: { label: 'Credit card', chip: 'chip-warn' },
-  excluded: { label: 'Excluded', chip: 'chip' },
-}
 
 export default function DashboardPage() {
   const [bankStatus, setBankStatus] = useState<BankStatus | null>(null)
   const [summary, setSummary] = useState<CashflowSummary | null>(null)
   const [loading, setLoading] = useState(false)
-  const [syncing, setSyncing] = useState(false)
   const [message, setMessage] = useState('')
-  const [settingsAccount, setSettingsAccount] = useState<SummaryAccount | null>(null)
-  const [showDeleteAccount, setShowDeleteAccount] = useState(false)
-  const [showChangePassword, setShowChangePassword] = useState(false)
+  const [justConnected, setJustConnected] = useState(false)
   const [forecastKey, setForecastKey] = useState(0)
-  const confirm = useConfirm()
 
   const revealRef = useReveal(!!summary)
 
@@ -53,7 +35,8 @@ export default function DashboardPage() {
     const params = new URLSearchParams(window.location.search)
     const bankConnected = params.get('bank_connected')
     if (bankConnected === 'true') {
-      setMessage('Bank connected successfully! Historical data has been synced automatically.')
+      setMessage('Bank connected — historical data synced automatically.')
+      setJustConnected(true)
       loadSummary()
       window.history.replaceState({}, '', '/dashboard')
     } else if (bankConnected === 'false') {
@@ -93,44 +76,6 @@ export default function DashboardPage() {
     }
   }
 
-  const handleSync = async () => {
-    setSyncing(true)
-    setMessage('')
-    try {
-      await bankingAPI.syncAccounts()
-      await bankingAPI.syncTransactions(1825)
-      await loadSummary()
-      setMessage('Accounts and transactions synced.')
-    } catch (error: any) {
-      setMessage('Failed to sync: ' + (error.response?.data?.detail || error.message))
-    } finally {
-      setSyncing(false)
-    }
-  }
-
-  const handleDisconnectAll = async () => {
-    const ok = await confirm({
-      title: 'Disconnect all banks?',
-      body: 'This deletes all accounts and transactions.',
-      confirmLabel: 'Disconnect all',
-      danger: true,
-    })
-    if (!ok) return
-    setLoading(true)
-    try {
-      const response = await bankingAPI.disconnectAllBanks()
-      setMessage(response.data.message)
-      setBankStatus(null)
-      await loadBankStatus()
-      await loadSummary()
-    } catch (error: any) {
-      setMessage('Failed to disconnect: ' + (error.response?.data?.detail || error.message))
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const isConnected = bankStatus?.is_connected
   const hasAccounts = (summary?.accounts.length ?? 0) > 0
   const safeToSpendNegative = (summary?.safe_to_spend ?? 0) < 0
 
@@ -146,8 +91,19 @@ export default function DashboardPage() {
       </div>
 
       {message && (
-        <div className={`mb-6 ${message.toLowerCase().includes('failed') ? 'banner-err' : 'banner-ok'}`}>
-          {message}
+        <div
+          className={`mb-6 flex flex-wrap items-center justify-between gap-3 ${
+            message.toLowerCase().includes('failed') ? 'banner-err' : 'banner-ok'
+          }`}
+        >
+          <span>{message}</span>
+          {/* The moment right after one bank connects is the highest-intent
+              moment to connect the next one. */}
+          {justConnected && (
+            <button onClick={handleConnectBank} disabled={loading} className="btn-ghost !py-1.5">
+              {loading ? 'Connecting…' : 'Connect another bank'}
+            </button>
+          )}
         </div>
       )}
 
@@ -272,127 +228,16 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Accounts with role + config */}
+      {/* Accounts, connections, and account management now live on Wealth
+          (the balance sheet) and in the user menu. */}
       {summary && hasAccounts && (
-        <div className="mb-10" data-reveal>
-          <h2 className="font-display font-semibold text-lg text-slate-100 mb-3">Accounts</h2>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {summary.accounts.map((account) => {
-              const role = ROLE_META[account.role] ?? { label: account.role, chip: 'chip' }
-              return (
-                <div key={account.id} className="card p-5 group">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="min-w-0">
-                      <h3 className="font-semibold text-slate-100 truncate">{account.display_name}</h3>
-                      <p className="text-xs text-slate-500">{account.provider_name}</p>
-                    </div>
-                    <span className={role.chip}>{role.label}</span>
-                  </div>
-                  <p className="stat-figure text-2xl text-slate-50">
-                    {formatCurrency(account.current_balance)}
-                  </p>
-                  {account.overdraft_limit ? (
-                    <p className="text-xs text-slate-500 mt-1">
-                      Overdraft: {formatCurrency(account.overdraft_limit)}
-                    </p>
-                  ) : null}
-                  <button
-                    onClick={() => setSettingsAccount(account)}
-                    className="mt-3 inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-accent transition-colors"
-                  >
-                    <Settings2 className="w-4 h-4" /> Configure
-                  </button>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Bank connections management */}
-      <div className="mb-8" data-reveal>
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-          <div>
-            <h2 className="font-display font-semibold text-lg text-slate-100">Connected banks</h2>
-            {bankStatus?.last_synced_at && (
-              <p className="text-sm text-slate-500">
-                Synced {timeAgo(bankStatus.last_synced_at)} · syncs at every login
-              </p>
-            )}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button className="btn-primary" onClick={handleConnectBank} disabled={loading}>
-              <Plug className="w-4 h-4" />
-              {loading ? 'Connecting…' : 'Connect bank'}
-            </button>
-            {isConnected && (
-              <>
-                <button className="btn-ghost" onClick={handleSync} disabled={syncing}>
-                  <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
-                  {syncing ? 'Syncing…' : 'Sync all'}
-                </button>
-                <button className="btn-danger" onClick={handleDisconnectAll} disabled={loading || syncing}>
-                  Disconnect all
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-
-        {bankStatus?.connections && bankStatus.connections.length > 0 ? (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {bankStatus.connections.map((conn) => (
-              <div key={conn.id} className="card p-5 flex items-center gap-3">
-                <span className="w-10 h-10 rounded-xl bg-white/[0.06] flex items-center justify-center">
-                  <Landmark className="w-5 h-5 text-slate-400" />
-                </span>
-                <div>
-                  <h3 className="font-semibold text-slate-100">{conn.provider_name}</h3>
-                  <p className={`text-sm ${conn.is_expired ? 'text-neg' : 'text-pos'}`}>
-                    {conn.is_expired ? 'Needs reconnection — use Connect bank' : 'Active'}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          hasAccounts && (
-            <div className="card p-8 text-center text-slate-500 text-sm">
-              No banks connected. Click "Connect bank" to get started.
-            </div>
-          )
-        )}
-      </div>
-
-      {/* Account management */}
-      <div className="mt-16 pt-6 border-t border-white/[0.06] flex flex-wrap gap-x-6 gap-y-2">
-        <button
-          onClick={() => setShowChangePassword(true)}
-          className="text-sm text-slate-600 hover:text-slate-300 transition-colors"
-        >
-          Change password
-        </button>
-        <button
-          onClick={() => setShowDeleteAccount(true)}
-          className="text-sm text-slate-600 hover:text-neg transition-colors"
-        >
-          Delete my account and all data
-        </button>
-      </div>
-
-      {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
-      {showDeleteAccount && <DeleteAccountModal onClose={() => setShowDeleteAccount(false)} />}
-
-      {settingsAccount && (
-        <AccountSettingsModal
-          account={settingsAccount}
-          spendingAccounts={summary?.accounts.filter((a) => a.role === 'spending') ?? []}
-          onClose={() => setSettingsAccount(null)}
-          onSaved={async () => {
-            setSettingsAccount(null)
-            await loadSummary()
-          }}
-        />
+        <p className="text-sm text-slate-500 mb-10" data-reveal>
+          Looking for your accounts and bank connections? They live on{' '}
+          <Link to="/networth" className="text-accent hover:underline">
+            Wealth
+          </Link>{' '}
+          now, as your balance sheet.
+        </p>
       )}
     </div>
   )

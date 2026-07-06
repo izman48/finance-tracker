@@ -2,17 +2,18 @@ import { useEffect, useRef, useState } from 'react'
 import { Outlet, Link, NavLink, useLocation } from 'react-router-dom'
 import {
   Wallet,
-
   PieChart,
   TrendingUp,
   SlidersHorizontal,
   LogOut,
   ChevronDown,
+  EyeOff,
   KeyRound,
   RefreshCw,
   Trash2,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
+import { useAnonymize } from '../hooks/useAnonymize'
 import AnnouncementBanner from './AnnouncementBanner'
 import ChangePasswordModal from './ChangePasswordModal'
 import DeleteAccountModal from './DeleteAccountModal'
@@ -56,6 +57,7 @@ function Logo() {
 
 function UserMenu() {
   const { user, logout } = useAuth()
+  const { anonymized, toggle: toggleAnon } = useAnonymize()
   const [open, setOpen] = useState(false)
   const [showChangePassword, setShowChangePassword] = useState(false)
   const [showDeleteAccount, setShowDeleteAccount] = useState(false)
@@ -95,6 +97,15 @@ function UserMenu() {
           <button
             onClick={() => {
               setOpen(false)
+              toggleAnon()
+            }}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-300 hover:bg-white/[0.06]"
+          >
+            <EyeOff className="w-4 h-4" /> {anonymized ? 'Show real numbers' : 'Anonymize numbers'}
+          </button>
+          <button
+            onClick={() => {
+              setOpen(false)
               setShowChangePassword(true)
             }}
             className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-300 hover:bg-white/[0.06]"
@@ -129,6 +140,7 @@ function UserMenu() {
 
 export default function Layout() {
   const { isAuthenticated, isSyncing } = useAuth()
+  const { anonymized, setAnonymized } = useAnonymize()
   const location = useLocation()
 
   // Scroll back to the top on page change (mobile tab switches especially).
@@ -164,7 +176,19 @@ export default function Layout() {
                   </NavLink>
                 ))}
               </div>
-              <UserMenu />
+              <div className="flex items-center gap-2">
+                {/* Unmissable while active, and its own off-switch. */}
+                {anonymized && (
+                  <button
+                    onClick={() => setAnonymized(false)}
+                    className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-warn/15 border border-warn/30 text-warn text-xs font-semibold"
+                    title="Numbers and names are anonymized — tap to show your real data"
+                  >
+                    <EyeOff className="w-3.5 h-3.5" /> Anonymized
+                  </button>
+                )}
+                <UserMenu />
+              </div>
             </>
           ) : (
             <div className="flex items-center gap-2">

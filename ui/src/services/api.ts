@@ -1,4 +1,12 @@
 import axios from 'axios'
+import {
+  isAnonymized,
+  scrambleResponse,
+  realParam,
+  realMoneyParam,
+  NAME_PARAM_KEYS,
+  MONEY_PARAM_KEYS,
+} from '../lib/anonymize'
 
 // Unset -> local dev default; empty string -> same-origin (production behind Caddy)
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
@@ -10,18 +18,61 @@ const api = axios.create({
   },
 })
 
-// Add auth token to requests
+// While anonymized the UI shows pseudonyms and scaled figures; translate
+// outgoing params (fake name → real, and typed-money-threshold ÷k) so
+// server-side filtering still selects the right rows.
+function translateAnonymizedParams(params: unknown) {
+  if (!params) return
+  const xlate = (key: string, v: string) =>
+    NAME_PARAM_KEYS.has(key) ? realParam(v) : MONEY_PARAM_KEYS.has(key) ? realMoneyParam(v) : v
+  const relevant = (key: string) => NAME_PARAM_KEYS.has(key) || MONEY_PARAM_KEYS.has(key)
+  if (params instanceof URLSearchParams) {
+    for (const key of Array.from(new Set(params.keys()))) {
+      if (!relevant(key)) continue
+      const mapped = params.getAll(key).map((v) => xlate(key, v))
+      params.delete(key)
+      mapped.forEach((v) => params.append(key, v))
+    }
+  } else if (typeof params === 'object') {
+    const obj = params as Record<string, unknown>
+    for (const key of Object.keys(obj)) {
+      if (relevant(key) && typeof obj[key] === 'string') {
+        obj[key] = xlate(key, obj[key] as string)
+      }
+    }
+  }
+}
+
+// Add auth token, and enforce the anonymized read-only guarantee.
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token')
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
+
+  if (isAnonymized()) {
+    const method = (config.method ?? 'get').toLowerCase()
+    const url = config.url ?? ''
+    const isAuth = url.includes('/auth/login') || url.includes('/auth/register')
+    if (method !== 'get' && !isAuth) {
+      // Editing real data while looking at fake values invites mistakes —
+      // block the write and let a listener surface a toast.
+      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('anonymize:blocked'))
+      return Promise.reject(new axios.Cancel('anonymized-write-blocked'))
+    }
+    translateAnonymizedParams(config.params)
+  }
   return config
 })
 
-// Handle auth errors
+// Scramble responses while anonymized; handle auth errors.
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if (isAnonymized() && response.data != null) {
+      response.data = scrambleResponse(response.data)
+    }
+    return response
+  },
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem('token')

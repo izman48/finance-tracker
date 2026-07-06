@@ -12,6 +12,7 @@ import {
   Lock,
   KeyRound,
   EyeOff,
+  Shuffle,
   Trash2,
   Building2,
   Sparkles,
@@ -136,6 +137,11 @@ const SECURITY = [
     icon: Sparkles,
     title: 'A fresh start, on purpose',
     body: 'In July 2026 we reset our databases to launch per-user encryption. Data collected under the old model was deleted rather than migrated, so nothing about you sits in our systems that isn’t protected by your key.',
+  },
+  {
+    icon: Shuffle,
+    title: 'Show the app, not your numbers',
+    body: 'One tap anonymizes every figure and name — hand someone your phone or take a screenshot without revealing a thing. It’s a privacy convenience, not a security layer: your real data still lives safely behind your key.',
   },
 ]
 

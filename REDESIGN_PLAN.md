@@ -164,7 +164,14 @@ non-mechanical diff each). After each phase run:
 (the test image copies source — rebuild or you run stale tests), and in `ui/`:
 `npm run build`, `npm run lint`, `node scripts/visual-check.mjs` (dev stack up).
 
-### Phase 0 — groundwork refactor (no behavior change)
+### Phase 0 — groundwork refactor (no behavior change) — **done 2026-07-06**
+
+Landed notes: item 3's deep Decimal-coercion response mappers were deferred to
+Phase 3 (they belong with the transactions-endpoint rework); shared types
+landed in `ui/src/types.ts`. The analytics split kept
+`analytics_service.py` as a compatibility shim over the new
+`app/services/analytics/` package (with `common.py` and `planned.py` beyond
+the modules listed below); new code should import package modules directly.
 
 Purely mechanical PRs that make phases 1–4 small and human-reviewable. Every
 PR here must produce zero visual/behavioral diff (visual-check screenshots

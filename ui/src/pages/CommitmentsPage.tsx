@@ -1,60 +1,15 @@
 import { useEffect, useState } from 'react'
 import { analyticsAPI } from '../services/api'
+import { Commitment, PlannedItem } from '../types'
+import { gbp as formatCurrency, dateLong as formatDate } from '../lib/format'
+import { cadenceLabel, isYearly, monthlyEquivalent } from '../lib/cadence'
+import AddCommitmentModal from '../components/AddCommitmentModal'
+import EditCommitmentModal from '../components/EditCommitmentModal'
 import useReveal from '../components/ui/useReveal'
-
-interface Commitment {
-  id: string
-  direction: 'income' | 'expense'
-  label: string
-  amount: number
-  cadence: string
-  interval_days: number | null
-  interval_months: number | null
-  next_date: string
-  source: 'detected' | 'manual'
-  status: 'suggested' | 'confirmed' | 'dismissed'
-  account_id: string | null
-  match_key: string | null
-}
-
-// match_key is stored as "<direction>:<merchant>". Show just the merchant part.
-const merchantFromKey = (key: string | null) =>
-  key ? key.split(':').slice(1).join(':') : ''
-
-interface PlannedOneOff {
-  id: string
-  name: string
-  direction: string
-  kind: string
-  start_date: string
-  amount: number | null
-}
-
-const CADENCE_LABEL: Record<string, string> = {
-  weekly: 'Weekly',
-  monthly: 'Monthly',
-  every_n_months: 'Every few months',
-  custom_days: 'Custom',
-}
-
-// Yearly is stored as every-12-months; it gets its own section and labels.
-const isYearly = (c: Commitment) =>
-  c.cadence === 'every_n_months' && Number(c.interval_months) >= 12
-
-const cadenceLabel = (c: Commitment) =>
-  isYearly(c) ? 'Yearly' : CADENCE_LABEL[c.cadence] ?? c.cadence
-
-function formatCurrency(amount: number) {
-  return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(amount)
-}
-
-function formatDate(date: string) {
-  return new Date(date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-}
 
 export default function CommitmentsPage() {
   const [commitments, setCommitments] = useState<Commitment[]>([])
-  const [planned, setPlanned] = useState<PlannedOneOff[]>([])
+  const [planned, setPlanned] = useState<PlannedItem[]>([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [editing, setEditing] = useState<Commitment | null>(null)
@@ -69,7 +24,7 @@ export default function CommitmentsPage() {
         analyticsAPI.getPlannedItems(),
       ])
       setCommitments(c.data)
-      setPlanned(p.data.filter((x: PlannedOneOff) => x.kind === 'one_off'))
+      setPlanned(p.data.filter((x: PlannedItem) => x.kind === 'one_off'))
     } catch (error) {
       console.error('Failed to load commitments:', error)
     } finally {
@@ -246,15 +201,6 @@ function ConfirmedList({
   onEdit: (c: Commitment) => void
   positive?: boolean
 }) {
-  // Cadences differ, so total as a monthly equivalent. (amount arrives as a
-  // string from the API — coerce before arithmetic.)
-  const monthlyEquivalent = (c: Commitment) => {
-    const amount = Number(c.amount) || 0
-    if (c.cadence === 'weekly') return amount * (52 / 12)
-    if (c.cadence === 'every_n_months') return amount / (c.interval_months || 1)
-    if (c.cadence === 'custom_days') return amount * (30.44 / (c.interval_days || 30))
-    return amount
-  }
   const total = items.reduce((sum, c) => sum + monthlyEquivalent(c), 0)
   const sorted = [...items].sort((a, b) => monthlyEquivalent(b) - monthlyEquivalent(a))
 
@@ -364,211 +310,6 @@ function YearlyList({
             </div>
           )
         })}
-      </div>
-    </div>
-  )
-}
-
-function EditCommitmentModal({
-  commitment,
-  onClose,
-  onSaved,
-}: {
-  commitment: Commitment
-  onClose: () => void
-  onSaved: () => void
-}) {
-  const [label, setLabel] = useState(commitment.label)
-  const [amount, setAmount] = useState(String(commitment.amount))
-  const [cadence, setCadence] = useState(isYearly(commitment) ? 'yearly' : commitment.cadence)
-  const [nextDate, setNextDate] = useState(commitment.next_date)
-  const [matchMerchant, setMatchMerchant] = useState(merchantFromKey(commitment.match_key))
-  const [saving, setSaving] = useState(false)
-
-  const isExpense = commitment.direction === 'expense'
-
-  const save = async () => {
-    setSaving(true)
-    try {
-      await analyticsAPI.updateCommitment(commitment.id, {
-        label,
-        amount: Number(amount),
-        // Yearly is stored as every-12-months.
-        cadence: cadence === 'yearly' ? 'every_n_months' : cadence,
-        interval_months:
-          cadence === 'yearly'
-            ? 12
-            : cadence === 'every_n_months'
-            ? (Number(commitment.interval_months) >= 12 ? 3 : commitment.interval_months ?? 3)
-            : null,
-        next_date: nextDate,
-        // Only send when it changed, so we never blank an auto-detected key.
-        ...(matchMerchant !== merchantFromKey(commitment.match_key)
-          ? { match_merchant: matchMerchant }
-          : {}),
-      })
-      onSaved()
-    } catch (e) {
-      console.error('Failed to edit commitment', e)
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-lg font-semibold text-slate-50 mb-4">Edit commitment</h3>
-        <div className="space-y-3">
-          <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Name" className="input" />
-          <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Amount (£)" className="input" />
-          <select value={cadence} onChange={(e) => setCadence(e.target.value)} className="input">
-            <option value="weekly">Weekly</option>
-            <option value="monthly">Monthly</option>
-            <option value="every_n_months">Every few months</option>
-            <option value="yearly">Yearly</option>
-            <option value="custom_days">Custom</option>
-          </select>
-          <div>
-            <label className="label">Next date</label>
-            <input type="date" value={nextDate} onChange={(e) => setNextDate(e.target.value)} className="input" />
-          </div>
-          {isExpense && (
-            <div>
-              <label className="label">Matches transactions from</label>
-              <input
-                value={matchMerchant}
-                onChange={(e) => setMatchMerchant(e.target.value)}
-                placeholder="e.g. the name on your rent payment"
-                className="input"
-              />
-              <p className="text-xs text-slate-500 mt-1">
-                The merchant or description as it appears on the transaction. This is how
-                “Exclude commitments” knows to hide it from spending.
-              </p>
-            </div>
-          )}
-        </div>
-        <div className="flex justify-end gap-2 mt-5">
-          <button onClick={onClose} className="btn-ghost">Cancel</button>
-          <button onClick={save} disabled={saving} className="btn-primary">
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function AddCommitmentModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
-  const [direction, setDirection] = useState('expense')
-  const [label, setLabel] = useState('')
-  const [amount, setAmount] = useState('')
-  const [frequency, setFrequency] = useState('monthly') // one_time | weekly | monthly | every_n_months
-  const [theDate, setTheDate] = useState('')
-  const [matchMerchant, setMatchMerchant] = useState('')
-  const [saving, setSaving] = useState(false)
-
-  const isOneTime = frequency === 'one_time'
-  const isExpense = direction === 'expense'
-
-  const save = async () => {
-    if (!label || !amount || !theDate) return
-    setSaving(true)
-    try {
-      if (isOneTime) {
-        await analyticsAPI.addPlannedItem({
-          name: label,
-          direction,
-          kind: 'one_off',
-          start_date: theDate,
-          amount: Number(amount),
-        })
-      } else {
-        await analyticsAPI.addCommitment({
-          direction,
-          label,
-          amount: Number(amount),
-          // Yearly is stored as every-12-months.
-          cadence: frequency === 'yearly' ? 'every_n_months' : frequency,
-          interval_months: frequency === 'yearly' ? 12 : undefined,
-          next_date: theDate,
-          match_merchant: isExpense && matchMerchant ? matchMerchant : undefined,
-        })
-      }
-      onAdded()
-    } catch (e) {
-      console.error('Failed to add item', e)
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-lg font-semibold text-slate-50 mb-4">Add income or expense</h3>
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              onClick={() => setDirection('expense')}
-              className={`py-2 rounded-xl border text-sm transition-colors ${
-                direction === 'expense' ? 'border-accent/60 bg-accent/10 text-accent' : 'border-white/10 text-slate-300 hover:bg-white/[0.04]'
-              }`}
-            >
-              Expense
-            </button>
-            <button
-              onClick={() => setDirection('income')}
-              className={`py-2 rounded-xl border text-sm transition-colors ${
-                direction === 'income' ? 'border-pos/60 bg-pos/10 text-pos' : 'border-white/10 text-slate-300 hover:bg-white/[0.04]'
-              }`}
-            >
-              Income
-            </button>
-          </div>
-          <input
-            value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Name (e.g. Rent)"
-            className="input"
-          />
-          <input
-            type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Amount (£)"
-            className="input"
-          />
-          <select value={frequency} onChange={(e) => setFrequency(e.target.value)} className="input">
-            <option value="one_time">One-time</option>
-            <option value="weekly">Weekly</option>
-            <option value="monthly">Monthly</option>
-            <option value="every_n_months">Every few months</option>
-            <option value="yearly">Yearly</option>
-          </select>
-          <div>
-            <label className="label">{isOneTime ? 'Date' : 'Next date'}</label>
-            <input
-              type="date" value={theDate} onChange={(e) => setTheDate(e.target.value)}
-              className="input"
-            />
-          </div>
-          {isExpense && !isOneTime && (
-            <div>
-              <label className="label">Matches transactions from <span className="text-slate-500 font-normal">(optional)</span></label>
-              <input
-                value={matchMerchant} onChange={(e) => setMatchMerchant(e.target.value)}
-                placeholder="e.g. the name on your rent payment"
-                className="input"
-              />
-              <p className="text-xs text-slate-500 mt-1">
-                Enter the merchant/description as it shows on the transaction so “Exclude
-                commitments” can hide it. Tip: you can also tap a transaction in Activity
-                and “Mark as recurring” to capture it exactly.
-              </p>
-            </div>
-          )}
-        </div>
-        <div className="flex justify-end gap-2 mt-5">
-          <button onClick={onClose} className="btn-ghost">Cancel</button>
-          <button onClick={save} disabled={saving} className="btn-primary">
-            {saving ? 'Saving…' : 'Add'}
-          </button>
-        </div>
       </div>
     </div>
   )

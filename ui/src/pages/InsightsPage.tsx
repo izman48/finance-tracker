@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 import { analyticsAPI } from '../services/api'
+import { gbp, dateLong as longDate } from '../lib/format'
 import MonthlySpendingChart from '../components/MonthlySpendingChart'
 import AnimatedNumber from '../components/ui/AnimatedNumber'
 import InfoTip from '../components/ui/InfoTip'
@@ -51,9 +52,6 @@ const PERIODS = [
   { key: 'last_30', label: 'Last 30 days' },
   { key: 'custom', label: 'Custom' },
 ]
-
-const gbp = (n: number) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(n)
-const longDate = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 
 const BAR_COLORS = ['#2DD4A7', '#38BDF8', '#A78BFA', '#FBBF24', '#FB7185', '#34D399', '#818CF8', '#F472B6']
 

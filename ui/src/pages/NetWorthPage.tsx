@@ -9,20 +9,15 @@ import {
   YAxis,
 } from 'recharts'
 import { assetsAPI, analyticsAPI, Asset, NetWorthPoint } from '../services/api'
+import { ASSET_TYPE_LABEL, latestValue } from '../lib/assets'
+import { gbp0 as gbp } from '../lib/format'
+import AddAssetModal from '../components/AddAssetModal'
+import UpdateAssetValueModal from '../components/UpdateAssetValueModal'
 import AnimatedNumber from '../components/ui/AnimatedNumber'
 import InfoTip from '../components/ui/InfoTip'
+import { useConfirm } from '../components/ui/ConfirmDialog'
 import { EXPLAIN } from '../copy/statExplainers'
 import useReveal from '../components/ui/useReveal'
-
-const ASSET_TYPE_LABEL: Record<string, string> = {
-  isa: 'ISA',
-  savings: 'Savings',
-  investment: 'Investments',
-  pension: 'Pension',
-  property: 'Property',
-  crypto: 'Crypto',
-  other: 'Other',
-}
 
 const RANGES = [
   { months: 6, label: '6m' },
@@ -30,12 +25,6 @@ const RANGES = [
   { months: 24, label: '2y' },
   { months: 60, label: '5y' },
 ]
-
-const gbp = (n: number) =>
-  new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(n)
-
-const latestValue = (a: Asset) =>
-  a.valuations.length ? Number(a.valuations[a.valuations.length - 1].value) : 0
 
 function NetWorthTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null
@@ -59,6 +48,7 @@ export default function NetWorthPage() {
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [updating, setUpdating] = useState<Asset | null>(null)
+  const confirm = useConfirm()
 
   const revealRef = useReveal(!loading)
 
@@ -90,7 +80,13 @@ export default function NetWorthPage() {
   }
 
   const removeAsset = async (asset: Asset) => {
-    if (!confirm(`Delete "${asset.name}" and its value history?`)) return
+    const ok = await confirm({
+      title: `Delete "${asset.name}"?`,
+      body: 'Its value history goes with it.',
+      confirmLabel: 'Delete',
+      danger: true,
+    })
+    if (!ok) return
     await assetsAPI.remove(asset.id)
     await load()
   }
@@ -229,7 +225,7 @@ export default function NetWorthPage() {
       )}
 
       {showAdd && (
-        <AssetModal
+        <AddAssetModal
           onClose={() => setShowAdd(false)}
           onSaved={async () => {
             setShowAdd(false)
@@ -238,7 +234,7 @@ export default function NetWorthPage() {
         />
       )}
       {updating && (
-        <UpdateValueModal
+        <UpdateAssetValueModal
           asset={updating}
           onClose={() => setUpdating(null)}
           onSaved={async () => {
@@ -247,119 +243,6 @@ export default function NetWorthPage() {
           }}
         />
       )}
-    </div>
-  )
-}
-
-function AssetModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [name, setName] = useState('')
-  const [assetType, setAssetType] = useState('isa')
-  const [value, setValue] = useState('')
-  const [valuedAt, setValuedAt] = useState('')
-  const [saving, setSaving] = useState(false)
-
-  const save = async () => {
-    if (!name.trim() || value === '') return
-    setSaving(true)
-    await assetsAPI.create({
-      name,
-      asset_type: assetType,
-      value: Number(value),
-      valued_at: valuedAt || undefined,
-    })
-    onSaved()
-  }
-
-  return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-lg font-semibold text-slate-50 mb-4">Add asset</h3>
-        <div className="space-y-3">
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Name (e.g. Vanguard S&S ISA)"
-            className="input"
-            autoFocus
-          />
-          <select value={assetType} onChange={(e) => setAssetType(e.target.value)} className="input">
-            {Object.entries(ASSET_TYPE_LABEL).map(([k, l]) => (
-              <option key={k} value={k}>{l}</option>
-            ))}
-          </select>
-          <input
-            type="number"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            placeholder="Current value (£)"
-            className="input"
-          />
-          <div>
-            <label className="label">Valued as of (optional, defaults to today)</label>
-            <input type="date" value={valuedAt} onChange={(e) => setValuedAt(e.target.value)} className="input" />
-          </div>
-        </div>
-        <div className="flex justify-end gap-2 mt-5">
-          <button onClick={onClose} className="btn-ghost">Cancel</button>
-          <button onClick={save} disabled={saving || !name.trim() || value === ''} className="btn-primary">
-            {saving ? 'Saving…' : 'Add asset'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function UpdateValueModal({ asset, onClose, onSaved }: { asset: Asset; onClose: () => void; onSaved: () => void }) {
-  const [value, setValue] = useState(String(latestValue(asset)))
-  const [valuedAt, setValuedAt] = useState('')
-  const [saving, setSaving] = useState(false)
-
-  const save = async () => {
-    if (value === '') return
-    setSaving(true)
-    await assetsAPI.addValuation(asset.id, { value: Number(value), valued_at: valuedAt || undefined })
-    onSaved()
-  }
-
-  return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-lg font-semibold text-slate-50 mb-1">{asset.name}</h3>
-        <p className="text-sm text-slate-400 mb-4">
-          Record its value — past entries stay, building the history behind the chart.
-        </p>
-        <div className="space-y-3">
-          <input
-            type="number"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            placeholder="Value (£)"
-            className="input"
-            autoFocus
-          />
-          <div>
-            <label className="label">As of (optional, defaults to today)</label>
-            <input type="date" value={valuedAt} onChange={(e) => setValuedAt(e.target.value)} className="input" />
-          </div>
-          {asset.valuations.length > 0 && (
-            <div className="bg-white/[0.04] border border-white/[0.06] rounded-xl p-3 text-xs text-slate-500 max-h-28 overflow-y-auto">
-              {[...asset.valuations].reverse().map((v) => (
-                <div key={v.id} className="flex justify-between py-0.5 tnum">
-                  <span>{new Date(v.valued_at).toLocaleDateString('en-GB')}</span>
-                  <span>{gbp(Number(v.value))}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="flex justify-end gap-2 mt-5">
-          <button onClick={onClose} className="btn-ghost">Cancel</button>
-          <button onClick={save} disabled={saving || value === ''} className="btn-primary">
-            {saving ? 'Saving…' : 'Save value'}
-          </button>
-        </div>
-      </div>
     </div>
   )
 }

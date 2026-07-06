@@ -1,19 +1,7 @@
 import { useEffect, useState } from 'react'
 import { analyticsAPI } from '../services/api'
-
-interface PlannedItem {
-  id: string
-  name: string
-  direction: string
-  kind: string
-  start_date: string
-  amount: number | null
-  total_amount: number | null
-  installments: number | null
-}
-
-const gbp = (n: number) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(n)
-const shortDate = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+import { PlannedItem } from '../types'
+import { gbp, dateLong as shortDate } from '../lib/format'
 
 // Mirrors backend analytics_service.installment_amount (even split + simple interest + fee).
 function perInstallment(total: number, n: number, apr: number, fee: number) {

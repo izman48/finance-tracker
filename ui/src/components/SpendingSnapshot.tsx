@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { analyticsAPI } from '../services/api'
+import { gbp } from '../lib/format'
 import AnimatedNumber from './ui/AnimatedNumber'
 import InfoTip from './ui/InfoTip'
 import { EXPLAIN } from '../copy/statExplainers'
@@ -24,7 +25,6 @@ export default function SpendingSnapshot({ refreshKey }: { refreshKey?: number }
 
   if (!data) return null
 
-  const gbp = (n: number) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(n)
   const creditShare = data.total_spent > 0 ? (data.charged_to_credit / data.total_spent) * 100 : 0
 
   return (

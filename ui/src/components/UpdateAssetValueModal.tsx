@@ -1,0 +1,66 @@
+import { useState } from 'react'
+import { assetsAPI, Asset } from '../services/api'
+import { latestValue } from '../lib/assets'
+import { gbp0 as gbp } from '../lib/format'
+
+export default function UpdateAssetValueModal({
+  asset,
+  onClose,
+  onSaved,
+}: {
+  asset: Asset
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [value, setValue] = useState(String(latestValue(asset)))
+  const [valuedAt, setValuedAt] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const save = async () => {
+    if (value === '') return
+    setSaving(true)
+    await assetsAPI.addValuation(asset.id, { value: Number(value), valued_at: valuedAt || undefined })
+    onSaved()
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-lg font-semibold text-slate-50 mb-1">{asset.name}</h3>
+        <p className="text-sm text-slate-400 mb-4">
+          Record its value — past entries stay, building the history behind the chart.
+        </p>
+        <div className="space-y-3">
+          <input
+            type="number"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="Value (£)"
+            className="input"
+            autoFocus
+          />
+          <div>
+            <label className="label">As of (optional, defaults to today)</label>
+            <input type="date" value={valuedAt} onChange={(e) => setValuedAt(e.target.value)} className="input" />
+          </div>
+          {asset.valuations.length > 0 && (
+            <div className="bg-white/[0.04] border border-white/[0.06] rounded-xl p-3 text-xs text-slate-500 max-h-28 overflow-y-auto">
+              {[...asset.valuations].reverse().map((v) => (
+                <div key={v.id} className="flex justify-between py-0.5 tnum">
+                  <span>{new Date(v.valued_at).toLocaleDateString('en-GB')}</span>
+                  <span>{gbp(Number(v.value))}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="flex justify-end gap-2 mt-5">
+          <button onClick={onClose} className="btn-ghost">Cancel</button>
+          <button onClick={save} disabled={saving || value === ''} className="btn-primary">
+            {saving ? 'Saving…' : 'Save value'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}

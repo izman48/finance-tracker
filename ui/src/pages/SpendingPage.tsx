@@ -48,7 +48,7 @@ const PERIODS = [
 
 const KIND_LABEL: Record<SpendKind, string> = {
   spend: 'All spending',
-  cash: 'Paid from cash',
+  cash: 'Paid from bank',
   credit: 'Charged to credit',
 }
 
@@ -397,6 +397,7 @@ export default function SpendingPage() {
               <div className="stat-figure text-3xl text-slate-50">
                 <AnimatedNumber value={data.total_spent} />
               </div>
+              <div className="text-xs text-slate-500 mt-1">the two figures beside this, combined</div>
             </button>
             <button
               type="button" data-reveal
@@ -405,12 +406,13 @@ export default function SpendingPage() {
             >
               <div className="text-sm text-slate-400 mb-1 flex items-center justify-between">
                 <span className="flex items-center gap-1.5">
-                  Paid from cash
+                  Paid from bank
                   <InfoTip text={EXPLAIN.paidFromCash} side="bottom" align="left" />
                 </span>
                 <span className="text-xs text-slate-600 group-hover:text-accent transition-colors">View →</span>
               </div>
               <div className="stat-figure text-3xl text-slate-100">{gbp(data.paid_from_cash)}</div>
+              <div className="text-xs text-slate-500 mt-1">left your bank accounts directly</div>
             </button>
             <button
               type="button" data-reveal
@@ -428,6 +430,11 @@ export default function SpendingPage() {
               <div className="text-xs text-slate-500 mt-1">deferred — paid later on your cards</div>
             </button>
           </div>
+
+          {/* Make the split legible: the identity, not just three numbers. */}
+          <p className="text-xs text-slate-500 mb-6 tnum">
+            Total spent {gbp(data.total_spent)} = paid from bank {gbp(data.paid_from_cash)} + charged to credit {gbp(data.charged_to_credit)}
+          </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-8">
             {/* Categories */}
@@ -468,7 +475,7 @@ export default function SpendingPage() {
               <h2 className="font-display font-semibold text-slate-100 mb-4">
                 {showAllMerchants ? 'All merchants' : 'Top merchants'}
               </h2>
-              <div className="space-y-3">
+              <div className={`space-y-3 ${showAllMerchants ? 'max-h-96 overflow-y-auto pr-1 -mr-1' : ''}`}>
                 {(showAllMerchants ? data.top_merchants : data.top_merchants.slice(0, MERCHANTS_DEFAULT)).map((m, i) => (
                   <button
                     type="button"

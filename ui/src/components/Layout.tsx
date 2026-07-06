@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Outlet, Link, NavLink, useLocation } from 'react-router-dom'
 import {
   Wallet,
-  ArrowLeftRight,
+
   PieChart,
   TrendingUp,
   SlidersHorizontal,
@@ -19,7 +19,6 @@ import DeleteAccountModal from './DeleteAccountModal'
 
 const NAV_LINKS = [
   { to: '/dashboard', label: 'Home', icon: Wallet },
-  { to: '/transactions', label: 'Activity', icon: ArrowLeftRight },
   { to: '/insights', label: 'Spending', icon: PieChart },
   { to: '/networth', label: 'Wealth', icon: TrendingUp },
   { to: '/rules', label: 'Rules', icon: SlidersHorizontal },
@@ -27,7 +26,7 @@ const NAV_LINKS = [
 
 // Commitments management is a sub-page reached from Home's "Coming up";
 // Rules lives in the user menu on mobile.
-const MOBILE_TABS = NAV_LINKS.slice(0, 4)
+const MOBILE_TABS = NAV_LINKS.slice(0, 3)
 
 function Logo() {
   return (
@@ -201,7 +200,7 @@ export default function Layout() {
           className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-ink-900/90 backdrop-blur-xl border-t border-white/[0.08] safe-bottom"
           aria-label="Primary"
         >
-          <div className="grid grid-cols-4">
+          <div className="grid grid-cols-3">
             {MOBILE_TABS.map(({ to, label, icon: Icon }) => (
               <NavLink
                 key={to}

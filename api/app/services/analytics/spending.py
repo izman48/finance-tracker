@@ -54,6 +54,30 @@ def _detect_internal_transfers(txns: list[Transaction]) -> set:
     return excluded
 
 
+def classify_noise(txns: list[Transaction], roles: dict) -> dict:
+    """Map transaction id -> excluded reason for list display.
+
+    Marks both halves of internal transfers, payments received onto credit
+    cards, and card-settling debits from other accounts — the same signals the
+    spending aggregates exclude, so the list and the totals can never disagree.
+    """
+    transfers = _detect_internal_transfers(txns)
+    reasons: dict = {}
+    for tx in txns:
+        if tx.id in transfers:
+            reasons[tx.id] = "internal_transfer"
+            continue
+        role = roles.get(tx.account_id)
+        if role == AccountRole.CREDIT and tx.transaction_type == "credit":
+            reasons[tx.id] = "card_payment"  # money arriving to settle the card
+            continue
+        if role != AccountRole.CREDIT and tx.transaction_type == "debit":
+            desc = f"{tx.description or ''} {tx.merchant_name or ''}".lower()
+            if any(ind in desc for ind in _CARD_PAYMENT_INDICATORS):
+                reasons[tx.id] = "card_payment"  # the paying side
+    return reasons
+
+
 def financed_transaction_ids(db: Session, user) -> set:
     """Transaction ids that have been converted to an active payment plan.
 

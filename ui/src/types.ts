@@ -17,6 +17,9 @@ export interface Transaction {
   is_recurring: boolean
   is_commitment: boolean
   is_financed: boolean
+  // Why this is hidden from spending by default — same detection as the
+  // aggregates, so figures and list always reconcile.
+  excluded_reason: 'internal_transfer' | 'card_payment' | null
   transaction_date: string
 }
 

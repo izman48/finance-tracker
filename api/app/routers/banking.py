@@ -2,7 +2,7 @@
 import logging
 import uuid
 from typing import Annotated
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import RedirectResponse
@@ -20,13 +20,14 @@ from app.schemas import (
     SyncTransactionsRequest,
     SyncTransactionsResponse,
     AccountResponse,
+    TransactionFacetsResponse,
     TransactionResponse,
     TransactionListResponse,
     TransactionUpdate,
 )
 from app.services import analytics_service, categorization
 from app.services.truelayer import truelayer_service
-from app.models import Account, Transaction, User, BankConnection
+from app.models import Account, AccountRole, Transaction, User, BankConnection
 
 logger = logging.getLogger(__name__)
 
@@ -306,6 +307,33 @@ def get_accounts(
     return [AccountResponse.model_validate(acc) for acc in accounts]
 
 
+def _user_transactions_query(db: Session, user, account_id, date_from, date_to):
+    """Base query: the user's transactions, narrowed by the plaintext columns.
+
+    Dates and account are stored in the clear so they can filter in SQL;
+    everything else (description, merchant, amounts, category) is encrypted at
+    rest and must be filtered in Python after the ORM decrypts it.
+    """
+    query = (
+        db.query(Transaction)
+        .join(Account)
+        .filter(Account.user_id == user.id)
+    )
+    if account_id:
+        query = query.filter(Account.id == account_id)
+    if date_from:
+        query = query.filter(
+            Transaction.transaction_date
+            >= datetime.combine(date_from, datetime.min.time(), timezone.utc)
+        )
+    if date_to:
+        query = query.filter(
+            Transaction.transaction_date
+            <= datetime.combine(date_to, datetime.max.time(), timezone.utc)
+        )
+    return query
+
+
 @router.get("/transactions", response_model=TransactionListResponse)
 def get_transactions(
     current_user: CurrentUser,
@@ -313,42 +341,104 @@ def get_transactions(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(50, ge=1, le=100, description="Items per page"),
     account_id: str | None = Query(None, description="Filter by account ID"),
+    search: str | None = Query(None, description="Match against description/merchant"),
+    category: list[str] | None = Query(None, description="Categories ('Uncategorized' allowed)"),
+    merchant: str | None = Query(None, description="Exact merchant (or description fallback)"),
+    tx_type: str | None = Query(None, alias="type", description="debit | credit"),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
+    min_amount: float | None = Query(None, ge=0),
+    max_amount: float | None = Query(None, ge=0),
+    include_excluded: bool = Query(
+        True, description="Include internal transfers and card payments"
+    ),
+    exclude_commitments: bool = Query(
+        False, description="Drop transactions matching confirmed commitments"
+    ),
+    kind: str | None = Query(
+        None,
+        description=(
+            "Restrict to real spending as the aggregates count it: 'spend' "
+            "(all of it), 'cash' (from spending accounts) or 'credit' (card "
+            "purchases). Mirrors the spending figures exactly."
+        ),
+    ),
+    sort: str = Query("date", description="date | amount"),
+    sort_dir: str = Query("desc", description="asc | desc"),
 ) -> TransactionListResponse:
-    """
-    Get transactions for the current user.
+    """Filtered, sorted, paginated transactions.
 
-    Returns paginated list of transactions, optionally filtered by account.
+    Every item carries `excluded_reason` computed with the same noise
+    detection the spending aggregates use, so a figure on the Spending page
+    always reconciles with the transactions listed beneath it.
     """
-    # Build base query
-    query = (
-        db.query(Transaction)
-        .join(Account)
-        .filter(Account.user_id == current_user.id)
+    txns = (
+        _user_transactions_query(db, current_user, account_id, date_from, date_to)
+        .order_by(Transaction.transaction_date.desc())
+        .all()
     )
 
-    # Filter by account if provided
-    if account_id:
-        query = query.filter(Account.id == account_id)
-
-    # Order by date descending
-    query = query.order_by(Transaction.transaction_date.desc())
-
-    # Get total count
-    total = query.count()
-
-    # Paginate
-    offset = (page - 1) * page_size
-    transactions = query.offset(offset).limit(page_size).all()
-
-    # Flag transactions that belong to confirmed commitments so the UI can
-    # separate bills from discretionary spending.
+    accounts, settings = analytics_service._load(db, current_user)
+    roles = analytics_service.resolve_roles(accounts, settings)
+    noise = analytics_service.classify_noise(txns, roles)
     commitment_keys = analytics_service.commitment_match_keys(db, current_user)
     financed = analytics_service.financed_transaction_ids(db, current_user)
+
+    search_lc = search.lower() if search else None
+    category_set = set(category) if category else None
+
+    def keep(tx: Transaction) -> bool:
+        if not include_excluded and tx.id in noise:
+            return False
+        if exclude_commitments and analytics_service.transaction_match_key(tx) in commitment_keys:
+            return False
+        if kind:
+            # Same rules as the spending aggregates' _iter_spending: debits
+            # only, no noise, no financed purchases, role decides cash/credit.
+            if tx.transaction_type != "debit" or tx.id in noise or tx.id in financed:
+                return False
+            role = roles.get(tx.account_id)
+            if kind == "credit" and role != AccountRole.CREDIT:
+                return False
+            if kind == "cash" and role != AccountRole.SPENDING:
+                return False
+            if kind == "spend" and role not in (AccountRole.CREDIT, AccountRole.SPENDING):
+                return False
+        if search_lc:
+            haystack = f"{tx.description or ''} {tx.merchant_name or ''}".lower()
+            if search_lc not in haystack:
+                return False
+        if category_set is not None and (tx.category or "Uncategorized") not in category_set:
+            return False
+        if merchant is not None and (tx.merchant_name or tx.description) != merchant:
+            return False
+        if tx_type in ("debit", "credit") and tx.transaction_type != tx_type:
+            return False
+        amount = abs(float(tx.amount or 0))
+        if min_amount is not None and amount < min_amount:
+            return False
+        if max_amount is not None and amount > max_amount:
+            return False
+        return True
+
+    filtered = [tx for tx in txns if keep(tx)]
+
+    reverse = sort_dir != "asc"
+    if sort == "amount":
+        filtered.sort(key=lambda t: abs(float(t.amount or 0)), reverse=reverse)
+    else:
+        filtered.sort(key=lambda t: t.transaction_date, reverse=reverse)
+
+    total = len(filtered)
+    offset = (page - 1) * page_size
+    page_txns = filtered[offset : offset + page_size]
+
     items = []
-    for tx in transactions:
+    for tx in page_txns:
         item = TransactionResponse.model_validate(tx)
         item.is_commitment = analytics_service.transaction_match_key(tx) in commitment_keys
         item.is_financed = tx.id in financed
+        item.excluded_reason = noise.get(tx.id)
         items.append(item)
 
     return TransactionListResponse(
@@ -357,6 +447,29 @@ def get_transactions(
         page=page,
         page_size=page_size,
     )
+
+
+@router.get("/transactions/facets", response_model=TransactionFacetsResponse)
+def get_transaction_facets(
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> TransactionFacetsResponse:
+    """Distinct categories and merchants for the filter dropdowns.
+
+    Computed in Python — the columns are encrypted, so SQL DISTINCT can't see
+    the values.
+    """
+    txns = (
+        db.query(Transaction)
+        .join(Account)
+        .filter(Account.user_id == current_user.id)
+        .all()
+    )
+    categories = sorted({tx.category for tx in txns if tx.category})
+    merchants = sorted(
+        {m for m in ((tx.merchant_name or tx.description) for tx in txns) if m}
+    )
+    return TransactionFacetsResponse(categories=categories, merchants=merchants)
 
 
 @router.patch("/transactions/{transaction_id}", response_model=TransactionResponse)

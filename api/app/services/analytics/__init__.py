@@ -42,6 +42,7 @@ from .repayments import (  # noqa: F401
 )
 from .spending import (  # noqa: F401
     _month_key,
+    classify_noise,
     financed_transaction_ids,
     get_spending,
     get_spending_trend,
@@ -87,6 +88,7 @@ __all__ = [
     "repayment_events",
     # spending
     "_month_key",
+    "classify_noise",
     "financed_transaction_ids",
     "get_spending",
     "get_spending_trend",

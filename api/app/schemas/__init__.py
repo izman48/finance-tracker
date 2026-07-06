@@ -252,6 +252,12 @@ class TransactionResponse(BaseModel):
     # Computed: converted to a payment plan ("paid on finance") — the UI badges
     # it and spending excludes it (counted via its installments instead).
     is_financed: bool = False
+    # Computed: why the transaction is hidden from spending by default —
+    # 'internal_transfer' (a matched debit/credit pair between own accounts) or
+    # 'card_payment' (settling a credit card, not new spending). Null = counts.
+    # Uses the same detection as the spending aggregates so the list and the
+    # totals can never disagree.
+    excluded_reason: str | None = None
     transaction_date: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -271,6 +277,13 @@ class TransactionListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class TransactionFacetsResponse(BaseModel):
+    """Distinct values for the transaction-list filter dropdowns."""
+
+    categories: list[str]
+    merchants: list[str]
 
 
 # --- Insight Schemas ---

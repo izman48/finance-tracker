@@ -23,7 +23,7 @@ export default function CallbackPage() {
     }
 
     setStatus('success')
-    setMessage('Bank connection processed! Redirecting to dashboard...')
+    setMessage('Bank connection processed! Redirecting to your dashboard, where you can connect another bank too...')
     setTimeout(() => navigate('/dashboard?bank_connected=true'), 1500)
   }, [searchParams, navigate])
 

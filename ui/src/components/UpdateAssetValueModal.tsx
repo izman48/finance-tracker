@@ -7,10 +7,12 @@ export default function UpdateAssetValueModal({
   asset,
   onClose,
   onSaved,
+  onDelete,
 }: {
   asset: Asset
   onClose: () => void
   onSaved: () => void
+  onDelete?: () => void
 }) {
   const [value, setValue] = useState(String(latestValue(asset)))
   const [valuedAt, setValuedAt] = useState('')
@@ -54,8 +56,16 @@ export default function UpdateAssetValueModal({
             </div>
           )}
         </div>
-        <div className="flex justify-end gap-2 mt-5">
-          <button onClick={onClose} className="btn-ghost">Cancel</button>
+        <div className="flex items-center gap-2 mt-5">
+          {onDelete && (
+            <button
+              onClick={onDelete}
+              className="text-sm text-slate-500 hover:text-neg transition-colors mr-auto"
+            >
+              Delete asset
+            </button>
+          )}
+          <button onClick={onClose} className={`btn-ghost ${onDelete ? '' : 'ml-auto'}`}>Cancel</button>
           <button onClick={save} disabled={saving || value === ''} className="btn-primary">
             {saving ? 'Saving…' : 'Save value'}
           </button>

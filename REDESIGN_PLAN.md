@@ -1,8 +1,9 @@
 # IA redesign: three-tab app (Home / Spending / Wealth)
 
-Status: **planned, not started**. This document is the source of truth for the
-redesign — it is written to be picked up cold by a future session. Update the
-phase checkboxes as work lands.
+Status: **phases 0–4 shipped (2026-07-06)**. This document remains the source
+of truth for the still-open work: the demo-mode PR, the UX-addendum items
+tagged to future work, and the Extension section (nudges, holdings, theming,
+landing repositioning).
 
 ## Why
 
@@ -214,7 +215,7 @@ domains):
 7. (Optional, later) split `routers/analytics.py` along the same seams —
    lower value, skip unless it blocks review.
 
-### Phase 1 — Wealth balance sheet (additive move)
+### Phase 1 — Wealth balance sheet (additive move) — **done, PR #27**
 The biggest visual change but lowest risk: no data-model changes.
 
 1. Rebuild `NetWorthPage.tsx` as: headline + history chart (keep both), then
@@ -241,7 +242,7 @@ Acceptance: every Wealth checklist item above ticked except ghost rows
 (optional); dashboard no longer shows accounts/banks; visual-check passes on
 all viewports (watch the grid-overflow gotcha on the balance-sheet rows).
 
-### Phase 2 — Home absorbs Plan
+### Phase 2 — Home absorbs Plan — **done, PR #28**
 1. Build the "Coming up" strip: merge next N=3–5 dated events from
    confirmed commitments (`/analytics/commitments`), credit
    `next_repayments` (already in summary), and planned one-offs — sorted by
@@ -264,7 +265,7 @@ all viewports (watch the grid-overflow gotcha on the balance-sheet rows).
 Acceptance: Home checklist ticked; Plan gone from nav but `/plan` works;
 forecast card untouched.
 
-### Phase 3 — Spending merge (backend + frontend)
+### Phase 3 — Spending merge (backend + frontend) — **done, PR #29**
 Backend first (own PR if it helps review):
 
 1. `GET /banking/transactions` grows: `search`, `category` (multi),
@@ -300,7 +301,7 @@ Acceptance: full Spending checklist; a category total clicked equals the sum
 of the listed transactions with no exceptions; API tests green (rebuild the
 test image!).
 
-### Phase 4 — Nav finalization + cleanup (incl. landing page)
+### Phase 4 — Nav finalization + cleanup (incl. landing page) — **done**
 1. Rules link out of desktop nav (user menu already has it from Phase 1/
    mobile); user menu gains a small "Settings" grouping (Rules, change
    password, delete account, log out).

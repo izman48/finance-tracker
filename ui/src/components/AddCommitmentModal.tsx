@@ -99,8 +99,8 @@ export default function AddCommitmentModal({ onClose, onAdded }: { onClose: () =
               />
               <p className="text-xs text-slate-500 mt-1">
                 Enter the merchant/description as it shows on the transaction so “Exclude
-                commitments” can hide it. Tip: you can also tap a transaction in Activity
-                and “Mark as recurring” to capture it exactly.
+                commitments” can hide it. Tip: you can also tap a transaction on Spending
+                and choose “This repeats” to capture it exactly.
               </p>
             </div>
           )}

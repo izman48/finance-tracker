@@ -17,16 +17,16 @@ import AnnouncementBanner from './AnnouncementBanner'
 import ChangePasswordModal from './ChangePasswordModal'
 import DeleteAccountModal from './DeleteAccountModal'
 
+// Three tabs, three questions: am I okay right now / where did it go /
+// am I getting richer. Commitments is a sub-page off Home; Rules lives in
+// the user menu (it's configuration, not a daily destination).
 const NAV_LINKS = [
   { to: '/dashboard', label: 'Home', icon: Wallet },
   { to: '/insights', label: 'Spending', icon: PieChart },
   { to: '/networth', label: 'Wealth', icon: TrendingUp },
-  { to: '/rules', label: 'Rules', icon: SlidersHorizontal },
 ]
 
-// Commitments management is a sub-page reached from Home's "Coming up";
-// Rules lives in the user menu on mobile.
-const MOBILE_TABS = NAV_LINKS.slice(0, 3)
+const MOBILE_TABS = NAV_LINKS
 
 function Logo() {
   return (
@@ -88,7 +88,7 @@ function UserMenu() {
           <NavLink
             to="/rules"
             onClick={() => setOpen(false)}
-            className="lg:hidden flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-300 hover:bg-white/[0.06]"
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-300 hover:bg-white/[0.06]"
           >
             <SlidersHorizontal className="w-4 h-4" /> Rules
           </NavLink>
@@ -221,7 +221,7 @@ export default function Layout() {
 
       <footer className={`border-t border-white/[0.06] py-8 ${isAuthenticated ? 'hidden lg:block' : ''}`}>
         <div className="max-w-7xl mx-auto px-4 text-center text-sm text-slate-600">
-          nilu. — know what you have, where it went, and what's coming.
+          nilu. — know what you have, where it went, what's coming, and what you're worth.
         </div>
       </footer>
     </div>

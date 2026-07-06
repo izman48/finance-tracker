@@ -5,7 +5,6 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import {
   Wallet,
   PieChart,
-  CalendarClock,
   TrendingUp,
   SlidersHorizontal,
   Landmark,
@@ -59,39 +58,45 @@ function HeroPreview() {
           </div>
         ))}
       </div>
+      {/* The wealth story, above the fold. */}
+      <div className="mt-3 pt-3 border-t border-white/[0.06] flex items-center justify-between text-sm" data-hero="row">
+        <span className="text-slate-500">Net worth</span>
+        <span className="tnum font-semibold text-slate-100">
+          {gbp(84350)} <span className="text-pos text-xs">▲</span>
+        </span>
+      </div>
     </div>
   )
 }
 
+// The three questions the app answers — mirroring its three tabs.
 const FEATURES = [
   {
     icon: Wallet,
     title: 'How much can I spend?',
-    body: 'One honest number — your cash minus every bill, repayment and planned cost before payday.',
+    body: 'One honest number — cash minus every bill and repayment before payday — plus a day-by-day balance forecast up to a year ahead.',
   },
   {
     icon: PieChart,
     title: 'Where did it go?',
-    body: 'Spending by category, merchant and month, with cash and credit kept honest and separate.',
-  },
-  {
-    icon: CalendarClock,
-    title: "What's coming?",
-    body: 'A day-by-day balance forecast from your recurring bills, income and payment plans — months ahead.',
+    body: 'Spending by category, merchant and month, with cash and credit kept honest and separate — and every figure opens the transactions behind it.',
   },
   {
     icon: TrendingUp,
-    title: 'Am I growing?',
-    body: 'Net worth over time across banks, savings, and the assets your bank can’t see — ISAs, pensions, property.',
+    title: 'Am I getting richer?',
+    body: 'Your whole balance sheet: bank accounts update live via open banking, with ISAs, pensions, property and crypto alongside.',
   },
+]
+
+const SUPPORTING = [
   {
     icon: SlidersHorizontal,
-    title: 'Categorize once',
+    title: 'Categorise once',
     body: 'Rules tidy every future sync automatically, and you can share rule packs with friends.',
   },
   {
     icon: Landmark,
-    title: 'All your banks',
+    title: 'As many banks as you like',
     body: 'Connect your current accounts, savings and credit cards via TrueLayer open banking.',
   },
 ]
@@ -192,8 +197,8 @@ export default function HomePage() {
               </span>
             </h1>
             <p data-hero="sub" className="text-lg text-slate-400 max-w-xl mx-auto lg:mx-0 mb-8">
-              Connect your banks and see one honest picture: how much you have, where it went, and
-              exactly where it's going — before payday catches you out.
+              Connect your banks and see one honest picture: what you can spend, where it went,
+              and what you're worth — before payday catches you out.
             </p>
             <div data-hero="cta" className="flex flex-wrap gap-3 justify-center lg:justify-start">
               {isAuthenticated ? (
@@ -216,7 +221,7 @@ export default function HomePage() {
           <HeroPreview />
         </div>
 
-        <div className="mt-20 sm:mt-28 grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+        <div className="mt-20 sm:mt-28 grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
           {FEATURES.map(({ icon: Icon, title, body }) => (
             <div key={title} data-feature className="card-pad hover:border-accent/25 transition-colors">
               <span className="w-10 h-10 rounded-xl bg-accent/15 border border-accent/20 flex items-center justify-center mb-4">
@@ -224,6 +229,19 @@ export default function HomePage() {
               </span>
               <h3 className="font-display font-semibold text-slate-100 mb-1.5">{title}</h3>
               <p className="text-sm text-slate-400 leading-relaxed">{body}</p>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 sm:mt-5 grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+          {SUPPORTING.map(({ icon: Icon, title, body }) => (
+            <div key={title} data-feature className="card p-4 flex items-start gap-3 hover:border-accent/25 transition-colors">
+              <span className="w-9 h-9 shrink-0 rounded-xl bg-white/[0.06] flex items-center justify-center">
+                <Icon className="w-4 h-4 text-slate-400" />
+              </span>
+              <span className="min-w-0">
+                <span className="block font-display font-semibold text-sm text-slate-100">{title}</span>
+                <span className="block text-sm text-slate-400 leading-relaxed">{body}</span>
+              </span>
             </div>
           ))}
         </div>

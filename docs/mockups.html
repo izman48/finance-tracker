@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nilu. — IA redesign mockups</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css">
+<style>
+:root{
+  --surface-1:#F1EFE8; --surface-2:#FFFFFF;
+  --bg-accent:#E6F1FB; --text-accent:#185FA5; --border-accent:#85B7EB;
+  --text-primary:#2C2C2A; --text-secondary:#5F5E5A; --text-muted:#888780;
+  --text-danger:#A32D2D; --text-success:#3B6D11;
+  --border:rgba(0,0,0,0.14); --border-strong:rgba(0,0,0,0.24);
+  --fill-control:rgba(0,0,0,0.07); --radius:8px;
+}
+body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--text-primary);background:#FAF9F5;max-width:720px;margin:0 auto;padding:24px 16px 64px;}
+h1{font-size:22px;font-weight:600;margin:0 0 4px}
+h2.section{font-size:16px;font-weight:600;margin:44px 0 4px}
+p.note{font-size:13px;color:var(--text-secondary);margin:0 0 16px;line-height:1.5}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+</style>
+</head>
+<body>
+
+<h1>nilu. — IA redesign mockups</h1>
+<p class="note">Companion to <code>REDESIGN_PLAN.md</code> (2026-07-05 design session). These are
+structure/hierarchy mockups in a neutral light style — the real app keeps the dark
+ink+mint design system (<code>ui/src/index.css</code>). Numbers are illustrative but internally
+consistent (they sum).</p>
+
+<h2 class="section">1 · Wealth tab — unified balance sheet (Phase 1)</h2>
+<p class="note">Replaces the summary grid + separate asset CRUD cards. One grouped list: bank
+accounts (live) and manual assets (staleness chips, tap to update). Group subtotals; inline
+nudge slot; universal add at the bottom.</p>
+
+<div style="background: var(--surface-1); border-radius: 16px; padding: 1.25rem;">
+<div style="background: var(--surface-2); border: 0.5px solid var(--border); border-radius: 12px; overflow: hidden;">
+<div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; border-bottom: 0.5px solid var(--border);">
+  <span style="font-size: 15px; font-weight: 500;">nilu<span style="color: var(--text-accent);">.</span></span>
+  <div style="display: flex; gap: 4px;">
+    <span style="font-size: 13px; color: var(--text-secondary); padding: 5px 12px;">Home</span>
+    <span style="font-size: 13px; color: var(--text-secondary); padding: 5px 12px;">Spending</span>
+    <span style="font-size: 13px; color: var(--text-accent); background: var(--bg-accent); border-radius: var(--radius); padding: 5px 12px;">Wealth</span>
+  </div>
+  <div style="width: 26px; height: 26px; border-radius: 50%; background: var(--fill-control); display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--text-secondary);">I</div>
+</div>
+<div style="padding: 20px 20px 8px;">
+  <div style="font-size: 13px; color: var(--text-secondary);">Net worth</div>
+  <div style="display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;">
+    <span style="font-size: 30px; font-weight: 500;">£396,940</span>
+    <span style="font-size: 13px; color: var(--text-success);">+£31,200 this year</span>
+  </div>
+  <svg viewBox="0 0 600 60" style="width: 100%; height: 48px; margin-top: 8px;" role="img" aria-label="Net worth trend, rising over twelve months">
+    <polyline points="0,52 60,49 120,50 180,44 240,40 300,42 360,33 420,30 480,24 540,18 600,12" fill="none" stroke="#1D9E75" stroke-width="2"/>
+  </svg>
+</div>
+<div style="padding: 8px 20px 20px;">
+  <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 12px 0 6px;">
+    <span style="font-size: 12px; color: var(--text-muted); letter-spacing: 0.04em;">Cash</span>
+    <span style="font-size: 13px; color: var(--text-secondary);">£11,040</span>
+  </div>
+  <div style="display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-top: 0.5px solid var(--border);">
+    <span style="font-size: 14px;">Monzo current</span>
+    <span style="display: flex; align-items: center; gap: 10px;"><span style="font-size: 11px; color: #085041; background: #E1F5EE; padding: 2px 8px; border-radius: 999px;">live</span><span style="font-size: 14px;">£2,140</span></span>
+  </div>
+  <div style="display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-top: 0.5px solid var(--border);">
+    <span style="font-size: 14px;">Barclays current</span>
+    <span style="display: flex; align-items: center; gap: 10px;"><span style="font-size: 11px; color: #085041; background: #E1F5EE; padding: 2px 8px; border-radius: 999px;">live</span><span style="font-size: 14px;">£8,900</span></span>
+  </div>
+  <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 16px 0 6px;">
+    <span style="font-size: 12px; color: var(--text-muted); letter-spacing: 0.04em;">Savings</span>
+    <span style="font-size: 13px; color: var(--text-secondary);">£23,000</span>
+  </div>
+  <div style="display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-top: 0.5px solid var(--border);">
+    <span style="font-size: 14px;">Marcus easy access</span>
+    <span style="display: flex; align-items: center; gap: 10px;"><span style="font-size: 11px; color: #633806; background: #FAEEDA; padding: 2px 8px; border-radius: 999px;">2 mo old</span><span style="font-size: 14px;">£23,000</span></span>
+  </div>
+  <div style="display: flex; align-items: center; gap: 8px; margin: 6px 0 2px; padding: 8px 12px; background: var(--bg-accent); border-radius: var(--radius);">
+    <i class="ti ti-bulb" style="font-size: 16px; color: var(--text-accent);" aria-hidden="true"></i>
+    <span style="font-size: 12.5px; color: var(--text-accent);">This balance at 1.5% vs today's best easy access (4.5%) leaves ~£690/yr on the table</span>
+  </div>
+  <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 16px 0 6px;">
+    <span style="font-size: 12px; color: var(--text-muted); letter-spacing: 0.04em;">Investments and pensions</span>
+    <span style="font-size: 13px; color: var(--text-secondary);">£176,200</span>
+  </div>
+  <div style="display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-top: 0.5px solid var(--border);">
+    <span style="font-size: 14px;">Vanguard S&amp;S ISA</span>
+    <span style="display: flex; align-items: center; gap: 10px;"><span style="font-size: 11px; color: #633806; background: #FAEEDA; padding: 2px 8px; border-radius: 999px;">3 mo old</span><span style="font-size: 14px;">£64,200</span></span>
+  </div>
+  <div style="display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-top: 0.5px solid var(--border);">
+    <span style="font-size: 14px;">Workplace pension</span>
+    <span style="display: flex; align-items: center; gap: 10px;"><span style="font-size: 11px; color: #633806; background: #FAEEDA; padding: 2px 8px; border-radius: 999px;">6 mo old</span><span style="font-size: 14px;">£112,000</span></span>
+  </div>
+  <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 16px 0 6px;">
+    <span style="font-size: 12px; color: var(--text-muted); letter-spacing: 0.04em;">Property</span>
+    <span style="font-size: 13px; color: var(--text-secondary);">£188,000</span>
+  </div>
+  <div style="display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-top: 0.5px solid var(--border);">
+    <span style="font-size: 14px;">Flat (est. value)</span>
+    <span style="display: flex; align-items: center; gap: 10px;"><span style="font-size: 11px; color: #633806; background: #FAEEDA; padding: 2px 8px; border-radius: 999px;">1 yr old</span><span style="font-size: 14px;">£310,000</span></span>
+  </div>
+  <div style="display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-top: 0.5px solid var(--border);">
+    <span style="font-size: 14px; color: var(--text-secondary);">Mortgage</span>
+    <span style="font-size: 14px; color: var(--text-danger);">−£122,000</span>
+  </div>
+  <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 16px 0 6px;">
+    <span style="font-size: 12px; color: var(--text-muted); letter-spacing: 0.04em;">Owed</span>
+    <span style="font-size: 13px; color: var(--text-danger);">−£1,300</span>
+  </div>
+  <div style="display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-top: 0.5px solid var(--border);">
+    <span style="font-size: 14px;">Amex</span>
+    <span style="display: flex; align-items: center; gap: 10px;"><span style="font-size: 11px; color: #085041; background: #E1F5EE; padding: 2px 8px; border-radius: 999px;">live</span><span style="font-size: 14px; color: var(--text-danger);">−£1,300</span></span>
+  </div>
+  <div style="padding: 14px 0 0;">
+    <span style="font-size: 13px; color: var(--text-secondary);"><i class="ti ti-plus" style="font-size: 14px; vertical-align: -2px;" aria-hidden="true"></i> Add something you own or owe</span>
+  </div>
+</div>
+</div>
+</div>
+
+<h2 class="section">2 · Home tab (Phase 2)</h2>
+<p class="note">Safe-to-spend hero + stats, the new "Coming up" strip (Plan folded in),
+balance forecast (real version keeps the full chart with 5 horizons), one nudge slot.
+Accounts/banks management has moved to Wealth.</p>
+
+<div style="background: var(--surface-1); border-radius: 16px; padding: 1.25rem;">
+<div style="background: var(--surface-2); border: 0.5px solid var(--border); border-radius: 12px; overflow: hidden;">
+<div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; border-bottom: 0.5px solid var(--border);">
+  <span style="font-size: 15px; font-weight: 500;">nilu<span style="color: var(--text-accent);">.</span></span>
+  <div style="display: flex; gap: 4px;">
+    <span style="font-size: 13px; color: var(--text-accent); background: var(--bg-accent); border-radius: var(--radius); padding: 5px 12px;">Home</span>
+    <span style="font-size: 13px; color: var(--text-secondary); padding: 5px 12px;">Spending</span>
+    <span style="font-size: 13px; color: var(--text-secondary); padding: 5px 12px;">Wealth</span>
+  </div>
+  <div style="width: 26px; height: 26px; border-radius: 50%; background: var(--fill-control); display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--text-secondary);">I</div>
+</div>
+<div style="padding: 20px;">
+  <div style="font-size: 13px; color: var(--text-secondary);">Safe to spend</div>
+  <div style="display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;">
+    <span style="font-size: 30px; font-weight: 500;">£1,240</span>
+    <span style="font-size: 13px; color: var(--text-muted);">until payday on 28 Jul</span>
+  </div>
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-top: 16px;">
+    <div style="background: var(--surface-1); border-radius: var(--radius); padding: 10px 14px;">
+      <div style="font-size: 12px; color: var(--text-muted);">Available cash</div>
+      <div style="font-size: 16px; font-weight: 500;">£11,040</div>
+    </div>
+    <div style="background: var(--surface-1); border-radius: var(--radius); padding: 10px 14px;">
+      <div style="font-size: 12px; color: var(--text-muted);">Committed soon</div>
+      <div style="font-size: 16px; font-weight: 500; color: var(--text-danger);">−£2,860</div>
+    </div>
+    <div style="background: var(--surface-1); border-radius: var(--radius); padding: 10px 14px;">
+      <div style="font-size: 12px; color: var(--text-muted);">Savable (30d)</div>
+      <div style="font-size: 16px; font-weight: 500; color: var(--text-success);">£1,900</div>
+    </div>
+  </div>
+  <div style="margin-top: 20px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
+      <span style="font-size: 12px; color: var(--text-muted); letter-spacing: 0.04em;">Coming up</span>
+      <span style="font-size: 12px; color: var(--text-accent);">All commitments <i class="ti ti-chevron-right" style="font-size: 12px;" aria-hidden="true"></i></span>
+    </div>
+    <div style="display: flex; justify-content: space-between; padding: 8px 0; border-top: 0.5px solid var(--border); font-size: 14px;">
+      <span>Amex repayment</span>
+      <span style="color: var(--text-secondary);">£1,300 <span style="color: var(--text-muted);">· 15 Jul</span></span>
+    </div>
+    <div style="display: flex; justify-content: space-between; padding: 8px 0; border-top: 0.5px solid var(--border); font-size: 14px;">
+      <span>Car insurance</span>
+      <span style="color: var(--text-secondary);">£58 <span style="color: var(--text-muted);">· 22 Jul</span></span>
+    </div>
+    <div style="display: flex; justify-content: space-between; padding: 8px 0; border-top: 0.5px solid var(--border); font-size: 14px;">
+      <span>Rent</span>
+      <span style="color: var(--text-secondary);">£1,450 <span style="color: var(--text-muted);">· 1 Aug</span></span>
+    </div>
+  </div>
+  <div style="margin-top: 20px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
+      <span style="font-size: 12px; color: var(--text-muted); letter-spacing: 0.04em;">Balance forecast</span>
+      <span style="font-size: 12px; color: var(--text-secondary);">lowest point £610 · 24 Jul</span>
+    </div>
+    <svg viewBox="0 0 600 56" style="width: 100%; height: 44px;" role="img" aria-label="Thirty-day balance forecast dipping mid-month then recovering at payday">
+      <polyline points="0,14 80,18 140,24 200,26 260,36 320,44 380,46 420,30 480,10 540,12 600,16" fill="none" stroke="#378ADD" stroke-width="2"/>
+      <circle cx="380" cy="46" r="3" fill="#378ADD"/>
+    </svg>
+  </div>
+  <div style="display: flex; align-items: center; gap: 8px; margin-top: 20px; padding: 10px 12px; background: var(--bg-accent); border-radius: var(--radius);">
+    <i class="ti ti-bulb" style="font-size: 16px; color: var(--text-accent);" aria-hidden="true"></i>
+    <span style="font-size: 12.5px; color: var(--text-accent);">£16,000 of this year's ISA allowance is still unused — 9 months to 5 April</span>
+  </div>
+</div>
+</div>
+</div>
+
+<h2 class="section">3 · Spending tab (Phase 3)</h2>
+<p class="note">Insights + Activity merged. Period selector, headline vs typical pace,
+category bars, then the transaction list inline. Clicking a tile/category/merchant filters
+the list in place (replaces the drill-down modal).</p>
+
+<div style="background: var(--surface-1); border-radius: 16px; padding: 1.25rem;">
+<div style="background: var(--surface-2); border: 0.5px solid var(--border); border-radius: 12px; overflow: hidden;">
+<div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; border-bottom: 0.5px solid var(--border);">
+  <span style="font-size: 15px; font-weight: 500;">nilu<span style="color: var(--text-accent);">.</span></span>
+  <div style="display: flex; gap: 4px;">
+    <span style="font-size: 13px; color: var(--text-secondary); padding: 5px 12px;">Home</span>
+    <span style="font-size: 13px; color: var(--text-accent); background: var(--bg-accent); border-radius: var(--radius); padding: 5px 12px;">Spending</span>
+    <span style="font-size: 13px; color: var(--text-secondary); padding: 5px 12px;">Wealth</span>
+  </div>
+  <div style="width: 26px; height: 26px; border-radius: 50%; background: var(--fill-control); display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--text-secondary);">I</div>
+</div>
+<div style="padding: 20px;">
+  <div style="display: flex; gap: 4px; margin-bottom: 16px;">
+    <span style="font-size: 12.5px; background: var(--fill-control); border-radius: 999px; padding: 4px 12px;">Since payday</span>
+    <span style="font-size: 12.5px; color: var(--text-secondary); padding: 4px 12px;">This month</span>
+    <span style="font-size: 12.5px; color: var(--text-secondary); padding: 4px 12px;">Last 30 days</span>
+    <span style="font-size: 12.5px; color: var(--text-secondary); padding: 4px 12px;">Custom</span>
+  </div>
+  <div style="font-size: 13px; color: var(--text-secondary);">Spent since payday</div>
+  <div style="display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;">
+    <span style="font-size: 30px; font-weight: 500;">£1,870</span>
+    <span style="font-size: 13px; color: var(--text-success);">£180 under your usual pace</span>
+  </div>
+  <div style="margin-top: 18px;">
+    <div style="font-size: 12px; color: var(--text-muted); letter-spacing: 0.04em; margin-bottom: 8px;">By category</div>
+    <div style="display: grid; grid-template-columns: 90px minmax(0,1fr) 56px; gap: 8px 12px; align-items: center; font-size: 13px;">
+      <span>Groceries</span><div style="background: var(--surface-1); border-radius: 999px; height: 8px;"><div style="width: 100%; height: 8px; border-radius: 999px; background: #1D9E75;"></div></div><span style="text-align: right; color: var(--text-secondary);">£420</span>
+      <span>Eating out</span><div style="background: var(--surface-1); border-radius: 999px; height: 8px;"><div style="width: 74%; height: 8px; border-radius: 999px; background: #1D9E75;"></div></div><span style="text-align: right; color: var(--text-secondary);">£310</span>
+      <span>Shopping</span><div style="background: var(--surface-1); border-radius: 999px; height: 8px;"><div style="width: 62%; height: 8px; border-radius: 999px; background: #1D9E75;"></div></div><span style="text-align: right; color: var(--text-secondary);">£260</span>
+      <span>Transport</span><div style="background: var(--surface-1); border-radius: 999px; height: 8px;"><div style="width: 43%; height: 8px; border-radius: 999px; background: #1D9E75;"></div></div><span style="text-align: right; color: var(--text-secondary);">£180</span>
+      <span>Subscriptions</span><div style="background: var(--surface-1); border-radius: 999px; height: 8px;"><div style="width: 23%; height: 8px; border-radius: 999px; background: #1D9E75;"></div></div><span style="text-align: right; color: var(--text-secondary);">£95</span>
+    </div>
+  </div>
+  <div style="margin-top: 22px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 12px;">
+      <span style="font-size: 12px; color: var(--text-muted); letter-spacing: 0.04em;">Activity</span>
+      <div style="display: flex; align-items: center; gap: 6px; border: 0.5px solid var(--border); border-radius: var(--radius); padding: 5px 10px; flex: 1; max-width: 220px;">
+        <i class="ti ti-search" style="font-size: 14px; color: var(--text-muted);" aria-hidden="true"></i>
+        <span style="font-size: 12.5px; color: var(--text-muted);">Search or filter</span>
+      </div>
+    </div>
+    <div style="display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-top: 0.5px solid var(--border); font-size: 14px;">
+      <span>Tesco <span style="font-size: 11px; color: #0C447C; background: #E6F1FB; padding: 2px 8px; border-radius: 999px; margin-left: 6px;">Groceries</span></span>
+      <span style="color: var(--text-secondary);">−£54.20 <span style="color: var(--text-muted);">· today</span></span>
+    </div>
+    <div style="display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-top: 0.5px solid var(--border); font-size: 14px;">
+      <span>Deliveroo <span style="font-size: 11px; color: #0C447C; background: #E6F1FB; padding: 2px 8px; border-radius: 999px; margin-left: 6px;">Eating out</span></span>
+      <span style="color: var(--text-secondary);">−£23.40 <span style="color: var(--text-muted);">· yesterday</span></span>
+    </div>
+    <div style="display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-top: 0.5px solid var(--border); font-size: 14px;">
+      <span>TfL <span style="font-size: 11px; color: #0C447C; background: #E6F1FB; padding: 2px 8px; border-radius: 999px; margin-left: 6px;">Transport</span></span>
+      <span style="color: var(--text-secondary);">−£8.10 <span style="color: var(--text-muted);">· yesterday</span></span>
+    </div>
+    <div style="display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-top: 0.5px solid var(--border); font-size: 14px;">
+      <span>Salary <span style="font-size: 11px; color: #27500A; background: #EAF3DE; padding: 2px 8px; border-radius: 999px; margin-left: 6px;">Income</span></span>
+      <span style="color: var(--text-success);">+£4,850 <span style="color: var(--text-muted);">· 1 Jul</span></span>
+    </div>
+    <div style="padding: 12px 0 0; font-size: 13px; color: var(--text-secondary);">Show all activity</div>
+  </div>
+</div>
+</div>
+</div>
+
+<h2 class="section">4 · Add-to-balance-sheet chooser (Phase 1)</h2>
+<p class="note">Universal add on Wealth: connect a bank (first, highlighted, "as many as you
+like") vs track manually. Footer shows what's already connected.</p>
+
+<div style="min-height: 340px; background: var(--surface-1); border-radius: 16px; display: flex; align-items: center; justify-content: center; padding: 1.5rem;">
+  <div style="background: var(--surface-2); border: 0.5px solid var(--border); border-radius: 12px; padding: 1.25rem 1.5rem; max-width: 420px; width: 100%;">
+    <p style="font-size: 16px; font-weight: 500; margin: 0 0 4px;">Add to your balance sheet</p>
+    <p style="font-size: 13px; color: var(--text-secondary); margin: 0 0 16px;">Everything you own and owe, in one place.</p>
+    <div style="border: 0.5px solid var(--border-strong); border-radius: 12px; padding: 14px 16px; display: flex; gap: 12px; align-items: flex-start; margin-bottom: 10px; background: var(--bg-accent);">
+      <i class="ti ti-building-bank" style="font-size: 20px; color: var(--text-accent); margin-top: 2px;" aria-hidden="true"></i>
+      <div style="flex: 1;">
+        <p style="font-size: 14px; font-weight: 500; margin: 0; color: var(--text-accent);">Connect a bank</p>
+        <p style="font-size: 12.5px; color: var(--text-accent); margin: 2px 0 0;">Current accounts, savings and credit cards update automatically. You can connect as many banks as you like.</p>
+      </div>
+      <i class="ti ti-chevron-right" style="font-size: 16px; color: var(--text-accent); margin-top: 4px;" aria-hidden="true"></i>
+    </div>
+    <div style="border: 0.5px solid var(--border); border-radius: 12px; padding: 14px 16px; display: flex; gap: 12px; align-items: flex-start;">
+      <i class="ti ti-pencil" style="font-size: 20px; color: var(--text-secondary); margin-top: 2px;" aria-hidden="true"></i>
+      <div style="flex: 1;">
+        <p style="font-size: 14px; font-weight: 500; margin: 0;">Track something manually</p>
+        <p style="font-size: 12.5px; color: var(--text-secondary); margin: 2px 0 0;">ISAs, pensions, property, crypto — anything your bank doesn't know about.</p>
+      </div>
+      <i class="ti ti-chevron-right" style="font-size: 16px; color: var(--text-muted); margin-top: 4px;" aria-hidden="true"></i>
+    </div>
+    <p style="font-size: 12px; color: var(--text-muted); margin: 14px 0 0;">2 banks connected · Monzo, Barclays</p>
+  </div>
+</div>
+
+<h2 class="section">5 · Transaction detail sheet (Phase 3)</h2>
+<p class="note">Tap any transaction row → one sheet with everything: category editor,
+"This repeats" cadence picker (→ commitments), rule creation with backfill, pay on finance.
+Replaces the three scattered row text-buttons. Bulk-select stays at list level.</p>
+
+<div style="min-height: 380px; background: var(--surface-1); border-radius: 16px; display: flex; align-items: center; justify-content: center; padding: 1.5rem;">
+  <div style="background: var(--surface-2); border: 0.5px solid var(--border); border-radius: 12px; padding: 1.25rem 1.5rem; max-width: 400px; width: 100%;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline;">
+      <p style="font-size: 16px; font-weight: 500; margin: 0;">Netflix</p>
+      <p style="font-size: 16px; font-weight: 500; margin: 0;">−£12.99</p>
+    </div>
+    <p style="font-size: 12.5px; color: var(--text-secondary); margin: 2px 0 14px;">2 Jul · Monzo current · NETFLIX.COM</p>
+    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 14px;">
+      <span style="font-size: 12px; color: var(--text-muted);">Category</span>
+      <span style="font-size: 12px; color: #0C447C; background: #E6F1FB; padding: 3px 10px; border-radius: 999px;">Subscriptions</span>
+      <span style="font-size: 12px; color: var(--text-accent);">Change</span>
+    </div>
+    <div style="border: 0.5px solid var(--border-strong); border-radius: 12px; padding: 12px 14px; margin-bottom: 8px; background: var(--bg-accent);">
+      <div style="display: flex; gap: 10px; align-items: center;">
+        <i class="ti ti-repeat" style="font-size: 18px; color: var(--text-accent);" aria-hidden="true"></i>
+        <div style="flex: 1;">
+          <p style="font-size: 13.5px; font-weight: 500; margin: 0; color: var(--text-accent);">This repeats</p>
+          <p style="font-size: 12px; color: var(--text-accent); margin: 1px 0 0;">Add it to your commitments so safe-to-spend and the forecast expect it.</p>
+        </div>
+      </div>
+      <div style="display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap;">
+        <span style="font-size: 12px; color: var(--text-accent); border: 0.5px solid var(--border-accent); padding: 4px 10px; border-radius: 999px;">Weekly</span>
+        <span style="font-size: 12px; color: #042C53; background: #85B7EB; padding: 4px 10px; border-radius: 999px;">Monthly</span>
+        <span style="font-size: 12px; color: var(--text-accent); border: 0.5px solid var(--border-accent); padding: 4px 10px; border-radius: 999px;">Every few months</span>
+        <span style="font-size: 12px; color: var(--text-accent); border: 0.5px solid var(--border-accent); padding: 4px 10px; border-radius: 999px;">Yearly</span>
+      </div>
+    </div>
+    <div style="border: 0.5px solid var(--border); border-radius: 12px; padding: 12px 14px; margin-bottom: 8px; display: flex; gap: 10px; align-items: center;">
+      <i class="ti ti-wand" style="font-size: 18px; color: var(--text-secondary);" aria-hidden="true"></i>
+      <div>
+        <p style="font-size: 13.5px; font-weight: 500; margin: 0;">Always categorise Netflix like this</p>
+        <p style="font-size: 12px; color: var(--text-secondary); margin: 1px 0 0;">Creates a rule and can backfill your history.</p>
+      </div>
+    </div>
+    <div style="border: 0.5px solid var(--border); border-radius: 12px; padding: 12px 14px; display: flex; gap: 10px; align-items: center;">
+      <i class="ti ti-credit-card" style="font-size: 18px; color: var(--text-secondary);" aria-hidden="true"></i>
+      <div>
+        <p style="font-size: 13.5px; font-weight: 500; margin: 0;">Pay on finance</p>
+        <p style="font-size: 12px; color: var(--text-secondary); margin: 1px 0 0;">Split it into a payment plan and drop it from spending.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2 class="section">6 · Landing page (Phase 4)</h2>
+<p class="note">Hero stays spender-led; preview card gains a net worth row. Feature grid
+mirrors the three tabs; supporting strip for rules + multi-bank; security section gains
+demo mode. Real page keeps the GSAP treatment.</p>
+
+<div style="background: var(--surface-1); border-radius: 16px; padding: 1.25rem;">
+<div style="background: var(--surface-2); border: 0.5px solid var(--border); border-radius: 12px; overflow: hidden;">
+<div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; border-bottom: 0.5px solid var(--border);">
+  <span style="font-size: 15px; font-weight: 500;">nilu<span style="color: var(--text-accent);">.</span> <span style="font-size: 10px; color: var(--text-accent); border: 0.5px solid var(--border-accent); border-radius: 4px; padding: 1px 5px; vertical-align: 2px;">beta</span></span>
+  <div style="display: flex; gap: 8px; align-items: center;">
+    <span style="font-size: 13px; color: var(--text-secondary);">Log in</span>
+    <span style="font-size: 13px; color: #04342C; background: #5DCAA5; border-radius: var(--radius); padding: 5px 12px;">Get started free</span>
+  </div>
+</div>
+<div style="display: grid; grid-template-columns: minmax(0,1.2fr) minmax(0,1fr); gap: 20px; padding: 24px 20px; align-items: center;">
+  <div>
+    <span style="font-size: 11px; color: #085041; background: #E1F5EE; padding: 3px 10px; border-radius: 999px;">Open banking · your data stays yours</span>
+    <p style="font-size: 24px; font-weight: 500; line-height: 1.15; margin: 12px 0 8px;">Know what's truly <span style="color: var(--text-accent);">safe to spend</span></p>
+    <p style="font-size: 13px; color: var(--text-secondary); margin: 0 0 14px; line-height: 1.5;">Connect your banks and see one honest picture: what you can spend, where it went, and what you're worth.</p>
+    <span style="font-size: 12.5px; color: #04342C; background: #5DCAA5; border-radius: var(--radius); padding: 6px 14px;">Get started free</span>
+  </div>
+  <div style="background: var(--surface-1); border-radius: 12px; padding: 14px 16px;">
+    <p style="font-size: 11px; color: var(--text-muted); margin: 0;">Safe to spend until payday</p>
+    <p style="font-size: 24px; font-weight: 500; margin: 2px 0 10px;">£1,247</p>
+    <div style="display: flex; align-items: flex-end; gap: 4px; height: 40px;" aria-hidden="true">
+      <div style="flex:1; height: 62%; background: #9FE1CB; border-radius: 3px 3px 0 0;"></div>
+      <div style="flex:1; height: 38%; background: #9FE1CB; border-radius: 3px 3px 0 0;"></div>
+      <div style="flex:1; height: 81%; background: #9FE1CB; border-radius: 3px 3px 0 0;"></div>
+      <div style="flex:1; height: 55%; background: #9FE1CB; border-radius: 3px 3px 0 0;"></div>
+      <div style="flex:1; height: 70%; background: #9FE1CB; border-radius: 3px 3px 0 0;"></div>
+      <div style="flex:1; height: 90%; background: #1D9E75; border-radius: 3px 3px 0 0;"></div>
+    </div>
+    <div style="display: flex; justify-content: space-between; border-top: 0.5px solid var(--border); margin-top: 10px; padding-top: 8px;">
+      <span style="font-size: 12px; color: var(--text-muted);">Net worth</span>
+      <span style="font-size: 12px;">£396,940 <span style="color: #0F6E56;">▲</span></span>
+    </div>
+  </div>
+</div>
+<div style="padding: 4px 20px 20px;">
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px;">
+    <div style="border: 0.5px solid var(--border); border-radius: 12px; padding: 14px;">
+      <i class="ti ti-wallet" style="font-size: 20px; color: var(--text-accent);" aria-hidden="true"></i>
+      <p style="font-size: 13.5px; font-weight: 500; margin: 8px 0 3px;">How much can I spend?</p>
+      <p style="font-size: 12px; color: var(--text-secondary); margin: 0; line-height: 1.5;">One honest number, plus a day-by-day balance forecast up to a year ahead.</p>
+    </div>
+    <div style="border: 0.5px solid var(--border); border-radius: 12px; padding: 14px;">
+      <i class="ti ti-chart-pie" style="font-size: 20px; color: var(--text-accent);" aria-hidden="true"></i>
+      <p style="font-size: 13.5px; font-weight: 500; margin: 8px 0 3px;">Where did it go?</p>
+      <p style="font-size: 12px; color: var(--text-secondary); margin: 0; line-height: 1.5;">Categories, merchants and months — cash and credit kept honest and separate.</p>
+    </div>
+    <div style="border: 0.5px solid var(--border); border-radius: 12px; padding: 14px;">
+      <i class="ti ti-trending-up" style="font-size: 20px; color: var(--text-accent);" aria-hidden="true"></i>
+      <p style="font-size: 13.5px; font-weight: 500; margin: 8px 0 3px;">Am I getting richer?</p>
+      <p style="font-size: 12px; color: var(--text-secondary); margin: 0; line-height: 1.5;">Your whole balance sheet — banks update live; ISAs, pensions, property alongside.</p>
+    </div>
+  </div>
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 10px;">
+    <div style="background: var(--surface-1); border-radius: var(--radius); padding: 10px 14px; display: flex; gap: 10px; align-items: center;">
+      <i class="ti ti-adjustments" style="font-size: 16px; color: var(--text-secondary);" aria-hidden="true"></i>
+      <span style="font-size: 12px; color: var(--text-secondary);">Categorise once — rules tidy every sync, and packs are shareable</span>
+    </div>
+    <div style="background: var(--surface-1); border-radius: var(--radius); padding: 10px 14px; display: flex; gap: 10px; align-items: center;">
+      <i class="ti ti-building-bank" style="font-size: 16px; color: var(--text-secondary);" aria-hidden="true"></i>
+      <span style="font-size: 12px; color: var(--text-secondary);">Connect as many banks as you like via TrueLayer open banking</span>
+    </div>
+  </div>
+</div>
+<div style="border-top: 0.5px solid var(--border); padding: 18px 20px 20px;">
+  <span style="font-size: 11px; color: #085041; background: #E1F5EE; padding: 3px 10px; border-radius: 999px;"><i class="ti ti-shield-check" style="font-size: 11px;" aria-hidden="true"></i> Security</span>
+  <p style="font-size: 16px; font-weight: 500; margin: 10px 0 12px;">Built for money you can't afford to lose</p>
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px;">
+    <div style="border: 0.5px solid var(--border); border-radius: 12px; padding: 12px 14px;">
+      <p style="font-size: 12.5px; font-weight: 500; margin: 0 0 3px;"><i class="ti ti-building-bank" style="font-size: 14px; color: var(--text-accent); margin-right: 4px;" aria-hidden="true"></i>Read-only open banking</p>
+      <p style="font-size: 11.5px; color: var(--text-secondary); margin: 0; line-height: 1.5;">Via TrueLayer, FCA-authorised. We never see your bank password; the connection can't move money.</p>
+    </div>
+    <div style="border: 0.5px solid var(--border); border-radius: 12px; padding: 12px 14px;">
+      <p style="font-size: 12.5px; font-weight: 500; margin: 0 0 3px;"><i class="ti ti-lock" style="font-size: 14px; color: var(--text-accent); margin-right: 4px;" aria-hidden="true"></i>Encrypted with your key</p>
+      <p style="font-size: 11.5px; color: var(--text-secondary); margin: 0; line-height: 1.5;">Your data is encrypted with a key from your password — we can't read it, even in our own database.</p>
+    </div>
+    <div style="border: 0.5px solid var(--border-accent); border-radius: 12px; padding: 12px 14px;">
+      <p style="font-size: 12.5px; font-weight: 500; margin: 0 0 3px;"><i class="ti ti-eye-off" style="font-size: 14px; color: var(--text-accent);" aria-hidden="true"></i> Demo mode <span style="font-size: 10px; color: #085041; background: #E1F5EE; padding: 1px 6px; border-radius: 999px; vertical-align: 1px;">new</span></p>
+      <p style="font-size: 11.5px; color: var(--text-secondary); margin: 0; line-height: 1.5;">Show the app, not your numbers — one tap swaps every figure and name for realistic fakes.</p>
+    </div>
+  </div>
+  <p style="font-size: 11px; color: var(--text-muted); margin: 12px 0 0;">Plus: your key means your responsibility · data never sold · leave (and delete everything) whenever you want</p>
+</div>
+</div>
+</div>
+
+</body>
+</html>

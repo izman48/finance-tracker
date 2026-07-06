@@ -1,19 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { analyticsAPI } from '../services/api'
+import { gbp0 as gbp, monthLabel } from '../lib/format'
 
 interface MonthSpend {
   month: string // YYYY-MM
   total: number
   charged_to_credit: number
   paid_from_cash: number
-}
-
-const gbp = (n: number) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(n)
-
-function monthLabel(ym: string) {
-  const [y, m] = ym.split('-').map(Number)
-  return new Date(y, m - 1, 1).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })
 }
 
 function TrendTooltip({ active, payload }: any) {

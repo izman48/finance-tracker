@@ -1,5 +1,7 @@
 import { Routes, Route } from 'react-router-dom'
 import { AuthProvider } from './hooks/useAuth'
+import { ToastProvider } from './components/ui/Toast'
+import { ConfirmProvider } from './components/ui/ConfirmDialog'
 import Layout from './components/Layout'
 import HomePage from './pages/HomePage'
 import LoginPage from './pages/LoginPage'
@@ -19,6 +21,8 @@ import ProtectedRoute from './components/ProtectedRoute'
 function App() {
   return (
     <AuthProvider>
+      <ToastProvider>
+      <ConfirmProvider>
       <Routes>
         <Route path="/" element={<Layout />}>
           <Route index element={<HomePage />} />
@@ -92,6 +96,8 @@ function App() {
           />
         </Route>
       </Routes>
+      </ConfirmProvider>
+      </ToastProvider>
     </AuthProvider>
   )
 }

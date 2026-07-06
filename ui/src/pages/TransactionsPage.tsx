@@ -1,30 +1,12 @@
 import React, { useEffect, useState } from 'react'
 import { ArrowDownToLine, ChevronDown, CreditCard, Repeat, SlidersHorizontal, Wand2 } from 'lucide-react'
-import { bankingAPI, analyticsAPI } from '../services/api'
+import { bankingAPI } from '../services/api'
+import { Transaction, Account } from '../types'
+import { money as formatCurrency, dateDMY as formatDate } from '../lib/format'
 import AddRuleModal from '../components/AddRuleModal'
-
-interface Transaction {
-  id: string
-  account_id: string
-  transaction_type: string
-  amount: number
-  currency: string
-  description: string
-  merchant_name: string | null
-  category: string | null
-  subcategory: string | null
-  is_recurring: boolean
-  is_commitment: boolean
-  is_financed: boolean
-  transaction_date: string
-}
-
-interface Account {
-  id: string
-  display_name: string
-  provider_name: string
-  account_type: string
-}
+import MakeRecurringModal from '../components/MakeRecurringModal'
+import PayOnFinanceModal from '../components/PayOnFinanceModal'
+import { useToast } from '../components/ui/Toast'
 
 export default function TransactionsPage() {
   const [allTransactions, setAllTransactions] = useState<Transaction[]>([])
@@ -37,7 +19,7 @@ export default function TransactionsPage() {
   const [recurringTx, setRecurringTx] = useState<Transaction | null>(null)
   const [financeTx, setFinanceTx] = useState<Transaction | null>(null)
   const [ruleTx, setRuleTx] = useState<Transaction | null>(null)
-  const [toast, setToast] = useState<string>('')
+  const showToast = useToast()
   const [customCategories, setCustomCategories] = useState<string[]>([])
   const [isAddingCategory, setIsAddingCategory] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState('')
@@ -123,21 +105,6 @@ export default function TransactionsPage() {
     }
   }
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-GB', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    })
-  }
-
-  const formatCurrency = (amount: number, currency: string = 'GBP') => {
-    return new Intl.NumberFormat('en-GB', {
-      style: 'currency',
-      currency: currency,
-    }).format(amount)
-  }
-
   const getAccountName = (accountId: string) => {
     const account = accounts.find(a => a.id === accountId)
     return account ? account.display_name : 'Unknown Account'
@@ -165,7 +132,7 @@ export default function TransactionsPage() {
       setEditingCategory('')
     } catch (error) {
       console.error('Failed to update category:', error)
-      alert('Failed to update category')
+      showToast('Failed to update category', { tone: 'err' })
     }
   }
 
@@ -217,7 +184,7 @@ export default function TransactionsPage() {
 
   const handleBulkUpdateCategory = async () => {
     if (selectedTransactionIds.size === 0) {
-      alert('Please select at least one transaction')
+      showToast('Select at least one transaction first', { tone: 'err' })
       return
     }
 
@@ -247,7 +214,7 @@ export default function TransactionsPage() {
       setBulkNewCategoryName('')
     } catch (error) {
       console.error('Failed to update categories:', error)
-      alert('Failed to update some transactions')
+      showToast('Failed to update some transactions', { tone: 'err' })
     } finally {
       setIsUpdatingBulk(false)
     }
@@ -1204,20 +1171,13 @@ export default function TransactionsPage() {
         })()}
       </div>
 
-      {toast && (
-        <div className="fixed bottom-24 md:bottom-6 right-4 sm:right-6 z-50 bg-accent text-ink-950 font-medium px-4 py-3 rounded-xl shadow-pop">
-          {toast}
-        </div>
-      )}
-
       {recurringTx && (
         <MakeRecurringModal
           transaction={recurringTx}
           onClose={() => setRecurringTx(null)}
           onDone={(label) => {
             setRecurringTx(null)
-            setToast(`"${label}" added to Plan`)
-            setTimeout(() => setToast(''), 3500)
+            showToast(`"${label}" added to Plan`)
           }}
         />
       )}
@@ -1228,8 +1188,7 @@ export default function TransactionsPage() {
           onClose={() => setFinanceTx(null)}
           onDone={(label) => {
             setFinanceTx(null)
-            setToast(`"${label}" moved to a payment plan`)
-            setTimeout(() => setToast(''), 3500)
+            showToast(`"${label}" moved to a payment plan`)
             loadAllTransactions()
           }}
         />
@@ -1244,164 +1203,15 @@ export default function TransactionsPage() {
           onAdded={async (result) => {
             setRuleTx(null)
             // The modal already backfilled (if opted in) — just reflect the result.
-            setToast(
+            showToast(
               result?.applied
                 ? `Rule added · recategorized ${result.changed} transaction${result.changed !== 1 ? 's' : ''}`
                 : 'Rule added',
             )
-            setTimeout(() => setToast(''), 3500)
             await loadAllTransactions()
           }}
         />
       )}
-    </div>
-  )
-}
-
-function MakeRecurringModal({
-  transaction,
-  onClose,
-  onDone,
-}: {
-  transaction: Transaction
-  onClose: () => void
-  onDone: (label: string) => void
-}) {
-  const [cadence, setCadence] = useState('monthly')
-  const [saving, setSaving] = useState(false)
-  const label = transaction.merchant_name || transaction.description || 'this transaction'
-
-  const save = async () => {
-    setSaving(true)
-    try {
-      await analyticsAPI.markTransactionRecurring(transaction.id, cadence)
-      onDone(label)
-    } catch (e) {
-      console.error('Failed to mark recurring', e)
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-panel !max-w-sm" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-lg font-semibold text-slate-50 mb-1">Mark as recurring</h3>
-        <p className="text-sm text-slate-400 mb-4">
-          Add <span className="font-medium text-slate-200">{label}</span> ({transaction.transaction_type === 'credit' ? 'income' : 'expense'}) as a
-          confirmed commitment so it feeds your safe-to-spend and forecast.
-        </p>
-        <label className="label">How often?</label>
-        <select value={cadence} onChange={(e) => setCadence(e.target.value)} className="input mb-5">
-          <option value="weekly">Weekly</option>
-          <option value="monthly">Monthly</option>
-          <option value="every_n_months">Every few months</option>
-          <option value="yearly">Yearly</option>
-        </select>
-        <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="btn-ghost">Cancel</button>
-          <button onClick={save} disabled={saving} className="btn-primary">
-            {saving ? 'Adding…' : 'Add to plan'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function PayOnFinanceModal({
-  transaction,
-  onClose,
-  onDone,
-}: {
-  transaction: Transaction
-  onClose: () => void
-  onDone: (label: string) => void
-}) {
-  const label = transaction.merchant_name || transaction.description || 'this purchase'
-  const [months, setMonths] = useState(12)
-  // Default the per-month amount to an even split of the purchase, rounded to pennies.
-  const [monthly, setMonthly] = useState(() => (transaction.amount / 12).toFixed(2))
-  // First payment defaults to ~a month out.
-  const [startDate, setStartDate] = useState(() => {
-    const d = new Date()
-    d.setMonth(d.getMonth() + 1)
-    return d.toISOString().slice(0, 10)
-  })
-  const [saving, setSaving] = useState(false)
-
-  const setMonthsAndSplit = (m: number) => {
-    setMonths(m)
-    setMonthly((transaction.amount / Math.max(m, 1)).toFixed(2))
-  }
-
-  const total = (Number(monthly) || 0) * months
-  const gbp = (n: number) =>
-    new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(n)
-
-  const save = async () => {
-    if (!months || !monthly || Number(monthly) <= 0 || !startDate) return
-    setSaving(true)
-    try {
-      await analyticsAPI.payOnFinance({
-        transaction_id: transaction.id,
-        months,
-        monthly_amount: Number(monthly),
-        start_date: startDate,
-      })
-      onDone(label)
-    } catch (e) {
-      console.error('Failed to move to a payment plan', e)
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-panel !max-w-sm" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-lg font-semibold text-slate-50 mb-1">Pay on finance</h3>
-        <p className="text-sm text-slate-400 mb-4">
-          Split <span className="font-medium text-slate-200">{label}</span> ({gbp(transaction.amount)})
-          into a payment plan. It leaves your Spending totals and the installments show in your forecast.
-        </p>
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          <div>
-            <label className="label">Number of months</label>
-            <input
-              type="number" min={1} max={120} value={months}
-              onChange={(e) => setMonthsAndSplit(Number(e.target.value))}
-              className="input"
-            />
-          </div>
-          <div>
-            <label className="label">Amount per month (£)</label>
-            <input
-              type="number" min={0} step="0.01" value={monthly}
-              onChange={(e) => setMonthly(e.target.value)}
-              className="input"
-            />
-          </div>
-          <div className="col-span-2">
-            <label className="label">First payment</label>
-            <input
-              type="date" value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="input"
-            />
-          </div>
-        </div>
-        <p className="text-xs text-slate-500 mb-4">
-          {gbp(Number(monthly) || 0)} × {months} = {gbp(total)} total
-          {Math.abs(total - transaction.amount) > 0.5 && (
-            <span className="text-slate-400"> · {gbp(total - transaction.amount)} vs the purchase</span>
-          )}
-        </p>
-        <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="btn-ghost">Cancel</button>
-          <button onClick={save} disabled={saving} className="btn-primary">
-            {saving ? 'Saving…' : 'Move to plan'}
-          </button>
-        </div>
-      </div>
     </div>
   )
 }

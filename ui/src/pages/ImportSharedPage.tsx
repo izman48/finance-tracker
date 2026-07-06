@@ -1,5 +1,5 @@
 import { useNavigate, useParams } from 'react-router-dom'
-import { ImportModal } from './RulesPage'
+import ImportRulePackModal from '../components/ImportRulePackModal'
 
 /** Landing page for shared rule-pack links (/r/:code). */
 export default function ImportSharedPage() {
@@ -7,7 +7,7 @@ export default function ImportSharedPage() {
   const navigate = useNavigate()
 
   return (
-    <ImportModal
+    <ImportRulePackModal
       initialCode={code}
       onClose={() => navigate('/rules')}
       onImported={() => navigate('/rules?imported=1')}

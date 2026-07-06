@@ -10,6 +10,7 @@ import {
   YAxis,
 } from 'recharts'
 import { analyticsAPI } from '../services/api'
+import { gbp0 as gbp, dateDayMonth as shortDate } from '../lib/format'
 import InfoTip from './ui/InfoTip'
 import { EXPLAIN } from '../copy/statExplainers'
 
@@ -42,9 +43,6 @@ const HORIZONS: { key: string; label: string }[] = [
   { key: '180', label: '6mo' },
   { key: '365', label: '1yr' },
 ]
-
-const gbp = (n: number) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(n)
-const shortDate = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
 
 function ForecastTooltip({ active, payload }: any) {
   if (!active || !payload?.length) return null

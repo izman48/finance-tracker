@@ -18,11 +18,9 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
+import { gbp0 as gbp } from '../lib/format'
 
 gsap.registerPlugin(ScrollTrigger)
-
-const gbp = (n: number) =>
-  new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(n)
 
 /** Static preview of the dashboard, built from the real design system. */
 function HeroPreview() {

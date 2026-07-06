@@ -116,6 +116,8 @@ const transactions = Array.from({ length: 60 }, (_, i) => ({
   subcategory: null,
   is_recurring: i % 11 === 0,
   is_commitment: i % 6 === 0,
+  is_financed: false,
+  excluded_reason: i % 13 === 0 ? 'card_payment' : i % 17 === 0 ? 'internal_transfer' : null,
   transaction_date: daysFromNow(-i),
 }))
 
@@ -161,7 +163,9 @@ const routes = [
   ['**/api/v1/analytics/net-worth-history*', netWorthHistory],
   ['**/api/v1/assets', assets],
   ['**/api/v1/banking/accounts', accounts.map(({ id, display_name, provider_name, account_type }) => ({ id, display_name, provider_name, account_type }))],
-  ['**/api/v1/banking/transactions*', { items: transactions, total: transactions.length }],
+  ['**/api/v1/banking/transactions*', { items: transactions, total: transactions.length, page: 1, page_size: 100 }],
+  // Registered after transactions* — Playwright checks later routes first.
+  ['**/api/v1/banking/transactions/facets', { categories: cats.filter(Boolean), merchants }],
   ['**/api/v1/rules', rules],
 ]
 

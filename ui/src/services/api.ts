@@ -156,6 +156,39 @@ export const healthApi = {
   check: () => api.get('/health'),
 }
 
+// Server-side transaction filters. Filtering runs in Python after decryption
+// (description/merchant/amounts are encrypted columns); `kind` mirrors the
+// spending aggregates exactly so drilled figures always reconcile.
+export interface TransactionQuery {
+  page?: number
+  page_size?: number
+  account_id?: string
+  search?: string
+  category?: string[]
+  merchant?: string
+  type?: 'debit' | 'credit' | ''
+  date_from?: string
+  date_to?: string
+  min_amount?: number | string
+  max_amount?: number | string
+  include_excluded?: boolean
+  exclude_commitments?: boolean
+  kind?: 'spend' | 'cash' | 'credit'
+  sort?: 'date' | 'amount'
+  sort_dir?: 'asc' | 'desc'
+}
+
+// FastAPI expects repeated keys for list params (category=a&category=b).
+const listParams = (params: Record<string, unknown>) => {
+  const q = new URLSearchParams()
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === null || v === '') continue
+    if (Array.isArray(v)) v.forEach((x) => q.append(k, String(x)))
+    else q.append(k, String(v))
+  }
+  return q
+}
+
 // Banking endpoints
 export const bankingAPI = {
   getConnectionStatus: () => api.get('/banking/status'),
@@ -165,8 +198,10 @@ export const bankingAPI = {
   syncAccounts: () => api.post('/banking/sync/accounts'),
   syncTransactions: (days: number = 90) => api.post('/banking/sync/transactions', { days }),
   getAccounts: () => api.get('/banking/accounts'),
-  getTransactions: (params?: { page?: number; page_size?: number; account_id?: string }) =>
-    api.get('/banking/transactions', { params }),
+  getTransactions: (params?: TransactionQuery) =>
+    api.get('/banking/transactions', { params: listParams((params ?? {}) as Record<string, unknown>) }),
+  getTransactionFacets: () =>
+    api.get<{ categories: string[]; merchants: string[] }>('/banking/transactions/facets'),
   updateTransaction: (transactionId: string, data: { category?: string | null; subcategory?: string | null }) =>
     api.patch(`/banking/transactions/${transactionId}`, data),
   disconnectAllBanks: () => api.post('/banking/disconnect'),

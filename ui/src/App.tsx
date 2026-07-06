@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './hooks/useAuth'
 import { ToastProvider } from './components/ui/Toast'
 import { ConfirmProvider } from './components/ui/ConfirmDialog'
@@ -9,8 +9,7 @@ import RegisterPage from './pages/RegisterPage'
 import ForgotPasswordPage from './pages/ForgotPasswordPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
 import DashboardPage from './pages/DashboardPage'
-import TransactionsPage from './pages/TransactionsPage'
-import InsightsPage from './pages/InsightsPage'
+import SpendingPage from './pages/SpendingPage'
 import CommitmentsPage from './pages/CommitmentsPage'
 import RulesPage from './pages/RulesPage'
 import NetWorthPage from './pages/NetWorthPage'
@@ -38,19 +37,13 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="transactions"
-            element={
-              <ProtectedRoute>
-                <TransactionsPage />
-              </ProtectedRoute>
-            }
-          />
+          {/* Activity merged into Spending — old links keep working. */}
+          <Route path="transactions" element={<Navigate to="/insights" replace />} />
           <Route
             path="insights"
             element={
               <ProtectedRoute>
-                <InsightsPage />
+                <SpendingPage />
               </ProtectedRoute>
             }
           />

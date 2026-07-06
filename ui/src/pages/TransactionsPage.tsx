@@ -1177,7 +1177,7 @@ export default function TransactionsPage() {
           onClose={() => setRecurringTx(null)}
           onDone={(label) => {
             setRecurringTx(null)
-            showToast(`"${label}" added to Plan`)
+            showToast(`"${label}" added to your commitments`)
           }}
         />
       )}

@@ -28,15 +28,26 @@ nilu. itself in UI/marketing (TrueLayer's FCA authorisation can be cited).
 ```
 api/app/
   routers/      auth, banking, analytics, assets, rules, health
-  services/     analytics_service (cashflow/forecast/spending), truelayer,
-                categorization, email_service
+  services/     analytics/ (domain package: cadence, commitments, repayments,
+                forecast, spending, net_worth, summary — analytics_service.py
+                is a compatibility shim), truelayer, categorization,
+                email_service
   models/ schemas/ core/   (core: security.py = JWT+hashing, encryption.py = Fernet)
   migrations/   Alembic
   tests/        unit/ + integration/ (pytest)
 ui/src/
-  pages/ components/ (components/ui = shared primitives) services/api.ts hooks/
-  scripts/visual-check.mjs   browser screenshot harness
+  pages/        the three tabs — DashboardPage (Home), SpendingPage,
+                NetWorthPage (Wealth = the balance sheet) — plus
+                CommitmentsPage (sub-page off Home), RulesPage (user menu),
+                auth pages
+  components/   (components/ui = shared primitives incl. Toast/ConfirmDialog
+                providers)  lib/ (format, cadence, assets)  types.ts
+                services/api.ts  hooks/
+  scripts/visual-check.mjs   browser screenshot harness (BASE_URL overridable)
 ```
+
+The IA is three tabs (Home / Spending / Wealth); `REDESIGN_PLAN.md` records
+the redesign and the still-open extensions (demo mode, nudges, theming).
 
 ## Commands
 
@@ -93,8 +104,10 @@ quick overflow check, navigate a page and compare `document.documentElement
   (amber for credit), `pos` (green income). Fonts: Inter (body), Space Grotesk
   (`font-display`). Charts use Recharts; motion uses GSAP and must respect
   `prefers-reduced-motion`.
-- **Navigation**: desktop top-nav at `lg+`; below `lg` (phones *and* iPad
-  portrait) a bottom tab bar. Keep that breakpoint consistent.
+- **Navigation**: three tabs (Home / Spending / Wealth) — desktop top-nav at
+  `lg+`; below `lg` (phones *and* iPad portrait) a bottom tab bar. Keep that
+  breakpoint consistent. Rules and account management live in the user menu;
+  commitments management is a sub-page off Home.
 - **Auth/security**: every API endpoint filters by `current_user` (no IDOR). JWTs
   carry a `typ` claim — `access`, `pwd_reset`, `oauth_state` — and
   `decode_access_token` rejects anything that isn't `access`, so reset/oauth

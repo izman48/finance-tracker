@@ -56,22 +56,32 @@ export default function MonthlySpendingChart({
 
   return (
     <div className="card-pad mb-6">
-      <div className="flex items-center justify-between mb-1">
-        <h2 className="font-display font-semibold text-slate-100">Spending by month</h2>
-        <div className="flex gap-0.5">
+      <div className="flex items-center justify-between gap-3 mb-1">
+        <div>
+          <h2 className="font-display font-semibold text-slate-100">Spending history</h2>
+          <p className="text-xs text-slate-500">
+            Whole calendar months — a longer view than the period above.
+          </p>
+        </div>
+        {/* A range for this chart only — kept visually distinct from the page's
+            period control so it doesn't read as a second, competing filter. */}
+        <div className="flex items-center gap-1 text-xs text-slate-500 shrink-0">
+          <span className="hidden sm:inline">show</span>
           {[6, 12].map((n) => (
             <button
               key={n}
               onClick={() => setMonths(n)}
-              className={months === n ? 'seg-active' : 'seg'}
+              className={`px-2 py-1 rounded-md transition-colors ${
+                months === n ? 'bg-white/[0.08] text-slate-200' : 'text-slate-500 hover:text-slate-300'
+              }`}
             >
-              {n} mo
+              {n}mo
             </button>
           ))}
         </div>
       </div>
       {worst && (
-        <p className="text-sm text-slate-500 mb-3">
+        <p className="text-sm text-slate-500 mb-3 mt-1">
           Highest: <span className="font-semibold text-neg">{monthLabel(worst.month)}</span> at{' '}
           <span className="tnum">{gbp(worst.total)}</span>
         </p>

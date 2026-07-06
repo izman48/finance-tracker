@@ -19,10 +19,10 @@ import ChangePasswordModal from './ChangePasswordModal'
 import DeleteAccountModal from './DeleteAccountModal'
 
 // Three tabs, three questions: am I okay right now / where did it go /
-// am I getting richer. Commitments is a sub-page off Home; Rules lives in
+// am I getting richer. Commitments is a sub-page off Cashflow; Rules lives in
 // the user menu (it's configuration, not a daily destination).
 const NAV_LINKS = [
-  { to: '/dashboard', label: 'Home', icon: Wallet },
+  { to: '/dashboard', label: 'Cashflow', icon: Wallet },
   { to: '/insights', label: 'Spending', icon: PieChart },
   { to: '/networth', label: 'Wealth', icon: TrendingUp },
 ]

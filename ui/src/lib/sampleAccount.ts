@@ -61,6 +61,8 @@ const ROLE: Record<string, Role> = Object.fromEntries(ACCOUNTS.map((a) => [a.id,
 const ASSETS = [
   { id: 'sas1', name: 'Meridian S&S ISA', asset_type: 'isa', value: 18500 },
   { id: 'sas2', name: 'Sterling Pension', asset_type: 'pension', value: 24000 },
+  // A liability: stored as a negative valuation (amount owed), subtracts from net worth.
+  { id: 'sas3', name: 'Car loan', asset_type: 'loan', value: -6800 },
 ]
 
 // One authored ledger everything else is computed from. Spans ~6 months (a
@@ -302,8 +304,8 @@ function spendingResponse(q: {
 const AVAILABLE_CASH = 2480.55 + 940.2 // spending accounts
 const SAVINGS_TOTAL = 12000
 const CREDIT_OWED = 640.3
-const ASSETS_TOTAL = 18500 + 24000
-const NET_WORTH = AVAILABLE_CASH + SAVINGS_TOTAL + ASSETS_TOTAL - CREDIT_OWED // 57,280.45
+const ASSETS_TOTAL = ASSETS.reduce((s, a) => s + a.value, 0) // ISA + pension − car loan
+const NET_WORTH = AVAILABLE_CASH + SAVINGS_TOTAL + ASSETS_TOTAL - CREDIT_OWED
 
 function summaryResponse() {
   const committed = 1100 + 20 + 12.99 + 11.99 + 32 // rent + phone + subs + gym
@@ -400,7 +402,9 @@ function assetsResponse() {
   return ASSETS.map((a) => ({
     id: a.id, name: a.name, asset_type: a.asset_type,
     valuations: [
-      { id: `${a.id}-v0`, value: String(Math.round(a.value * 0.9)), valued_at: isoDate(nowMinus(180)) },
+      // Assets grow over time; liabilities (negative) get paid down, so the
+      // older figure is further from zero in both cases.
+      { id: `${a.id}-v0`, value: String(Math.round(a.value * (a.value < 0 ? 1.15 : 0.9))), valued_at: isoDate(nowMinus(180)) },
       { id: `${a.id}-v1`, value: String(a.value), valued_at: isoDate(nowMinus(40)) },
     ],
   }))

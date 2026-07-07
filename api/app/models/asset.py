@@ -14,7 +14,11 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 from app.core.encryption import UserEncryptedDecimal, UserEncryptedString
 
-ASSET_TYPES = ("isa", "savings", "investment", "pension", "property", "crypto", "other")
+ASSET_TYPES = (
+    "isa", "savings", "investment", "pension", "property", "crypto", "other",
+    # Liabilities — stored with a negative valuation (amount owed).
+    "mortgage", "loan", "other_liability",
+)
 
 
 class Asset(Base):

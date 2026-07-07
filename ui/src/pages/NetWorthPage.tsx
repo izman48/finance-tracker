@@ -11,7 +11,7 @@ import {
 } from 'recharts'
 import { assetsAPI, analyticsAPI, bankingAPI, Asset, NetWorthPoint } from '../services/api'
 import { BankStatus, CashflowSummary, SummaryAccount } from '../types'
-import { ASSET_TYPE_LABEL, latestValue } from '../lib/assets'
+import { ASSET_TYPE_LABEL, latestValue, isLiabilityType } from '../lib/assets'
 import { gbp0 as gbp, timeAgo } from '../lib/format'
 import AddAssetModal from '../components/AddAssetModal'
 import UpdateAssetValueModal from '../components/UpdateAssetValueModal'
@@ -38,6 +38,7 @@ const GROUPS = [
   { key: 'property', label: 'Property' },
   { key: 'other', label: 'Other' },
   { key: 'owed', label: 'Owed' },
+  { key: 'liabilities', label: 'Loans & mortgages' },
   { key: 'excluded', label: 'Excluded' },
 ] as const
 
@@ -56,6 +57,9 @@ const ASSET_GROUP: Record<string, string> = {
   crypto: 'invest',
   property: 'property',
   other: 'other',
+  mortgage: 'liabilities',
+  loan: 'liabilities',
+  other_liability: 'liabilities',
 }
 
 interface Row {
@@ -102,6 +106,7 @@ export default function NetWorthPage() {
   const [message, setMessage] = useState('')
   const [showChooser, setShowChooser] = useState(false)
   const [showAddAsset, setShowAddAsset] = useState(false)
+  const [addLiability, setAddLiability] = useState(false)
   const [updating, setUpdating] = useState<Asset | null>(null)
   const [settingsAccount, setSettingsAccount] = useState<SummaryAccount | null>(null)
   const confirm = useConfirm()
@@ -229,7 +234,11 @@ export default function NetWorthPage() {
     const ageDays = last ? (now - new Date(last.valued_at).getTime()) / 86400000 : undefined
     rows.push({
       key: `asset-${asset.id}`,
-      group: value < 0 ? 'owed' : ASSET_GROUP[asset.asset_type] ?? 'other',
+      group: isLiabilityType(asset.asset_type)
+        ? 'liabilities'
+        : value < 0
+          ? 'owed'
+          : ASSET_GROUP[asset.asset_type] ?? 'other',
       name: asset.name,
       sub: ASSET_TYPE_LABEL[asset.asset_type] ?? asset.asset_type,
       value,
@@ -444,6 +453,12 @@ export default function NetWorthPage() {
           }}
           onManual={() => {
             setShowChooser(false)
+            setAddLiability(false)
+            setShowAddAsset(true)
+          }}
+          onLiability={() => {
+            setShowChooser(false)
+            setAddLiability(true)
             setShowAddAsset(true)
           }}
           onClose={() => setShowChooser(false)}
@@ -451,6 +466,7 @@ export default function NetWorthPage() {
       )}
       {showAddAsset && (
         <AddAssetModal
+          liability={addLiability}
           onClose={() => setShowAddAsset(false)}
           onSaved={async () => {
             setShowAddAsset(false)

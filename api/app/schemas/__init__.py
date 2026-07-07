@@ -83,7 +83,7 @@ class AssetValuationCreate(BaseModel):
 
 class AssetCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
-    asset_type: str = Field(default="other", pattern="^(isa|savings|investment|pension|property|crypto|other)$")
+    asset_type: str = Field(default="other", pattern="^(isa|savings|investment|pension|property|crypto|other|mortgage|loan|other_liability)$")
     value: Decimal
     valued_at: date | None = None
 
@@ -91,7 +91,7 @@ class AssetCreate(BaseModel):
 class AssetUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     asset_type: str | None = Field(
-        default=None, pattern="^(isa|savings|investment|pension|property|crypto|other)$"
+        default=None, pattern="^(isa|savings|investment|pension|property|crypto|other|mortgage|loan|other_liability)$"
     )
 
 

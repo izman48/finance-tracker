@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { assetsAPI, Asset } from '../services/api'
-import { latestValue } from '../lib/assets'
+import { latestValue, isLiabilityType } from '../lib/assets'
 import { gbp0 as gbp } from '../lib/format'
 
 export default function UpdateAssetValueModal({
@@ -14,14 +14,17 @@ export default function UpdateAssetValueModal({
   onSaved: () => void
   onDelete?: () => void
 }) {
-  const [value, setValue] = useState(String(latestValue(asset)))
+  const isLiab = isLiabilityType(asset.asset_type)
+  // Liabilities are shown/entered as a positive "owed" figure, stored negative.
+  const [value, setValue] = useState(String(Math.abs(latestValue(asset))))
   const [valuedAt, setValuedAt] = useState('')
   const [saving, setSaving] = useState(false)
 
   const save = async () => {
     if (value === '') return
     setSaving(true)
-    await assetsAPI.addValuation(asset.id, { value: Number(value), valued_at: valuedAt || undefined })
+    const stored = isLiab ? -Math.abs(Number(value)) : Number(value)
+    await assetsAPI.addValuation(asset.id, { value: stored, valued_at: valuedAt || undefined })
     onSaved()
   }
 

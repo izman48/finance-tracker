@@ -200,7 +200,7 @@ export interface TransactionQuery {
   hide_transfers?: boolean
   hide_card_payments?: boolean
   exclude_commitments?: boolean
-  kind?: 'spend' | 'cash' | 'credit'
+  kind?: 'spend' | 'cash' | 'credit' | 'money_out'
   sort?: 'date' | 'amount'
   sort_dir?: 'asc' | 'desc'
 }
@@ -253,9 +253,18 @@ export const analyticsAPI = {
   getSummary: () => api.get('/analytics/summary'),
   getForecast: (horizon: string = 'payday') =>
     api.get('/analytics/forecast', { params: { horizon } }),
-  getSpending: (period: string = 'since_payday', frm?: string, to?: string, excludeCommitments = false) =>
+  getSpending: (
+    period: string = 'since_payday', frm?: string, to?: string,
+    opts: { excludeCommitments?: boolean; lens?: string; hideTransfers?: boolean; hideCardPayments?: boolean } = {},
+  ) =>
     api.get('/analytics/spending', {
-      params: { period, frm, to, exclude_commitments: excludeCommitments || undefined },
+      params: {
+        period, frm, to,
+        exclude_commitments: opts.excludeCommitments || undefined,
+        lens: opts.lens || undefined,
+        hide_transfers: opts.hideTransfers || undefined,
+        hide_card_payments: opts.hideCardPayments || undefined,
+      },
     }),
   getSpendingTrend: (months: number = 6, excludeCommitments = false) =>
     api.get('/analytics/spending/trend', {

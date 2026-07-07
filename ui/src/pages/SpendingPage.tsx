@@ -23,18 +23,27 @@ interface MerchantSlice {
   merchant: string
   total: number
 }
+interface Composition {
+  card_repayments: number
+  transfers: number
+  commitments: number
+  other: number
+}
 interface Spending {
+  lens: string
   period: string
   period_start: string
   period_end: string
   total_spent: number
   charged_to_credit: number
   paid_from_cash: number
+  composition: Composition | null
   by_category: CategorySlice[]
   top_merchants: MerchantSlice[]
 }
 
-type SpendKind = 'spend' | 'cash' | 'credit'
+type Lens = 'money_out' | 'purchases'
+type SpendKind = 'spend' | 'cash' | 'credit' | 'money_out'
 
 const MERCHANTS_DEFAULT = 10
 const PAGE_SIZE = 50
@@ -50,7 +59,10 @@ const KIND_LABEL: Record<SpendKind, string> = {
   spend: 'All spending',
   cash: 'Paid from bank',
   credit: 'Charged to credit',
+  money_out: 'Money out',
 }
+
+const LENS_KEY = 'insights.lens'
 
 const longDate = (d: string) =>
   new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -70,6 +82,16 @@ export default function SpendingPage() {
   const [excludeCommitments, setExcludeCommitments] = useState(
     () => localStorage.getItem(EXCLUDE_COMMITMENTS_KEY) === '1',
   )
+  // money_out (default): cash that actually left your bank, reconciles to a
+  // statement. purchases: spend booked at purchase time.
+  const [lens, setLensState] = useState<Lens>(
+    () => (localStorage.getItem(LENS_KEY) === 'purchases' ? 'purchases' : 'money_out'),
+  )
+  const setLens = (l: Lens) => {
+    localStorage.setItem(LENS_KEY, l)
+    setLensState(l)
+    setDrillKind(null) // a drill from the old lens no longer applies
+  }
 
   // ---- the transaction list (server-driven; shares the figures' context) ---
   const [items, setItems] = useState<Transaction[]>([])
@@ -128,24 +150,32 @@ export default function SpendingPage() {
     if (period === 'custom' && (!frm || !to)) return
     setLoading(true)
     analyticsAPI
-      .getSpending(
-        period,
-        period === 'custom' ? frm : undefined,
-        period === 'custom' ? to : undefined,
+      .getSpending(period, period === 'custom' ? frm : undefined, period === 'custom' ? to : undefined, {
         excludeCommitments,
-      )
+        lens,
+        hideTransfers,
+        hideCardPayments,
+      })
       .then((res) => {
         const d = res.data as Spending
         d.total_spent = Number(d.total_spent)
         d.charged_to_credit = Number(d.charged_to_credit)
         d.paid_from_cash = Number(d.paid_from_cash)
+        if (d.composition) {
+          d.composition = {
+            card_repayments: Number(d.composition.card_repayments),
+            transfers: Number(d.composition.transfers),
+            commitments: Number(d.composition.commitments),
+            other: Number(d.composition.other),
+          }
+        }
         d.by_category = d.by_category.map((c) => ({ ...c, total: Number(c.total) }))
         d.top_merchants = d.top_merchants.map((m) => ({ ...m, total: Number(m.total) }))
         setData(d)
       })
       .catch((e) => console.error('Failed to load spending', e))
       .finally(() => setLoading(false))
-  }, [period, frm, to, excludeCommitments, reloadKey])
+  }, [period, frm, to, excludeCommitments, lens, hideTransfers, hideCardPayments, reloadKey])
 
   // Accounts + facets (once, refreshed after edits)
   useEffect(() => {
@@ -354,6 +384,23 @@ export default function SpendingPage() {
         </div>
       </div>
 
+      {/* The lens: what the headline means. */}
+      <div className="flex flex-wrap items-center gap-3 mb-3">
+        <div className="flex gap-0.5">
+          <button onClick={() => setLens('money_out')} className={lens === 'money_out' ? 'seg-active' : 'seg'}>
+            Money out
+          </button>
+          <button onClick={() => setLens('purchases')} className={lens === 'purchases' ? 'seg-active' : 'seg'}>
+            Purchases
+          </button>
+        </div>
+        <span className="text-xs text-slate-500">
+          {lens === 'money_out'
+            ? 'cash that actually left your bank — reconciles to your statement'
+            : 'spend booked when you buy, split by cash vs credit'}
+        </span>
+      </div>
+
       {/* Bills are predictable — hide them to see the spending you can change.
           One control for the figures AND the list below. */}
       <label className="inline-flex items-center gap-2 mb-5 cursor-pointer select-none">
@@ -386,6 +433,8 @@ export default function SpendingPage() {
             {longDate(data.period_start)} – {longDate(data.period_end)}
           </p>
 
+          {lens === 'purchases' ? (
+          <>
           {/* Headline split — each tile filters the list below. */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             <button
@@ -441,6 +490,63 @@ export default function SpendingPage() {
           <p className="text-xs text-slate-500 mb-6 tnum">
             Total spent {gbp(data.total_spent)} = paid from bank {gbp(data.paid_from_cash)} + charged to credit {gbp(data.charged_to_credit)}
           </p>
+          </>
+          ) : (
+          <>
+            {/* Money out of my bank — the default: cash that actually left. */}
+            <button
+              type="button" data-reveal
+              onClick={() => drill({ kind: drillKind === 'money_out' ? null : 'money_out', category: '', merchant: '' })}
+              className={`card-pad text-left w-full hover:bg-white/[0.03] transition-colors group mb-4 ${drillKind === 'money_out' ? '!border-accent/40' : ''}`}
+            >
+              <div className="text-sm text-slate-400 mb-1 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  Money out of my bank
+                  <InfoTip text={EXPLAIN.moneyOut} side="bottom" align="left" />
+                </span>
+                <span className="text-xs text-slate-600 group-hover:text-accent transition-colors">View →</span>
+              </div>
+              <div className="stat-figure text-4xl text-slate-50">
+                <AnimatedNumber value={data.total_spent} />
+              </div>
+              <div className="text-xs text-slate-500 mt-1">
+                cash that actually left your accounts — reconciles to your bank statement
+              </div>
+            </button>
+
+            {data.composition && (
+              <div className="card-pad mb-6" data-reveal>
+                <div className="text-xs text-slate-500 mb-3">What's inside — hide what isn't really spending:</div>
+                <div className="space-y-2">
+                  {[
+                    { label: 'Everyday spending', amount: data.composition.other, hidden: false, onToggle: null as null | (() => void) },
+                    { label: 'Commitments (bills)', amount: data.composition.commitments, hidden: excludeCommitments, onToggle: () => toggleExcludeCommitments(!excludeCommitments) },
+                    { label: 'Card repayments', amount: data.composition.card_repayments, hidden: hideCardPayments, onToggle: () => setHideCardPayments(!hideCardPayments) },
+                    { label: 'Transfers between accounts', amount: data.composition.transfers, hidden: hideTransfers, onToggle: () => setHideTransfers(!hideTransfers) },
+                  ]
+                    .filter((r) => r.amount > 0 || r.hidden)
+                    .map((r) => (
+                      <div key={r.label} className="flex items-center justify-between text-sm">
+                        <span className="text-slate-300">{r.label}</span>
+                        <span className="flex items-center gap-3">
+                          {r.hidden ? (
+                            <span className="text-xs text-slate-600">not counted</span>
+                          ) : (
+                            <span className="tnum text-slate-100">{gbp(r.amount)}</span>
+                          )}
+                          {r.onToggle && (
+                            <button onClick={r.onToggle} className="text-xs text-accent hover:underline">
+                              {r.hidden ? 'count it' : 'hide'}
+                            </button>
+                          )}
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+          </>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-8">
             {/* Categories */}

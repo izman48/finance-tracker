@@ -506,13 +506,28 @@ class MerchantSlice(BaseModel):
     total: Decimal
 
 
+class MoneyOutComposition(BaseModel):
+    """What makes up the money-out figure — so exclusions are named, not hidden."""
+
+    card_repayments: Decimal
+    transfers: Decimal
+    commitments: Decimal
+    other: Decimal
+
+
 class SpendingResponse(BaseModel):
+    # 'money_out' (default): cash that actually left your bank accounts,
+    # reconciles to a statement. 'purchases': spend booked at purchase time.
+    lens: str = "money_out"
     period: str
     period_start: date
     period_end: date
     total_spent: Decimal
+    # Purchases-lens split (0 under the money-out lens).
     charged_to_credit: Decimal
     paid_from_cash: Decimal
+    # Money-out-lens breakdown (null under the purchases lens).
+    composition: MoneyOutComposition | None = None
     by_category: list[CategorySlice]
     top_merchants: list[MerchantSlice]
 

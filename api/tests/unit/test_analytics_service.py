@@ -349,7 +349,7 @@ class TestSpendingDrilldown:
         txns = svc.spending_transactions(db_session, user, period="last_30")
         assert [r["merchant"] for r in txns] == ["Tesco"]
         # the drill-down is exactly the breakdown, itemised
-        s = svc.get_spending(db_session, user, period="last_30")
+        s = svc.get_spending(db_session, user, period="last_30", lens="purchases")
         assert sum(r["amount"] for r in txns) == s["total_spent"]
 
 
@@ -437,13 +437,13 @@ class TestPayOnFinance:
         _tx(db_session, cur, 60, today - timedelta(days=2), "debit", "Tesco")
         db_session.commit()
 
-        assert svc.get_spending(db_session, user, period="last_30")["total_spent"] == Decimal("1260")
+        assert svc.get_spending(db_session, user, period="last_30", lens="purchases")["total_spent"] == Decimal("1260")
         svc.convert_transaction_to_plan(
             db_session, user, str(big.id), months=12,
             monthly_amount=Decimal("100"), start_date=today + timedelta(days=5),
         )
         # lump gone; only the Tesco cash purchase remains
-        assert svc.get_spending(db_session, user, period="last_30")["total_spent"] == Decimal("60")
+        assert svc.get_spending(db_session, user, period="last_30", lens="purchases")["total_spent"] == Decimal("60")
 
     def test_financed_installments_hit_the_forecast(self, db_session):
         user = _user(db_session)
@@ -509,7 +509,7 @@ class TestSpending:
         _tx(db_session, amex, 120, today - timedelta(days=2), "debit", "Amazon")
         _tx(db_session, cur, 200, today - timedelta(days=1), "debit", "AMEX payment")
 
-        s = svc.get_spending(db_session, user, period="last_30")
+        s = svc.get_spending(db_session, user, period="last_30", lens="purchases")
         assert s["paid_from_cash"] == Decimal("60")        # Tesco only; Amex payment excluded
         assert s["charged_to_credit"] == Decimal("120")    # Amazon
         assert s["total_spent"] == Decimal("180")
@@ -553,3 +553,47 @@ class TestSpending:
         # No confirmed income -> 30-day default window; suggested expense ignored.
         assert s["committed_before_payday"] == Decimal("0")
         assert s["safe_to_spend"] == Decimal("1000")
+
+
+class TestMoneyOutLens:
+    """The money-out lens: cash that left the bank (incl. card payoffs),
+    reconciling and composition-transparent — the default Spending headline."""
+
+    def _seed(self, db):
+        user = _user(db)
+        cur = _account(db, user, "TRANSACTION", "1000", "Cur")
+        card = _account(db, user, "CREDIT_CARD", "-30", "Card")
+        d = date(2026, 7, 10)
+        _tx(db, cur, 50, d, ttype="debit", merchant="Tesco")    # cash purchase
+        _tx(db, cur, 200, d, ttype="debit", merchant="AMEX")    # card payoff (debit on current)
+        _tx(db, card, 30, d, ttype="debit", merchant="Coffee")  # purchase ON the card
+        return user
+
+    def _win(self, db, user, **kw):
+        return svc.get_spending(db, user, period="custom", frm=date(2026, 7, 1), to=date(2026, 7, 31), **kw)
+
+    def test_money_out_counts_bank_debits_including_the_card_payoff(self, db_session):
+        user = self._seed(db_session)
+        mo = self._win(db_session, user)  # default lens = money_out
+        assert mo["lens"] == "money_out"
+        # 50 cash purchase + 200 card payoff; the 30 card PURCHASE is not cash out.
+        assert float(mo["total_spent"]) == 250.0
+
+    def test_composition_names_whats_inside_and_sums_to_total(self, db_session):
+        user = self._seed(db_session)
+        c = self._win(db_session, user)["composition"]
+        assert float(c["card_repayments"]) == 200.0
+        assert float(c["other"]) == 50.0
+        assert float(c["transfers"]) == 0.0
+        assert float(c["card_repayments"]) + float(c["transfers"]) + float(c["commitments"]) + float(c["other"]) == 250.0
+
+    def test_purchases_lens_excludes_the_payoff_and_has_no_composition(self, db_session):
+        user = self._seed(db_session)
+        p = self._win(db_session, user, lens="purchases")
+        assert float(p["total_spent"]) == 80.0  # 50 cash + 30 card purchase; payoff excluded
+        assert p["composition"] is None
+
+    def test_hiding_card_payments_drops_the_payoff_from_money_out(self, db_session):
+        user = self._seed(db_session)
+        h = self._win(db_session, user, hide_card_payments=True)
+        assert float(h["total_spent"]) == 50.0

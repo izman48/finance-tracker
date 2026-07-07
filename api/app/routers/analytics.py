@@ -83,10 +83,20 @@ def get_spending(
     frm: date | None = None,
     to: date | None = None,
     exclude_commitments: bool = False,
+    lens: str = "money_out",
+    hide_transfers: bool = False,
+    hide_card_payments: bool = False,
 ) -> SpendingResponse:
-    """Spending breakdown for a period (since_payday|this_month|last_30|custom)."""
+    """Spending breakdown for a period (since_payday|this_month|last_30|custom).
+
+    lens: 'money_out' (default — cash that left your bank, reconciles to a
+    statement) or 'purchases' (spend booked at purchase time).
+    """
     return SpendingResponse(
-        **analytics_service.get_spending(db, current_user, period, frm, to, exclude_commitments)
+        **analytics_service.get_spending(
+            db, current_user, period, frm, to, exclude_commitments,
+            lens=lens, hide_transfers=hide_transfers, hide_card_payments=hide_card_payments,
+        )
     )
 
 

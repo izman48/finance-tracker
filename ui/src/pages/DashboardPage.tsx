@@ -7,6 +7,7 @@ import {
   Lightbulb,
   PiggyBank,
   Plug,
+  RefreshCw,
   ShieldAlert,
   Sparkles,
 } from 'lucide-react'
@@ -34,6 +35,7 @@ export default function DashboardPage() {
   const [summary, setSummary] = useState<CashflowSummary | null>(null)
   const [commitments, setCommitments] = useState<Commitment[]>([])
   const [loading, setLoading] = useState(false)
+  const [syncing, setSyncing] = useState(false)
   const [message, setMessage] = useState('')
   const [justConnected, setJustConnected] = useState(false)
   const [forecastKey, setForecastKey] = useState(0)
@@ -86,6 +88,20 @@ export default function DashboardPage() {
       setCommitments(response.data)
     } catch (error) {
       console.error('Failed to load commitments:', error)
+    }
+  }
+
+  const handleSync = async () => {
+    setSyncing(true)
+    setMessage('')
+    try {
+      await bankingAPI.syncAccounts()
+      await bankingAPI.syncTransactions(90)
+      await Promise.all([loadBankStatus(), loadSummary(), loadCommitments()])
+    } catch (error: any) {
+      setMessage('Failed to sync: ' + (error.response?.data?.detail || error.message))
+    } finally {
+      setSyncing(false)
     }
   }
 
@@ -142,10 +158,20 @@ export default function DashboardPage() {
     <div ref={revealRef} className="max-w-7xl mx-auto px-4 py-6 sm:py-10">
       <div className="flex items-baseline justify-between mb-6 sm:mb-8">
         <h1 className="font-display font-bold text-2xl sm:text-3xl text-slate-50">Cashflow</h1>
-        {bankStatus?.last_synced_at && (
-          <span className="text-xs text-slate-500">
-            Synced {timeAgo(bankStatus.last_synced_at)}
-          </span>
+        {hasAccounts && (
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            className="text-xs text-slate-500 hover:text-accent transition-colors inline-flex items-center gap-1.5 disabled:opacity-60"
+            title="Pull the latest from your banks now"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
+            {syncing
+              ? 'Syncing…'
+              : bankStatus?.last_synced_at
+              ? `Synced ${timeAgo(bankStatus.last_synced_at)} · Sync now`
+              : 'Sync now'}
+          </button>
         )}
       </div>
 

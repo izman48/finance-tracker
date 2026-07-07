@@ -63,38 +63,45 @@ const ASSETS = [
   { id: 'sas2', name: 'Sterling Pension', asset_type: 'pension', value: 24000 },
 ]
 
-// One authored ledger everything else is computed from.
-const L: SampleTx[] = [
-  // income
-  t('Salary', 'Sterling Payroll', 'Income', 3200, 'credit', 'sa1', 6, { commitment: true, recurring: true }),
-  t('Salary', 'Sterling Payroll', 'Income', 3200, 'credit', 'sa1', 36, { commitment: true, recurring: true }),
-  // commitments
-  t('Rent', 'Northgate Lettings', 'Housing', 1100, 'debit', 'sa1', 5, { commitment: true, recurring: true }),
-  t('Gym', 'Ironvale Fitness', 'Health', 32, 'debit', 'sa1', 4, { commitment: true, recurring: true }),
-  t('Phone', 'Beacon Mobile', 'Bills', 20, 'debit', 'sa1', 8, { commitment: true, recurring: true }),
-  t('Netflix', 'Verano Media', 'Subscriptions', 12.99, 'debit', 'sa4', 10, { commitment: true, recurring: true }),
-  t('Spotify', 'Larkfield Audio', 'Subscriptions', 11.99, 'debit', 'sa4', 12, { commitment: true, recurring: true }),
-  // groceries
-  t('Fernwood Grocers', 'Fernwood Grocers', 'Groceries', 54.2, 'debit', 'sa1', 1),
-  t('Fernwood Grocers', 'Fernwood Grocers', 'Groceries', 38.1, 'debit', 'sa1', 9),
-  t('Oakvale Market', 'Oakvale Market', 'Groceries', 62.4, 'debit', 'sa2', 3),
-  // eating out
-  t('Verano Bakehouse', 'Verano Bakehouse', 'Eating out', 14.5, 'debit', 'sa4', 2),
-  t('Verano Bakehouse', 'Verano Bakehouse', 'Eating out', 9.8, 'debit', 'sa4', 7),
-  t('Redgate Kitchen', 'Redgate Kitchen', 'Eating out', 28, 'debit', 'sa1', 4),
-  t('Cobalt Coffee', 'Cobalt Coffee', 'Eating out', 3.6, 'debit', 'sa2', 2),
-  // transport
-  t('Solent Transit', 'Solent Transit', 'Transport', 8.1, 'debit', 'sa1', 1),
-  t('Solent Transit', 'Solent Transit', 'Transport', 8.1, 'debit', 'sa1', 5),
-  // shopping
-  t('Bexley Goods', 'Bexley Goods', 'Shopping', 120, 'debit', 'sa4', 3),
-  t('Pinehurst Depot', 'Pinehurst Depot', 'Shopping', 45, 'debit', 'sa2', 11),
-  t('Larkfield Supplies', 'Larkfield Supplies', 'Shopping', 22.3, 'debit', 'sa1', 6),
-  // noise — shown, labelled, opt-in to hide
-  t('Payment to Harbor Rewards', 'Harbor Financial', 'Transfers', 300, 'debit', 'sa1', 6, { excluded: 'card_payment' }),
-  t('Transfer to Acorn Saver', 'Acorn Bank', 'Transfers', 500, 'debit', 'sa1', 6, { excluded: 'internal_transfer' }),
-  t('Transfer from Everly', 'Everly Bank', 'Transfers', 500, 'credit', 'sa3', 6, { excluded: 'internal_transfer' }),
-]
+// One authored ledger everything else is computed from. Spans ~6 months (a
+// repeating monthly pattern + slight per-month variation) so the period/date
+// controls actually change the data, not just a shallow 30-day window.
+function buildLedger(): SampleTx[] {
+  const out: SampleTx[] = []
+  const p = (
+    desc: string, merchant: string, category: string, amount: number,
+    type: 'debit' | 'credit', account: string, daysAgo: number,
+    opts?: { commitment?: boolean; recurring?: boolean; excluded?: SampleTx['excluded_reason'] },
+  ) => out.push(t(desc, merchant, category, Math.round(amount * 100) / 100, type, account, daysAgo, opts))
+
+  for (let m = 0; m < 6; m++) {
+    const base = m * 30
+    const v = m % 3 // deterministic monthly variation
+    // income + recurring commitments
+    p('Salary', 'Sterling Payroll', 'Income', 3200, 'credit', 'sa1', base + 6, { commitment: true, recurring: true })
+    p('Rent', 'Northgate Lettings', 'Housing', 1100, 'debit', 'sa1', base + 5, { commitment: true, recurring: true })
+    p('Gym', 'Ironvale Fitness', 'Health', 32, 'debit', 'sa1', base + 4, { commitment: true, recurring: true })
+    p('Phone', 'Beacon Mobile', 'Bills', 20, 'debit', 'sa1', base + 8, { commitment: true, recurring: true })
+    p('Netflix', 'Verano Media', 'Subscriptions', 12.99, 'debit', 'sa4', base + 10, { commitment: true, recurring: true })
+    p('Spotify', 'Larkfield Audio', 'Subscriptions', 11.99, 'debit', 'sa4', base + 12, { commitment: true, recurring: true })
+    // discretionary — varies month to month so ranges differ
+    p('Fernwood Grocers', 'Fernwood Grocers', 'Groceries', 54.2 + v * 4, 'debit', 'sa1', base + 1)
+    p('Oakvale Market', 'Oakvale Market', 'Groceries', 62.4 - v * 3, 'debit', 'sa2', base + 3)
+    p('Fernwood Grocers', 'Fernwood Grocers', 'Groceries', 38.1 + v * 2, 'debit', 'sa1', base + 16)
+    p('Verano Bakehouse', 'Verano Bakehouse', 'Eating out', 14.5 + v, 'debit', 'sa4', base + 2)
+    p('Redgate Kitchen', 'Redgate Kitchen', 'Eating out', 28, 'debit', 'sa1', base + 14)
+    p('Cobalt Coffee', 'Cobalt Coffee', 'Eating out', 3.6, 'debit', 'sa2', base + 7)
+    p('Solent Transit', 'Solent Transit', 'Transport', 8.1, 'debit', 'sa1', base + 1)
+    p('Solent Transit', 'Solent Transit', 'Transport', 8.1, 'debit', 'sa1', base + 9)
+    p('Bexley Goods', 'Bexley Goods', 'Shopping', 45 + v * 25, 'debit', m % 2 ? 'sa4' : 'sa2', base + 11)
+  }
+  // noise, in the recent month — shown, labelled, opt-in to hide
+  p('Payment to Harbor Rewards', 'Harbor Financial', 'Transfers', 300, 'debit', 'sa1', 6, { excluded: 'card_payment' })
+  p('Transfer to Acorn Saver', 'Acorn Bank', 'Transfers', 500, 'debit', 'sa1', 6, { excluded: 'internal_transfer' })
+  p('Transfer from Everly', 'Everly Bank', 'Transfers', 500, 'credit', 'sa3', 6, { excluded: 'internal_transfer' })
+  return out
+}
+const L: SampleTx[] = buildLedger()
 
 function t(
   desc: string, merchant: string, category: string, amount: number,

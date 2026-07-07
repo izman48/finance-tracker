@@ -1,9 +1,13 @@
-# IA redesign: three-tab app (Home / Spending / Wealth)
+# IA redesign: three-tab app (Cashflow / Spending / Wealth)
 
-Status: **phases 0–4 shipped (2026-07-06)**. This document remains the source
-of truth for the still-open work: the demo-mode PR, the UX-addendum items
-tagged to future work, and the Extension section (nudges, holdings, theming,
-landing repositioning).
+Status: **shipped through 2026-07-07.** IA phases 0–4 (#25–30), the
+"Anonymize numbers" sample account (#31/#33), and the transparency-first
+Spending rethink — quick wins + Home→**Cashflow** rename (#32), nothing-hidden
+list (#34), **money-out default lens** (#35), full-ledger export + pace delta
+(#36) — are all live. This document remains the source of truth for the
+still-open work: the **Extension roadmap** below (targets, nudges, net worth
+v2, holdings pricing, light theme) and the UX-addendum items tagged to future
+phases. (The first tab is now **Cashflow**, not "Home".)
 
 ## Why
 
@@ -343,50 +347,28 @@ test image!).
    clientWidth spot-checks, lighthouse-style tap-target sanity on the 3-tab
    bar.
 
-## Anytime PR — demo mode (anonymised data)
+## Anytime PR — Anonymize numbers — **SHIPPED (#31, then reworked #33)**
 
-Independent of the four phases; can ship before, between, or after them.
+A user-menu toggle ("Anonymize numbers") for screenshots and showing the app
+without exposing real figures. Header "Anonymized" chip is its own off-switch;
+writes blocked while active; `sessionStorage` only.
 
-A user-menu toggle that makes every screen show realistic-but-fake data, for
-screenshots and showing the app to someone. **Presentation-layer only** — no
-stored data changes, no server involvement, instantly reversible.
+Two iterations — the second is the current design:
+1. **First cut (#31):** an axios response scrambler — money × a session
+   constant `k`, deterministic name pseudonyms. Rejected by the founder: to
+   keep totals reconciling the transform must be linear, which mathematically
+   preserves *proportions*, so the real spending *shape* leaked through.
+2. **Current (#33):** a fixed **sample account** (`ui/src/lib/sampleAccount.ts`)
+   — a hand-authored fake ledger (fake banks/merchants/amounts) from which
+   every endpoint (summary, spending incl. both lenses, transactions,
+   net-worth, forecast, commitments, assets) is derived, so it reconciles by
+   construction and stays browsable (filters apply to the fixed ledger). While
+   active, an axios per-request adapter (`api.ts`) serves the sample instead of
+   contacting the real API. Completely unrelated to the user; dates roll
+   relative to today. Reconciliation guarded by `sampleAccount.test.ts`.
+   `lib/anonymize.ts` is just the on/off store.
 
-Design:
-
-- **Money**: every monetary value × a random session constant `k`
-  (uniform in ~[0.4, 2.5], drawn fresh on each activation). Linear scaling
-  keeps all sums reconciling (category bars = total, balance sheet = net
-  worth, forecast stays smooth). Known trade-off (accepted): proportions are
-  preserved, so the spending *mix* is real even though amounts aren't.
-- **Names**: merchant/account/description/commitment/asset/provider names →
-  deterministic pseudonyms: hash the real string to index a built-in
-  dictionary of plausible fakes, so the same merchant maps to the same fake
-  on every surface (top merchants, drill-downs, rules all stay coherent).
-  The user's email in the menu is masked too.
-- **Untouched**: dates, categories, percentages, counts, ids.
-
-Implementation:
-
-1. Single choke point: a response-transform layer in `ui/src/services/api.ts`
-   (axios interceptor) that walks response JSON and scrambles values under
-   known money keys (`amount`, `balance`, `value`, `total*`, `*_amount`,
-   `net_worth`, `safe_to_spend`, `available_cash`, `credit_owed`, `savable`,
-   `overdraft_*`, …) and known name keys (`merchant_name`, `description`,
-   `display_name`, `provider_name`, `label`, `name`). Everything downstream —
-   client-side sums, filters, charts, CSV export — is automatically
-   consistent, and no component knows the mode exists.
-2. State: React context + sessionStorage (never localStorage — closing the
-   tab must always return to real data). Toggling re-fetches or invalidates
-   cached page data so the whole app flips at once.
-3. Unmissable indicator: a "Demo data" chip in the header (next to the Beta
-   badge) while active, so fake is never mistaken for real.
-4. Writes while in demo mode: block mutating actions (categorize, add asset,
-   confirm commitment…) with a "turn off demo mode to make changes" toast —
-   editing real data while looking at fake values invites mistakes. Simplest:
-   the same interceptor rejects non-GET requests (whitelist auth/logout).
-5. Keep the key-list in one exported constant with a test that walks the API
-   schemas (or at least the main response fixtures) asserting no money/name
-   field is missed — this list is the feature's only maintenance burden.
+Known limitation: it's a *fixed* sample (same every session), not generated.
 
 ## UX review addendum (2026-07-05)
 
@@ -497,31 +479,124 @@ and consumed via Tailwind config colors. Rules:
   otherwise it's the first Extension item. Never ship a half-designed light
   mode — dark-only is better than dark-plus-broken-light.
 
-## Extension (explicitly out of scope now, the strategic direction)
+## Extension roadmap — the wealth-builder phase (planned, 2026-07-07)
 
-The redesign exists to make room for the wealth-builder persona. Planned
-follow-ups, in rough order (from the 2026-07-05 brainstorm):
+The IA redesign, the anonymiser, and the transparency-first Spending rethink
+are shipped. This phase serves the **wealth-builder persona** (income exceeds
+spend; the daily question is "am I growing, is my money working, am I on
+track"). The app has to feel *alive* for them — a net-worth number that moves
+on its own is a reason to open it; one that flatlines until you type is a
+chore. Two constraints bind every item here and are non-negotiable:
 
-1. **Nudge engine** on the Home feed slot — computed at request time from the
-   user's own data (encryption forbids background jobs). First nudges: cash
-   drag (idle balance × market-rate delta), ISA allowance countdown, FSCS
-   >£85k-per-institution exposure. Must stay *factual arithmetic* — no
-   personal recommendations (FCA advice line; guidance-not-advice is a design
-   principle).
-2. **Net worth v2**: allocation views (asset class / tax wrapper / provider),
-   contribution-vs-growth decomposition of net-worth change.
-3. **Holdings-level assets**: ticker + units instead of blob valuations;
-   market prices (public data — safe to fetch server-side) auto-update the
-   balance sheet; staleness chips flip to "live" per asset class.
-4. **Targets & projections**: FIRE-style "when do I hit £X" on the history
-   chart.
-5. **Landing-page repositioning**: once 1–3 exist, revisit the hero — from
-   spender-led ("safe to spend") toward the wealth-builder pitch (own your
-   whole financial picture; the subscription-not-referrals and
-   can't-read-your-data trust angle). Also consider a public interactive
-   demo: a seeded read-only demo account visitors can browse without signing
-   up (distinct from the logged-in demo-mode scrambler, but reuses its fake
-   dataset ideas).
+- **Encryption**: bank/asset data is per-user-DEK encrypted and the key is only
+  held during a session. So all guidance/aggregation is **request-time Python
+  after decrypt** (mirroring `get_summary`/`net_worth`); **no background job can
+  read or compute over encrypted data** (it has no DEK — `require_dek()` raises
+  `DEKUnavailableError`). Anything a scheduler touches must be *plaintext*
+  (public market prices, statutory constants), never a user's figures.
+- **FCA line**: nilu. is not authorised to advise. Every user-facing number is
+  **factual arithmetic on the user's own data + a cited published fact**, never
+  a personal recommendation. Copy pattern: "X is true; here's what that means
+  in £", with source + as-of date (reuse the calculation-tooltip pattern from
+  #24). A drift toward "move your money to Y" is a ship-blocker.
+
+### Recommended sequence (value ÷ effort, with dependencies)
+
+1. **Targets & projections** (M) — cheapest big win, no migration.
+2. **Nudge engine v1** (M) — cash-drag + FSCS only (need just balances +
+   constants); the Cashflow nudge slot already exists.
+3. **Net worth v2** (L) — allocation + contribution-vs-growth; needs the
+   `AssetFlow` primitive, so it follows the cheaper wins.
+4. **Holdings-level pricing** (L/XL) — the retention engine, but the biggest
+   build (market-data pipeline + scheduler); do it once the cheaper value has
+   landed.
+5. **Light theme** (L) — independent; its foundation PR is invisible, so it can
+   run in parallel whenever.
+
+### Per-area detail
+
+**1. Targets & projections** — FIRE-style "when do I hit £X" + a milestone line
+on the Wealth net-worth chart, from current contributions + a stated growth
+assumption. *Compute*: pure request-time arithmetic, no persisted model for v1.
+*First slice (one PR)*: `net_worth_projection()` in a new
+`api/app/services/analytics/projections.py` + `GET /analytics/net-worth-projection`
+taking `target_amount`, `monthly_contribution`, `annual_growth_pct` (defaults
+from `get_summary`'s `savable`); render as a dashed forward extension on the
+existing history chart. *FCA*: a projection with visible assumptions, labelled
+"an estimate, not advice".
+
+**2. Nudge engine** — a small Cashflow feed of honest, dismissible observations.
+*v1 nudges (balances + constants only)*: **cash-drag** (idle liquid balance ×
+(best-easy-access benchmark − assumed 0% account rate) → "£X/yr left on the
+table") and **FSCS exposure** (group SPENDING+SAVINGS balances by decrypted
+`provider_name` in Python, flag any group > £85k). *Later, opt-in*: ISA/pension
+allowance countdown to 5 April (needs user-logged contributions — Open Banking
+can't see them), and 60%-marginal-band awareness (needs self-declared income, a
+new encrypted field). *Compute*: `analytics/nudges.py:get_nudges(db,user)` +
+`GET /analytics/nudges`, reusing `_load`/`resolve_roles`. *Key trick for "no
+background job"*: published UK facts (FSCS £85k, ISA £20k, bands, the 5-April
+boundary) and the one market-varying input (a curated best-easy-access rate with
+`as_of` + source) live in a **code module** `api/app/services/reference/uk_reference.py`,
+refreshed by a human editing the file and deploying — never a runtime fetch or a
+DB row a job refreshes. *UI*: generalise the existing single nudge slot in
+`DashboardPage.tsx` into a ranked feed (max 2–3, dismissible, calc tooltip with
+source/as-of). *Risk*: rate staleness (always render "the best rate on {date}");
+FSCS brand-vs-licence (£85k is per licence — ship a brand→licence map + caveat).
+
+**3. Net worth v2** — allocation views (by asset class / tax wrapper / provider)
+and a **contribution-vs-growth decomposition** ("you rose £8k — £5k was saving,
+£3k markets"). *Data model*: the decomposition needs to know deposits vs growth,
+which today's `Asset`/`AssetValuation` (value snapshots) can't tell apart — add
+an **`AssetFlow`** table (asset_id, amount, flow_date; a recorded
+deposit/withdrawal). Allocation needs `tax_wrapper`/`provider` columns on
+`Asset` (slice 2). *Compute*: request-time Python; growth = Δvaluation −
+Σflows in the window. *First slice*: migration adding `AssetFlow` only +
+`POST /assets/{id}/flows` + an optional "I added/withdrew £__ since last update"
+field on the existing update-value modal; then the decomposition on the Wealth
+headline.
+
+**4. Holdings-level assets** — ticker + units so market prices auto-update
+valuations (the chart moves on its own). *The hard constraint*: a cron **cannot**
+write `units × price` into an encrypted valuation (no DEK). *Split along the
+encryption line*: **prices are public → plaintext** `instruments` +
+`instrument_prices` tables a scheduler *can* refresh; **units are the user's →
+encrypted** (`Asset.units: UserEncryptedDecimal`, nullable, + `instrument_id`,
+`pricing_mode`). The live valuation = units (decrypted in-session) × latest
+plaintext price, computed request-time. Staleness chips flip to "live" per
+priced asset. *First slice (no scheduler yet)*: migration for the price tables +
+`Asset.units`, an `/instruments/search` over seed data, and request-time pricing
+against a single provider — add the background price-refresh job after. *Decision
+needed*: which market-data provider (cost, ToS on caching prices).
+
+**5. Light theme** — migrate the ~250 hardcoded `slate-*`/`bg-white/[…]` classes
+to **semantic CSS-variable tokens** so a light theme is a variable block + a
+user-menu toggle. *Compute*: purely client-side; theme class set on
+`documentElement` via a tiny inline script in `index.html` (reads localStorage
+before React mounts, no FOUC). *First slice (invisible)*: define the token block
+in `index.css` — `--surface`, `--surface-2`, `--bg`, `--text{,-muted,-subtle}`,
+`--border{,-strong}`, `--shadow-*` — with a dark default and a `.theme-light`
+override; then migrate surfaces incrementally as they're touched. Ship the
+user-menu toggle only once charts/orbs/shadows have light variants — never a
+half-designed light mode (dark stays the default and the brand).
+
+### Decisions needed from the founder before building
+
+1. **Nudge rate sourcing** — curated-in-code best-easy-access benchmark (v1, a
+   human updates it on deploy) vs a licensed rate feed later? Start curated.
+2. **Market-data provider** for holdings — which API, at what cost, and does its
+   ToS allow caching prices in our `instrument_prices` table?
+3. **Self-declared income** — add an (encrypted) income field to unlock the
+   60%-marginal-band nudge and better projections, or skip that nudge for now?
+4. **Light-theme priority** — slot it into the sequence now, or defer until the
+   wealth features land?
+
+### Also parked (from earlier)
+
+**Landing-page repositioning**: once the wealth features exist, revisit the
+spender-led hero ("safe to spend") toward the wealth-builder pitch
+(subscription-not-referrals; can't-read-your-data trust). Consider a public
+read-only demo account for logged-out visitors — could reuse the
+`sampleAccount.ts` fake dataset built for the anonymiser.
 
 ## Handoff notes
 

@@ -319,6 +319,29 @@ def sync_suggestions(db: Session, user) -> None:
     db.commit()
 
 
+def skip_commitment(db: Session, user, commitment_id):
+    """Skip the next occurrence of a commitment (income or expense) — e.g. it was
+    paid early. Advances next_date by one cadence step so this occurrence drops
+    out of safe-to-spend, the forecast and coming-up, then resumes normally.
+    Returns the updated rule, or None if not found.
+    """
+    try:
+        cid = commitment_id if isinstance(commitment_id, _uuid.UUID) else _uuid.UUID(str(commitment_id))
+    except (ValueError, AttributeError):
+        return None
+    rule = (
+        db.query(CommitmentRule)
+        .filter(CommitmentRule.id == cid, CommitmentRule.user_id == user.id)
+        .first()
+    )
+    if not rule or not rule.next_date:
+        return None
+    rule.next_date = _step(rule.next_date, rule.cadence, rule.interval_days, rule.interval_months)
+    db.commit()
+    db.refresh(rule)
+    return rule
+
+
 def next_payday(db: Session, user, from_date: date) -> date | None:
     """Next confirmed income date on/after from_date."""
     incomes = (

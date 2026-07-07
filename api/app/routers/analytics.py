@@ -224,6 +224,19 @@ def update_commitment(
     return rule
 
 
+@router.post("/commitments/{commitment_id}/skip", response_model=CommitmentResponse)
+def skip_commitment(
+    commitment_id: str,
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> CommitmentRule:
+    """Skip the next occurrence (e.g. paid early) — advances it one cadence step."""
+    rule = analytics_service.skip_commitment(db, current_user, commitment_id)
+    if not rule:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Commitment not found")
+    return rule
+
+
 @router.get("/planned-items", response_model=list[PlannedItemResponse])
 def list_planned_items(
     current_user: CurrentUser,

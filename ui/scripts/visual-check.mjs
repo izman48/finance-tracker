@@ -166,6 +166,9 @@ const routes = [
   ['**/api/v1/banking/transactions*', { items: transactions, total: transactions.length, page: 1, page_size: 100 }],
   // Registered after transactions* — Playwright checks later routes first.
   ['**/api/v1/banking/transactions/facets', { categories: cats.filter(Boolean), merchants }],
+  // Resume-sync fires these on mount when data is stale; mock so networkidle settles.
+  ['**/api/v1/banking/sync/accounts', { synced: true, accounts: [] }],
+  ['**/api/v1/banking/sync/transactions', { synced: true, count: 0 }],
   ['**/api/v1/rules', rules],
 ]
 

@@ -271,6 +271,8 @@ export const analyticsAPI = {
       params: { months, exclude_commitments: excludeCommitments || undefined },
     }),
   getCommitments: () => api.get('/analytics/commitments'),
+  // Skip the next occurrence (paid early etc.) — advances it one cadence step.
+  skipCommitment: (id: string) => api.post(`/analytics/commitments/${id}/skip`),
   markTransactionRecurring: (transactionId: string, cadence: string = 'monthly') =>
     api.post('/analytics/commitments/from-transaction', { transaction_id: transactionId, cadence }),
   addCommitment: (data: {

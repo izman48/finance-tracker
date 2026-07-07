@@ -597,3 +597,37 @@ class TestMoneyOutLens:
         user = self._seed(db_session)
         h = self._win(db_session, user, hide_card_payments=True)
         assert float(h["total_spent"]) == 50.0
+
+
+class TestSkipCommitment:
+    def test_skip_advances_next_occurrence_one_step(self, db_session):
+        user = _user(db_session)
+        rule = CommitmentRule(
+            user_id=user.id, direction="expense", label="Rent", amount=Decimal("1100"),
+            cadence="monthly", next_date=date(2026, 7, 1),
+            status=CommitmentStatus.CONFIRMED.value,
+        )
+        db_session.add(rule)
+        db_session.commit()
+        db_session.refresh(rule)
+
+        out = svc.skip_commitment(db_session, user, str(rule.id))
+        assert out is not None
+        assert out.next_date == date(2026, 8, 1)  # advanced one month, so July drops out
+
+    def test_skip_works_for_income_too(self, db_session):
+        user = _user(db_session)
+        rule = CommitmentRule(
+            user_id=user.id, direction="income", label="Salary", amount=Decimal("3200"),
+            cadence="monthly", next_date=date(2026, 7, 28),
+            status=CommitmentStatus.CONFIRMED.value,
+        )
+        db_session.add(rule)
+        db_session.commit()
+        out = svc.skip_commitment(db_session, user, str(rule.id))
+        assert out.next_date == date(2026, 8, 28)
+
+    def test_skip_missing_returns_none(self, db_session):
+        import uuid as _u
+        user = _user(db_session)
+        assert svc.skip_commitment(db_session, user, str(_u.uuid4())) is None

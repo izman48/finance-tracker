@@ -37,6 +37,11 @@ export default function CommitmentsPage() {
     await load()
   }
 
+  const handleSkip = async (c: Commitment) => {
+    await analyticsAPI.skipCommitment(c.id)
+    await load()
+  }
+
   const dismissAllSuggested = async () => {
     await Promise.all(
       commitments
@@ -122,8 +127,8 @@ export default function CommitmentsPage() {
 
       {/* Confirmed */}
       <div className="grid md:grid-cols-2 gap-4 sm:gap-6" data-reveal>
-        <ConfirmedList title="Regular income" items={confirmedIncome} onRemove={(id) => setStatus(id, 'dismissed')} onEdit={setEditing} positive />
-        <ConfirmedList title="Regular expenses" items={confirmedExpense} onRemove={(id) => setStatus(id, 'dismissed')} onEdit={setEditing} />
+        <ConfirmedList title="Regular income" items={confirmedIncome} onRemove={(id) => setStatus(id, 'dismissed')} onEdit={setEditing} onSkip={handleSkip} positive />
+        <ConfirmedList title="Regular expenses" items={confirmedExpense} onRemove={(id) => setStatus(id, 'dismissed')} onEdit={setEditing} onSkip={handleSkip} />
       </div>
 
       {/* Yearly commitments — billed once a year, so they get their own totals
@@ -133,6 +138,7 @@ export default function CommitmentsPage() {
           items={yearly}
           onRemove={(id) => setStatus(id, 'dismissed')}
           onEdit={setEditing}
+          onSkip={handleSkip}
         />
       )}
 
@@ -176,12 +182,14 @@ function ConfirmedList({
   items,
   onRemove,
   onEdit,
+  onSkip,
   positive,
 }: {
   title: string
   items: Commitment[]
   onRemove: (id: string) => void
   onEdit: (c: Commitment) => void
+  onSkip: (c: Commitment) => void
   positive?: boolean
 }) {
   const total = items.reduce((sum, c) => sum + monthlyEquivalent(c), 0)
@@ -213,6 +221,9 @@ function ConfirmedList({
                 <span className={`font-semibold tnum ${positive ? 'text-pos' : 'text-slate-100'}`}>
                   {positive ? '+' : ''}{formatCurrency(c.amount)}
                 </span>
+                <button onClick={() => onSkip(c)} className="text-sm text-slate-500 hover:text-accent transition-colors" title={`Skip the ${formatDate(c.next_date)} occurrence (e.g. paid early)`}>
+                  Skip
+                </button>
                 <button onClick={() => onEdit(c)} className="text-sm text-slate-500 hover:text-accent transition-colors">
                   Edit
                 </button>
@@ -232,10 +243,12 @@ function YearlyList({
   items,
   onRemove,
   onEdit,
+  onSkip,
 }: {
   items: Commitment[]
   onRemove: (id: string) => void
   onEdit: (c: Commitment) => void
+  onSkip: (c: Commitment) => void
 }) {
   const expenseTotal = items
     .filter((c) => c.direction === 'expense')
@@ -283,6 +296,9 @@ function YearlyList({
                 <span className={`font-semibold tnum ${income ? 'text-pos' : 'text-slate-100'}`}>
                   {income ? '+' : ''}{formatCurrency(c.amount)}
                 </span>
+                <button onClick={() => onSkip(c)} className="text-sm text-slate-500 hover:text-accent transition-colors" title={`Skip the ${formatDate(c.next_date)} occurrence`}>
+                  Skip
+                </button>
                 <button onClick={() => onEdit(c)} className="text-sm text-slate-500 hover:text-accent transition-colors">
                   Edit
                 </button>

@@ -28,6 +28,7 @@ interface Upcoming {
   amount: number
   date: string
   income: boolean
+  commitmentId?: string
 }
 
 export default function DashboardPage() {
@@ -105,6 +106,15 @@ export default function DashboardPage() {
     }
   }
 
+  const handleSkipCommitment = async (id: string) => {
+    try {
+      await analyticsAPI.skipCommitment(id)
+      await Promise.all([loadCommitments(), loadSummary()])
+    } catch (error) {
+      console.error('Failed to skip commitment:', error)
+    }
+  }
+
   const handleConnectBank = async () => {
     setLoading(true)
     setMessage('')
@@ -139,6 +149,7 @@ export default function DashboardPage() {
         amount: Number(c.amount),
         date: c.next_date,
         income: c.direction === 'income',
+        commitmentId: c.id,
       })),
     ...(summary?.next_repayments ?? []).map((r) => ({
       key: `r-${r.account_id}-${r.due_date}`,
@@ -280,11 +291,22 @@ export default function DashboardPage() {
             {upcoming.length > 0 ? (
               <ul className="space-y-2.5 mt-4">
                 {upcoming.map((u) => (
-                  <li key={u.key} className="flex justify-between gap-3 text-sm">
+                  <li key={u.key} className="flex items-baseline justify-between gap-3 text-sm group/up">
                     <span className="text-slate-300 min-w-0 truncate">{u.label}</span>
-                    <span className={`tnum shrink-0 ${u.income ? 'text-pos' : 'text-slate-100'}`}>
-                      {u.income ? '+' : ''}{formatCurrency(u.amount)}{' '}
-                      <span className="text-slate-500">· {formatDate(u.date)}</span>
+                    <span className="shrink-0 flex items-baseline gap-2">
+                      {u.commitmentId && (
+                        <button
+                          onClick={() => handleSkipCommitment(u.commitmentId!)}
+                          className="text-xs text-slate-600 hover:text-accent transition-colors opacity-0 group-hover/up:opacity-100 focus:opacity-100"
+                          title={`Skip the ${formatDate(u.date)} occurrence (e.g. paid early)`}
+                        >
+                          skip
+                        </button>
+                      )}
+                      <span className={`tnum ${u.income ? 'text-pos' : 'text-slate-100'}`}>
+                        {u.income ? '+' : ''}{formatCurrency(u.amount)}{' '}
+                        <span className="text-slate-500">· {formatDate(u.date)}</span>
+                      </span>
                     </span>
                   </li>
                 ))}

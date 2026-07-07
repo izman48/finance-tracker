@@ -21,6 +21,7 @@ from .commitments import (  # noqa: F401
     last_payday,
     merchant_match_key,
     next_payday,
+    skip_commitment,
     sync_suggestions,
     transaction_match_key,
 )
@@ -65,6 +66,7 @@ __all__ = [
     "last_payday",
     "merchant_match_key",
     "next_payday",
+    "skip_commitment",
     "sync_suggestions",
     "transaction_match_key",
     # common

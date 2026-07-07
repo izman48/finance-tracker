@@ -79,6 +79,17 @@ class TestAssetsTotal:
         _asset(db_session, user, "S&S ISA", {date.today(): "6000"})
         assert svc.assets_total(db_session, user, as_of=date.today() - timedelta(days=10)) == Decimal("0")
 
+    def test_liability_negative_valuation_subtracts(self, db_session):
+        """A liability is stored as a negative valuation and reduces the total."""
+        user = _user(db_session)
+        _asset(db_session, user, "S&S ISA", {date.today(): "6000"})
+        loan = Asset(user_id=user.id, name="Car loan", asset_type="loan")
+        db_session.add(loan)
+        db_session.flush()
+        db_session.add(AssetValuation(asset_id=loan.id, value=Decimal("-6800"), valued_at=date.today()))
+        db_session.commit()
+        assert svc.assets_total(db_session, user) == Decimal("-800")  # 6000 − 6800
+
 
 class TestNetWorthHistory:
     def test_bank_balance_reconstruction(self, db_session):

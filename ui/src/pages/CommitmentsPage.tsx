@@ -37,6 +37,15 @@ export default function CommitmentsPage() {
     await load()
   }
 
+  const dismissAllSuggested = async () => {
+    await Promise.all(
+      commitments
+        .filter((c) => c.status === 'suggested')
+        .map((c) => analyticsAPI.updateCommitment(c.id, { status: 'dismissed' })),
+    )
+    await load()
+  }
+
   const suggested = commitments.filter((c) => c.status === 'suggested')
   const confirmed = commitments.filter((c) => c.status === 'confirmed')
   const yearly = confirmed.filter(isYearly)
@@ -68,9 +77,17 @@ export default function CommitmentsPage() {
       {/* Suggestions to review */}
       {suggested.length > 0 && (
         <div className="mb-8" data-reveal>
-          <h2 className="font-display font-semibold text-lg text-slate-100 mb-3">
-            Detected — please review <span className="text-sm font-normal text-slate-500">({suggested.length})</span>
-          </h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-display font-semibold text-lg text-slate-100">
+              Detected — please review <span className="text-sm font-normal text-slate-500">({suggested.length})</span>
+            </h2>
+            <button
+              onClick={dismissAllSuggested}
+              className="text-sm text-slate-500 hover:text-neg transition-colors"
+            >
+              Reject all
+            </button>
+          </div>
           <div className="card divide-y divide-white/[0.06]">
             {suggested.map((c) => (
               <div key={c.id} className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">

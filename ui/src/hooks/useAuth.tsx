@@ -6,6 +6,7 @@ import {
   ReactNode,
 } from 'react'
 import { authApi, bankingAPI } from '../services/api'
+import { isAnonymized } from '../lib/anonymize'
 
 interface User {
   id: string
@@ -33,19 +34,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
   const [isSyncing, setIsSyncing] = useState(false)
 
-  // Check for existing token on mount
+  // Check for existing token on mount, and refresh stale bank data. The
+  // session token carries the DEK, so a resume can sync just like a login —
+  // this is why data no longer goes stale between visits.
   useEffect(() => {
     const token = localStorage.getItem('token')
     if (token) {
       authApi
         .me()
-        .then((res) => setUser(res.data))
+        .then((res) => {
+          setUser(res.data)
+          void syncIfStale()
+        })
         .catch(() => localStorage.removeItem('token'))
         .finally(() => setIsLoading(false))
     } else {
       setIsLoading(false)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // On resume, re-pull bank data if the last sync is old. Skipped in
+  // anonymized view (writes are blocked and there's nothing real to sync).
+  const STALE_MS = 30 * 60 * 1000
+  const syncIfStale = async () => {
+    if (isAnonymized()) return
+    try {
+      const status = await bankingAPI.getConnectionStatus()
+      const last = status.data?.last_synced_at
+      const stale = !last || Date.now() - new Date(last).getTime() > STALE_MS
+      if (status.data?.is_connected && stale) {
+        setIsSyncing(true)
+        await bankingAPI.syncAccounts()
+        await bankingAPI.syncTransactions(90)
+      }
+    } catch {
+      // transient — the app still loads with whatever data it has
+    } finally {
+      setIsSyncing(false)
+    }
+  }
 
   // Bank data can only be pulled while the user's encryption key is in
   // session, so sync happens here at login (there is no background worker).

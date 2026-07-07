@@ -405,8 +405,13 @@ def get_transactions(
             return False
         if exclude_commitments and analytics_service.transaction_match_key(tx) in commitment_keys:
             return False
-        if kind:
-            # Same rules as the spending aggregates' _iter_spending: debits
+        if kind == "money_out":
+            # Money out of the bank = every debit that left a spending account
+            # (incl. card repayments). Opt-in hides above already applied.
+            if tx.transaction_type != "debit" or roles.get(tx.account_id) != AccountRole.SPENDING:
+                return False
+        elif kind:
+            # Purchases kinds mirror the aggregates' _iter_spending: debits
             # only, no noise, no financed purchases, role decides cash/credit.
             if tx.transaction_type != "debit" or tx.id in noise or tx.id in financed:
                 return False

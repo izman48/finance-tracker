@@ -151,7 +151,9 @@ function txResponse(q: TxQuery) {
     if (q.type === 'credit' && tx.transaction_type !== 'credit') return false
     if (q.min_amount != null && Math.abs(tx.amount) < q.min_amount) return false
     if (q.max_amount != null && Math.abs(tx.amount) > q.max_amount) return false
-    if (q.kind) {
+    if (q.kind === 'money_out') {
+      if (!isMoneyOut(tx)) return false
+    } else if (q.kind) {
       if (!isPurchase(tx)) return false
       const k = purchaseKind(tx)
       if (q.kind === 'cash' && k !== 'cash') return false
@@ -213,33 +215,72 @@ function spendingRange(period: string, frm?: string, to?: string): [number, numb
   return [lastIncome, 0]
 }
 
-function spendingResponse(q: { period?: string; frm?: string; to?: string; exclude_commitments?: boolean }) {
+const isMoneyOut = (tx: SampleTx) => ROLE[tx.account_id] === 'spending' && tx.transaction_type === 'debit'
+
+function spendingResponse(q: {
+  period?: string; frm?: string; to?: string; exclude_commitments?: boolean
+  lens?: string; hide_transfers?: boolean; hide_card_payments?: boolean
+}) {
   const period = q.period ?? 'since_payday'
+  const lens = q.lens ?? 'money_out'
   const [maxAgo, minAgo] = spendingRange(period, q.frm, q.to)
   const inRange = (tx: SampleTx) => tx.daysAgo <= maxAgo && tx.daysAgo >= minAgo
-  const rows = L.filter((tx) => isPurchase(tx) && inRange(tx) && !(q.exclude_commitments && tx.is_commitment))
+  const round = (n: number) => Math.round(n * 100) / 100
 
-  let cash = 0
-  let credit = 0
   const byCat = new Map<string, { total: number; count: number }>()
   const byMerch = new Map<string, number>()
-  for (const tx of rows) {
-    if (purchaseKind(tx) === 'credit') credit += tx.amount
-    else cash += tx.amount
+  const tally = (tx: SampleTx) => {
     const c = byCat.get(tx.category) ?? { total: 0, count: 0 }
     c.total += tx.amount
     c.count += 1
     byCat.set(tx.category, c)
     byMerch.set(tx.merchant_name, (byMerch.get(tx.merchant_name) ?? 0) + tx.amount)
   }
-  const round = (n: number) => Math.round(n * 100) / 100
+
+  let total = 0
+  let cash = 0
+  let credit = 0
+  let composition: Record<string, string> | null = null
+
+  if (lens === 'purchases') {
+    for (const tx of L) {
+      if (!isPurchase(tx) || !inRange(tx) || (q.exclude_commitments && tx.is_commitment)) continue
+      if (purchaseKind(tx) === 'credit') credit += tx.amount
+      else cash += tx.amount
+      tally(tx)
+    }
+    total = cash + credit
+  } else {
+    const comp = { card_repayments: 0, transfers: 0, commitments: 0, other: 0 }
+    for (const tx of L) {
+      if (!isMoneyOut(tx) || !inRange(tx)) continue
+      if (q.hide_transfers && tx.excluded_reason === 'internal_transfer') continue
+      if (q.hide_card_payments && tx.excluded_reason === 'card_payment') continue
+      if (q.exclude_commitments && tx.is_commitment) continue
+      total += tx.amount
+      if (tx.excluded_reason === 'internal_transfer') comp.transfers += tx.amount
+      else if (tx.excluded_reason === 'card_payment') comp.card_repayments += tx.amount
+      else if (tx.is_commitment) comp.commitments += tx.amount
+      else comp.other += tx.amount
+      tally(tx)
+    }
+    composition = {
+      card_repayments: String(round(comp.card_repayments)),
+      transfers: String(round(comp.transfers)),
+      commitments: String(round(comp.commitments)),
+      other: String(round(comp.other)),
+    }
+  }
+
   return {
+    lens,
     period,
     period_start: isoDate(nowMinus(maxAgo)),
     period_end: isoDate(nowMinus(minAgo)),
-    total_spent: String(round(cash + credit)),
+    total_spent: String(round(total)),
     charged_to_credit: String(round(credit)),
     paid_from_cash: String(round(cash)),
+    composition,
     by_category: [...byCat.entries()]
       .map(([category, v]) => ({ category, total: String(round(v.total)), count: v.count }))
       .sort((a, b) => Number(b.total) - Number(a.total)),

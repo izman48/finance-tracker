@@ -99,18 +99,25 @@ def financed_transaction_ids(db: Session, user) -> set:
 def get_spending(
     db: Session, user, period: str = "since_payday",
     frm: date | None = None, to: date | None = None,
-    exclude_commitments: bool = False,
+    exclude_commitments: bool = False, lens: str = "money_out",
+    hide_transfers: bool = False, hide_card_payments: bool = False,
 ) -> dict:
-    """Spending breakdown for a period, aware of credit vs cash.
+    """Spending breakdown for a period, under one of two lenses.
 
-    With exclude_commitments, confirmed recurring bills are dropped too,
-    leaving only discretionary spend.
+    - 'money_out' (default): cash that actually left the user's spending
+      accounts — reconciles to a bank statement, and includes card repayments
+      (the Amex payoff). Nothing is netted by default; transfers, card
+      repayments and commitments are opt-in hides, and a `composition`
+      names what's inside.
+    - 'purchases': spend booked at purchase time (card purchases + cash
+      purchases), excluding transfers and card repayments so a purchase is
+      never double-counted with its later repayment.
     """
     accounts, settings = _load(db, user)
     roles = resolve_roles(accounts, settings)
     today = _today()
     start, end = _spending_range(db, user, period, frm, to, today)
-    commitment_keys = commitment_match_keys(db, user) if exclude_commitments else set()
+    commitment_keys = commitment_match_keys(db, user)
     financed = financed_transaction_ids(db, user)
 
     txns = (
@@ -125,45 +132,100 @@ def get_spending(
     )
     transfers = _detect_internal_transfers(txns)
 
-    charged_to_credit = Decimal(0)
-    paid_from_cash = Decimal(0)
     by_category: dict[str, dict] = defaultdict(lambda: {"total": Decimal(0), "count": 0})
     by_merchant: dict[str, Decimal] = defaultdict(Decimal)
 
-    for tx, kind in _iter_spending(txns, transfers, roles, financed, commitment_keys):
-        amount = _d(tx.amount)
-        if kind == "credit":
-            charged_to_credit += amount
-        else:
-            paid_from_cash += amount
+    if lens == "purchases":
+        keys = commitment_keys if exclude_commitments else set()
+        charged_to_credit = Decimal(0)
+        paid_from_cash = Decimal(0)
+        for tx, kind in _iter_spending(txns, transfers, roles, financed, keys):
+            amount = _d(tx.amount)
+            if kind == "credit":
+                charged_to_credit += amount
+            else:
+                paid_from_cash += amount
+            _tally(by_category, by_merchant, tx, amount)
+        total = charged_to_credit + paid_from_cash
+        composition = None
+    else:  # money_out
+        charged_to_credit = Decimal(0)
+        paid_from_cash = Decimal(0)
+        comp = {"card_repayments": Decimal(0), "transfers": Decimal(0), "commitments": Decimal(0), "other": Decimal(0)}
+        total = Decimal(0)
+        for tx in txns:
+            for amount in [_money_out_amount(tx, roles, transfers, exclude_commitments, hide_transfers, hide_card_payments, commitment_keys)]:
+                if amount is None:
+                    continue
+                total += amount
+                # Composition (before hides remove them — but hidden ones
+                # already returned None above, so this reflects what's counted).
+                if tx.id in transfers:
+                    comp["transfers"] += amount
+                elif _is_card_repayment(tx, roles):
+                    comp["card_repayments"] += amount
+                elif transaction_match_key(tx) in commitment_keys:
+                    comp["commitments"] += amount
+                else:
+                    comp["other"] += amount
+                _tally(by_category, by_merchant, tx, amount)
+        composition = comp
 
-        category = tx.category or "Uncategorized"
-        by_category[category]["total"] += amount
-        by_category[category]["count"] += 1
-        merchant = tx.merchant_name or tx.description or "Unknown"
-        by_merchant[merchant] += amount
-
-    total = charged_to_credit + paid_from_cash
     categories = sorted(
         ({"category": k, "total": v["total"], "count": v["count"]} for k, v in by_category.items()),
         key=lambda c: c["total"], reverse=True,
     )
-    # All merchants, biggest first — the UI shows the top few and expands on demand.
     merchants = sorted(
         ({"merchant": k, "total": v} for k, v in by_merchant.items()),
         key=lambda m: m["total"], reverse=True,
     )
 
     return {
+        "lens": lens,
         "period": period,
         "period_start": start,
         "period_end": end,
         "total_spent": total,
         "charged_to_credit": charged_to_credit,
         "paid_from_cash": paid_from_cash,
+        "composition": composition,
         "by_category": categories,
         "top_merchants": merchants,
     }
+
+
+def _tally(by_category, by_merchant, tx, amount):
+    category = tx.category or "Uncategorized"
+    by_category[category]["total"] += amount
+    by_category[category]["count"] += 1
+    by_merchant[tx.merchant_name or tx.description or "Unknown"] += amount
+
+
+def _is_card_repayment(tx, roles) -> bool:
+    """A debit on a spending account that settles a credit card."""
+    if roles.get(tx.account_id) != AccountRole.SPENDING or tx.transaction_type != "debit":
+        return False
+    desc = f"{tx.description or ''} {tx.merchant_name or ''}".lower()
+    return any(ind in desc for ind in _CARD_PAYMENT_INDICATORS)
+
+
+def _money_out_amount(tx, roles, transfers, exclude_commitments, hide_transfers, hide_card_payments, commitment_keys):
+    """The signed amount this transaction contributes to 'money out of my bank',
+    or None if it doesn't count (not a spending-account debit, or opted out).
+
+    Money out = every debit that left a spending (current) account. Card
+    purchases sit on the card account and are deferred, so they're not cash out
+    of the bank; card *repayments* (a debit on the current account) are.
+    """
+    if roles.get(tx.account_id) != AccountRole.SPENDING or tx.transaction_type != "debit":
+        return None
+    if hide_transfers and tx.id in transfers:
+        return None
+    if hide_card_payments and _is_card_repayment(tx, roles):
+        return None
+    if exclude_commitments and transaction_match_key(tx) in commitment_keys:
+        return None
+    return _d(tx.amount)
 
 
 def _iter_spending(txns, transfers, roles, financed, commitment_keys):

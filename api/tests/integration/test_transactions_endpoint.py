@@ -120,7 +120,7 @@ class TestTransactionFilters:
 
             spending = analytics_service.get_spending(
                 db_session, user, period="custom",
-                frm=date(2026, 7, 1), to=date(2026, 7, 31),
+                frm=date(2026, 7, 1), to=date(2026, 7, 31), lens="purchases",
             )
         finally:
             user_crypto.current_dek.reset(ctx)

@@ -34,6 +34,8 @@ export const EXPLAIN = {
     'The combined balance of accounts marked as “Savings”.',
   assetsTotal:
     'The total of assets you’ve added manually — ISAs, pensions, property — using each asset’s most recent value.',
+  moneyOut:
+    'Cash that actually left your bank accounts in this period — including credit-card repayments — so it reconciles with your bank statement. Card purchases sit on the card (deferred), so they’re not counted here; switch to “Purchases” to see those. Transfers, card repayments and bills are all counted by default; hide any you don’t consider spending.',
   assetAge:
     'Manual values only change when you update them — this is how old the latest value is. Tap the row to record a fresh one.',
   liveBalance:

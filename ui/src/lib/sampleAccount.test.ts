@@ -6,39 +6,51 @@ import { sampleResponse } from './sampleAccount'
 const near = (a: number, b: number) => Math.abs(a - b) < 0.02
 
 describe('sample account — internal reconciliation', () => {
-  const spending: any = sampleResponse('/api/v1/analytics/spending', { period: 'since_payday' })
+  // Default lens is money_out; also test purchases.
+  const moneyOut: any = sampleResponse('/api/v1/analytics/spending', { period: 'since_payday' })
+  const purchases: any = sampleResponse('/api/v1/analytics/spending', { period: 'since_payday', lens: 'purchases' })
 
-  it('total spent = paid from bank + charged to credit', () => {
-    expect(near(Number(spending.total_spent), Number(spending.paid_from_cash) + Number(spending.charged_to_credit))).toBe(true)
+  it('money-out is the default lens', () => {
+    expect(moneyOut.lens).toBe('money_out')
+    expect(moneyOut.composition).not.toBeNull()
   })
 
-  it('category totals sum to the headline', () => {
-    const sum = spending.by_category.reduce((s: number, c: any) => s + Number(c.total), 0)
-    expect(near(sum, Number(spending.total_spent))).toBe(true)
+  it('money-out composition sums to the headline', () => {
+    const c = moneyOut.composition
+    const sum = Number(c.card_repayments) + Number(c.transfers) + Number(c.commitments) + Number(c.other)
+    expect(near(sum, Number(moneyOut.total_spent))).toBe(true)
   })
 
-  it('merchant totals sum to the headline', () => {
-    const sum = spending.top_merchants.reduce((s: number, m: any) => s + Number(m.total), 0)
-    expect(near(sum, Number(spending.total_spent))).toBe(true)
+  it('money-out category and merchant totals sum to the headline', () => {
+    const cats = moneyOut.by_category.reduce((s: number, c: any) => s + Number(c.total), 0)
+    const merch = moneyOut.top_merchants.reduce((s: number, m: any) => s + Number(m.total), 0)
+    expect(near(cats, Number(moneyOut.total_spent))).toBe(true)
+    expect(near(merch, Number(moneyOut.total_spent))).toBe(true)
   })
 
-  it('drill-down reconciles: the spend transactions for the period sum to total_spent', () => {
+  it('money-out drill reconciles: kind=money_out transactions sum to total_spent', () => {
     const list: any = sampleResponse('/api/v1/banking/transactions', {
-      kind: 'spend', include_excluded: 'true', page: '1', page_size: '200',
-      date_from: spending.period_start, date_to: spending.period_end,
+      kind: 'money_out', page: '1', page_size: '200',
+      date_from: moneyOut.period_start, date_to: moneyOut.period_end,
     })
     const sum = list.items.reduce((s: number, t: any) => s + Math.abs(t.amount), 0)
-    expect(near(sum, Number(spending.total_spent))).toBe(true)
+    expect(near(sum, Number(moneyOut.total_spent))).toBe(true)
   })
 
-  it('a category drill reconciles with that category total', () => {
-    const cat = spending.by_category[0]
+  it('money-out includes the card repayment (the Amex payoff analogue)', () => {
+    expect(Number(moneyOut.composition.card_repayments)).toBeGreaterThan(0)
+  })
+
+  it('purchases lens: total = paid from bank + charged to credit, and reconciles to kind=spend', () => {
+    expect(near(Number(purchases.total_spent), Number(purchases.paid_from_cash) + Number(purchases.charged_to_credit))).toBe(true)
+    const cats = purchases.by_category.reduce((s: number, c: any) => s + Number(c.total), 0)
+    expect(near(cats, Number(purchases.total_spent))).toBe(true)
     const list: any = sampleResponse('/api/v1/banking/transactions', {
-      category: [cat.category], kind: 'spend', include_excluded: 'true', page: '1', page_size: '200',
-      date_from: spending.period_start, date_to: spending.period_end,
+      kind: 'spend', page: '1', page_size: '200',
+      date_from: purchases.period_start, date_to: purchases.period_end,
     })
     const sum = list.items.reduce((s: number, t: any) => s + Math.abs(t.amount), 0)
-    expect(near(sum, Number(cat.total))).toBe(true)
+    expect(near(sum, Number(purchases.total_spent))).toBe(true)
   })
 
   it('net worth = cash + savings + assets − credit owed (balance sheet reconciles)', () => {

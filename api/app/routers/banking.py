@@ -350,7 +350,13 @@ def get_transactions(
     min_amount: float | None = Query(None, ge=0),
     max_amount: float | None = Query(None, ge=0),
     include_excluded: bool = Query(
-        True, description="Include internal transfers and card payments"
+        True, description="Include internal transfers and card payments (legacy coupled flag)"
+    ),
+    hide_transfers: bool = Query(
+        False, description="Opt-in: drop internal transfers between the user's own accounts"
+    ),
+    hide_card_payments: bool = Query(
+        False, description="Opt-in: drop payments that settle a credit card"
     ),
     exclude_commitments: bool = Query(
         False, description="Drop transactions matching confirmed commitments"
@@ -388,7 +394,14 @@ def get_transactions(
     category_set = set(category) if category else None
 
     def keep(tx: Transaction) -> bool:
-        if not include_excluded and tx.id in noise:
+        reason = noise.get(tx.id)
+        # Nothing is hidden by default; each exclusion is an opt-in the user
+        # controls. include_excluded stays as a legacy "hide all noise" switch.
+        if not include_excluded and reason:
+            return False
+        if hide_transfers and reason == "internal_transfer":
+            return False
+        if hide_card_payments and reason == "card_payment":
             return False
         if exclude_commitments and analytics_service.transaction_match_key(tx) in commitment_keys:
             return False

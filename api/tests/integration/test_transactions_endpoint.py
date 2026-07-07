@@ -141,6 +141,33 @@ class TestTransactionFilters:
         )
         assert [i["merchant_name"] for i in res.json()["items"]] == ["Deliveroo"]
 
+    def test_nothing_hidden_by_default_and_granular_opt_in_hides(self, client, db_session):
+        """The list shows everything by default; each exclusion is opt-in and
+        independent (hiding transfers must not hide card payments)."""
+        user, ctx = _setup(client, db_session)
+        try:
+            a = _account(db_session, user.id, name="Current")
+            b = _account(db_session, user.id, atype="SAVINGS", name="Savings")
+            _tx(db_session, a, 500, date(2026, 7, 1), ttype="debit", merchant="Transfer out")
+            _tx(db_session, b, 500, date(2026, 7, 2), ttype="credit", merchant="Transfer in")
+            _tx(db_session, a, 200, date(2026, 7, 3), merchant="AMEX PAYMENT")
+            _tx(db_session, a, 30, date(2026, 7, 4), merchant="Deliveroo")
+        finally:
+            user_crypto.current_dek.reset(ctx)
+
+        # Default: everything shown, including the transfer pair and card payment.
+        names = lambda p: {i["merchant_name"] for i in client.get("/api/v1/banking/transactions", params=p).json()["items"]}
+        assert names({}) == {"Transfer out", "Transfer in", "AMEX PAYMENT", "Deliveroo"}
+
+        # Hiding transfers drops only the transfer pair.
+        assert names({"hide_transfers": "true"}) == {"AMEX PAYMENT", "Deliveroo"}
+
+        # Hiding card payments drops only the card payment.
+        assert names({"hide_card_payments": "true"}) == {"Transfer out", "Transfer in", "Deliveroo"}
+
+        # Both opt-ins together leave just the real spend.
+        assert names({"hide_transfers": "true", "hide_card_payments": "true"}) == {"Deliveroo"}
+
     def test_pagination_and_sorting(self, client, db_session):
         user, ctx = _setup(client, db_session)
         try:

@@ -197,6 +197,8 @@ export interface TransactionQuery {
   min_amount?: number | string
   max_amount?: number | string
   include_excluded?: boolean
+  hide_transfers?: boolean
+  hide_card_payments?: boolean
   exclude_commitments?: boolean
   kind?: 'spend' | 'cash' | 'credit'
   sort?: 'date' | 'amount'

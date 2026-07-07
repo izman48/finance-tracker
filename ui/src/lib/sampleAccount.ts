@@ -117,6 +117,7 @@ interface TxQuery {
   page?: number; page_size?: number; account_id?: string; search?: string
   category?: string[]; merchant?: string; type?: string; date_from?: string; date_to?: string
   min_amount?: number; max_amount?: number; include_excluded?: boolean
+  hide_transfers?: boolean; hide_card_payments?: boolean
   exclude_commitments?: boolean; kind?: string; sort?: string; sort_dir?: string
 }
 
@@ -131,7 +132,10 @@ function txResponse(q: TxQuery) {
   const fromT = q.date_from ? new Date(q.date_from + 'T00:00:00').getTime() : null
   const toT = q.date_to ? new Date(q.date_to + 'T23:59:59').getTime() : null
   const filtered = L.filter((tx) => {
-    if (!q.include_excluded && tx.excluded_reason) return false
+    // Nothing hidden by default; opt-in hides mirror the backend.
+    if (q.include_excluded === false && tx.excluded_reason) return false
+    if (q.hide_transfers && tx.excluded_reason === 'internal_transfer') return false
+    if (q.hide_card_payments && tx.excluded_reason === 'card_payment') return false
     if (q.exclude_commitments && tx.is_commitment) return false
     if (q.account_id && tx.account_id !== q.account_id) return false
     const when = nowMinus(tx.daysAgo).getTime()
@@ -374,7 +378,7 @@ function readParams(params: unknown): TxQuery & Record<string, any> {
   const set = (k: string, v: string) => {
     if (k === 'category') (out.category ??= []).push(v)
     else if (['page', 'page_size', 'min_amount', 'max_amount'].includes(k)) out[k] = Number(v)
-    else if (['include_excluded', 'exclude_commitments'].includes(k)) out[k] = v === 'true'
+    else if (['include_excluded', 'exclude_commitments', 'hide_transfers', 'hide_card_payments'].includes(k)) out[k] = v === 'true'
     else out[k] = v
   }
   if (params instanceof URLSearchParams) params.forEach((v, k) => set(k, v))

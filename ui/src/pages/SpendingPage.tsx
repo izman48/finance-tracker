@@ -94,7 +94,10 @@ export default function SpendingPage() {
   const [dateTo, setDateTo] = useState('')
   const [minAmount, setMinAmount] = useState('')
   const [maxAmount, setMaxAmount] = useState('')
-  const [showExcluded, setShowExcluded] = useState(false)
+  // Nothing is hidden by default — transfers and card repayments show,
+  // labelled; the user opts in to hiding each.
+  const [hideTransfers, setHideTransfers] = useState(false)
+  const [hideCardPayments, setHideCardPayments] = useState(false)
   const [sortField, setSortField] = useState<'date' | 'amount'>('date')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
   const [showFilters, setShowFilters] = useState(false)
@@ -171,7 +174,8 @@ export default function SpendingPage() {
       date_to: dateTo || data.period_end,
       min_amount: minAmount || undefined,
       max_amount: maxAmount || undefined,
-      include_excluded: showExcluded,
+      hide_transfers: hideTransfers || undefined,
+      hide_card_payments: hideCardPayments || undefined,
       exclude_commitments: excludeCommitments,
       kind: drillKind ?? undefined,
       sort: sortField,
@@ -179,7 +183,7 @@ export default function SpendingPage() {
     }
   }, [
     data, page, selectedAccount, debouncedSearch, selectedCategories, selectedMerchant,
-    selectedType, dateFrom, dateTo, minAmount, maxAmount, showExcluded,
+    selectedType, dateFrom, dateTo, minAmount, maxAmount, hideTransfers, hideCardPayments,
     excludeCommitments, drillKind, sortField, sortDirection,
   ])
 
@@ -188,7 +192,7 @@ export default function SpendingPage() {
     setSelectedIds(new Set())
   }, [
     debouncedSearch, selectedAccount, selectedCategories, selectedMerchant, selectedType,
-    dateFrom, dateTo, minAmount, maxAmount, showExcluded, drillKind, sortField,
+    dateFrom, dateTo, minAmount, maxAmount, hideTransfers, hideCardPayments, drillKind, sortField,
     sortDirection, excludeCommitments, period, frm, to,
   ])
 
@@ -239,7 +243,8 @@ export default function SpendingPage() {
     setDateTo('')
     setMinAmount('')
     setMaxAmount('')
-    setShowExcluded(false)
+    setHideTransfers(false)
+    setHideCardPayments(false)
   }
 
   // Visible chips so the "I tapped Groceries" state is always legible.
@@ -256,7 +261,8 @@ export default function SpendingPage() {
     ...(dateTo ? [{ key: 'to', label: `to ${dateTo}`, onClear: () => setDateTo('') }] : []),
     ...(minAmount ? [{ key: 'min', label: `≥ £${minAmount}`, onClear: () => setMinAmount('') }] : []),
     ...(maxAmount ? [{ key: 'max', label: `≤ £${maxAmount}`, onClear: () => setMaxAmount('') }] : []),
-    ...(showExcluded ? [{ key: 'excl', label: 'showing excluded', onClear: () => setShowExcluded(false) }] : []),
+    ...(hideTransfers ? [{ key: 'ht', label: 'hiding transfers', onClear: () => setHideTransfers(false) }] : []),
+    ...(hideCardPayments ? [{ key: 'hcp', label: 'hiding card payments', onClear: () => setHideCardPayments(false) }] : []),
   ]
 
   const patchItem = (id: string, patch: Partial<Transaction>) => {
@@ -651,20 +657,36 @@ export default function SpendingPage() {
                 </div>
               </div>
 
-              <label className="flex items-start sm:items-center cursor-pointer mb-4">
-                <input
-                  type="checkbox"
-                  checked={showExcluded}
-                  onChange={(e) => setShowExcluded(e.target.checked)}
-                  className="checkbox mt-0.5 sm:mt-0"
-                />
-                <span className="ml-2 text-sm text-slate-300">
-                  Show excluded transactions
-                  <span className="ml-1 text-xs text-slate-500">
-                    (transfers between your accounts and card repayments — never counted as spending)
+              <div className="mb-4">
+                <p className="text-xs text-slate-500 mb-2">
+                  Everything is shown by default. These aren't spending, so hide them if you like —
+                  they stay in your list, just labelled.
+                </p>
+                <label className="flex items-start sm:items-center cursor-pointer mb-2">
+                  <input
+                    type="checkbox"
+                    checked={hideTransfers}
+                    onChange={(e) => setHideTransfers(e.target.checked)}
+                    className="checkbox mt-0.5 sm:mt-0"
+                  />
+                  <span className="ml-2 text-sm text-slate-300">
+                    Hide transfers between my accounts
+                    <span className="ml-1 text-xs text-slate-500">(money moving, not leaving you)</span>
                   </span>
-                </span>
-              </label>
+                </label>
+                <label className="flex items-start sm:items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={hideCardPayments}
+                    onChange={(e) => setHideCardPayments(e.target.checked)}
+                    className="checkbox mt-0.5 sm:mt-0"
+                  />
+                  <span className="ml-2 text-sm text-slate-300">
+                    Hide card repayments
+                    <span className="ml-1 text-xs text-slate-500">(paying off a card, not new spending)</span>
+                  </span>
+                </label>
+              </div>
 
               <button onClick={clearAllFilters} className="btn-ghost">
                 Clear all filters
@@ -742,7 +764,7 @@ export default function SpendingPage() {
                 {items.map((tx) => (
                   <div
                     key={tx.id}
-                    className={`p-4 flex items-start gap-3 ${tx.excluded_reason ? 'opacity-60' : ''}`}
+                    className={`p-4 flex items-start gap-3`}
                   >
                     <input
                       type="checkbox"
@@ -824,7 +846,7 @@ export default function SpendingPage() {
                       <tr
                         key={tx.id}
                         onClick={() => setSheetTx(tx)}
-                        className={`hover:bg-white/[0.03] transition-colors cursor-pointer ${tx.excluded_reason ? 'opacity-60' : ''}`}
+                        className={`hover:bg-white/[0.03] transition-colors cursor-pointer`}
                       >
                         <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                           <input

@@ -141,7 +141,7 @@ const SECURITY = [
   {
     icon: Shuffle,
     title: 'Show the app, not your numbers',
-    body: 'One tap anonymizes every figure and name — hand someone your phone or take a screenshot without revealing a thing. It’s a privacy convenience, not a security layer: your real data still lives safely behind your key.',
+    body: 'One tap swaps your data for a realistic sample account — nothing to do with your real finances — so you can hand someone your phone or take a screenshot without revealing a thing. A privacy convenience, not a security layer: your real data stays untouched behind your key.',
   },
 ]
 

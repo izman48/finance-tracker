@@ -77,6 +77,7 @@ export default function SpendingPage() {
   const [frm, setFrm] = useState('')
   const [to, setTo] = useState('')
   const [data, setData] = useState<Spending | null>(null)
+  const [prevTotal, setPrevTotal] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   // Persisted: "how am I spending the rest of my money" is a standing question.
   const [excludeCommitments, setExcludeCommitments] = useState(
@@ -176,6 +177,28 @@ export default function SpendingPage() {
       .catch((e) => console.error('Failed to load spending', e))
       .finally(() => setLoading(false))
   }, [period, frm, to, excludeCommitments, lens, hideTransfers, hideCardPayments, reloadKey])
+
+  // vs the previous same-length window — a "pace" signal on the headline.
+  useEffect(() => {
+    if (!data) {
+      setPrevTotal(null)
+      return
+    }
+    const start = new Date(data.period_start)
+    const end = new Date(data.period_end)
+    const lenDays = Math.max(1, Math.round((end.getTime() - start.getTime()) / 864e5) + 1)
+    const prevEnd = new Date(start.getTime() - 864e5)
+    const prevStart = new Date(prevEnd.getTime() - (lenDays - 1) * 864e5)
+    const iso = (d: Date) => d.toISOString().slice(0, 10)
+    let cancelled = false
+    analyticsAPI
+      .getSpending('custom', iso(prevStart), iso(prevEnd), { excludeCommitments, lens, hideTransfers, hideCardPayments })
+      .then((res) => !cancelled && setPrevTotal(Number(res.data.total_spent)))
+      .catch(() => !cancelled && setPrevTotal(null))
+    return () => {
+      cancelled = true
+    }
+  }, [data, excludeCommitments, lens, hideTransfers, hideCardPayments])
 
   // Accounts + facets (once, refreshed after edits)
   useEffect(() => {
@@ -328,34 +351,61 @@ export default function SpendingPage() {
   }
 
   const downloadCSV = async () => {
-    if (!listQuery) return
+    if (!data) return
     try {
-      // Export the whole filtered set, not just the visible page.
+      // A faithful, complete copy of the period — every transaction, INCLUDING
+      // the rows we exclude from totals, with the derived flags that carry our
+      // judgements. Deliberately ignores the on-screen category/kind/hide
+      // filters so the export is auditable, not a lossy subset.
+      const exportQuery: TransactionQuery = {
+        date_from: data.period_start,
+        date_to: data.period_end,
+        include_excluded: true,
+        sort: 'date',
+        sort_dir: 'desc',
+        page_size: 100,
+      }
       const all: Transaction[] = []
       let p = 1
       for (;;) {
-        const res = await bankingAPI.getTransactions({ ...listQuery, page: p, page_size: 100 })
+        const res = await bankingAPI.getTransactions({ ...exportQuery, page: p })
         all.push(...res.data.items)
         if (all.length >= res.data.total || res.data.items.length === 0) break
         p += 1
       }
-      const headers = ['Date', 'Description', 'Merchant', 'Account', 'Category', 'Type', 'Amount', 'Currency']
+      const countsAs = (tx: Transaction) =>
+        tx.transaction_type === 'credit'
+          ? 'income'
+          : tx.excluded_reason === 'card_payment'
+          ? 'card repayment'
+          : tx.excluded_reason === 'internal_transfer'
+          ? 'transfer'
+          : 'spending'
+      const q = (s: string) => `"${(s || '').replace(/"/g, '""')}"`
+      const headers = [
+        'Date', 'Description', 'Merchant', 'Account', 'Category', 'Type', 'Amount',
+        'Currency', 'Counts as', 'Excluded reason', 'Commitment', 'On finance',
+      ]
       const rows = all.map((tx) => [
         new Date(tx.transaction_date).toLocaleDateString('en-GB'),
-        `"${(tx.description || '').replace(/"/g, '""')}"`,
-        `"${(tx.merchant_name || '').replace(/"/g, '""')}"`,
-        `"${accountName(tx.account_id).replace(/"/g, '""')}"`,
-        `"${(tx.category || 'Uncategorized').replace(/"/g, '""')}"`,
+        q(tx.description),
+        q(tx.merchant_name || ''),
+        q(accountName(tx.account_id)),
+        q(tx.category || 'Uncategorized'),
         tx.transaction_type,
         tx.amount.toFixed(2),
         tx.currency,
+        countsAs(tx),
+        tx.excluded_reason || '',
+        tx.is_commitment ? 'yes' : '',
+        tx.is_financed ? 'yes' : '',
       ])
       const blob = new Blob([[headers.join(','), ...rows.map((r) => r.join(','))].join('\n')], {
         type: 'text/csv;charset=utf-8;',
       })
       const link = document.createElement('a')
       link.href = URL.createObjectURL(blob)
-      link.download = `transactions_${new Date().toISOString().split('T')[0]}.csv`
+      link.download = `nilu_ledger_${data.period_start}_to_${data.period_end}.csv`
       link.click()
     } catch (e) {
       console.error('CSV export failed', e)
@@ -366,6 +416,16 @@ export default function SpendingPage() {
   const maxCat = data?.by_category[0]?.total ?? 1
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const listCategories = Array.from(new Set([...facets.categories])).sort()
+
+  const delta = data && prevTotal != null ? data.total_spent - prevTotal : null
+  const deltaEl =
+    delta === null ? null : (
+      <div className={`text-xs mt-1 ${delta <= 0 ? 'text-pos' : 'text-warn'}`}>
+        {delta === 0
+          ? 'same as the previous period'
+          : `${gbp(Math.abs(delta))} ${delta < 0 ? 'less than' : 'more than'} the previous period`}
+      </div>
+    )
 
   return (
     <div ref={revealRef} className="max-w-6xl mx-auto px-4 py-6 sm:py-10">
@@ -453,6 +513,7 @@ export default function SpendingPage() {
                 <AnimatedNumber value={data.total_spent} />
               </div>
               <div className="text-xs text-slate-500 mt-1">the two figures beside this, combined</div>
+              {deltaEl}
             </button>
             <button
               type="button" data-reveal
@@ -512,6 +573,7 @@ export default function SpendingPage() {
               <div className="text-xs text-slate-500 mt-1">
                 cash that actually left your accounts — reconciles to your bank statement
               </div>
+              {deltaEl}
             </button>
 
             {data.composition && (
@@ -634,12 +696,11 @@ export default function SpendingPage() {
           </div>
           <button
             onClick={downloadCSV}
-            disabled={total === 0}
             className="btn-ghost"
-            title="Download the current filtered set as CSV"
+            title="Every transaction in this period — including transfers and card payments — with our derived flags (counts-as, commitment, on-finance). A faithful, auditable copy, not the filtered view."
           >
             <ArrowDownToLine className="w-4 h-4" />
-            Download CSV
+            Export ledger
           </button>
         </div>
 

@@ -298,6 +298,7 @@ export default function SpendingPage() {
     setMaxAmount('')
     setHideTransfers(false)
     setHideCardPayments(false)
+    toggleExcludeCommitments(false)
   }
 
   // Visible chips so the "I tapped Groceries" state is always legible.
@@ -316,6 +317,7 @@ export default function SpendingPage() {
     ...(maxAmount ? [{ key: 'max', label: `≤ £${maxAmount}`, onClear: () => setMaxAmount('') }] : []),
     ...(hideTransfers ? [{ key: 'ht', label: 'hiding transfers', onClear: () => setHideTransfers(false) }] : []),
     ...(hideCardPayments ? [{ key: 'hcp', label: 'hiding card payments', onClear: () => setHideCardPayments(false) }] : []),
+    ...(excludeCommitments ? [{ key: 'xc', label: 'excluding commitments', onClear: () => toggleExcludeCommitments(false) }] : []),
   ]
 
   const patchItem = (id: string, patch: Partial<Transaction>) => {
@@ -461,20 +463,9 @@ export default function SpendingPage() {
         </span>
       </div>
 
-      {/* Bills are predictable — hide them to see the spending you can change.
-          One control for the figures AND the list below. */}
-      <label className="inline-flex items-center gap-2 mb-5 cursor-pointer select-none">
-        <input
-          type="checkbox"
-          checked={excludeCommitments}
-          onChange={(e) => toggleExcludeCommitments(e.target.checked)}
-          className="checkbox"
-        />
-        <span className="text-sm text-slate-300">Exclude commitments</span>
-        <span className="text-xs text-slate-500">
-          (rent, salary, subscriptions — show only the spending I control)
-        </span>
-      </label>
+      {/* Exclusions (commitments / transfers / card payments) all live in one
+          place — the Filters panel below. */}
+      <div className="mb-5" />
 
       <MonthlySpendingChart excludeCommitments={excludeCommitments} />
 
@@ -578,30 +569,28 @@ export default function SpendingPage() {
 
             {data.composition && (
               <div className="card-pad mb-6" data-reveal>
-                <div className="text-xs text-slate-500 mb-3">What's inside — hide what isn't really spending:</div>
+                <div className="text-xs text-slate-500 mb-3 flex items-center justify-between gap-2">
+                  <span>What's inside this figure</span>
+                  <button onClick={() => setShowFilters(true)} className="text-accent hover:underline">
+                    Exclude any of these →
+                  </button>
+                </div>
                 <div className="space-y-2">
                   {[
-                    { label: 'Everyday spending', amount: data.composition.other, hidden: false, onToggle: null as null | (() => void) },
-                    { label: 'Commitments (bills)', amount: data.composition.commitments, hidden: excludeCommitments, onToggle: () => toggleExcludeCommitments(!excludeCommitments) },
-                    { label: 'Card repayments', amount: data.composition.card_repayments, hidden: hideCardPayments, onToggle: () => setHideCardPayments(!hideCardPayments) },
-                    { label: 'Transfers between accounts', amount: data.composition.transfers, hidden: hideTransfers, onToggle: () => setHideTransfers(!hideTransfers) },
+                    { label: 'Everyday spending', amount: data.composition.other },
+                    { label: 'Commitments (bills)', amount: data.composition.commitments, hidden: excludeCommitments },
+                    { label: 'Card repayments', amount: data.composition.card_repayments, hidden: hideCardPayments },
+                    { label: 'Transfers between accounts', amount: data.composition.transfers, hidden: hideTransfers },
                   ]
                     .filter((r) => r.amount > 0 || r.hidden)
                     .map((r) => (
                       <div key={r.label} className="flex items-center justify-between text-sm">
                         <span className="text-slate-300">{r.label}</span>
-                        <span className="flex items-center gap-3">
-                          {r.hidden ? (
-                            <span className="text-xs text-slate-600">not counted</span>
-                          ) : (
-                            <span className="tnum text-slate-100">{gbp(r.amount)}</span>
-                          )}
-                          {r.onToggle && (
-                            <button onClick={r.onToggle} className="text-xs text-accent hover:underline">
-                              {r.hidden ? 'count it' : 'hide'}
-                            </button>
-                          )}
-                        </span>
+                        {r.hidden ? (
+                          <span className="text-xs text-slate-600">excluded</span>
+                        ) : (
+                          <span className="tnum text-slate-100">{gbp(r.amount)}</span>
+                        )}
                       </div>
                     ))}
                 </div>
@@ -841,7 +830,7 @@ export default function SpendingPage() {
                     <span className="ml-1 text-xs text-slate-500">(money moving, not leaving you)</span>
                   </span>
                 </label>
-                <label className="flex items-start sm:items-center cursor-pointer">
+                <label className="flex items-start sm:items-center cursor-pointer mb-2">
                   <input
                     type="checkbox"
                     checked={hideCardPayments}
@@ -851,6 +840,18 @@ export default function SpendingPage() {
                   <span className="ml-2 text-sm text-slate-300">
                     Hide card repayments
                     <span className="ml-1 text-xs text-slate-500">(paying off a card, not new spending)</span>
+                  </span>
+                </label>
+                <label className="flex items-start sm:items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={excludeCommitments}
+                    onChange={(e) => toggleExcludeCommitments(e.target.checked)}
+                    className="checkbox mt-0.5 sm:mt-0"
+                  />
+                  <span className="ml-2 text-sm text-slate-300">
+                    Exclude commitments
+                    <span className="ml-1 text-xs text-slate-500">(rent, salary, subscriptions — show only spending you control)</span>
                   </span>
                 </label>
               </div>

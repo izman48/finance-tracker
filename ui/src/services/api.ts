@@ -161,6 +161,21 @@ export interface NetWorthPoint {
   net_worth: string
 }
 
+export interface ProjectionPoint {
+  date: string
+  value: string
+}
+
+export interface Projection {
+  current_net_worth: string
+  target_amount: string | null
+  target_date: string | null
+  monthly_contribution: string
+  annual_growth_pct: string
+  as_of: string
+  timeline: ProjectionPoint[]
+}
+
 export const assetsAPI = {
   list: () => api.get<Asset[]>('/assets'),
   create: (data: { name: string; asset_type: string; value: number; valued_at?: string }) =>
@@ -174,6 +189,12 @@ export const assetsAPI = {
     api.delete(`/assets/${assetId}/valuations/${valuationId}`),
   netWorthHistory: (months = 12) =>
     api.get<NetWorthPoint[]>(`/analytics/net-worth-history?months=${months}`),
+  // A projection from stated assumptions — an estimate, not advice.
+  netWorthProjection: (params: {
+    target_amount?: number
+    monthly_contribution?: number
+    annual_growth_pct?: number
+  }) => api.get<Projection>('/analytics/net-worth-projection', { params }),
 }
 
 // Health check

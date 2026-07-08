@@ -91,6 +91,58 @@ class TestAssetsTotal:
         assert svc.assets_total(db_session, user) == Decimal("-800")  # 6000 − 6800
 
 
+class TestNetWorthProjection:
+    def test_zero_growth_is_linear_contributions(self, db_session):
+        user = _user(db_session)
+        _account(db_session, user, 1000)
+        p = svc.net_worth_projection(
+            db_session, user,
+            target_amount=Decimal("2200"),
+            monthly_contribution=Decimal("100"),
+            annual_growth_pct=Decimal("0"),
+        )
+        assert p["current_net_worth"] == Decimal("1000.00")
+        # 1000 + 100/mo, no growth -> hits 2200 at month 12 exactly
+        assert p["target_date"] == svc._add_months(svc._today(), 12)
+        assert p["timeline"][0]["value"] == Decimal("1000.00")
+        assert p["timeline"][1]["value"] == Decimal("1100.00")
+
+    def test_growth_compounds_monthly(self, db_session):
+        user = _user(db_session)
+        _account(db_session, user, 10000)
+        p = svc.net_worth_projection(
+            db_session, user, annual_growth_pct=Decimal("5"),
+        )
+        # After 12 months of monthly-compounded 5%/yr with no contributions,
+        # the value is ~10500 (one full year of growth).
+        year_on = [pt for pt in p["timeline"] if pt["date"] == svc._add_months(svc._today(), 12)]
+        assert year_on and abs(year_on[0]["value"] - Decimal("10500")) < Decimal("2")
+
+    def test_target_already_reached_is_today(self, db_session):
+        user = _user(db_session)
+        _account(db_session, user, 5000)
+        p = svc.net_worth_projection(
+            db_session, user,
+            target_amount=Decimal("4000"),
+            monthly_contribution=Decimal("0"),
+            annual_growth_pct=Decimal("-10"),  # shrinking — month 1 check would miss it
+        )
+        assert p["target_date"] == svc._today()
+
+    def test_unreachable_target_returns_none(self, db_session):
+        user = _user(db_session)
+        _account(db_session, user, 100)
+        p = svc.net_worth_projection(
+            db_session, user,
+            target_amount=Decimal("100000000"),
+            monthly_contribution=Decimal("10"),
+            annual_growth_pct=Decimal("0"),
+        )
+        assert p["target_date"] is None
+        # And the chart payload stays bounded (MAX_MONTHS + the today point).
+        assert len(p["timeline"]) <= 601
+
+
 class TestNetWorthHistory:
     def test_bank_balance_reconstruction(self, db_session):
         user = _user(db_session)

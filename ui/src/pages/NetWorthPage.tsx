@@ -4,12 +4,13 @@ import {
   Area,
   AreaChart,
   CartesianGrid,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts'
-import { assetsAPI, analyticsAPI, bankingAPI, Asset, NetWorthPoint } from '../services/api'
+import { assetsAPI, analyticsAPI, bankingAPI, Asset, NetWorthPoint, Projection } from '../services/api'
 import { BankStatus, CashflowSummary, SummaryAccount } from '../types'
 import { ASSET_TYPE_LABEL, latestValue, isLiabilityType } from '../lib/assets'
 import { gbp0 as gbp, timeAgo } from '../lib/format'
@@ -107,6 +108,13 @@ export default function NetWorthPage() {
   const [showChooser, setShowChooser] = useState(false)
   const [showAddAsset, setShowAddAsset] = useState(false)
   const [addLiability, setAddLiability] = useState(false)
+  // Target & projection — v1 keeps the assumptions client-side (localStorage),
+  // the backend just does the arithmetic. An estimate, not advice.
+  const [target, setTarget] = useState(() => localStorage.getItem('wealth.target') ?? '')
+  const [monthly, setMonthly] = useState(() => localStorage.getItem('wealth.monthly') ?? '')
+  const [growth, setGrowth] = useState(() => localStorage.getItem('wealth.growth') ?? '5')
+  const [showTargetForm, setShowTargetForm] = useState(false)
+  const [projection, setProjection] = useState<Projection | null>(null)
   const [updating, setUpdating] = useState<Asset | null>(null)
   const [settingsAccount, setSettingsAccount] = useState<SummaryAccount | null>(null)
   const confirm = useConfirm()
@@ -141,6 +149,41 @@ export default function NetWorthPage() {
     setMonths(m)
     await load(m)
   }
+
+  // Default the contribution from "savable" once the summary lands, unless the
+  // user has already set their own figure.
+  useEffect(() => {
+    if (summary && !localStorage.getItem('wealth.monthly')) {
+      setMonthly(String(Math.max(0, Math.round(Number(summary.savable)))))
+    }
+  }, [summary])
+
+  // Fetch the projection when a target is set (debounced against typing).
+  useEffect(() => {
+    localStorage.setItem('wealth.target', target)
+    localStorage.setItem('wealth.monthly', monthly)
+    localStorage.setItem('wealth.growth', growth)
+    const t = Number(target)
+    if (!target || !Number.isFinite(t) || t <= 0) {
+      setProjection(null)
+      return
+    }
+    let cancelled = false
+    const timer = window.setTimeout(() => {
+      assetsAPI
+        .netWorthProjection({
+          target_amount: t,
+          monthly_contribution: Math.max(0, Number(monthly) || 0),
+          annual_growth_pct: Number(growth) || 0,
+        })
+        .then((res) => !cancelled && setProjection(res.data))
+        .catch((e) => console.error('Failed to load projection', e))
+    }, 500)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [target, monthly, growth])
 
   const handleConnectBank = async () => {
     setConnecting(true)
@@ -206,12 +249,30 @@ export default function NetWorthPage() {
   const current = history.length ? Number(history[history.length - 1].net_worth) : 0
   const first = history.length ? Number(history[0].net_worth) : 0
   const change = current - first
-  const chartData = history.map((p) => ({
-    date: new Date(p.date).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' }),
+  const monthLabel = (d: string) =>
+    new Date(d).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })
+  const historyRows = history.map((p) => ({
+    date: monthLabel(p.date),
     'Net worth': Number(p.net_worth),
     Banks: Number(p.bank),
     Assets: Number(p.assets),
   }))
+  // The dashed estimate extends the solid line: the junction row carries both
+  // keys so the two areas connect, then projection-only rows follow.
+  const projRows =
+    projection && historyRows.length
+      ? projection.timeline.slice(1).map((p) => ({ date: monthLabel(p.date), Projected: Number(p.value) }))
+      : []
+  const chartData = projRows.length
+    ? [
+        ...historyRows.map((r, i) => (i === historyRows.length - 1 ? { ...r, Projected: current } : r)),
+        ...projRows,
+      ]
+    : historyRows
+  const targetNum = Number(target) > 0 ? Number(target) : null
+  const targetMonthYear = projection?.target_date
+    ? new Date(projection.target_date).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+    : null
 
   // Assemble the balance sheet: bank accounts (live) + manual assets, grouped.
   const now = Date.now()
@@ -284,22 +345,53 @@ export default function NetWorthPage() {
         </div>
       </div>
 
-      {/* History chart */}
+      {/* History chart + forward projection */}
       <div className="card-pad mb-6" data-reveal>
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
           <h2 className="font-display font-semibold text-slate-100">Over time</h2>
-          <div className="flex gap-0.5">
-            {RANGES.map((r) => (
-              <button
-                key={r.months}
-                onClick={() => changeRange(r.months)}
-                className={months === r.months ? 'seg-active' : 'seg'}
-              >
-                {r.label}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setShowTargetForm((s) => !s)}
+              className={`seg ${showTargetForm || targetNum ? '!text-accent' : ''}`}
+            >
+              {targetNum ? `Target ${gbp(targetNum)}` : 'Set a target'}
+            </button>
+            <div className="flex gap-0.5">
+              {RANGES.map((r) => (
+                <button
+                  key={r.months}
+                  onClick={() => changeRange(r.months)}
+                  className={months === r.months ? 'seg-active' : 'seg'}
+                >
+                  {r.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
+
+        {showTargetForm && (
+          <div className="flex flex-wrap items-end gap-3 mb-4">
+            <div>
+              <label className="label">Target (£)</label>
+              <input type="number" min="0" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="e.g. 250000" className="input !w-36" />
+            </div>
+            <div>
+              <label className="label">Adding monthly (£)</label>
+              <input type="number" min="0" value={monthly} onChange={(e) => setMonthly(e.target.value)} className="input !w-32" />
+            </div>
+            <div>
+              <label className="label">Growth %/yr</label>
+              <input type="number" step="0.5" value={growth} onChange={(e) => setGrowth(e.target.value)} className="input !w-24" />
+            </div>
+            {target && (
+              <button onClick={() => setTarget('')} className="btn-ghost !py-2">
+                Clear target
+              </button>
+            )}
+          </div>
+        )}
+
         <ResponsiveContainer width="100%" height={280}>
           <AreaChart data={chartData}>
             <defs>
@@ -309,12 +401,46 @@ export default function NetWorthPage() {
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="date" fontSize={12} tickLine={false} axisLine={false} />
+            <XAxis dataKey="date" fontSize={12} tickLine={false} axisLine={false} minTickGap={28} />
             <YAxis tickFormatter={(v) => gbp(v)} width={70} fontSize={12} tickLine={false} axisLine={false} />
             <Tooltip content={<NetWorthTooltip />} />
+            {targetNum && projRows.length > 0 && (
+              <ReferenceLine
+                y={targetNum}
+                stroke="#2DD4A7"
+                strokeDasharray="4 4"
+                label={{ value: 'target', position: 'insideTopRight', fontSize: 11, fill: '#2DD4A7' }}
+              />
+            )}
             <Area type="monotone" dataKey="Net worth" stroke="#38BDF8" strokeWidth={2} fill="url(#nw)" />
+            {projRows.length > 0 && (
+              <Area
+                type="monotone"
+                dataKey="Projected"
+                stroke="#2DD4A7"
+                strokeWidth={2}
+                strokeDasharray="6 4"
+                fill="none"
+                fillOpacity={0}
+              />
+            )}
           </AreaChart>
         </ResponsiveContainer>
+
+        {projection && targetNum && (
+          <p className="text-xs text-slate-500 mt-3">
+            {targetMonthYear ? (
+              <>
+                On these assumptions you'd reach <span className="text-slate-300 tnum">{gbp(targetNum)}</span> around{' '}
+                <span className="text-accent">{targetMonthYear}</span>.
+              </>
+            ) : (
+              <>Not reached within 50 years on these assumptions.</>
+            )}{' '}
+            Assumes {Number(projection.annual_growth_pct)}%/yr growth and{' '}
+            {gbp(Number(projection.monthly_contribution))}/mo added — an estimate based on your inputs, not advice.
+          </p>
+        )}
       </div>
 
       {/* Balance sheet */}

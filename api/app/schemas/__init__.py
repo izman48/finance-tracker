@@ -119,6 +119,23 @@ class NetWorthPoint(BaseModel):
     net_worth: Decimal
 
 
+class ProjectionPoint(BaseModel):
+    date: date
+    value: Decimal
+
+
+class ProjectionResponse(BaseModel):
+    """A net-worth projection from stated assumptions — an estimate, not advice."""
+
+    current_net_worth: Decimal
+    target_amount: Decimal | None
+    target_date: date | None
+    monthly_contribution: Decimal
+    annual_growth_pct: Decimal
+    as_of: date
+    timeline: list[ProjectionPoint]
+
+
 # --- Categorization Rule Schemas ---
 
 

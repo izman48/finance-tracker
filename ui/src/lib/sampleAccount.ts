@@ -417,6 +417,44 @@ function netWorthHistory(months: number) {
   return out
 }
 
+// Mirrors the backend projection: compound monthly growth + contributions from
+// today's net worth. An estimate, not advice — same numbers as the real API.
+function projectionResponse(q: Record<string, any>) {
+  const target = q.target_amount != null ? Number(q.target_amount) : null
+  const monthly = Math.max(0, Number(q.monthly_contribution) || 0)
+  const growth = Math.min(50, Math.max(-50, Number(q.annual_growth_pct) || 0)) / 100
+  const r = Math.pow(1 + growth, 1 / 12) - 1
+  const addM = (m: number) => {
+    const d = new Date()
+    d.setMonth(d.getMonth() + m)
+    return isoDate(d)
+  }
+  const round = (n: number) => Math.round(n * 100) / 100
+  const timeline = [{ date: addM(0), value: String(round(NET_WORTH)) }]
+  let value = NET_WORTH
+  // Already there today — mirror the backend's day-0 check.
+  let target_date: string | null = target != null && NET_WORTH >= target ? addM(0) : null
+  let monthsWanted = target_date ? 6 : 120
+  for (let m = 1; m <= 600; m++) {
+    value = value * (1 + r) + monthly
+    if (target != null && !target_date && value >= target) {
+      target_date = addM(m)
+      monthsWanted = Math.min(600, m + 6)
+    }
+    if (m <= monthsWanted) timeline.push({ date: addM(m), value: String(round(value)) })
+    else if (target == null || target_date) break
+  }
+  return {
+    current_net_worth: String(round(NET_WORTH)),
+    target_amount: target != null ? String(target) : null,
+    target_date,
+    monthly_contribution: String(round(monthly)),
+    annual_growth_pct: String(Number(q.annual_growth_pct) || 0),
+    as_of: addM(0),
+    timeline,
+  }
+}
+
 function assetsResponse() {
   return ASSETS.map((a) => ({
     id: a.id, name: a.name, asset_type: a.asset_type,
@@ -491,6 +529,7 @@ export function sampleResponse(url: string, params: unknown): unknown {
   if (path.includes('/analytics/spending')) return spendingResponse(p as any)
   if (is('/analytics/commitments')) return commitmentsResponse()
   if (is('/analytics/planned-items')) return [{ id: 'sp1', name: 'New laptop', direction: 'expense', kind: 'installment_plan', start_date: isoDate(nowPlus(9)), amount: null, total_amount: 1200, installments: 6 }]
+  if (path.includes('/analytics/net-worth-projection')) return projectionResponse(p as Record<string, any>)
   if (path.includes('/analytics/net-worth-history')) return netWorthHistory(Number(p.months) || 12)
   if (is('/assets')) return assetsResponse()
   if (is('/rules')) return { packs: [], personal: [] }

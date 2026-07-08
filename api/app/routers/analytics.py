@@ -28,6 +28,7 @@ from app.schemas import (
     PlanFromTransaction,
     PlannedItemCreate,
     PlannedItemResponse,
+    ProjectionResponse,
     RepaymentScheduleItemCreate,
     RepaymentScheduleItemResponse,
     SpendingResponse,
@@ -35,6 +36,8 @@ from app.schemas import (
     SpendingTrendResponse,
 )
 from datetime import date
+from decimal import Decimal
+
 from app.services import analytics_service
 
 logger = logging.getLogger(__name__)
@@ -63,6 +66,27 @@ def get_net_worth_history(
         NetWorthPoint(**point)
         for point in analytics_service.net_worth_history(db, current_user, months)
     ]
+
+
+@router.get("/net-worth-projection", response_model=ProjectionResponse)
+def get_net_worth_projection(
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+    target_amount: Decimal | None = None,
+    monthly_contribution: Decimal = Decimal(0),
+    annual_growth_pct: Decimal = Decimal("5"),
+) -> ProjectionResponse:
+    """Project net worth forward from stated assumptions (compound growth +
+    monthly contributions). A factual calculation with the assumptions echoed
+    back — an estimate, not advice."""
+    return ProjectionResponse(
+        **analytics_service.net_worth_projection(
+            db, current_user,
+            target_amount=target_amount,
+            monthly_contribution=monthly_contribution,
+            annual_growth_pct=annual_growth_pct,
+        )
+    )
 
 
 @router.get("/forecast", response_model=ForecastResponse)

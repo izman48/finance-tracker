@@ -119,6 +119,17 @@ class NetWorthPoint(BaseModel):
     net_worth: Decimal
 
 
+class NudgeResponse(BaseModel):
+    """An honest, dismissible observation: a fact + its arithmetic and source."""
+
+    id: str
+    rank: int
+    body: str
+    detail: str
+    source: str
+    as_of: date | None
+
+
 class ProjectionPoint(BaseModel):
     date: date
     value: Decimal

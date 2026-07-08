@@ -270,8 +270,19 @@ export interface AccountSettingUpdate {
   pay_from_account_id?: string | null
 }
 
+export interface Nudge {
+  id: string
+  rank: number
+  body: string
+  detail: string
+  source: string
+  as_of: string | null
+}
+
 export const analyticsAPI = {
   getSummary: () => api.get('/analytics/summary'),
+  // Honest observations (cash drag, FSCS) — facts with arithmetic, not advice.
+  getNudges: () => api.get<Nudge[]>('/analytics/nudges'),
   getForecast: (horizon: string = 'payday') =>
     api.get('/analytics/forecast', { params: { horizon } }),
   getSpending: (

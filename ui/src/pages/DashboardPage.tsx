@@ -4,23 +4,21 @@ import {
   Banknote,
   CalendarClock,
   ChevronRight,
-  Lightbulb,
   PiggyBank,
   Plug,
   RefreshCw,
   ShieldAlert,
   Sparkles,
 } from 'lucide-react'
-import { bankingAPI, analyticsAPI } from '../services/api'
+import { bankingAPI, analyticsAPI, Nudge } from '../services/api'
 import { BankStatus, CashflowSummary, Commitment } from '../types'
 import { money as formatCurrency, dateDayMonth as formatDate, timeAgo } from '../lib/format'
 import ForecastChart from '../components/ForecastChart'
+import NudgeFeed, { UiNudge } from '../components/NudgeFeed'
 import AnimatedNumber from '../components/ui/AnimatedNumber'
 import InfoTip from '../components/ui/InfoTip'
 import { EXPLAIN } from '../copy/statExplainers'
 import useReveal from '../components/ui/useReveal'
-
-const COVERAGE_NUDGE_KEY = 'nudge.bankCoverage.dismissed'
 
 interface Upcoming {
   key: string
@@ -40,9 +38,7 @@ export default function DashboardPage() {
   const [message, setMessage] = useState('')
   const [justConnected, setJustConnected] = useState(false)
   const [forecastKey, setForecastKey] = useState(0)
-  const [coverageDismissed, setCoverageDismissed] = useState(
-    () => localStorage.getItem(COVERAGE_NUDGE_KEY) === '1',
-  )
+  const [nudges, setNudges] = useState<Nudge[]>([])
 
   const revealRef = useReveal(!!summary)
 
@@ -50,6 +46,7 @@ export default function DashboardPage() {
     loadBankStatus()
     loadSummary()
     loadCommitments()
+    analyticsAPI.getNudges().then((res) => setNudges(res.data)).catch(() => {})
 
     const params = new URLSearchParams(window.location.search)
     const bankConnected = params.get('bank_connected')
@@ -127,11 +124,6 @@ export default function DashboardPage() {
     }
   }
 
-  const dismissCoverageNudge = () => {
-    localStorage.setItem(COVERAGE_NUDGE_KEY, '1')
-    setCoverageDismissed(true)
-  }
-
   const hasAccounts = (summary?.accounts.length ?? 0) > 0
   const safeToSpendNegative = (summary?.safe_to_spend ?? 0) < 0
   const suggestedCount = commitments.filter((c) => c.status === 'suggested').length
@@ -163,7 +155,28 @@ export default function DashboardPage() {
     .slice(0, 4)
 
   const providers = Array.from(new Set((bankStatus?.connections ?? []).map((c) => c.provider_name)))
-  const showCoverageNudge = hasAccounts && providers.length === 1 && !coverageDismissed
+
+  // The feed: the client-side coverage nudge (it has a CTA) + server-computed
+  // observations, ranked. NudgeFeed handles per-nudge dismissal.
+  const feedNudges: UiNudge[] = [
+    ...(hasAccounts && providers.length === 1
+      ? [{
+          id: 'bankCoverage',
+          body: (
+            <>
+              Your numbers only see {providers[0]}. If you bank elsewhere too, connect it so
+              safe-to-spend and net worth are trustworthy.
+            </>
+          ),
+          cta: { label: loading ? 'Connecting…' : 'Connect', onClick: handleConnectBank, disabled: loading },
+        }]
+      : []),
+    ...nudges.map((n) => ({
+      id: n.id,
+      body: <>{n.body}</>,
+      detail: n.detail,
+    })),
+  ]
 
   return (
     <div ref={revealRef} className="max-w-7xl mx-auto px-4 py-6 sm:py-10">
@@ -336,24 +349,9 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Nudge slot: one honest, dismissible observation at a time. */}
-      {showCoverageNudge && (
-        <div className="mb-6 card px-4 py-3 flex flex-wrap items-center gap-3" data-reveal>
-          <Lightbulb className="w-4 h-4 text-accent shrink-0" />
-          <span className="flex-1 min-w-0 text-sm text-slate-300">
-            Your numbers only see {providers[0]}. If you bank elsewhere too, connect it so
-            safe-to-spend and net worth are trustworthy.
-          </span>
-          <span className="flex gap-2 shrink-0">
-            <button onClick={handleConnectBank} disabled={loading} className="btn-ghost !py-1.5 !text-accent">
-              {loading ? 'Connecting…' : 'Connect'}
-            </button>
-            <button onClick={dismissCoverageNudge} className="btn-ghost !py-1.5">
-              Dismiss
-            </button>
-          </span>
-        </div>
-      )}
+      {/* Nudge feed: a few honest, dismissible observations (cash drag, FSCS,
+          bank coverage). Facts with their arithmetic — never advice. */}
+      <NudgeFeed nudges={feedNudges} />
     </div>
   )
 }

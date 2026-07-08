@@ -255,7 +255,11 @@ export const analyticsAPI = {
     api.get('/analytics/forecast', { params: { horizon } }),
   getSpending: (
     period: string = 'since_payday', frm?: string, to?: string,
-    opts: { excludeCommitments?: boolean; lens?: string; hideTransfers?: boolean; hideCardPayments?: boolean } = {},
+    opts: {
+      excludeCommitments?: boolean; lens?: string; hideTransfers?: boolean; hideCardPayments?: boolean
+      // Scope the category + merchant breakdown to the active drill.
+      accountId?: string; kind?: string
+    } = {},
   ) =>
     api.get('/analytics/spending', {
       params: {
@@ -264,6 +268,8 @@ export const analyticsAPI = {
         lens: opts.lens || undefined,
         hide_transfers: opts.hideTransfers || undefined,
         hide_card_payments: opts.hideCardPayments || undefined,
+        account_id: opts.accountId || undefined,
+        kind: opts.kind || undefined,
       },
     }),
   getSpendingTrend: (months: number = 6, excludeCommitments = false) =>

@@ -101,6 +101,7 @@ def get_spending(
     frm: date | None = None, to: date | None = None,
     exclude_commitments: bool = False, lens: str = "money_out",
     hide_transfers: bool = False, hide_card_payments: bool = False,
+    account_id: str | None = None, kind: str | None = None,
 ) -> dict:
     """Spending breakdown for a period, under one of two lenses.
 
@@ -112,6 +113,12 @@ def get_spending(
     - 'purchases': spend booked at purchase time (card purchases + cash
       purchases), excluding transfers and card repayments so a purchase is
       never double-counted with its later repayment.
+
+    `account_id` and `kind` scope the breakdown to one account or one side of
+    the split (cash/credit) so the category donut and merchant list track the
+    active drill — a click on "Charged to credit" narrows them to card spend.
+    They intentionally do NOT change the period reference figures, which are
+    computed from a separate unscoped call.
     """
     accounts, settings = _load(db, user)
     roles = resolve_roles(accounts, settings)
@@ -120,7 +127,7 @@ def get_spending(
     commitment_keys = commitment_match_keys(db, user)
     financed = financed_transaction_ids(db, user)
 
-    txns = (
+    txns_all = (
         db.query(Transaction)
         .join(Account)
         .filter(
@@ -130,7 +137,10 @@ def get_spending(
         )
         .all()
     )
-    transfers = _detect_internal_transfers(txns)
+    # Detect transfers on the full set (pairing needs both accounts), then scope.
+    transfers = _detect_internal_transfers(txns_all)
+    txns = [tx for tx in txns_all if not account_id or str(tx.account_id) == account_id]
+    kind_scope = kind if kind in ("cash", "credit") else None
 
     by_category: dict[str, dict] = defaultdict(lambda: {"total": Decimal(0), "count": 0})
     by_merchant: dict[str, Decimal] = defaultdict(Decimal)
@@ -139,9 +149,11 @@ def get_spending(
         keys = commitment_keys if exclude_commitments else set()
         charged_to_credit = Decimal(0)
         paid_from_cash = Decimal(0)
-        for tx, kind in _iter_spending(txns, transfers, roles, financed, keys):
+        for tx, tx_kind in _iter_spending(txns, transfers, roles, financed, keys):
+            if kind_scope and tx_kind != kind_scope:
+                continue
             amount = _d(tx.amount)
-            if kind == "credit":
+            if tx_kind == "credit":
                 charged_to_credit += amount
             else:
                 paid_from_cash += amount

@@ -86,16 +86,22 @@ def get_spending(
     lens: str = "money_out",
     hide_transfers: bool = False,
     hide_card_payments: bool = False,
+    account_id: str | None = None,
+    kind: str | None = None,
 ) -> SpendingResponse:
     """Spending breakdown for a period (since_payday|this_month|last_30|custom).
 
     lens: 'money_out' (default — cash that left your bank, reconciles to a
     statement) or 'purchases' (spend booked at purchase time).
+
+    account_id/kind scope the category + merchant breakdown to the active drill
+    (an account, or the cash/credit side) without changing the period figures.
     """
     return SpendingResponse(
         **analytics_service.get_spending(
             db, current_user, period, frm, to, exclude_commitments,
             lens=lens, hide_transfers=hide_transfers, hide_card_payments=hide_card_payments,
+            account_id=account_id, kind=kind,
         )
     )
 

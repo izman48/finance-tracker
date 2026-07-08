@@ -121,9 +121,13 @@ class TestNetWorthHistory:
     def test_assets_included_stepwise(self, db_session):
         user = _user(db_session)
         _account(db_session, user, 100)
+        # Use the code's own "today" (UTC) so the newest valuation is dated on
+        # the same day the history's final point is computed for — otherwise a
+        # local/UTC date-boundary drops it and the assertion flakes.
+        today = svc._today()
         _asset(db_session, user, "ISA", {
-            date.today() - timedelta(days=400): "5000",
-            date.today(): "7000",
+            today - timedelta(days=400): "5000",
+            today: "7000",
         })
         history = svc.net_worth_history(db_session, user, months=2)
         assert history[-1]["net_worth"] == Decimal("7100")

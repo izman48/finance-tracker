@@ -18,7 +18,7 @@ from app.models.commitment_rule import (
 from app.models.planned_item import PlannedItem, PlannedKind
 from app.models.repayment_schedule_item import RepaymentScheduleItem
 from app.models.category_rule import CategoryRule, RulePack, merchant_match_key
-from app.models.asset import Asset, AssetValuation, ASSET_TYPES
+from app.models.asset import Asset, AssetFlow, AssetValuation, ASSET_TYPES
 
 __all__ = [
     "User",
@@ -43,6 +43,7 @@ __all__ = [
     "RulePack",
     "merchant_match_key",
     "Asset",
+    "AssetFlow",
     "AssetValuation",
     "ASSET_TYPES",
 ]

@@ -18,12 +18,19 @@ export default function UpdateAssetValueModal({
   // Liabilities are shown/entered as a positive "owed" figure, stored negative.
   const [value, setValue] = useState(String(Math.abs(latestValue(asset))))
   const [valuedAt, setValuedAt] = useState('')
+  // Optional: money added (+) or withdrawn (−) since the last update. Recording
+  // it lets the Wealth headline tell saving apart from growth.
+  const [flow, setFlow] = useState('')
   const [saving, setSaving] = useState(false)
 
   const save = async () => {
     if (value === '') return
     setSaving(true)
     const stored = isLiab ? -Math.abs(Number(value)) : Number(value)
+    const flowAmount = Number(flow)
+    if (flow !== '' && Number.isFinite(flowAmount) && flowAmount !== 0) {
+      await assetsAPI.addFlow(asset.id, { amount: flowAmount, flow_date: valuedAt || undefined })
+    }
     await assetsAPI.addValuation(asset.id, { value: stored, valued_at: valuedAt || undefined })
     onSaved()
   }
@@ -44,6 +51,24 @@ export default function UpdateAssetValueModal({
             className="input"
             autoFocus
           />
+          {!isLiab && (
+            <div>
+              <label className="label">
+                Added or withdrew since last update (£, optional — use − for withdrawals)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={flow}
+                onChange={(e) => setFlow(e.target.value)}
+                placeholder="e.g. 500 added, -200 withdrawn"
+                className="input"
+              />
+              <p className="text-xs text-slate-500 mt-1">
+                Recording this lets Wealth split your change into saving vs growth.
+              </p>
+            </div>
+          )}
           <div>
             <label className="label">As of (optional, defaults to today)</label>
             <input type="date" value={valuedAt} onChange={(e) => setValuedAt(e.target.value)} className="input" />

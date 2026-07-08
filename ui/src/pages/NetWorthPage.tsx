@@ -10,7 +10,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { assetsAPI, analyticsAPI, bankingAPI, Asset, NetWorthPoint, Projection } from '../services/api'
+import { assetsAPI, analyticsAPI, bankingAPI, Asset, AssetDecomposition, NetWorthPoint, Projection } from '../services/api'
 import { BankStatus, CashflowSummary, SummaryAccount } from '../types'
 import { ASSET_TYPE_LABEL, latestValue, isLiabilityType } from '../lib/assets'
 import { gbp0 as gbp, timeAgo } from '../lib/format'
@@ -115,6 +115,7 @@ export default function NetWorthPage() {
   const [growth, setGrowth] = useState(() => localStorage.getItem('wealth.growth') ?? '5')
   const [showTargetForm, setShowTargetForm] = useState(false)
   const [projection, setProjection] = useState<Projection | null>(null)
+  const [decomp, setDecomp] = useState<AssetDecomposition | null>(null)
   const [updating, setUpdating] = useState<Asset | null>(null)
   const [settingsAccount, setSettingsAccount] = useState<SummaryAccount | null>(null)
   const confirm = useConfirm()
@@ -123,16 +124,18 @@ export default function NetWorthPage() {
 
   const load = async (m = months) => {
     try {
-      const [h, a, s, b] = await Promise.all([
+      const [h, a, s, b, d] = await Promise.all([
         assetsAPI.netWorthHistory(m),
         assetsAPI.list(),
         analyticsAPI.getSummary(),
         bankingAPI.getConnectionStatus(),
+        assetsAPI.decomposition(m),
       ])
       setHistory(h.data)
       setAssets(a.data)
       setSummary(s.data)
       setBankStatus(b.data)
+      setDecomp(d.data)
     } catch (e) {
       console.error('Failed to load net worth', e)
     } finally {
@@ -342,6 +345,27 @@ export default function NetWorthPage() {
             {change >= 0 ? '+' : ''}{gbp(change)} over the period
             <InfoTip text={EXPLAIN.netWorthChange} side="bottom" align="left" />
           </div>
+          {decomp && Number(decomp.assets_delta) !== 0 && (
+            <div className="text-xs text-slate-500 mt-1.5 tnum flex items-center gap-1.5 flex-wrap">
+              {decomp.flows_recorded > 0 ? (
+                <>
+                  Assets {Number(decomp.assets_delta) >= 0 ? '+' : '−'}{gbp(Math.abs(Number(decomp.assets_delta)))} —{' '}
+                  {gbp(Math.abs(Number(decomp.contributions)))} {Number(decomp.contributions) >= 0 ? 'added' : 'withdrawn'}{' '}
+                  · {Number(decomp.growth) >= 0 ? '+' : '−'}{gbp(Math.abs(Number(decomp.growth)))} growth
+                  <InfoTip
+                    text="Growth = the change in your manually tracked assets minus the deposits and withdrawals you've recorded. Anything you didn't record shows up as growth. Bank balances aren't part of this split — the ledger already explains those."
+                    side="bottom"
+                    align="left"
+                  />
+                </>
+              ) : (
+                <>
+                  Assets {Number(decomp.assets_delta) >= 0 ? '+' : '−'}{gbp(Math.abs(Number(decomp.assets_delta)))} over the period —
+                  record deposits and withdrawals when you update a value to split saving from growth.
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

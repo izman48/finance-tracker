@@ -48,6 +48,12 @@ class Asset(Base):
         cascade="all, delete-orphan",
         order_by="AssetValuation.valued_at",
     )
+    flows: Mapped[list["AssetFlow"]] = relationship(
+        "AssetFlow",
+        back_populates="asset",
+        cascade="all, delete-orphan",
+        order_by="AssetFlow.flow_date",
+    )
 
 
 class AssetValuation(Base):
@@ -68,3 +74,29 @@ class AssetValuation(Base):
     )
 
     asset: Mapped["Asset"] = relationship("Asset", back_populates="valuations")
+
+
+class AssetFlow(Base):
+    """A recorded deposit into (+) or withdrawal from (−) an asset.
+
+    Valuations alone can't tell saving from market movement; flows are what
+    lets the decomposition say "£8k up — £5k added, £3k growth". Growth in a
+    window = Δvaluation − Σflows.
+    """
+
+    __tablename__ = "asset_flows"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    asset_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("assets.id", ondelete="CASCADE"), index=True
+    )
+
+    # Signed: positive = money in, negative = money out. Wealth data — encrypted.
+    amount: Mapped[Decimal] = mapped_column(UserEncryptedDecimal)
+    flow_date: Mapped[date] = mapped_column(Date, index=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    asset: Mapped["Asset"] = relationship("Asset", back_populates="flows")

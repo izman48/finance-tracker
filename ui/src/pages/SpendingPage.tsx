@@ -77,6 +77,11 @@ export default function SpendingPage() {
   const [frm, setFrm] = useState('')
   const [to, setTo] = useState('')
   const [data, setData] = useState<Spending | null>(null)
+  // A second, scoped aggregate that drives the category donut + merchant list
+  // when a drill is active, so "Charged to credit" refilters the breakdown too
+  // (not just the transaction list). Null → show the unscoped `data` breakdown.
+  // The label travels WITH the data so the two can never disagree mid-refetch.
+  const [breakdown, setBreakdown] = useState<{ data: Spending; label: string } | null>(null)
   const [prevTotal, setPrevTotal] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   // Persisted: "how am I spending the rest of my money" is a standing question.
@@ -137,6 +142,13 @@ export default function SpendingPage() {
   const [showAllMerchants, setShowAllMerchants] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
 
+  // The breakdown (donut + merchants) tracks the drill: the cash/credit split
+  // and the account picker scope it. Category/merchant/search stay list-only so
+  // the donut keeps showing the full breakdown you're drilling within, and a
+  // tapped slice still reconciles to the list beneath it.
+  const breakdownScopeKind = drillKind === 'cash' || drillKind === 'credit' ? drillKind : undefined
+  const breakdownActive = !!selectedAccount || !!breakdownScopeKind
+
   const listRef = useRef<HTMLDivElement>(null)
   const showToast = useToast()
   const revealRef = useReveal(!loading && !!data)
@@ -177,6 +189,52 @@ export default function SpendingPage() {
       .catch((e) => console.error('Failed to load spending', e))
       .finally(() => setLoading(false))
   }, [period, frm, to, excludeCommitments, lens, hideTransfers, hideCardPayments, reloadKey])
+
+  // Scoped breakdown for the donut + merchants when a drill is active. Skipped
+  // otherwise (the unscoped `data` already carries the full breakdown).
+  useEffect(() => {
+    if (!breakdownActive) {
+      setBreakdown(null)
+      return
+    }
+    if (period === 'custom' && (!frm || !to)) return
+    let cancelled = false
+    analyticsAPI
+      .getSpending(period, period === 'custom' ? frm : undefined, period === 'custom' ? to : undefined, {
+        excludeCommitments,
+        lens,
+        hideTransfers,
+        hideCardPayments,
+        accountId: selectedAccount || undefined,
+        kind: breakdownScopeKind,
+      })
+      .then((res) => {
+        if (cancelled) return
+        const d = res.data as Spending
+        d.total_spent = Number(d.total_spent)
+        d.by_category = d.by_category.map((c) => ({ ...c, total: Number(c.total) }))
+        d.top_merchants = d.top_merchants.map((m) => ({ ...m, total: Number(m.total) }))
+        // Caption the scope this fetch represents, captured at request time so
+        // it always matches `d` (never the label of a newer, pending scope).
+        const acct = selectedAccount
+          ? accounts.find((a) => a.id === selectedAccount)?.display_name ?? 'Unknown account'
+          : null
+        const label = [
+          breakdownScopeKind === 'credit' ? 'on credit' : breakdownScopeKind === 'cash' ? 'from bank' : null,
+          acct,
+        ]
+          .filter(Boolean)
+          .join(' · ')
+        setBreakdown({ data: d, label })
+      })
+      .catch((e) => !cancelled && console.error('Failed to load scoped breakdown', e))
+    return () => {
+      cancelled = true
+    }
+  }, [
+    breakdownActive, breakdownScopeKind, selectedAccount, accounts, period, frm, to,
+    excludeCommitments, lens, hideTransfers, hideCardPayments, reloadKey,
+  ])
 
   // vs the previous same-length window — a "pace" signal on the headline.
   useEffect(() => {
@@ -301,9 +359,13 @@ export default function SpendingPage() {
     toggleExcludeCommitments(false)
   }
 
-  // Visible chips so the "I tapped Groceries" state is always legible.
+  // Visible chips so the "I tapped Groceries" state is always legible. Every
+  // active filter must appear here — the reset bar, chip row and Filters
+  // highlight all key off chips.length, so an omission hides a live filter.
   const chips: { key: string; label: string; onClear: () => void }[] = [
     ...(drillKind ? [{ key: 'kind', label: KIND_LABEL[drillKind], onClear: () => setDrillKind(null) }] : []),
+    ...(selectedAccount ? [{ key: 'account', label: accountName(selectedAccount), onClear: () => setSelectedAccount('') }] : []),
+    ...(debouncedSearch ? [{ key: 'search', label: `“${debouncedSearch}”`, onClear: () => setSearch('') }] : []),
     ...selectedCategories.map((c) => ({
       key: `cat-${c}`,
       label: c,
@@ -415,7 +477,13 @@ export default function SpendingPage() {
     }
   }
 
-  const maxCat = data?.by_category[0]?.total ?? 1
+  // The breakdown (donut + merchants) follows the active scope drill; falls
+  // back to the full-period `data` while a scope is loading or inactive. The
+  // label is only shown once its matching data has landed, so the caption and
+  // the numbers beneath it always agree.
+  const breakdownData = breakdown ? breakdown.data : data
+  const maxCat = breakdownData?.by_category[0]?.total ?? 1
+  const scopeLabel = breakdown ? breakdown.label : ''
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const listCategories = Array.from(new Set([...facets.categories])).sort()
 
@@ -464,8 +532,21 @@ export default function SpendingPage() {
       </div>
 
       {/* Exclusions (commitments / transfers / card payments) all live in one
-          place — the Filters panel below. */}
-      <div className="mb-5" />
+          place — the Filters panel below. When a drill is active, a prominent
+          reset sits right here, next to the figures it's scoping. */}
+      {chips.length > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-5 rounded-xl border border-accent/25 bg-accent/[0.06] px-4 py-3">
+          <span className="text-sm text-slate-300">
+            You're viewing a filtered slice — {chips.length} filter{chips.length !== 1 ? 's' : ''} applied.
+          </span>
+          <button onClick={clearAllFilters} className="btn-ghost !py-1.5 shrink-0">
+            <X className="w-4 h-4" />
+            Remove all filters
+          </button>
+        </div>
+      ) : (
+        <div className="mb-5" />
+      )}
 
       <MonthlySpendingChart excludeCommitments={excludeCommitments} />
 
@@ -602,14 +683,17 @@ export default function SpendingPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-8">
             {/* Categories */}
             <div className="card-pad" data-reveal>
-              <h2 className="font-display font-semibold text-slate-100 mb-4">By category</h2>
-              <CategoryDonut categories={data.by_category} total={data.total_spent} />
+              <h2 className="font-display font-semibold text-slate-100 mb-4">
+                By category
+                {scopeLabel && <span className="ml-2 text-xs font-normal text-accent">{scopeLabel}</span>}
+              </h2>
+              <CategoryDonut categories={(breakdownData ?? data).by_category} total={(breakdownData ?? data).total_spent} />
               <div className="space-y-4">
-                {data.by_category.map((c, i) => (
+                {(breakdownData ?? data).by_category.map((c, i) => (
                   <button
                     type="button"
                     key={c.category}
-                    onClick={() => drill({ category: c.category, kind: null, merchant: '' })}
+                    onClick={() => drill({ category: c.category, merchant: '' })}
                     className="block w-full text-left group"
                   >
                     <div className="flex justify-between gap-3 text-sm mb-1.5">
@@ -637,13 +721,14 @@ export default function SpendingPage() {
             <div className="card-pad" data-reveal>
               <h2 className="font-display font-semibold text-slate-100 mb-4">
                 {showAllMerchants ? 'All merchants' : 'Top merchants'}
+                {scopeLabel && <span className="ml-2 text-xs font-normal text-accent">{scopeLabel}</span>}
               </h2>
               <div className={`space-y-3 ${showAllMerchants ? 'max-h-96 overflow-y-auto pr-1 -mr-1' : ''}`}>
-                {(showAllMerchants ? data.top_merchants : data.top_merchants.slice(0, MERCHANTS_DEFAULT)).map((m, i) => (
+                {(showAllMerchants ? (breakdownData ?? data).top_merchants : (breakdownData ?? data).top_merchants.slice(0, MERCHANTS_DEFAULT)).map((m, i) => (
                   <button
                     type="button"
                     key={m.merchant}
-                    onClick={() => drill({ merchant: m.merchant, kind: null, category: '' })}
+                    onClick={() => drill({ merchant: m.merchant, category: '' })}
                     className="flex items-center gap-3 w-full text-left group"
                   >
                     <div
@@ -658,7 +743,7 @@ export default function SpendingPage() {
                   </button>
                 ))}
               </div>
-              {data.top_merchants.length > MERCHANTS_DEFAULT && (
+              {(breakdownData ?? data).top_merchants.length > MERCHANTS_DEFAULT && (
                 <button
                   type="button"
                   onClick={() => setShowAllMerchants((v) => !v)}
@@ -666,7 +751,7 @@ export default function SpendingPage() {
                 >
                   {showAllMerchants
                     ? 'Show less'
-                    : `Show all ${data.top_merchants.length} merchants`}
+                    : `Show all ${(breakdownData ?? data).top_merchants.length} merchants`}
                 </button>
               )}
             </div>

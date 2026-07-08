@@ -599,6 +599,50 @@ class TestMoneyOutLens:
         assert float(h["total_spent"]) == 50.0
 
 
+class TestSpendingScope:
+    """account_id / kind scope the category + merchant breakdown to the active
+    drill (an account, or the cash/credit side) so the donut tracks the click."""
+
+    def _seed(self, db):
+        user = _user(db)
+        cur = _account(db, user, "TRANSACTION", "1000", "Cur")
+        card = _account(db, user, "CREDIT_CARD", "-30", "Card")
+        d = date(2026, 7, 10)
+        _tx(db, cur, 60, d, ttype="debit", merchant="Tesco")     # cash purchase
+        _tx(db, card, 120, d, ttype="debit", merchant="Amazon")  # card purchase
+        return user, cur, card
+
+    def _win(self, db, user, **kw):
+        return svc.get_spending(
+            db, user, period="custom", frm=date(2026, 7, 1), to=date(2026, 7, 31),
+            lens="purchases", **kw,
+        )
+
+    def test_kind_credit_scopes_breakdown_to_card_purchases(self, db_session):
+        user, _cur, _card = self._seed(db_session)
+        s = self._win(db_session, user, kind="credit")
+        assert float(s["total_spent"]) == 120.0
+        assert {m["merchant"] for m in s["top_merchants"]} == {"Amazon"}
+
+    def test_kind_cash_scopes_breakdown_to_bank_purchases(self, db_session):
+        user, _cur, _card = self._seed(db_session)
+        s = self._win(db_session, user, kind="cash")
+        assert float(s["total_spent"]) == 60.0
+        assert {m["merchant"] for m in s["top_merchants"]} == {"Tesco"}
+
+    def test_account_id_scopes_breakdown_to_one_account(self, db_session):
+        user, _cur, card = self._seed(db_session)
+        s = self._win(db_session, user, account_id=str(card.id))
+        assert float(s["total_spent"]) == 120.0
+        assert {m["merchant"] for m in s["top_merchants"]} == {"Amazon"}
+
+    def test_unscoped_includes_both_sides(self, db_session):
+        user, _cur, _card = self._seed(db_session)
+        s = self._win(db_session, user)
+        assert float(s["total_spent"]) == 180.0
+        assert {m["merchant"] for m in s["top_merchants"]} == {"Tesco", "Amazon"}
+
+
 class TestSkipCommitment:
     def test_skip_advances_next_occurrence_one_step(self, db_session):
         user = _user(db_session)

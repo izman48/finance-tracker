@@ -229,10 +229,14 @@ const isMoneyOut = (tx: SampleTx) => ROLE[tx.account_id] === 'spending' && tx.tr
 function spendingResponse(q: {
   period?: string; frm?: string; to?: string; exclude_commitments?: boolean
   lens?: string; hide_transfers?: boolean; hide_card_payments?: boolean
+  account_id?: string; kind?: string
 }) {
   const period = q.period ?? 'since_payday'
   const lens = q.lens ?? 'money_out'
   const [maxAgo, minAgo] = spendingRange(period, q.frm, q.to)
+  // account_id / kind scope the breakdown to the active drill (mirrors backend).
+  const kindScope = q.kind === 'cash' || q.kind === 'credit' ? q.kind : null
+  const inScope = (tx: SampleTx) => (!q.account_id || tx.account_id === q.account_id)
   const inRange = (tx: SampleTx) => tx.daysAgo <= maxAgo && tx.daysAgo >= minAgo
   const round = (n: number) => Math.round(n * 100) / 100
 
@@ -253,7 +257,8 @@ function spendingResponse(q: {
 
   if (lens === 'purchases') {
     for (const tx of L) {
-      if (!isPurchase(tx) || !inRange(tx) || (q.exclude_commitments && tx.is_commitment)) continue
+      if (!isPurchase(tx) || !inRange(tx) || !inScope(tx) || (q.exclude_commitments && tx.is_commitment)) continue
+      if (kindScope && purchaseKind(tx) !== kindScope) continue
       if (purchaseKind(tx) === 'credit') credit += tx.amount
       else cash += tx.amount
       tally(tx)
@@ -262,7 +267,7 @@ function spendingResponse(q: {
   } else {
     const comp = { card_repayments: 0, transfers: 0, commitments: 0, other: 0 }
     for (const tx of L) {
-      if (!isMoneyOut(tx) || !inRange(tx)) continue
+      if (!isMoneyOut(tx) || !inRange(tx) || !inScope(tx)) continue
       if (q.hide_transfers && tx.excluded_reason === 'internal_transfer') continue
       if (q.hide_card_payments && tx.excluded_reason === 'card_payment') continue
       if (q.exclude_commitments && tx.is_commitment) continue
@@ -332,23 +337,30 @@ function summaryResponse() {
   }
 }
 
-function forecastResponse() {
+function forecastResponse(horizon = '30') {
+  // The horizon control must actually move the chart: build a timeline whose
+  // length matches the requested window, with the monthly income/bills cycle
+  // repeated so a 1-year view looks like a year, not a stretched month.
+  const paydayIn = 24 // matches next_payday = nowPlus(24)
+  const days = horizon === 'payday' ? paydayIn : Math.max(1, Math.min(Number(horizon) || 30, 365))
   const start = AVAILABLE_CASH
-  const timeline: { date: string; balance: number; events: any[] }[] = []
+  const timeline: { date: string; balance: number; events: { label: string; amount: number; kind: string }[] }[] = []
   let bal = start
   let min = start
   let minDate = isoDate(new Date())
-  for (let i = 0; i <= 30; i++) {
-    if (i === 8) bal -= CREDIT_OWED
-    if (i === 15) bal -= 1100
-    if (i === 24) bal += 3200
+  for (let i = 0; i <= days; i++) {
+    const dom = i % 30 // repeating monthly cycle
+    const events: { label: string; amount: number; kind: string }[] = []
+    if (i > 0 && dom === 8) { bal -= CREDIT_OWED; events.push({ label: 'Harbor Rewards payment', amount: -CREDIT_OWED, kind: 'repayment' }) }
+    if (i > 0 && dom === 15) { bal -= 1100; events.push({ label: 'Rent', amount: -1100, kind: 'commitment' }) }
+    if (i > 0 && dom === 24) { bal += 3200; events.push({ label: 'Salary', amount: 3200, kind: 'income' }) }
     bal = Math.round(bal * 100) / 100
     const date = isoDate(nowPlus(i))
-    timeline.push({ date, balance: bal, events: [] })
+    timeline.push({ date, balance: bal, events })
     if (bal < min) { min = bal; minDate = date }
   }
   return {
-    horizon: '30', horizon_end: isoDate(nowPlus(30)), start_balance: start,
+    horizon, horizon_end: isoDate(nowPlus(days)), start_balance: start,
     end_balance: bal, min_balance: min, min_date: minDate, overdraft_limit: 500,
     breaches: [], timeline,
   }
@@ -445,8 +457,17 @@ function readParams(params: unknown): TxQuery & Record<string, any> {
 
 /** The sample response for a GET endpoint, or {} for anything unmatched. */
 export function sampleResponse(url: string, params: unknown): unknown {
+  const [path, queryString] = url.split('?')
   const p = readParams(params)
-  const path = url.split('?')[0]
+  // Some calls embed params directly in the URL (e.g. net-worth-history's
+  // ?months=) instead of axios `params`; merge those in so a filter is honoured
+  // however it was passed — otherwise the sample silently ignores it.
+  if (queryString) {
+    const fromUrl = readParams(new URLSearchParams(queryString)) as Record<string, unknown>
+    for (const [k, v] of Object.entries(fromUrl)) {
+      if ((p as Record<string, unknown>)[k] === undefined) (p as Record<string, unknown>)[k] = v
+    }
+  }
   const is = (suffix: string) => path.endsWith(suffix)
 
   if (is('/auth/me')) return { id: 'sample-user', email: 'you@sample.example' }
@@ -458,7 +479,7 @@ export function sampleResponse(url: string, params: unknown): unknown {
   }
   if (path.includes('/banking/transactions')) return txResponse(p)
   if (is('/analytics/summary')) return summaryResponse()
-  if (path.includes('/analytics/forecast')) return forecastResponse()
+  if (path.includes('/analytics/forecast')) return forecastResponse(String(p.horizon ?? '30'))
   if (path.includes('/analytics/spending/trend')) return trendResponse(Number(p.months) || 6)
   if (path.includes('/analytics/spending')) return spendingResponse(p as any)
   if (is('/analytics/commitments')) return commitmentsResponse()

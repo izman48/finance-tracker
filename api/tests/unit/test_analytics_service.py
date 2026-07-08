@@ -259,6 +259,46 @@ class TestSummary:
         assert (today + timedelta(days=20) - lp).days in (28, 29, 30, 31)
 
 
+class TestPaydaySelection:
+    """With several incomes, a flagged is_payday income defines payday; with no
+    flag, every confirmed income counts (unchanged back-compat)."""
+
+    def _income(self, db, user, label, next_in_days, is_payday=False):
+        r = CommitmentRule(
+            user_id=user.id, direction="income", label=label, amount=Decimal("2000"),
+            cadence="monthly", next_date=svc._today() + timedelta(days=next_in_days),
+            status=CommitmentStatus.CONFIRMED.value, is_payday=is_payday,
+        )
+        db.add(r)
+        db.commit()
+        return r
+
+    def test_flagged_income_defines_next_payday(self, db_session):
+        user = _user(db_session)
+        today = svc._today()
+        self._income(db_session, user, "Freelance", 3)                 # sooner, not payday
+        self._income(db_session, user, "Salary", 20, is_payday=True)   # the payday
+        assert svc.next_payday(db_session, user, today) == today + timedelta(days=20)
+
+    def test_flagged_income_defines_last_payday(self, db_session):
+        user = _user(db_session)
+        today = svc._today()
+        self._income(db_session, user, "Freelance", 3)
+        self._income(db_session, user, "Salary", 20, is_payday=True)
+        lp = svc.last_payday(db_session, user, today)
+        assert lp is not None and lp <= today
+        # salary's previous occurrence, ~a month before its next date
+        assert (today + timedelta(days=20) - lp).days in (28, 29, 30, 31)
+
+    def test_no_flag_falls_back_to_nearest_income(self, db_session):
+        user = _user(db_session)
+        today = svc._today()
+        self._income(db_session, user, "Freelance", 3)
+        self._income(db_session, user, "Salary", 20)
+        # nothing flagged -> nearest confirmed income wins, as before
+        assert svc.next_payday(db_session, user, today) == today + timedelta(days=3)
+
+
 class TestCreditRepayments:
     def test_flex_installments_recur_monthly(self, db_session):
         user = _user(db_session)

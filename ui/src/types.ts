@@ -96,6 +96,7 @@ export interface Commitment {
   status: 'suggested' | 'confirmed' | 'dismissed'
   account_id: string | null
   match_key: string | null
+  is_payday?: boolean
 }
 
 export interface PlannedItem {

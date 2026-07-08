@@ -42,6 +42,14 @@ export default function CommitmentsPage() {
     await load()
   }
 
+  // Designate which income is payday. With several income streams the nearest
+  // credit isn't payday, so this is what safe-to-spend, the forecast and the
+  // "since payday" window key off. Multiple may be flagged (e.g. two jobs).
+  const handlePayday = async (c: Commitment) => {
+    await analyticsAPI.updateCommitment(c.id, { is_payday: !c.is_payday })
+    await load()
+  }
+
   const dismissAllSuggested = async () => {
     await Promise.all(
       commitments
@@ -126,8 +134,10 @@ export default function CommitmentsPage() {
       )}
 
       {/* Confirmed */}
-      <div className="grid md:grid-cols-2 gap-4 sm:gap-6" data-reveal>
-        <ConfirmedList title="Regular income" items={confirmedIncome} onRemove={(id) => setStatus(id, 'dismissed')} onEdit={setEditing} onSkip={handleSkip} positive />
+      {/* Explicit base column so mobile gets minmax(0,1fr), not an implicit
+          max-content track that overflows (see CLAUDE.md gotcha). */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6" data-reveal>
+        <ConfirmedList title="Regular income" items={confirmedIncome} onRemove={(id) => setStatus(id, 'dismissed')} onEdit={setEditing} onSkip={handleSkip} onPayday={handlePayday} positive />
         <ConfirmedList title="Regular expenses" items={confirmedExpense} onRemove={(id) => setStatus(id, 'dismissed')} onEdit={setEditing} onSkip={handleSkip} />
       </div>
 
@@ -183,6 +193,7 @@ function ConfirmedList({
   onRemove,
   onEdit,
   onSkip,
+  onPayday,
   positive,
 }: {
   title: string
@@ -190,10 +201,13 @@ function ConfirmedList({
   onRemove: (id: string) => void
   onEdit: (c: Commitment) => void
   onSkip: (c: Commitment) => void
+  onPayday?: (c: Commitment) => void
   positive?: boolean
 }) {
   const total = items.reduce((sum, c) => sum + monthlyEquivalent(c), 0)
   const sorted = [...items].sort((a, b) => monthlyEquivalent(b) - monthlyEquivalent(a))
+  // Nudge the user to pick a payday when they have several incomes and haven't.
+  const showPaydayHint = !!onPayday && items.length > 1 && !items.some((c) => c.is_payday)
 
   return (
     <div className="card">
@@ -205,22 +219,44 @@ function ConfirmedList({
           </span>
         )}
       </div>
+      {showPaydayHint && (
+        <div className="px-4 py-2 text-xs text-slate-500 border-b border-white/[0.06]">
+          Several incomes — star the one that's your payday so safe-to-spend and the forecast use it.
+        </div>
+      )}
       {items.length === 0 ? (
         <div className="p-4 text-sm text-slate-600">None confirmed yet.</div>
       ) : (
         <div className="divide-y divide-white/[0.06]">
           {sorted.map((c) => (
-            <div key={c.id} className="p-4 flex items-center justify-between">
-              <div>
-                <div className="font-medium text-slate-200">{c.label}</div>
+            <div key={c.id} className="p-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+              <div className="min-w-0 flex-1 basis-40">
+                <div className="font-medium text-slate-200 flex items-center gap-2">
+                  <span className="truncate">{c.label}</span>
+                  {c.is_payday && <span className="chip-pos shrink-0">Payday</span>}
+                </div>
                 <div className="text-sm text-slate-500">
                   {cadenceLabel(c)} · next {formatDate(c.next_date)}
                 </div>
               </div>
-              <div className="flex items-center gap-3">
+              {/* Wraps under the label on narrow phones instead of forcing
+                  the row (and the page) wider than the viewport. */}
+              <div className="flex flex-wrap items-center gap-3">
                 <span className={`font-semibold tnum ${positive ? 'text-pos' : 'text-slate-100'}`}>
                   {positive ? '+' : ''}{formatCurrency(c.amount)}
                 </span>
+                {onPayday && (
+                  <button
+                    onClick={() => onPayday(c)}
+                    className={`text-sm transition-colors ${c.is_payday ? 'text-accent' : 'text-slate-500 hover:text-accent'}`}
+                    title={c.is_payday
+                      ? 'This is your payday — sets your safe-to-spend window and forecast. Click to unset.'
+                      : 'Mark this as your payday'}
+                    aria-pressed={!!c.is_payday}
+                  >
+                    {c.is_payday ? '★' : '☆'} Payday
+                  </button>
+                )}
                 <button onClick={() => onSkip(c)} className="text-sm text-slate-500 hover:text-accent transition-colors" title={`Skip the ${formatDate(c.next_date)} occurrence (e.g. paid early)`}>
                   Skip
                 </button>

@@ -342,8 +342,15 @@ def skip_commitment(db: Session, user, commitment_id):
     return rule
 
 
-def next_payday(db: Session, user, from_date: date) -> date | None:
-    """Next confirmed income date on/after from_date."""
+def _payday_incomes(db: Session, user) -> list[CommitmentRule]:
+    """Confirmed income rules that define payday.
+
+    With several income streams the nearest credit (a freelance invoice, bank
+    interest) isn't payday. If the user has flagged which income is their payday
+    (is_payday), only those count; otherwise every confirmed income does, as
+    before. This is what safe-to-spend, the forecast and the since-payday window
+    all key off.
+    """
     incomes = (
         db.query(CommitmentRule)
         .filter(
@@ -353,21 +360,20 @@ def next_payday(db: Session, user, from_date: date) -> date | None:
         )
         .all()
     )
+    flagged = [r for r in incomes if r.is_payday]
+    return flagged or incomes
+
+
+def next_payday(db: Session, user, from_date: date) -> date | None:
+    """Next payday income date on/after from_date."""
+    incomes = _payday_incomes(db, user)
     dates = [occ for r in incomes for occ in commitment_occurrences(r, from_date, from_date + timedelta(days=400))]
     return min(dates) if dates else None
 
 
 def last_payday(db: Session, user, today: date) -> date | None:
-    """Most recent confirmed income date on/before today (steps back from next_date)."""
-    incomes = (
-        db.query(CommitmentRule)
-        .filter(
-            CommitmentRule.user_id == user.id,
-            CommitmentRule.direction == CommitmentDirection.INCOME.value,
-            CommitmentRule.status == CommitmentStatus.CONFIRMED.value,
-        )
-        .all()
-    )
+    """Most recent payday income date on/before today (steps back from next_date)."""
+    incomes = _payday_incomes(db, user)
     best: date | None = None
     for r in incomes:
         d = r.next_date

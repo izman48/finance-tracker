@@ -428,6 +428,7 @@ class CommitmentResponse(BaseModel):
     status: str
     account_id: uuid.UUID | None
     match_key: str | None = None
+    is_payday: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -469,6 +470,9 @@ class CommitmentUpdate(BaseModel):
     account_id: uuid.UUID | None = None
     # See CommitmentCreate.match_merchant. Empty string clears the match key.
     match_merchant: str | None = None
+    # "This is my payday" — only meaningful on income; the payday calc ignores
+    # the flag on expenses.
+    is_payday: bool | None = None
 
 
 class ForecastEvent(BaseModel):

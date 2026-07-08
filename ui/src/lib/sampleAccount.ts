@@ -383,13 +383,20 @@ function trendResponse(months: number) {
 }
 
 function commitmentsResponse() {
-  const mk = (label: string, amount: number, direction: string, nextIn: number, cadence = 'monthly') => ({
+  const mk = (
+    label: string, amount: number, direction: string, nextIn: number,
+    cadence = 'monthly', isPayday = false,
+  ) => ({
     id: `sc-${label}`, direction, label, amount, cadence, interval_days: null,
     interval_months: cadence === 'every_n_months' ? 12 : null, next_date: isoDate(nowPlus(nextIn)),
     source: 'detected', status: 'confirmed', account_id: null, match_key: `${direction}:${label.toLowerCase()}`,
+    is_payday: isPayday,
   })
   return [
-    mk('Salary', 3200, 'income', 24),
+    // Two income streams so the payday picker has something to disambiguate;
+    // the salary is the designated payday.
+    mk('Salary', 3200, 'income', 24, 'monthly', true),
+    mk('Freelance', 480, 'income', 9),
     mk('Rent', 1100, 'expense', 25),
     mk('Gym', 32, 'expense', 26),
     mk('Phone', 20, 'expense', 12),

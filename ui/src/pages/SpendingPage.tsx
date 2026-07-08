@@ -50,7 +50,7 @@ const PAGE_SIZE = 50
 
 const PERIODS = [
   { key: 'since_payday', label: 'Since payday' },
-  { key: 'this_month', label: 'This month' },
+  { key: 'this_month', label: 'Month to date' },
   { key: 'last_30', label: 'Last 30 days' },
   { key: 'custom', label: 'Custom' },
 ]

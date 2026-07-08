@@ -9,7 +9,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 
-from sqlalchemy import Date, DateTime, ForeignKey, String, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.encryption import UserEncryptedDecimal, UserEncryptedString
@@ -64,6 +64,15 @@ class CommitmentRule(Base):
 
     source: Mapped[str] = mapped_column(String(10), default=CommitmentSource.DETECTED.value)
     status: Mapped[str] = mapped_column(String(10), default=CommitmentStatus.SUGGESTED.value)
+
+    # User-designated "this is my payday": with multiple income streams, the
+    # nearest credit isn't necessarily payday. When any income is flagged, the
+    # payday calc (safe-to-spend, forecast, the since-payday window) uses only
+    # the flagged ones; otherwise it falls back to all confirmed income. Not
+    # sensitive, so a plain queryable column (unlike label/amount).
+    is_payday: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
 
     # Stable key derived from merchant/description, used to dedupe re-detection so a
     # dismissed/confirmed commitment is never re-suggested. Encrypted (it embeds the

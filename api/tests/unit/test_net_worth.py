@@ -2,7 +2,7 @@
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
-from app.models import Account, Asset, AssetValuation, Transaction, User
+from app.models import Account, Asset, AssetFlow, AssetValuation, Transaction, User
 from app.services import analytics_service as svc
 
 
@@ -89,6 +89,60 @@ class TestAssetsTotal:
         db_session.add(AssetValuation(asset_id=loan.id, value=Decimal("-6800"), valued_at=date.today()))
         db_session.commit()
         assert svc.assets_total(db_session, user) == Decimal("-800")  # 6000 − 6800
+
+
+class TestAssetDecomposition:
+    def _flow(self, db, asset, amount, when):
+        f = AssetFlow(asset_id=asset.id, amount=Decimal(str(amount)), flow_date=when)
+        db.add(f)
+        db.commit()
+        return f
+
+    def test_growth_is_delta_minus_flows(self, db_session):
+        user = _user(db_session)
+        today = svc._today()
+        a = _asset(db_session, user, "ISA", {
+            today - timedelta(days=200): "5000",
+            today: "7000",
+        })
+        self._flow(db_session, a, 1500, today - timedelta(days=90))
+        d = svc.asset_decomposition(db_session, user, months=6)
+        assert d["assets_delta"] == Decimal("2000")
+        assert d["contributions"] == Decimal("1500")
+        assert d["growth"] == Decimal("500")
+        assert d["flows_recorded"] == 1
+
+    def test_flows_outside_the_window_are_ignored(self, db_session):
+        user = _user(db_session)
+        today = svc._today()
+        a = _asset(db_session, user, "ISA", {today: "7000"})
+        self._flow(db_session, a, 9999, today - timedelta(days=400))  # before window
+        d = svc.asset_decomposition(db_session, user, months=6)
+        assert d["contributions"] == Decimal("0")
+        assert d["flows_recorded"] == 0
+
+    def test_withdrawals_subtract_from_contributions(self, db_session):
+        user = _user(db_session)
+        today = svc._today()
+        a = _asset(db_session, user, "ISA", {
+            today - timedelta(days=100): "10000",
+            today: "9500",
+        })
+        self._flow(db_session, a, -1000, today - timedelta(days=30))  # took £1k out
+        d = svc.asset_decomposition(db_session, user, months=6)
+        # Fell £500 despite a £1,000 withdrawal -> £500 of growth.
+        assert d["assets_delta"] == Decimal("-500")
+        assert d["contributions"] == Decimal("-1000")
+        assert d["growth"] == Decimal("500")
+
+    def test_scoped_to_the_user(self, db_session):
+        user, other = _user(db_session), _user(db_session)
+        today = svc._today()
+        theirs = _asset(db_session, other, "Their ISA", {today: "5000"})
+        self._flow(db_session, theirs, 5000, today - timedelta(days=10))
+        d = svc.asset_decomposition(db_session, user, months=6)
+        assert d["contributions"] == Decimal("0")
+        assert d["flows_recorded"] == 0
 
 
 class TestNetWorthProjection:

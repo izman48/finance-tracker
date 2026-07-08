@@ -7,9 +7,11 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
 from app.core.security import CurrentUser
-from app.models import Asset, AssetValuation
+from app.models import Asset, AssetFlow, AssetValuation
 from app.schemas import (
     AssetCreate,
+    AssetFlowCreate,
+    AssetFlowResponse,
     AssetResponse,
     AssetUpdate,
     AssetValuationCreate,
@@ -136,3 +138,46 @@ def delete_valuation(
     db.delete(valuation)
     db.commit()
     return {"message": "Valuation deleted"}
+
+
+@router.post("/{asset_id}/flows", response_model=AssetFlowResponse, status_code=status.HTTP_201_CREATED)
+def add_flow(
+    asset_id: str,
+    body: AssetFlowCreate,
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> AssetFlow:
+    """Record money added to (+) or withdrawn from (−) the asset, so the
+    contribution-vs-growth decomposition can tell saving from markets."""
+    asset = _own_asset(db, current_user.id, asset_id)
+    if body.amount == 0:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Flow amount can't be zero")
+    flow = AssetFlow(
+        asset_id=asset.id,
+        amount=body.amount,
+        flow_date=body.flow_date or analytics_service._today(),
+    )
+    db.add(flow)
+    db.commit()
+    db.refresh(flow)
+    return flow
+
+
+@router.delete("/{asset_id}/flows/{flow_id}")
+def delete_flow(
+    asset_id: str,
+    flow_id: str,
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    asset = _own_asset(db, current_user.id, asset_id)
+    flow = (
+        db.query(AssetFlow)
+        .filter(AssetFlow.id == flow_id, AssetFlow.asset_id == asset.id)
+        .first()
+    )
+    if not flow:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Flow not found")
+    db.delete(flow)
+    db.commit()
+    return {"message": "Flow deleted"}

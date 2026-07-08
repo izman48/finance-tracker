@@ -161,6 +161,17 @@ export interface NetWorthPoint {
   net_worth: string
 }
 
+export interface AssetDecomposition {
+  start_date: string
+  end_date: string
+  assets_start: string
+  assets_end: string
+  assets_delta: string
+  contributions: string
+  growth: string
+  flows_recorded: number
+}
+
 export interface ProjectionPoint {
   date: string
   value: string
@@ -187,6 +198,11 @@ export const assetsAPI = {
     api.post(`/assets/${id}/valuations`, data),
   removeValuation: (assetId: string, valuationId: string) =>
     api.delete(`/assets/${assetId}/valuations/${valuationId}`),
+  // Record money added (+) / withdrawn (−) so growth can be told from saving.
+  addFlow: (id: string, data: { amount: number; flow_date?: string }) =>
+    api.post(`/assets/${id}/flows`, data),
+  decomposition: (months = 12) =>
+    api.get<AssetDecomposition>('/analytics/net-worth-decomposition', { params: { months } }),
   netWorthHistory: (months = 12) =>
     api.get<NetWorthPoint[]>(`/analytics/net-worth-history?months=${months}`),
   // A projection from stated assumptions — an estimate, not advice.

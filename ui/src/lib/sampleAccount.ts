@@ -417,6 +417,25 @@ function netWorthHistory(months: number) {
   return out
 }
 
+function decompositionResponse(months: number) {
+  // Coherent with netWorthHistory: assets climb ~£300/mo in the sample. Say
+  // two-thirds of the move was contributions, the rest growth.
+  const delta = Math.min(months, 12) * 300
+  const contributions = Math.round(delta * (2 / 3))
+  const start = new Date()
+  start.setMonth(start.getMonth() - months)
+  return {
+    start_date: isoDate(start),
+    end_date: isoDate(new Date()),
+    assets_start: String(ASSETS_TOTAL - delta),
+    assets_end: String(ASSETS_TOTAL),
+    assets_delta: String(delta),
+    contributions: String(contributions),
+    growth: String(delta - contributions),
+    flows_recorded: 4,
+  }
+}
+
 function nudgesResponse() {
   // Mirrors the backend cash-drag arithmetic for the sample's £12,000 saver
   // at the curated 4.5% benchmark (see api reference/uk_reference.py).
@@ -546,6 +565,7 @@ export function sampleResponse(url: string, params: unknown): unknown {
   if (is('/analytics/commitments')) return commitmentsResponse()
   if (is('/analytics/planned-items')) return [{ id: 'sp1', name: 'New laptop', direction: 'expense', kind: 'installment_plan', start_date: isoDate(nowPlus(9)), amount: null, total_amount: 1200, installments: 6 }]
   if (is('/analytics/nudges')) return nudgesResponse()
+  if (path.includes('/analytics/net-worth-decomposition')) return decompositionResponse(Number(p.months) || 12)
   if (path.includes('/analytics/net-worth-projection')) return projectionResponse(p as Record<string, any>)
   if (path.includes('/analytics/net-worth-history')) return netWorthHistory(Number(p.months) || 12)
   if (is('/assets')) return assetsResponse()

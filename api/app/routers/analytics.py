@@ -18,6 +18,7 @@ from app.models import (
 )
 from app.schemas import (
     AccountSettingUpdate,
+    AssetDecomposition,
     CashflowSummary,
     CommitmentCreate,
     CommitmentFromTransaction,
@@ -67,6 +68,18 @@ def get_net_worth_history(
         NetWorthPoint(**point)
         for point in analytics_service.net_worth_history(db, current_user, months)
     ]
+
+
+@router.get("/net-worth-decomposition", response_model=AssetDecomposition)
+def get_net_worth_decomposition(
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+    months: int = 12,
+) -> AssetDecomposition:
+    """Contribution-vs-growth split of manual-asset movement over the window
+    (growth = Δvaluation − Σrecorded flows)."""
+    months = max(1, min(months, 60))
+    return AssetDecomposition(**analytics_service.asset_decomposition(db, current_user, months))
 
 
 @router.get("/nudges", response_model=list[NudgeResponse])

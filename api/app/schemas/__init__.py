@@ -119,6 +119,34 @@ class NetWorthPoint(BaseModel):
     net_worth: Decimal
 
 
+class AssetFlowCreate(BaseModel):
+    """Record money added to (+) or withdrawn from (−) an asset."""
+
+    amount: Decimal
+    flow_date: date | None = None
+
+
+class AssetFlowResponse(BaseModel):
+    id: uuid.UUID
+    amount: Decimal
+    flow_date: date
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AssetDecomposition(BaseModel):
+    """Contribution-vs-growth split of manual-asset movement over a window."""
+
+    start_date: date
+    end_date: date
+    assets_start: Decimal
+    assets_end: Decimal
+    assets_delta: Decimal
+    contributions: Decimal
+    growth: Decimal
+    flows_recorded: int
+
+
 class NudgeResponse(BaseModel):
     """An honest, dismissible observation: a fact + its arithmetic and source."""
 

@@ -47,7 +47,11 @@ def net_worth_projection(
     contribution = max(Decimal(0), monthly_contribution)
 
     timeline: list[dict] = [{"date": today, "value": _round2(current)}]
-    target_date: date | None = None
+    # Already there today (e.g. a target below current net worth) — say so,
+    # rather than "not reached" when growth is negative.
+    target_date: date | None = (
+        today if target_amount is not None and current >= target_amount else None
+    )
     value = current
     for m in range(1, MAX_MONTHS + 1):
         value = value * (1 + monthly_rate) + contribution

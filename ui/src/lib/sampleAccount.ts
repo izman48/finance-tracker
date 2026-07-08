@@ -432,8 +432,9 @@ function projectionResponse(q: Record<string, any>) {
   const round = (n: number) => Math.round(n * 100) / 100
   const timeline = [{ date: addM(0), value: String(round(NET_WORTH)) }]
   let value = NET_WORTH
-  let target_date: string | null = null
-  let monthsWanted = 120
+  // Already there today — mirror the backend's day-0 check.
+  let target_date: string | null = target != null && NET_WORTH >= target ? addM(0) : null
+  let monthsWanted = target_date ? 6 : 120
   for (let m = 1; m <= 600; m++) {
     value = value * (1 + r) + monthly
     if (target != null && !target_date && value >= target) {

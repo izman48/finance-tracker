@@ -118,6 +118,17 @@ class TestNetWorthProjection:
         year_on = [pt for pt in p["timeline"] if pt["date"] == svc._add_months(svc._today(), 12)]
         assert year_on and abs(year_on[0]["value"] - Decimal("10500")) < Decimal("2")
 
+    def test_target_already_reached_is_today(self, db_session):
+        user = _user(db_session)
+        _account(db_session, user, 5000)
+        p = svc.net_worth_projection(
+            db_session, user,
+            target_amount=Decimal("4000"),
+            monthly_contribution=Decimal("0"),
+            annual_growth_pct=Decimal("-10"),  # shrinking — month 1 check would miss it
+        )
+        assert p["target_date"] == svc._today()
+
     def test_unreachable_target_returns_none(self, db_session):
         user = _user(db_session)
         _account(db_session, user, 100)

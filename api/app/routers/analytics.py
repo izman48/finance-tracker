@@ -25,6 +25,7 @@ from app.schemas import (
     CommitmentUpdate,
     ForecastResponse,
     NetWorthPoint,
+    NudgeResponse,
     PlanFromTransaction,
     PlannedItemCreate,
     PlannedItemResponse,
@@ -66,6 +67,16 @@ def get_net_worth_history(
         NetWorthPoint(**point)
         for point in analytics_service.net_worth_history(db, current_user, months)
     ]
+
+
+@router.get("/nudges", response_model=list[NudgeResponse])
+def get_nudges(
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> list[NudgeResponse]:
+    """Honest, dismissible observations (cash drag, FSCS exposure). Facts with
+    their arithmetic and sources — never a recommendation."""
+    return [NudgeResponse(**n) for n in analytics_service.get_nudges(db, current_user)]
 
 
 @router.get("/net-worth-projection", response_model=ProjectionResponse)

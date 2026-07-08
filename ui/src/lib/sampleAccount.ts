@@ -417,6 +417,22 @@ function netWorthHistory(months: number) {
   return out
 }
 
+function nudgesResponse() {
+  // Mirrors the backend cash-drag arithmetic for the sample's £12,000 saver
+  // at the curated 4.5% benchmark (see api reference/uk_reference.py).
+  const potential = Math.round(SAVINGS_TOTAL * 0.045)
+  return [
+    {
+      id: 'cash_drag',
+      rank: 1,
+      body: `£${SAVINGS_TOTAL.toLocaleString('en-GB')} sits in savings accounts. If it's earning little or nothing, that's roughly £${potential.toLocaleString('en-GB')}/yr of interest at the best easy-access rate (4.5% as of 1 Jul 2026).`,
+      detail: `£${SAVINGS_TOTAL.toLocaleString('en-GB')} × 4.5% = £${potential.toLocaleString('en-GB')}/yr. We can't see your actual rate, so this compares against 0% — your real gap may be smaller. Benchmark: public best-buy tables (curated snapshot).`,
+      source: 'public best-buy tables (curated snapshot)',
+      as_of: '2026-07-01',
+    },
+  ]
+}
+
 // Mirrors the backend projection: compound monthly growth + contributions from
 // today's net worth. An estimate, not advice — same numbers as the real API.
 function projectionResponse(q: Record<string, any>) {
@@ -529,6 +545,7 @@ export function sampleResponse(url: string, params: unknown): unknown {
   if (path.includes('/analytics/spending')) return spendingResponse(p as any)
   if (is('/analytics/commitments')) return commitmentsResponse()
   if (is('/analytics/planned-items')) return [{ id: 'sp1', name: 'New laptop', direction: 'expense', kind: 'installment_plan', start_date: isoDate(nowPlus(9)), amount: null, total_amount: 1200, installments: 6 }]
+  if (is('/analytics/nudges')) return nudgesResponse()
   if (path.includes('/analytics/net-worth-projection')) return projectionResponse(p as Record<string, any>)
   if (path.includes('/analytics/net-worth-history')) return netWorthHistory(Number(p.months) || 12)
   if (is('/assets')) return assetsResponse()

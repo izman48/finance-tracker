@@ -182,6 +182,11 @@ class AssetAssumption(BaseModel):
     monthly_contribution: Decimal = Decimal(0)
 
 
+class SampledMonth(BaseModel):
+    month: str  # YYYY-MM
+    total: Decimal
+
+
 class ContributionBasis(BaseModel):
     """The cashflow arithmetic behind a derived contribution."""
 
@@ -193,6 +198,8 @@ class ContributionBasis(BaseModel):
     # False = the "all my future cashflow into my wealth" scenario: the
     # measured average is shown but NOT subtracted from the surplus.
     spending_subtracted: bool = True
+    # The evidence: each sampled month's measured spending.
+    sampled_months: list[SampledMonth] = []
 
 
 class ProjectionResponse(BaseModel):

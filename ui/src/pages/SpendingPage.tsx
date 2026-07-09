@@ -327,6 +327,37 @@ export default function SpendingPage() {
 
   const reloadAll = () => setReloadKey((k) => k + 1)
 
+  // Month drill-down from the Spending-history chart: clicking a bar filters
+  // the WHOLE page to that calendar month via the existing custom period, so
+  // every figure stays reconciled. Selection is derived from the range (no
+  // separate state to fall out of sync); clicking again clears it.
+  const monthBounds = (month: string) => {
+    const [y, m] = month.split('-').map(Number)
+    const lastDay = new Date(y, m, 0).getDate()
+    return {
+      start: `${month}-01`,
+      end: `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`,
+    }
+  }
+  const selectedMonth = useMemo(() => {
+    if (period !== 'custom' || !frm || !to) return null
+    const month = frm.slice(0, 7)
+    const b = monthBounds(month)
+    return frm === b.start && to === b.end ? month : null
+  }, [period, frm, to])
+  const handleSelectMonth = (month: string) => {
+    if (selectedMonth === month) {
+      setPeriod('since_payday')
+      setFrm('')
+      setTo('')
+    } else {
+      const b = monthBounds(month)
+      setFrm(b.start)
+      setTo(b.end)
+      setPeriod('custom')
+    }
+  }
+
   const accountName = (id: string) =>
     accounts.find((a) => a.id === id)?.display_name ?? 'Unknown account'
 
@@ -548,7 +579,11 @@ export default function SpendingPage() {
         <div className="mb-5" />
       )}
 
-      <MonthlySpendingChart excludeCommitments={excludeCommitments} />
+      <MonthlySpendingChart
+        excludeCommitments={excludeCommitments}
+        selectedMonth={selectedMonth}
+        onSelectMonth={handleSelectMonth}
+      />
 
       {period === 'custom' && (
         <div className="flex flex-wrap gap-3 mb-6">

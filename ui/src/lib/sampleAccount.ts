@@ -215,8 +215,15 @@ function txItem(tx: SampleTx) {
 function spendingRange(period: string, frm?: string, to?: string): [number, number] {
   // Returns [maxDaysAgo, minDaysAgo] inclusive window in "days ago" space.
   if (period === 'custom' && frm && to) {
-    const f = Math.round((Date.now() - new Date(frm).getTime()) / 864e5)
-    const tt = Math.round((Date.now() - new Date(to).getTime()) / 864e5)
+    // Date-only arithmetic (UTC midnights) so calendar bounds are exact —
+    // Date.now() deltas drift a day across timezones.
+    const dayDiff = (iso: string) => {
+      const [y, m, d] = iso.split('-').map(Number)
+      const t = new Date()
+      return Math.round((Date.UTC(t.getFullYear(), t.getMonth(), t.getDate()) - Date.UTC(y, m - 1, d)) / 864e5)
+    }
+    const f = dayDiff(frm)
+    const tt = dayDiff(to)
     return [Math.max(f, tt), Math.min(f, tt)]
   }
   if (period === 'this_month') return [new Date().getDate() - 1, 0]
@@ -291,8 +298,9 @@ function spendingResponse(q: {
   return {
     lens,
     period,
-    period_start: isoDate(nowMinus(maxAgo)),
-    period_end: isoDate(nowMinus(minAgo)),
+    // Custom ranges echo the requested dates verbatim, like the real backend.
+    period_start: period === 'custom' && q.frm ? q.frm : isoDate(nowMinus(maxAgo)),
+    period_end: period === 'custom' && q.to ? q.to : isoDate(nowMinus(minAgo)),
     total_spent: String(round(total)),
     charged_to_credit: String(round(credit)),
     paid_from_cash: String(round(cash)),

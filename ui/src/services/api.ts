@@ -199,6 +199,9 @@ export interface ContributionBasis {
   // False = "all my future cashflow into my wealth": the measured average is
   // shown but was not subtracted from the surplus.
   spending_subtracted: boolean
+  // What was actually subtracted and where it came from ('measured'|'custom').
+  spending_applied: string
+  spending_source: string
   // The evidence: each sampled month's measured spending (YYYY-MM).
   sampled_months: { month: string; total: string }[]
 }
@@ -243,6 +246,7 @@ export const assetsAPI = {
     monthly_contribution?: number
     annual_growth_pct?: number
     subtract_spending?: boolean
+    monthly_spending?: number
   }) => api.get<Projection>('/analytics/net-worth-projection', { params }),
 }
 

@@ -466,9 +466,11 @@ function projectionResponse(q: Record<string, any>) {
   const AVG_SPENDING = round2((980 + 1120 + 1040 + 1210 + 1005 + 1180) / 6)
   const derived = q.monthly_contribution == null
   // subtract_spending=false: "all my forecasted cashflow lands in my wealth" —
-  // the average is shown but not subtracted (mirrors the backend).
+  // the average is shown but not subtracted. A custom monthly_spending
+  // replaces the measured average entirely (mirrors the backend).
   const subtractSpending = String(q.subtract_spending ?? 'true') !== 'false'
-  const spendLeg = subtractSpending ? AVG_SPENDING : 0
+  const customSpend = q.monthly_spending != null ? Math.max(0, Number(q.monthly_spending)) : null
+  const spendLeg = !subtractSpending ? 0 : customSpend != null ? customSpend : AVG_SPENDING
   const basis = derived
     ? {
         income_monthly: String(round2(INCOME_MONTHLY)),
@@ -477,6 +479,8 @@ function projectionResponse(q: Record<string, any>) {
         contribution: String(round2(INCOME_MONTHLY - BILLS_MONTHLY - spendLeg)),
         spending_months_sampled: 6,
         spending_subtracted: subtractSpending,
+        spending_applied: String(round2(spendLeg)),
+        spending_source: subtractSpending && customSpend != null ? 'custom' : 'measured',
         sampled_months: [980, 1120, 1040, 1210, 1005, 1180].map((total, i) => {
           const d = new Date()
           d.setMonth(d.getMonth() - (6 - i))

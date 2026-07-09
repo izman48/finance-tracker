@@ -100,6 +100,7 @@ def get_net_worth_projection(
     monthly_contribution: Decimal | None = None,
     annual_growth_pct: Decimal = Decimal("5"),
     subtract_spending: bool = True,
+    monthly_spending: Decimal | None = None,
 ) -> ProjectionResponse:
     """Project net worth forward from stated assumptions (compound growth +
     monthly contributions). Omit monthly_contribution to derive it from the
@@ -114,6 +115,7 @@ def get_net_worth_projection(
             monthly_contribution=monthly_contribution,
             annual_growth_pct=annual_growth_pct,
             subtract_spending=subtract_spending,
+            monthly_spending=monthly_spending,
         )
     )
 

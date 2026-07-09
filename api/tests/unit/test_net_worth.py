@@ -201,6 +201,28 @@ class TestDerivedContribution:
         # month 1 = 1000 + 1500
         assert p["timeline"][1]["value"] == Decimal("2500.00")
 
+    def test_custom_monthly_spending_replaces_the_measured_average(self, db_session):
+        """The user's own spending estimate overrides history entirely."""
+        user = _user(db_session)
+        acc = _account(db_session, user, 1000)
+        self._commit(db_session, user, "income", 2000)
+        self._commit(db_session, user, "expense", 500)
+        # Heavy measured spending last month that the override must ignore.
+        last_m = date(svc._today().year, svc._today().month, 1) - timedelta(days=1)
+        _tx(db_session, acc, 5000, last_m.replace(day=10), ttype="debit")
+
+        p = svc.net_worth_projection(
+            db_session, user, annual_growth_pct=Decimal("0"),
+            monthly_spending=Decimal("100"),
+        )
+        b = p["contribution_basis"]
+        assert b["spending_source"] == "custom"
+        assert b["spending_applied"] == Decimal("100.00")
+        # Measurement still reported beside the applied estimate.
+        assert b["avg_spending_monthly"] > Decimal("100")
+        # Surplus = 2000 − 500 − 100 = 1400 → month 1 = 1000 + 1400.
+        assert p["timeline"][1]["value"] == Decimal("2400.00")
+
     def test_subtract_spending_false_uses_income_minus_bills_only(self, db_session):
         """The "all my future cashflow into my wealth" scenario: everyday
         spending is measured (shown in the basis) but not subtracted."""

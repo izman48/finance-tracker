@@ -168,6 +168,7 @@ def net_worth_projection(
     monthly_contribution: Decimal | None = None,
     annual_growth_pct: Decimal = Decimal("5"),
     subtract_spending: bool = True,
+    monthly_spending: Decimal | None = None,
 ) -> dict:
     """Project the whole balance sheet forward, month by month.
 
@@ -218,13 +219,27 @@ def net_worth_projection(
     if monthly_contribution is None:
         mode = "cashflow"
         basis = derived_contribution(db, user)
-        # subtract_spending=False is the "all my future cashflow lands in my
-        # wealth" scenario: income − bills only, matching the trajectory of
-        # the Cashflow forecast chart (which never subtracts everyday
-        # spending). The measured average stays in the basis so the caption
-        # can say exactly what was NOT subtracted.
+        # The spending leg, most-explicit first:
+        # - subtract_spending=False → nothing subtracted ("all my future
+        #   cashflow lands in my wealth", matching the Cashflow chart);
+        # - monthly_spending given → the user's own estimate replaces the
+        #   history-measured average entirely;
+        # - otherwise → the measured average. The measurement always stays in
+        #   the basis so the UI can show it beside whatever was applied.
+        if not subtract_spending:
+            spend_leg = Decimal(0)
+            basis["spending_source"] = "measured"
+        elif monthly_spending is not None:
+            spend_leg = max(Decimal(0), monthly_spending)
+            basis["spending_source"] = "custom"
+        else:
+            spend_leg = basis["avg_spending_monthly"]
+            basis["spending_source"] = "measured"
         basis["spending_subtracted"] = subtract_spending
-        spend_leg = basis["avg_spending_monthly"] if subtract_spending else Decimal(0)
+        basis["spending_applied"] = _round2(spend_leg)
+        basis["contribution"] = _round2(
+            basis["income_monthly"] - basis["bills_monthly"] - spend_leg
+        )
         surplus = monthly_surplus_series(db, user, MAX_MONTHS, spend_leg)
         # Display figure: the first year's average — the math uses the series.
         year1 = surplus[:12]

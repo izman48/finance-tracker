@@ -123,6 +123,11 @@ export default function NetWorthPage() {
   const [subtractSpending, setSubtractSpending] = useState(
     () => localStorage.getItem('wealth.subtractSpending') !== '0',
   )
+  // The user's own everyday-spending estimate; empty = use the measured
+  // average from history. Their number, always visible and editable.
+  const [spendAmount, setSpendAmount] = useState(
+    () => localStorage.getItem('wealth.monthlySpend') ?? '',
+  )
   const [showTargetForm, setShowTargetForm] = useState(false)
   const [projection, setProjection] = useState<Projection | null>(null)
   const [decomp, setDecomp] = useState<AssetDecomposition | null>(null)
@@ -178,6 +183,7 @@ export default function NetWorthPage() {
     localStorage.setItem('wealth.growth', growth)
     localStorage.setItem('wealth.contribMode', contribMode)
     localStorage.setItem('wealth.subtractSpending', subtractSpending ? '1' : '0')
+    localStorage.setItem('wealth.monthlySpend', spendAmount)
     const t = Number(target)
     if (!target || !Number.isFinite(t) || t <= 0) {
       setProjection(null)
@@ -193,6 +199,11 @@ export default function NetWorthPage() {
           monthly_contribution: contribMode === 'custom' ? Number(monthly) || 0 : undefined,
           annual_growth_pct: Number(growth) || 0,
           subtract_spending: contribMode === 'cashflow' ? subtractSpending : undefined,
+          // The user's own estimate replaces the measured average entirely.
+          monthly_spending:
+            contribMode === 'cashflow' && subtractSpending && spendAmount !== ''
+              ? Math.max(0, Number(spendAmount) || 0)
+              : undefined,
         })
         .then((res) => !cancelled && setProjection(res.data))
         .catch((e) => console.error('Failed to load projection', e))
@@ -201,7 +212,7 @@ export default function NetWorthPage() {
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [target, monthly, growth, contribMode, subtractSpending])
+  }, [target, monthly, growth, contribMode, subtractSpending, spendAmount])
 
   const handleConnectBank = async () => {
     setConnecting(true)
@@ -461,20 +472,48 @@ export default function NetWorthPage() {
               </button>
             )}
             {contribMode === 'cashflow' && (
-              <label className="basis-full flex items-start sm:items-center cursor-pointer -mt-1">
+              <div className="basis-full flex flex-wrap items-center gap-2 -mt-1">
+                <label className="flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={subtractSpending}
+                    onChange={(e) => setSubtractSpending(e.target.checked)}
+                    className="checkbox"
+                  />
+                  <span className="ml-2 text-sm text-slate-300">Subtract everyday spending of</span>
+                </label>
                 <input
-                  type="checkbox"
-                  checked={subtractSpending}
-                  onChange={(e) => setSubtractSpending(e.target.checked)}
-                  className="checkbox mt-0.5 sm:mt-0"
+                  type="number"
+                  min="0"
+                  step="50"
+                  value={spendAmount}
+                  onChange={(e) => setSpendAmount(e.target.value)}
+                  disabled={!subtractSpending}
+                  placeholder={
+                    projection?.contribution_basis
+                      ? String(Math.round(Number(projection.contribution_basis.avg_spending_monthly)))
+                      : 'measured'
+                  }
+                  className="input !w-28 !py-1.5 disabled:opacity-40"
+                  aria-label="Everyday spending per month"
                 />
-                <span className="ml-2 text-sm text-slate-300">
-                  Subtract my average everyday spending
-                  <span className="ml-1 text-xs text-slate-500">
-                    (untick to assume all your forecasted cashflow lands in your wealth, like the Cashflow chart)
-                  </span>
+                <span className="text-xs text-slate-500 flex items-center gap-1">
+                  /mo —{' '}
+                  {spendAmount !== ''
+                    ? <>your estimate (measured: {projection?.contribution_basis ? gbp(Number(projection.contribution_basis.avg_spending_monthly)) : '…'}/mo</>
+                    : <>blank = your measured average{projection?.contribution_basis ? ` of ${gbp(Number(projection.contribution_basis.avg_spending_monthly))}/mo` : ''}</>}
+                  {spendingEvidence && <InfoTip text={spendingEvidence} side="bottom" align="left" />}
+                  {spendAmount !== '' && (
+                    <>
+                      )
+                      <button onClick={() => setSpendAmount('')} className="text-accent hover:underline ml-1">
+                        use measured
+                      </button>
+                    </>
+                  )}
+                  {!subtractSpending && <span className="text-warn ml-1">— not subtracted (all cashflow lands in wealth)</span>}
                 </span>
-              </label>
+              </div>
             )}
           </div>
         )}
@@ -533,7 +572,10 @@ export default function NetWorthPage() {
                   <span className="tnum">
                     {gbp(Number(projection.contribution_basis.income_monthly))} income −{' '}
                     {gbp(Number(projection.contribution_basis.bills_monthly))} bills −{' '}
-                    {gbp(Number(projection.contribution_basis.avg_spending_monthly))} avg spending
+                    {gbp(Number(projection.contribution_basis.spending_applied))}{' '}
+                    {projection.contribution_basis.spending_source === 'custom'
+                      ? 'everyday spending (your estimate)'
+                      : 'avg spending'}
                   </span>
                   <span className="inline-flex align-middle ml-1">
                     <InfoTip text={spendingEvidence} side="bottom" align="left" />

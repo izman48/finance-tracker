@@ -37,7 +37,7 @@ from .forecast import get_forecast  # noqa: F401
 from .net_worth import asset_decomposition, assets_total, net_worth_history  # noqa: F401
 from .nudges import get_nudges  # noqa: F401
 from .planned import installment_amount, planned_events  # noqa: F401
-from .projections import net_worth_projection  # noqa: F401
+from .projections import derived_contribution, net_worth_projection  # noqa: F401
 from .repayments import (  # noqa: F401
     next_repayment_date,
     repayment_amount,
@@ -83,6 +83,7 @@ __all__ = [
     # net worth
     "asset_decomposition",
     "assets_total",
+    "derived_contribution",
     "get_nudges",
     "net_worth_history",
     "net_worth_projection",

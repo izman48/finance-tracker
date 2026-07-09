@@ -163,6 +163,16 @@ class ProjectionPoint(BaseModel):
     value: Decimal
 
 
+class ContributionBasis(BaseModel):
+    """The cashflow arithmetic behind a derived contribution."""
+
+    income_monthly: Decimal
+    bills_monthly: Decimal
+    avg_spending_monthly: Decimal
+    contribution: Decimal
+    spending_months_sampled: int
+
+
 class ProjectionResponse(BaseModel):
     """A net-worth projection from stated assumptions — an estimate, not advice."""
 
@@ -170,6 +180,7 @@ class ProjectionResponse(BaseModel):
     target_amount: Decimal | None
     target_date: date | None
     monthly_contribution: Decimal
+    contribution_basis: ContributionBasis | None = None
     annual_growth_pct: Decimal
     as_of: date
     timeline: list[ProjectionPoint]

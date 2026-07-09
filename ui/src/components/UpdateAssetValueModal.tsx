@@ -24,6 +24,9 @@ export default function UpdateAssetValueModal({
   // Projection assumption: %/yr this asset is assumed to grow. Empty → the
   // projection's default (global rate for assets, flat for liabilities).
   const [growth, setGrowth] = useState(asset.assumed_growth_pct ?? '')
+  // Planned monthly saving into this asset (paydown for a liability). The
+  // projection adds it to the asset each month.
+  const [contribution, setContribution] = useState(asset.monthly_contribution ?? '')
   const [saving, setSaving] = useState(false)
 
   const save = async () => {
@@ -34,10 +37,15 @@ export default function UpdateAssetValueModal({
     if (flow !== '' && Number.isFinite(flowAmount) && flowAmount !== 0) {
       await assetsAPI.addFlow(asset.id, { amount: flowAmount, flow_date: valuedAt || undefined })
     }
+    const patch: { assumed_growth_pct?: number | null; monthly_contribution?: number | null } = {}
     if (String(growth) !== String(asset.assumed_growth_pct ?? '')) {
-      await assetsAPI.update(asset.id, {
-        assumed_growth_pct: growth === '' ? null : Number(growth),
-      })
+      patch.assumed_growth_pct = growth === '' ? null : Number(growth)
+    }
+    if (String(contribution) !== String(asset.monthly_contribution ?? '')) {
+      patch.monthly_contribution = contribution === '' ? null : Math.abs(Number(contribution))
+    }
+    if (Object.keys(patch).length) {
+      await assetsAPI.update(asset.id, patch)
     }
     await assetsAPI.addValuation(asset.id, { value: stored, valued_at: valuedAt || undefined })
     onSaved()
@@ -93,6 +101,25 @@ export default function UpdateAssetValueModal({
               placeholder={isLiab ? 'e.g. -8 as you pay it down' : 'blank = your global growth rate'}
               className="input"
             />
+          </div>
+          <div>
+            <label className="label">
+              {isLiab ? 'Planned monthly payment against it (£/mo, optional)' : 'Planned monthly contribution (£/mo, optional)'}
+            </label>
+            <input
+              type="number"
+              min="0"
+              step="10"
+              value={contribution}
+              onChange={(e) => setContribution(e.target.value)}
+              placeholder={isLiab ? 'e.g. 200 — projections shrink it to £0' : 'e.g. 500 — your ISA direct debit'}
+              className="input"
+            />
+            <p className="text-xs text-slate-500 mt-1">
+              {isLiab
+                ? 'Projections pay it down monthly and stop at zero.'
+                : "Money you send here usually shows up as 'spending' — declaring it moves it into your wealth projection instead."}
+            </p>
           </div>
           {asset.valuations.length > 0 && (
             <div className="bg-white/[0.04] border border-white/[0.06] rounded-xl p-3 text-xs text-slate-500 max-h-28 overflow-y-auto">

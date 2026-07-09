@@ -256,6 +256,34 @@ class TestNetWorthProjection:
         assert by_name["Crypto"] == Decimal("12")
         assert by_name["Car loan"] == Decimal("0")
 
+    def test_asset_contribution_adds_monthly_on_top_of_surplus(self, db_session):
+        user = _user(db_session)
+        _account(db_session, user, 1000)  # bank flat
+        isa = _asset(db_session, user, "ISA", {date.today() - timedelta(days=1): "10000"})
+        isa.monthly_contribution = Decimal("500")
+        db_session.commit()
+        p = svc.net_worth_projection(db_session, user, annual_growth_pct=Decimal("0"))
+        # No commitments/spending → surplus 0; the ISA gains 500/mo regardless:
+        # the £500 cash leg is already inside measured spending, so it lands
+        # on top, not double-counted against the surplus.
+        assert p["timeline"][1]["value"] == Decimal("11500.00")  # 1000 + 10500
+        assert p["timeline"][2]["value"] == Decimal("12000.00")
+        by_name = {a["name"]: a for a in p["asset_assumptions"]}
+        assert by_name["ISA"]["monthly_contribution"] == Decimal("500.00")
+
+    def test_liability_paydown_clamps_at_zero(self, db_session):
+        user = _user(db_session)
+        loan = Asset(user_id=user.id, name="Loan", asset_type="loan", monthly_contribution=Decimal("400"))
+        db_session.add(loan)
+        db_session.flush()
+        db_session.add(AssetValuation(asset_id=loan.id, value=Decimal("-1000"), valued_at=date.today() - timedelta(days=1)))
+        db_session.commit()
+        p = svc.net_worth_projection(db_session, user, annual_growth_pct=Decimal("0"))
+        # −1000 → −600 → −200 → 0 (clamped; you stop paying a paid-off loan)
+        assert p["timeline"][1]["value"] == Decimal("-600.00")
+        assert p["timeline"][3]["value"] == Decimal("0.00")
+        assert p["timeline"][4]["value"] == Decimal("0.00")
+
     def test_surplus_occurrence_later_this_month_lands_in_month_one(self, db_session):
         user = _user(db_session)
         db_session.add(CommitmentRule(

@@ -200,6 +200,12 @@ def net_worth_projection(
             "value": value,
             "growth_pct": pct,
             "rate": _monthly_rate(pct),
+            # Planned monthly saving into the asset (paydown on a liability).
+            # The cash side already shows up in measured spending/bills, so
+            # adding it here moves that money from "consumption" to "wealth"
+            # rather than double-counting it.
+            "contribution": _d(a.monthly_contribution) if a.monthly_contribution else Decimal(0),
+            "is_liability": a.asset_type in LIABILITY_TYPES,
         })
 
     basis: dict | None = None
@@ -231,7 +237,10 @@ def net_worth_projection(
         invested = invested * (1 + r_global) + surplus[m - 1]
         assets_value = Decimal(0)
         for c in components:
-            c["value"] *= 1 + c["rate"]
+            c["value"] = c["value"] * (1 + c["rate"]) + c["contribution"]
+            # A paid-off liability stops at zero — you don't keep paying it.
+            if c["is_liability"] and c["value"] > 0:
+                c["value"] = Decimal(0)
             assets_value += c["value"]
         value = bank_now + invested + assets_value
         when = _add_months(today, m)
@@ -264,7 +273,12 @@ def net_worth_projection(
         "mode": mode,
         "bank_component": _round2(bank_now),
         "asset_assumptions": [
-            {"name": c["name"], "growth_pct": c["growth_pct"]} for c in components
+            {
+                "name": c["name"],
+                "growth_pct": c["growth_pct"],
+                "monthly_contribution": _round2(c["contribution"]),
+            }
+            for c in components
         ],
         "as_of": today,
         "timeline": timeline,

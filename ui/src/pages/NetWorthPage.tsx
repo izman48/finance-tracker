@@ -508,8 +508,24 @@ export default function NetWorthPage() {
             ) : null}{' '}
             is swept into investments at {Number(projection.annual_growth_pct)}%/yr; your{' '}
             <span className="tnum">{gbp(Number(projection.bank_component))}</span> cash buffer is held flat;
-            each asset grows at its own assumed rate (edit an asset to change it — liabilities stay flat unless you say otherwise).
-            An estimate based on your {projection.contribution_basis ? 'data' : 'inputs'}, not advice.
+            each asset grows at its own assumed rate
+            {(() => {
+              const contribs = projection.asset_assumptions.filter((a) => Number(a.monthly_contribution) > 0)
+              return contribs.length ? (
+                <>
+                  {' '}plus your planned{' '}
+                  {contribs.map((a, i) => (
+                    <span key={a.name}>
+                      {i > 0 && ', '}
+                      <span className="tnum">{gbp(Number(a.monthly_contribution))}/mo</span> into {a.name}
+                    </span>
+                  ))}
+                </>
+              ) : (
+                <> (edit an asset to set its rate or a monthly contribution)</>
+              )
+            })()}
+            . An estimate based on your {projection.contribution_basis ? 'data' : 'inputs'}, not advice.
           </p>
         )}
       </div>

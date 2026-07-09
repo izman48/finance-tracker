@@ -88,6 +88,8 @@ class AssetCreate(BaseModel):
     valued_at: date | None = None
     # Projection assumption (%/yr, may be negative). Null → projection default.
     assumed_growth_pct: Decimal | None = Field(default=None, ge=-50, le=50)
+    # Planned monthly saving into this asset (paydown when it's a liability).
+    monthly_contribution: Decimal | None = Field(default=None, ge=0)
 
 
 class AssetUpdate(BaseModel):
@@ -96,6 +98,7 @@ class AssetUpdate(BaseModel):
         default=None, pattern="^(isa|savings|investment|pension|property|crypto|other|mortgage|loan|other_liability)$"
     )
     assumed_growth_pct: Decimal | None = Field(default=None, ge=-50, le=50)
+    monthly_contribution: Decimal | None = Field(default=None, ge=0)
 
 
 class AssetValuationResponse(BaseModel):
@@ -111,6 +114,7 @@ class AssetResponse(BaseModel):
     name: str
     asset_type: str
     assumed_growth_pct: Decimal | None = None
+    monthly_contribution: Decimal | None = None
     valuations: list[AssetValuationResponse] = []
 
     model_config = ConfigDict(from_attributes=True)
@@ -174,6 +178,7 @@ class ProjectionPoint(BaseModel):
 class AssetAssumption(BaseModel):
     name: str
     growth_pct: Decimal
+    monthly_contribution: Decimal = Decimal(0)
 
 
 class ContributionBasis(BaseModel):

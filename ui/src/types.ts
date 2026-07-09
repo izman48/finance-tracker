@@ -20,6 +20,8 @@ export interface Transaction {
   // Why this is hidden from spending by default — same detection as the
   // aggregates, so figures and list always reconcile.
   excluded_reason: 'internal_transfer' | 'card_payment' | null
+  // The user's manual reclassification; null = automatic detection.
+  counts_as_override?: 'spending' | 'transfer' | 'card_payment' | null
   transaction_date: string
 }
 

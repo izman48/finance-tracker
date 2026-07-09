@@ -93,11 +93,23 @@ def categorize(rules: list[CategoryRule], tx: Transaction) -> str | None:
     return None
 
 
+def counts_as_for(rules: list[CategoryRule], tx: Transaction) -> str | None:
+    """Best-matching counts_as reclassification (transfer/card_payment/
+    spending), or None. `rules` must be pre-sorted by active_rules()."""
+    for rule in rules:
+        if rule.counts_as and _rule_matches(rule, tx):
+            return rule.counts_as
+    return None
+
+
 def apply_rules(db: Session, user_id, transactions: list[Transaction]) -> int:
     """Apply the user's rules to the given transactions (skipping locked ones).
 
-    Used for newly synced transactions and retroactive runs. Does not commit —
-    the caller owns the session. Returns the number of transactions changed.
+    Sets the category, and fills counts_as_override for rules that carry a
+    counts_as — only where the user hasn't set one by hand (a hand-set
+    override always wins over rules). Used for newly synced transactions and
+    retroactive runs. Does not commit — the caller owns the session. Returns
+    the number of transactions changed.
     """
     rules = active_rules(db, user_id)
     if not rules:
@@ -107,9 +119,16 @@ def apply_rules(db: Session, user_id, transactions: list[Transaction]) -> int:
     for tx in transactions:
         if tx.category_locked:
             continue
+        tx_changed = False
         category = categorize(rules, tx)
         if category and category != tx.category:
             tx.category = category
+            tx_changed = True
+        counts = counts_as_for(rules, tx)
+        if counts and tx.counts_as_override is None:
+            tx.counts_as_override = counts
+            tx_changed = True
+        if tx_changed:
             changed += 1
     if changed:
         logger.info(f"Rules categorized {changed} transactions for user {user_id}")

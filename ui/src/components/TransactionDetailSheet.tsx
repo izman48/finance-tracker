@@ -46,9 +46,38 @@ export default function TransactionDetailSheet({
   const [addingNew, setAddingNew] = useState(false)
   const [newCategory, setNewCategory] = useState('')
   const [savingCadence, setSavingCadence] = useState<string | null>(null)
+  // Local mirror of the counts-as override so the sheet reflects a change
+  // immediately (the page refetches behind it).
+  const [countsAs, setCountsAs] = useState<string | null>(transaction.counts_as_override ?? null)
 
   const label = transaction.merchant_name || transaction.description
   const isCredit = transaction.transaction_type === 'credit'
+
+  // What this transaction currently counts as: the user's override, else the
+  // automatic detection's verdict.
+  const effectiveCountsAs =
+    countsAs ??
+    (transaction.excluded_reason === 'internal_transfer'
+      ? 'transfer'
+      : transaction.excluded_reason === 'card_payment'
+      ? 'card_payment'
+      : 'spending')
+
+  const saveCountsAs = async (value: string | null) => {
+    try {
+      await bankingAPI.updateTransaction(transaction.id, { counts_as: value })
+      setCountsAs(value)
+      onChanged()
+      showToast(
+        value === null
+          ? 'Back to automatic detection'
+          : `Counted as ${value === 'card_payment' ? 'a card payment' : value === 'transfer' ? 'a transfer' : 'spending'} from now on`,
+      )
+    } catch (e) {
+      console.error('Failed to update counts-as', e)
+      showToast('Failed to update', { tone: 'err' })
+    }
+  }
 
   const saveCategory = async (value: string) => {
     try {
@@ -103,8 +132,48 @@ export default function TransactionDetailSheet({
           {transaction.is_recurring && <span className="chip-info">Recurring</span>}
           {transaction.is_financed && <span className="chip-info">On finance</span>}
         </div>
-        {transaction.excluded_reason && (
+        {transaction.excluded_reason && !countsAs && (
           <p className="text-xs text-slate-500 mb-3">{EXCLUDED_COPY[transaction.excluded_reason]}</p>
+        )}
+
+        {/* Counts as — the user's word beats automatic detection everywhere
+            (spending figures, the trend, the projection's surplus). */}
+        {!isCredit && (
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            <span className="text-xs text-slate-500">Counts as</span>
+            <div className="flex gap-0.5">
+              {[
+                { key: 'spending', label: 'Spending' },
+                { key: 'transfer', label: 'Transfer' },
+                { key: 'card_payment', label: 'Card payment' },
+              ].map((o) => (
+                <button
+                  key={o.key}
+                  onClick={() => effectiveCountsAs !== o.key && saveCountsAs(o.key)}
+                  className={`${effectiveCountsAs === o.key ? 'seg-active' : 'seg'} !text-xs`}
+                  title={
+                    o.key === 'transfer'
+                      ? 'Money moving to another of your accounts or an investment platform — not consumption'
+                      : o.key === 'card_payment'
+                      ? 'Settles a credit card — the purchases themselves are what count'
+                      : 'Real spending — include it in your figures'
+                  }
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+            {countsAs ? (
+              <span className="text-xs text-slate-500">
+                set by you ·{' '}
+                <button onClick={() => saveCountsAs(null)} className="text-accent hover:underline">
+                  use automatic
+                </button>
+              </span>
+            ) : (
+              <span className="text-xs text-slate-600">automatic</span>
+            )}
+          </div>
         )}
 
         {/* Category */}

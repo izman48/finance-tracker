@@ -234,6 +234,9 @@ class RuleCreate(BaseModel):
     match_type: str = Field(default="contains", pattern="^(exact|contains|regex)$")
     match_field: str = Field(default="any", pattern="^(any|merchant|description)$")
     category: str = Field(min_length=1, max_length=100)
+    # Optional noise reclassification: matching transactions also count as
+    # this (transfer/card_payment/spending) in spending figures.
+    counts_as: str | None = Field(default=None, pattern="^(spending|transfer|card_payment)$")
     pack_id: uuid.UUID | None = None
 
 
@@ -244,6 +247,7 @@ class RuleUpdate(BaseModel):
     match_type: str | None = Field(default=None, pattern="^(exact|contains|regex)$")
     match_field: str | None = Field(default=None, pattern="^(any|merchant|description)$")
     category: str | None = Field(default=None, min_length=1, max_length=100)
+    counts_as: str | None = Field(default=None, pattern="^(spending|transfer|card_payment)$")
     enabled: bool | None = None
 
 
@@ -254,6 +258,7 @@ class RuleResponse(BaseModel):
     match_type: str
     match_field: str
     category: str
+    counts_as: str | None = None
     source: str
     enabled: bool
 
@@ -363,6 +368,9 @@ class TransactionResponse(BaseModel):
     # Uses the same detection as the spending aggregates so the list and the
     # totals can never disagree.
     excluded_reason: str | None = None
+    # The user's manual reclassification (spending/transfer/card_payment),
+    # null = automatic. When set, excluded_reason reflects it.
+    counts_as_override: str | None = None
     transaction_date: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -373,6 +381,9 @@ class TransactionUpdate(BaseModel):
 
     category: str | None = None
     subcategory: str | None = None
+    # Reclassify what this transaction counts as; explicit null returns it to
+    # automatic detection (field absent = leave unchanged).
+    counts_as: str | None = Field(default=None, pattern="^(spending|transfer|card_payment)$")
 
 
 class TransactionListResponse(BaseModel):

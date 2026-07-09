@@ -533,6 +533,9 @@ def update_transaction(
         categorization.learn_and_apply(db, current_user.id, transaction)
     if update_data.subcategory is not None:
         transaction.subcategory = update_data.subcategory
+    # exclude_unset: field absent = unchanged; explicit null = back to automatic.
+    if "counts_as" in update_data.model_dump(exclude_unset=True):
+        transaction.counts_as_override = update_data.counts_as
 
     db.commit()
     db.refresh(transaction)

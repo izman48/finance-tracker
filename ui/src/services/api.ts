@@ -106,6 +106,8 @@ export interface Rule {
   match_type: string
   match_field: string
   category: string
+  // Optional: matching transactions also count as this in spending figures.
+  counts_as: string | null
   source: string
   enabled: boolean
 }
@@ -122,7 +124,7 @@ export interface RulePack {
 
 export const rulesAPI = {
   list: () => api.get<{ packs: RulePack[]; personal: Rule[] }>('/rules'),
-  create: (data: { pattern: string; match_type: string; match_field: string; category: string; pack_id?: string | null }) =>
+  create: (data: { pattern: string; match_type: string; match_field: string; category: string; counts_as?: string | null; pack_id?: string | null }) =>
     api.post('/rules', data),
   update: (id: string, data: Partial<Pick<Rule, 'pattern' | 'match_type' | 'match_field' | 'category' | 'enabled'>>) =>
     api.patch(`/rules/${id}`, data),
@@ -303,7 +305,7 @@ export const bankingAPI = {
     api.get('/banking/transactions', { params: listParams((params ?? {}) as Record<string, unknown>) }),
   getTransactionFacets: () =>
     api.get<{ categories: string[]; merchants: string[] }>('/banking/transactions/facets'),
-  updateTransaction: (transactionId: string, data: { category?: string | null; subcategory?: string | null }) =>
+  updateTransaction: (transactionId: string, data: { category?: string | null; subcategory?: string | null; counts_as?: string | null }) =>
     api.patch(`/banking/transactions/${transactionId}`, data),
   disconnectAllBanks: () => api.post('/banking/disconnect'),
   disconnectBank: (connectionId: string) => api.delete(`/banking/connections/${connectionId}`),

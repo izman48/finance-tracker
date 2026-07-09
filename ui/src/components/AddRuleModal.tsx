@@ -25,6 +25,9 @@ export default function AddRuleModal({
   const [matchType, setMatchType] = useState('contains')
   const [matchField, setMatchField] = useState('any')
   const [category, setCategory] = useState(initialCategory)
+  // Optional: matching transactions also count as this in spending figures
+  // (e.g. every Vanguard payment is a transfer, not consumption).
+  const [countsAs, setCountsAs] = useState('')
   const [packId, setPackId] = useState<string | null>(initialPackId)
   const [preview, setPreview] = useState<{ match_count: number; total_transactions: number; samples: any[] } | null>(null)
   const [applyToExisting, setApplyToExisting] = useState(true)
@@ -65,7 +68,10 @@ export default function AddRuleModal({
     setSaving(true)
     setError('')
     try {
-      await rulesAPI.create({ pattern, match_type: matchType, match_field: matchField, category, pack_id: packId })
+      await rulesAPI.create({
+        pattern, match_type: matchType, match_field: matchField, category,
+        counts_as: countsAs || null, pack_id: packId,
+      })
       // Backfill: by default apply the new rule across existing transactions too,
       // so "make a rule" fixes history, not just future syncs.
       let changed = 0
@@ -159,6 +165,22 @@ export default function AddRuleModal({
                   </button>
                 ))}
               </div>
+            )}
+          </div>
+
+          <div>
+            <label className="label">Also count matches as (optional)</label>
+            <select value={countsAs} onChange={(e) => setCountsAs(e.target.value)} className="input">
+              <option value="">Don't change how they count</option>
+              <option value="transfer">Transfer — money moving, not spending (e.g. an investment platform)</option>
+              <option value="card_payment">Card payment — settles a card, not new spending</option>
+              <option value="spending">Spending — always count, override detection</option>
+            </select>
+            {countsAs && (
+              <p className="text-xs text-slate-500 mt-1">
+                Applies to matching transactions now and on every future sync — spending figures
+                and projections follow it.
+              </p>
             )}
           </div>
 

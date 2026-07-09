@@ -108,6 +108,7 @@ def create_rule(
         match_type=body.match_type,
         match_field=body.match_field,
         category=body.category.strip(),
+        counts_as=body.counts_as,
         source="manual",
     )
     db.add(rule)
@@ -131,7 +132,7 @@ def update_rule(
         if error:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error)
 
-    for field in ("pattern", "match_type", "match_field", "category", "enabled"):
+    for field in ("pattern", "match_type", "match_field", "category", "counts_as", "enabled"):
         value = getattr(body, field)
         if value is not None:
             setattr(rule, field, value.strip() if isinstance(value, str) else value)

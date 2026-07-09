@@ -6,7 +6,7 @@ encrypted columns); these tests exercise the endpoint through the API so the
 DEK flows from the bearer token, exactly as in production.
 """
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from jose import jwt
@@ -208,3 +208,31 @@ class TestTransactionFilters:
         assert res.json()["total"] == 0
         res = client.get("/api/v1/banking/transactions/facets")
         assert res.json() == {"categories": [], "merchants": []}
+
+
+class TestCountsAsPatch:
+    def test_patch_sets_and_clears_the_override(self, client, db_session):
+        user, ctx = _setup(client, db_session)
+        acc = _account(db_session, user.id)
+        tx = _tx(db_session, acc, 500, date.today() - timedelta(days=2), merchant="Vanguard")
+
+        # Mark it a transfer → the list labels it and the override is echoed.
+        res = client.patch(f"/api/v1/banking/transactions/{tx.id}", json={"counts_as": "transfer"})
+        assert res.status_code == 200
+        assert res.json()["counts_as_override"] == "transfer"
+        items = client.get("/api/v1/banking/transactions").json()["items"]
+        mine = next(i for i in items if i["id"] == str(tx.id))
+        assert mine["excluded_reason"] == "internal_transfer"
+
+        # Explicit null clears it back to automatic.
+        res = client.patch(f"/api/v1/banking/transactions/{tx.id}", json={"counts_as": None})
+        assert res.status_code == 200
+        assert res.json()["counts_as_override"] is None
+        items = client.get("/api/v1/banking/transactions").json()["items"]
+        mine = next(i for i in items if i["id"] == str(tx.id))
+        assert mine["excluded_reason"] is None
+
+        # An invalid value is rejected.
+        res = client.patch(f"/api/v1/banking/transactions/{tx.id}", json={"counts_as": "nonsense"})
+        assert res.status_code == 422
+        user_crypto.current_dek.reset(ctx)

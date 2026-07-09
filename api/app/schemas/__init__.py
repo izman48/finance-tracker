@@ -86,6 +86,8 @@ class AssetCreate(BaseModel):
     asset_type: str = Field(default="other", pattern="^(isa|savings|investment|pension|property|crypto|other|mortgage|loan|other_liability)$")
     value: Decimal
     valued_at: date | None = None
+    # Projection assumption (%/yr, may be negative). Null → projection default.
+    assumed_growth_pct: Decimal | None = Field(default=None, ge=-50, le=50)
 
 
 class AssetUpdate(BaseModel):
@@ -93,6 +95,7 @@ class AssetUpdate(BaseModel):
     asset_type: str | None = Field(
         default=None, pattern="^(isa|savings|investment|pension|property|crypto|other|mortgage|loan|other_liability)$"
     )
+    assumed_growth_pct: Decimal | None = Field(default=None, ge=-50, le=50)
 
 
 class AssetValuationResponse(BaseModel):
@@ -107,6 +110,7 @@ class AssetResponse(BaseModel):
     id: uuid.UUID
     name: str
     asset_type: str
+    assumed_growth_pct: Decimal | None = None
     valuations: list[AssetValuationResponse] = []
 
     model_config = ConfigDict(from_attributes=True)
@@ -161,6 +165,15 @@ class NudgeResponse(BaseModel):
 class ProjectionPoint(BaseModel):
     date: date
     value: Decimal
+    # Component breakdown: the swept-surplus bucket and manual assets (bank is
+    # the flat bank_component on the response).
+    invested: Decimal | None = None
+    assets: Decimal | None = None
+
+
+class AssetAssumption(BaseModel):
+    name: str
+    growth_pct: Decimal
 
 
 class ContributionBasis(BaseModel):
@@ -182,6 +195,11 @@ class ProjectionResponse(BaseModel):
     monthly_contribution: Decimal
     contribution_basis: ContributionBasis | None = None
     annual_growth_pct: Decimal
+    # 'cashflow': the surplus series comes from the same engine as the
+    # Cashflow forecast; 'custom': a flat user-typed amount.
+    mode: str = "custom"
+    bank_component: Decimal = Decimal(0)
+    asset_assumptions: list[AssetAssumption] = []
     as_of: date
     timeline: list[ProjectionPoint]
 

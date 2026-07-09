@@ -225,16 +225,48 @@ class TestNetWorthProjection:
         assert p["timeline"][0]["value"] == Decimal("1000.00")
         assert p["timeline"][1]["value"] == Decimal("1100.00")
 
-    def test_growth_compounds_monthly(self, db_session):
+    def test_bank_cash_is_held_flat_but_assets_compound(self, db_session):
         user = _user(db_session)
-        _account(db_session, user, 10000)
+        _account(db_session, user, 10000)  # bank buffer: must NOT compound
+        _asset(db_session, user, "ISA", {date.today() - timedelta(days=1): "10000"})
         p = svc.net_worth_projection(
             db_session, user, annual_growth_pct=Decimal("5"),
         )
-        # After 12 months of monthly-compounded 5%/yr with no contributions,
-        # the value is ~10500 (one full year of growth).
         year_on = [pt for pt in p["timeline"] if pt["date"] == svc._add_months(svc._today(), 12)]
-        assert year_on and abs(year_on[0]["value"] - Decimal("10500")) < Decimal("2")
+        # Bank stays 10000; the asset compounds to ~10500 → total ~20500.
+        assert year_on and abs(year_on[0]["value"] - Decimal("20500")) < Decimal("2")
+        assert p["bank_component"] == Decimal("10000.00")
+
+    def test_per_asset_growth_override_and_flat_liability(self, db_session):
+        user = _user(db_session)
+        yesterday = date.today() - timedelta(days=1)
+        fast = _asset(db_session, user, "Crypto", {yesterday: "1000"})
+        fast.assumed_growth_pct = Decimal("12")
+        loan = Asset(user_id=user.id, name="Car loan", asset_type="loan")
+        db_session.add(loan)
+        db_session.flush()
+        db_session.add(AssetValuation(asset_id=loan.id, value=Decimal("-5000"), valued_at=yesterday))
+        db_session.commit()
+
+        p = svc.net_worth_projection(db_session, user, annual_growth_pct=Decimal("0"))
+        year_on = [pt for pt in p["timeline"] if pt["date"] == svc._add_months(svc._today(), 12)]
+        # Crypto at 12% → ~1120; the loan (no override) held flat at −5000.
+        assert year_on and abs(year_on[0]["value"] - Decimal("-3880")) < Decimal("2")
+        by_name = {a["name"]: a["growth_pct"] for a in p["asset_assumptions"]}
+        assert by_name["Crypto"] == Decimal("12")
+        assert by_name["Car loan"] == Decimal("0")
+
+    def test_surplus_occurrence_later_this_month_lands_in_month_one(self, db_session):
+        user = _user(db_session)
+        db_session.add(CommitmentRule(
+            user_id=user.id, direction="income", label="Pay", amount=Decimal("1000"),
+            cadence="monthly", next_date=svc._today() + timedelta(days=5),
+            status=CommitmentStatus.CONFIRMED.value,
+        ))
+        db_session.commit()
+        series = svc.monthly_surplus_series(db_session, user, 3, Decimal("0"))
+        # One occurrence per month-window, starting with the one 5 days out.
+        assert series == [Decimal("1000"), Decimal("1000"), Decimal("1000")]
 
     def test_target_already_reached_is_today(self, db_session):
         user = _user(db_session)

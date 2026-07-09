@@ -8,7 +8,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Date, DateTime, ForeignKey, String, func
+from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -19,6 +19,7 @@ ASSET_TYPES = (
     # Liabilities — stored with a negative valuation (amount owed).
     "mortgage", "loan", "other_liability",
 )
+LIABILITY_TYPES = ("mortgage", "loan", "other_liability")
 
 
 class Asset(Base):
@@ -34,6 +35,13 @@ class Asset(Base):
     # What the user owns and what it's worth is wealth data — DEK-encrypted.
     name: Mapped[str] = mapped_column(UserEncryptedString)
     asset_type: Mapped[str] = mapped_column(String(20), default="other")
+
+    # Projection assumption: annual %/yr this asset is assumed to grow (may be
+    # negative). Null → the projection's global growth rate for assets, 0 for
+    # liabilities. A typed assumption, not wealth data — plaintext.
+    assumed_growth_pct: Mapped[Decimal | None] = mapped_column(
+        Numeric(5, 2), nullable=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

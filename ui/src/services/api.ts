@@ -151,6 +151,8 @@ export interface Asset {
   id: string
   name: string
   asset_type: string
+  // Projection assumption (%/yr, may be negative); null → projection default.
+  assumed_growth_pct: string | null
   valuations: AssetValuation[]
 }
 
@@ -175,6 +177,13 @@ export interface AssetDecomposition {
 export interface ProjectionPoint {
   date: string
   value: string
+  invested?: string
+  assets?: string
+}
+
+export interface AssetAssumption {
+  name: string
+  growth_pct: string
 }
 
 export interface ContributionBasis {
@@ -193,6 +202,10 @@ export interface Projection {
   // Present when the contribution was derived from the user's cashflow.
   contribution_basis: ContributionBasis | null
   annual_growth_pct: string
+  // 'cashflow' (surplus series from the forecast engine) or 'custom'.
+  mode: string
+  bank_component: string
+  asset_assumptions: AssetAssumption[]
   as_of: string
   timeline: ProjectionPoint[]
 }
@@ -201,7 +214,7 @@ export const assetsAPI = {
   list: () => api.get<Asset[]>('/assets'),
   create: (data: { name: string; asset_type: string; value: number; valued_at?: string }) =>
     api.post('/assets', data),
-  update: (id: string, data: { name?: string; asset_type?: string }) =>
+  update: (id: string, data: { name?: string; asset_type?: string; assumed_growth_pct?: number | null }) =>
     api.patch(`/assets/${id}`, data),
   remove: (id: string) => api.delete(`/assets/${id}`),
   addValuation: (id: string, data: { value: number; valued_at?: string }) =>

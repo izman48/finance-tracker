@@ -52,7 +52,12 @@ def create_asset(
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> Asset:
-    asset = Asset(user_id=current_user.id, name=body.name.strip(), asset_type=body.asset_type)
+    asset = Asset(
+        user_id=current_user.id,
+        name=body.name.strip(),
+        asset_type=body.asset_type,
+        assumed_growth_pct=body.assumed_growth_pct,
+    )
     db.add(asset)
     db.flush()
     db.add(
@@ -79,6 +84,10 @@ def update_asset(
         asset.name = body.name.strip()
     if body.asset_type is not None:
         asset.asset_type = body.asset_type
+    # exclude_unset: "field absent" leaves the assumption alone, an explicit
+    # null clears it back to the projection default.
+    if "assumed_growth_pct" in body.model_dump(exclude_unset=True):
+        asset.assumed_growth_pct = body.assumed_growth_pct
     db.commit()
     db.refresh(asset)
     return asset

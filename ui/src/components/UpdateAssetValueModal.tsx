@@ -21,6 +21,9 @@ export default function UpdateAssetValueModal({
   // Optional: money added (+) or withdrawn (−) since the last update. Recording
   // it lets the Wealth headline tell saving apart from growth.
   const [flow, setFlow] = useState('')
+  // Projection assumption: %/yr this asset is assumed to grow. Empty → the
+  // projection's default (global rate for assets, flat for liabilities).
+  const [growth, setGrowth] = useState(asset.assumed_growth_pct ?? '')
   const [saving, setSaving] = useState(false)
 
   const save = async () => {
@@ -30,6 +33,11 @@ export default function UpdateAssetValueModal({
     const flowAmount = Number(flow)
     if (flow !== '' && Number.isFinite(flowAmount) && flowAmount !== 0) {
       await assetsAPI.addFlow(asset.id, { amount: flowAmount, flow_date: valuedAt || undefined })
+    }
+    if (String(growth) !== String(asset.assumed_growth_pct ?? '')) {
+      await assetsAPI.update(asset.id, {
+        assumed_growth_pct: growth === '' ? null : Number(growth),
+      })
     }
     await assetsAPI.addValuation(asset.id, { value: stored, valued_at: valuedAt || undefined })
     onSaved()
@@ -72,6 +80,19 @@ export default function UpdateAssetValueModal({
           <div>
             <label className="label">As of (optional, defaults to today)</label>
             <input type="date" value={valuedAt} onChange={(e) => setValuedAt(e.target.value)} className="input" />
+          </div>
+          <div>
+            <label className="label">
+              Assumed growth %/yr for projections (optional{isLiab ? ', liabilities default to flat' : ''})
+            </label>
+            <input
+              type="number"
+              step="0.5"
+              value={growth}
+              onChange={(e) => setGrowth(e.target.value)}
+              placeholder={isLiab ? 'e.g. -8 as you pay it down' : 'blank = your global growth rate'}
+              className="input"
+            />
           </div>
           {asset.valuations.length > 0 && (
             <div className="bg-white/[0.04] border border-white/[0.06] rounded-xl p-3 text-xs text-slate-500 max-h-28 overflow-y-auto">

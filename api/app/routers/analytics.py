@@ -99,17 +99,21 @@ def get_net_worth_projection(
     target_amount: Decimal | None = None,
     monthly_contribution: Decimal | None = None,
     annual_growth_pct: Decimal = Decimal("5"),
+    subtract_spending: bool = True,
 ) -> ProjectionResponse:
     """Project net worth forward from stated assumptions (compound growth +
     monthly contributions). Omit monthly_contribution to derive it from the
     user's own cashflow (income − bills − average everyday spending); the
-    basis is echoed back. A factual calculation — an estimate, not advice."""
+    basis is echoed back. subtract_spending=false is the "all my forecasted
+    cashflow lands in my wealth" scenario (income − bills only, matching the
+    Cashflow chart). A factual calculation — an estimate, not advice."""
     return ProjectionResponse(
         **analytics_service.net_worth_projection(
             db, current_user,
             target_amount=target_amount,
             monthly_contribution=monthly_contribution,
             annual_growth_pct=annual_growth_pct,
+            subtract_spending=subtract_spending,
         )
     )
 

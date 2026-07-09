@@ -190,6 +190,9 @@ class ContributionBasis(BaseModel):
     avg_spending_monthly: Decimal
     contribution: Decimal
     spending_months_sampled: int
+    # False = the "all my future cashflow into my wealth" scenario: the
+    # measured average is shown but NOT subtracted from the surplus.
+    spending_subtracted: bool = True
 
 
 class ProjectionResponse(BaseModel):

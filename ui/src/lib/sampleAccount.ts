@@ -477,6 +477,11 @@ function projectionResponse(q: Record<string, any>) {
         contribution: String(round2(INCOME_MONTHLY - BILLS_MONTHLY - spendLeg)),
         spending_months_sampled: 6,
         spending_subtracted: subtractSpending,
+        sampled_months: [980, 1120, 1040, 1210, 1005, 1180].map((total, i) => {
+          const d = new Date()
+          d.setMonth(d.getMonth() - (6 - i))
+          return { month: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, total: String(total) }
+        }),
       }
     : null
   const monthly = derived ? round2(INCOME_MONTHLY - BILLS_MONTHLY - spendLeg) : Number(q.monthly_contribution) || 0

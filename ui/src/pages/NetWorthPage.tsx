@@ -291,6 +291,14 @@ export default function NetWorthPage() {
   const targetMonthYear = projection?.target_date
     ? new Date(projection.target_date).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
     : null
+  // The evidence behind the spending average, for the caption tooltip: which
+  // months were sampled and what each measured — the first place to look when
+  // the figure seems too high.
+  const spendingEvidence = projection?.contribution_basis
+    ? `Measured from your last ${projection.contribution_basis.spending_months_sampled} complete months of purchases (recognised transfers between your connected accounts, recognised card repayments, and your confirmed bills are excluded): ${projection.contribution_basis.sampled_months
+        .map((m) => `${new Date(m.month + '-01').toLocaleDateString('en-GB', { month: 'short' })} ${gbp(Number(m.total))}`)
+        .join(' · ')}. If this looks too high, it usually contains money we can't recognise as saving — payments to investment platforms or unconnected banks, or card repayments with unusual descriptions. Check those months on the Spending tab; declare investment payments as contributions on the asset they go into; and set "match transactions" on manually-added commitments so bills aren't counted twice.`
+    : ''
 
   // Assemble the balance sheet: bank accounts (live) + manual assets, grouped.
   const now = Date.now()
@@ -527,6 +535,9 @@ export default function NetWorthPage() {
                     {gbp(Number(projection.contribution_basis.bills_monthly))} bills −{' '}
                     {gbp(Number(projection.contribution_basis.avg_spending_monthly))} avg spending
                   </span>
+                  <span className="inline-flex align-middle ml-1">
+                    <InfoTip text={spendingEvidence} side="bottom" align="left" />
+                  </span>
                   , month by month like the Cashflow forecast)
                 </>
               ) : (
@@ -538,7 +549,11 @@ export default function NetWorthPage() {
                   </span>
                   ; your measured{' '}
                   <span className="tnum">{gbp(Number(projection.contribution_basis.avg_spending_monthly))}/mo</span>{' '}
-                  everyday spending is <span className="text-warn">not subtracted</span>)
+                  everyday spending
+                  <span className="inline-flex align-middle mx-1">
+                    <InfoTip text={spendingEvidence} side="bottom" align="left" />
+                  </span>
+                  is <span className="text-warn">not subtracted</span>)
                 </>
               )
             ) : null}{' '}

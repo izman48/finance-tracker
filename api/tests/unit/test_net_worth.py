@@ -174,6 +174,10 @@ class TestDerivedContribution:
         d = svc.derived_contribution(db_session, user)
         assert d["income_monthly"] == Decimal("3200.00")
         assert d["bills_monthly"] == Decimal("1100.00")
+        # The evidence list matches the sampled window and sums to the average.
+        assert len(d["sampled_months"]) == d["spending_months_sampled"]
+        total = sum((m["total"] for m in d["sampled_months"]), Decimal(0))
+        assert total / len(d["sampled_months"]) == d["avg_spending_monthly"]
         # £1,200 over the sampled complete months, averaged over the window.
         assert d["avg_spending_monthly"] > 0
         assert d["contribution"] == d["income_monthly"] - d["bills_monthly"] - d["avg_spending_monthly"]

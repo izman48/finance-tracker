@@ -199,6 +199,8 @@ export interface ContributionBasis {
   // False = "all my future cashflow into my wealth": the measured average is
   // shown but was not subtracted from the surplus.
   spending_subtracted: boolean
+  // The evidence: each sampled month's measured spending (YYYY-MM).
+  sampled_months: { month: string; total: string }[]
 }
 
 export interface Projection {

@@ -99,6 +99,11 @@ def derived_contribution(db: Session, user) -> dict:
         "avg_spending_monthly": _round2(avg_spending),
         "contribution": _round2(income - bills - avg_spending),
         "spending_months_sampled": len(complete),
+        # The evidence behind the average — each sampled month's measured
+        # spending, so the UI can show exactly what the figure is built from.
+        "sampled_months": [
+            {"month": m["month"], "total": _round2(_d(m["total"]))} for m in complete
+        ],
     }
 
 

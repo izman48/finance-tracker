@@ -493,22 +493,23 @@ export default function NetWorthPage() {
             ) : (
               <>Not reached within 50 years on these assumptions.</>
             )}{' '}
-            Assumes {Number(projection.annual_growth_pct)}%/yr growth and{' '}
-            <span className="tnum">{gbp(Number(projection.monthly_contribution))}/mo</span>
+            Your monthly surplus of{' '}
+            <span className="tnum">~{gbp(Number(projection.monthly_contribution))}/mo</span>
             {projection.contribution_basis ? (
               <>
-                {' '}from your cashflow (
+                {' '}(from your cashflow:{' '}
                 <span className="tnum">
                   {gbp(Number(projection.contribution_basis.income_monthly))} income −{' '}
                   {gbp(Number(projection.contribution_basis.bills_monthly))} bills −{' '}
                   {gbp(Number(projection.contribution_basis.avg_spending_monthly))} avg spending
                 </span>
-                )
+                , month by month like the Cashflow forecast)
               </>
-            ) : (
-              <> added</>
-            )}{' '}
-            — an estimate based on your {projection.contribution_basis ? 'data' : 'inputs'}, not advice.
+            ) : null}{' '}
+            is swept into investments at {Number(projection.annual_growth_pct)}%/yr; your{' '}
+            <span className="tnum">{gbp(Number(projection.bank_component))}</span> cash buffer is held flat;
+            each asset grows at its own assumed rate (edit an asset to change it — liabilities stay flat unless you say otherwise).
+            An estimate based on your {projection.contribution_basis ? 'data' : 'inputs'}, not advice.
           </p>
         )}
       </div>

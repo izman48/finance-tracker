@@ -481,18 +481,43 @@ function projectionResponse(q: Record<string, any>) {
     return isoDate(d)
   }
   const round = (n: number) => Math.round(n * 100) / 100
-  const timeline = [{ date: addM(0), value: String(round(NET_WORTH)) }]
-  let value = NET_WORTH
+  // Component model, mirroring the backend: bank cash held flat, surplus swept
+  // into investments at the growth rate, each asset at its own assumed rate
+  // (liabilities flat by default).
+  const BANK = AVAILABLE_CASH + SAVINGS_TOTAL - CREDIT_OWED
+  const components = ASSETS.map((a) => ({
+    name: a.name,
+    value: a.value,
+    growth_pct: a.value < 0 ? 0 : Number(q.annual_growth_pct) || 0,
+    rate: a.value < 0 ? 0 : r,
+  }))
+  const assetsAt0 = components.reduce((s, c) => s + c.value, 0)
+  const timeline: { date: string; value: string; invested: string; assets: string }[] = [
+    { date: addM(0), value: String(round(NET_WORTH)), invested: '0.00', assets: String(round(assetsAt0)) },
+  ]
+  let invested = 0
   // Already there today — mirror the backend's day-0 check.
   let target_date: string | null = target != null && NET_WORTH >= target ? addM(0) : null
   let monthsWanted = target_date ? 6 : 120
   for (let m = 1; m <= 600; m++) {
-    value = value * (1 + r) + monthly
+    invested = invested * (1 + r) + monthly
+    let assetsValue = 0
+    for (const c of components) {
+      c.value *= 1 + c.rate
+      assetsValue += c.value
+    }
+    const value = BANK + invested + assetsValue
     if (target != null && !target_date && value >= target) {
       target_date = addM(m)
       monthsWanted = Math.min(600, m + 6)
     }
-    if (m <= monthsWanted) timeline.push({ date: addM(m), value: String(round(value)) })
+    if (m <= monthsWanted)
+      timeline.push({
+        date: addM(m),
+        value: String(round(value)),
+        invested: String(round(invested)),
+        assets: String(round(assetsValue)),
+      })
     else if (target == null || target_date) break
   }
   return {
@@ -502,6 +527,9 @@ function projectionResponse(q: Record<string, any>) {
     monthly_contribution: String(round(monthly)),
     contribution_basis: basis,
     annual_growth_pct: String(Number(q.annual_growth_pct) || 0),
+    mode: derived ? 'cashflow' : 'custom',
+    bank_component: String(round(BANK)),
+    asset_assumptions: components.map((c) => ({ name: c.name, growth_pct: String(c.growth_pct) })),
     as_of: addM(0),
     timeline,
   }
@@ -510,6 +538,7 @@ function projectionResponse(q: Record<string, any>) {
 function assetsResponse() {
   return ASSETS.map((a) => ({
     id: a.id, name: a.name, asset_type: a.asset_type,
+    assumed_growth_pct: null,
     valuations: [
       // Assets grow over time; liabilities (negative) get paid down, so the
       // older figure is further from zero in both cases.

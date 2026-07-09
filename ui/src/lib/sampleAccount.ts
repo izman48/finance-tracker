@@ -496,22 +496,37 @@ function projectionResponse(q: Record<string, any>) {
     isLiability: a.value < 0,
   }))
   const assetsAt0 = components.reduce((s, c) => s + c.value, 0)
-  const timeline: { date: string; value: string; invested: string; assets: string }[] = [
-    { date: addM(0), value: String(round(NET_WORTH)), invested: '0.00', assets: String(round(assetsAt0)) },
+  const timeline: { date: string; value: string; cash: string; invested: string; assets: string }[] = [
+    { date: addM(0), value: String(round(NET_WORTH)), cash: String(round(BANK)), invested: '0.00', assets: String(round(assetsAt0)) },
   ]
+  // Surplus waterfall (mirrors backend): positive months invest; negative
+  // months drain cash first, then investments; shortfall never compounds.
+  let cash = BANK
   let invested = 0
   // Already there today — mirror the backend's day-0 check.
   let target_date: string | null = target != null && NET_WORTH >= target ? addM(0) : null
   let monthsWanted = target_date ? 6 : 120
   for (let m = 1; m <= 600; m++) {
-    invested = invested * (1 + r) + monthly
+    invested *= 1 + r
+    if (monthly >= 0) invested += monthly
+    else {
+      cash += monthly
+      if (cash < 0) {
+        invested += cash
+        cash = 0
+        if (invested < 0) {
+          cash = invested
+          invested = 0
+        }
+      }
+    }
     let assetsValue = 0
     for (const c of components) {
       c.value = c.value * (1 + c.rate) + c.contribution
       if (c.isLiability && c.value > 0) c.value = 0 // paid off — stop at zero
       assetsValue += c.value
     }
-    const value = BANK + invested + assetsValue
+    const value = cash + invested + assetsValue
     if (target != null && !target_date && value >= target) {
       target_date = addM(m)
       monthsWanted = Math.min(600, m + 6)
@@ -520,6 +535,7 @@ function projectionResponse(q: Record<string, any>) {
       timeline.push({
         date: addM(m),
         value: String(round(value)),
+        cash: String(round(cash)),
         invested: String(round(invested)),
         assets: String(round(assetsValue)),
       })

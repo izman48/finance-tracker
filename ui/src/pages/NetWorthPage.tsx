@@ -507,7 +507,8 @@ export default function NetWorthPage() {
               </>
             ) : null}{' '}
             is swept into investments at {Number(projection.annual_growth_pct)}%/yr; your{' '}
-            <span className="tnum">{gbp(Number(projection.bank_component))}</span> cash buffer is held flat;
+            <span className="tnum">{gbp(Number(projection.bank_component))}</span> cash buffer stays as cash
+            (negative months drain it first, never compounding as debt);
             each asset grows at its own assumed rate
             {(() => {
               const contribs = projection.asset_assumptions.filter((a) => Number(a.monthly_contribution) > 0)
@@ -526,6 +527,16 @@ export default function NetWorthPage() {
               )
             })()}
             . An estimate based on your {projection.contribution_basis ? 'data' : 'inputs'}, not advice.
+          </p>
+        )}
+
+        {projection && targetNum && projection.contribution_basis && Number(projection.monthly_contribution) < 0 && (
+          <p className="text-xs text-warn mt-2">
+            Your measured spending exceeds income − bills, so this projection drifts down. If you
+            move money between accounts or pay into investments monthly, those transfers can be
+            counted as spending — declare them as planned contributions on the asset they go into
+            (tap it in the balance sheet below), or review what's inside the figure on the
+            Spending tab.
           </p>
         )}
       </div>

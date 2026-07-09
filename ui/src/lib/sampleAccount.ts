@@ -456,7 +456,23 @@ function nudgesResponse() {
 // today's net worth. An estimate, not advice — same numbers as the real API.
 function projectionResponse(q: Record<string, any>) {
   const target = q.target_amount != null ? Number(q.target_amount) : null
-  const monthly = Math.max(0, Number(q.monthly_contribution) || 0)
+  // No custom contribution -> derive from the sample's cashflow, mirroring the
+  // backend: income commitments − bills − average everyday spending.
+  const round2 = (n: number) => Math.round(n * 100) / 100
+  const INCOME_MONTHLY = 3200 + 480 // salary + freelance
+  const BILLS_MONTHLY = 1100 + 32 + 20 + 12.99 + 11.99
+  const AVG_SPENDING = round2((980 + 1120 + 1040 + 1210 + 1005 + 1180) / 6)
+  const derived = q.monthly_contribution == null
+  const basis = derived
+    ? {
+        income_monthly: String(round2(INCOME_MONTHLY)),
+        bills_monthly: String(round2(BILLS_MONTHLY)),
+        avg_spending_monthly: String(AVG_SPENDING),
+        contribution: String(round2(INCOME_MONTHLY - BILLS_MONTHLY - AVG_SPENDING)),
+        spending_months_sampled: 6,
+      }
+    : null
+  const monthly = derived ? round2(INCOME_MONTHLY - BILLS_MONTHLY - AVG_SPENDING) : Number(q.monthly_contribution) || 0
   const growth = Math.min(50, Math.max(-50, Number(q.annual_growth_pct) || 0)) / 100
   const r = Math.pow(1 + growth, 1 / 12) - 1
   const addM = (m: number) => {
@@ -484,6 +500,7 @@ function projectionResponse(q: Record<string, any>) {
     target_amount: target != null ? String(target) : null,
     target_date,
     monthly_contribution: String(round(monthly)),
+    contribution_basis: basis,
     annual_growth_pct: String(Number(q.annual_growth_pct) || 0),
     as_of: addM(0),
     timeline,

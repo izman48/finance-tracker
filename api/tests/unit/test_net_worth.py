@@ -3,6 +3,8 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from app.models import Account, Asset, AssetFlow, AssetValuation, Transaction, User
+from app.models import CommitmentRule
+from app.models.commitment_rule import CommitmentStatus
 from app.services import analytics_service as svc
 
 
@@ -143,6 +145,68 @@ class TestAssetDecomposition:
         d = svc.asset_decomposition(db_session, user, months=6)
         assert d["contributions"] == Decimal("0")
         assert d["flows_recorded"] == 0
+
+
+class TestDerivedContribution:
+    def _commit(self, db, user, direction, amount, cadence="monthly"):
+        r = CommitmentRule(
+            user_id=user.id, direction=direction, label=f"{direction}-{amount}",
+            amount=Decimal(str(amount)), cadence=cadence,
+            next_date=svc._today() + timedelta(days=7),
+            status=CommitmentStatus.CONFIRMED.value,
+        )
+        db.add(r)
+        db.commit()
+        return r
+
+    def test_income_minus_bills_minus_avg_spending(self, db_session):
+        user = _user(db_session)
+        acc = _account(db_session, user, 1000)
+        self._commit(db_session, user, "income", 3200)
+        self._commit(db_session, user, "expense", 1100)
+        # Everyday spending: £600 in each of the last two complete months.
+        today = svc._today()
+        last_m = date(today.year, today.month, 1) - timedelta(days=1)
+        prev_m = date(last_m.year, last_m.month, 1) - timedelta(days=1)
+        _tx(db_session, acc, 600, last_m.replace(day=10), ttype="debit")
+        _tx(db_session, acc, 600, prev_m.replace(day=10), ttype="debit")
+
+        d = svc.derived_contribution(db_session, user)
+        assert d["income_monthly"] == Decimal("3200.00")
+        assert d["bills_monthly"] == Decimal("1100.00")
+        # £1,200 over the sampled complete months, averaged over the window.
+        assert d["avg_spending_monthly"] > 0
+        assert d["contribution"] == d["income_monthly"] - d["bills_monthly"] - d["avg_spending_monthly"]
+
+    def test_current_partial_month_is_excluded_from_the_average(self, db_session):
+        user = _user(db_session)
+        acc = _account(db_session, user, 1000)
+        # Big spend TODAY (partial month) must not drag the average.
+        _tx(db_session, acc, 5000, svc._today(), ttype="debit")
+        d = svc.derived_contribution(db_session, user)
+        assert d["avg_spending_monthly"] == Decimal("0.00")
+
+    def test_projection_derives_when_no_contribution_given(self, db_session):
+        user = _user(db_session)
+        _account(db_session, user, 1000)
+        self._commit(db_session, user, "income", 2000)
+        self._commit(db_session, user, "expense", 500)
+        p = svc.net_worth_projection(db_session, user, annual_growth_pct=Decimal("0"))
+        assert p["contribution_basis"] is not None
+        assert p["monthly_contribution"] == Decimal("1500.00")
+        # month 1 = 1000 + 1500
+        assert p["timeline"][1]["value"] == Decimal("2500.00")
+
+    def test_custom_contribution_skips_derivation_and_allows_negative(self, db_session):
+        user = _user(db_session)
+        _account(db_session, user, 1000)
+        p = svc.net_worth_projection(
+            db_session, user,
+            monthly_contribution=Decimal("-100"),
+            annual_growth_pct=Decimal("0"),
+        )
+        assert p["contribution_basis"] is None
+        assert p["timeline"][1]["value"] == Decimal("900.00")  # drawdown honoured
 
 
 class TestNetWorthProjection:

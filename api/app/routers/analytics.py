@@ -97,12 +97,13 @@ def get_net_worth_projection(
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
     target_amount: Decimal | None = None,
-    monthly_contribution: Decimal = Decimal(0),
+    monthly_contribution: Decimal | None = None,
     annual_growth_pct: Decimal = Decimal("5"),
 ) -> ProjectionResponse:
     """Project net worth forward from stated assumptions (compound growth +
-    monthly contributions). A factual calculation with the assumptions echoed
-    back — an estimate, not advice."""
+    monthly contributions). Omit monthly_contribution to derive it from the
+    user's own cashflow (income − bills − average everyday spending); the
+    basis is echoed back. A factual calculation — an estimate, not advice."""
     return ProjectionResponse(
         **analytics_service.net_worth_projection(
             db, current_user,

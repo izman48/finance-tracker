@@ -177,11 +177,21 @@ export interface ProjectionPoint {
   value: string
 }
 
+export interface ContributionBasis {
+  income_monthly: string
+  bills_monthly: string
+  avg_spending_monthly: string
+  contribution: string
+  spending_months_sampled: number
+}
+
 export interface Projection {
   current_net_worth: string
   target_amount: string | null
   target_date: string | null
   monthly_contribution: string
+  // Present when the contribution was derived from the user's cashflow.
+  contribution_basis: ContributionBasis | null
   annual_growth_pct: string
   as_of: string
   timeline: ProjectionPoint[]

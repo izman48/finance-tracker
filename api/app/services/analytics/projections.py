@@ -1,10 +1,12 @@
 """Net-worth projection: "when do I hit £X" from stated assumptions.
 
-Pure request-time arithmetic — no persisted model. The user supplies a target,
-a monthly contribution and a growth assumption (the UI defaults contribution
-from `get_summary`'s `savable`); we compound forward from today's net worth.
-This is a factual calculation with visible assumptions, labelled "an estimate,
-not advice" in the UI — never a personal recommendation (FCA line).
+Pure request-time arithmetic — no persisted model. The contribution either
+comes from the user (custom) or is derived from their own cashflow model:
+confirmed income commitments − confirmed bills − average everyday spending
+(the noise-excluded trend, so transfers and card repayments — which move money
+without changing wealth — don't distort it). Either way the arithmetic is
+echoed back and the UI labels it "an estimate, not advice" — never a personal
+recommendation (FCA line).
 """
 from __future__ import annotations
 
@@ -13,26 +15,90 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from .common import _add_months, _today
+from app.models import CommitmentDirection, CommitmentRule, CommitmentStatus
+
+from .cadence import commitment_occurrences
+from .common import _add_months, _d, _today
 from .net_worth import net_worth_history
+from .spending import get_spending_trend
 
 # Search horizon for "when is the target hit" (50 years), and the cap on how
 # many monthly points we actually return for charting.
 MAX_MONTHS = 600
 DEFAULT_CHART_MONTHS = 120
 
+# How much history feeds the "average everyday spending" leg of the derived
+# contribution. Complete months only — the current partial month would bias low.
+SPEND_AVG_MONTHS = 6
+
+
+def _monthly_equivalent(rules: list[CommitmentRule], today: date) -> Decimal:
+    """A fair per-month figure for mixed cadences: occurrences over the next
+    12 months × amount, divided by 12 (so yearly bills weigh 1/12, weekly ~4.3×)."""
+    year_out = _add_months(today, 12)
+    total = sum(
+        (_d(r.amount) * len(commitment_occurrences(r, today, year_out)) for r in rules),
+        Decimal(0),
+    )
+    return total / 12
+
+
+def derived_contribution(db: Session, user) -> dict:
+    """Expected monthly net-worth contribution from the user's own cashflow:
+    confirmed income − confirmed bills − average everyday spending.
+
+    The spending leg uses the noise-excluded trend with commitments excluded
+    (they're already counted as bills), averaged over complete months only.
+    Can be negative — that's an honest drift-down projection, not an error.
+    """
+    today = _today()
+    rules = (
+        db.query(CommitmentRule)
+        .filter(
+            CommitmentRule.user_id == user.id,
+            CommitmentRule.status == CommitmentStatus.CONFIRMED.value,
+        )
+        .all()
+    )
+    income = _monthly_equivalent(
+        [r for r in rules if r.direction == CommitmentDirection.INCOME.value], today
+    )
+    bills = _monthly_equivalent(
+        [r for r in rules if r.direction == CommitmentDirection.EXPENSE.value], today
+    )
+
+    trend = get_spending_trend(db, user, months=SPEND_AVG_MONTHS + 1, exclude_commitments=True)
+    this_month = f"{today.year}-{today.month:02d}"
+    complete = [m for m in trend["months"] if m["month"] != this_month]
+    avg_spending = (
+        sum((_d(m["total"]) for m in complete), Decimal(0)) / len(complete)
+        if complete
+        else Decimal(0)
+    )
+
+    return {
+        "income_monthly": _round2(income),
+        "bills_monthly": _round2(bills),
+        "avg_spending_monthly": _round2(avg_spending),
+        "contribution": _round2(income - bills - avg_spending),
+        "spending_months_sampled": len(complete),
+    }
+
 
 def net_worth_projection(
     db: Session,
     user,
     target_amount: Decimal | None = None,
-    monthly_contribution: Decimal = Decimal(0),
+    monthly_contribution: Decimal | None = None,
     annual_growth_pct: Decimal = Decimal("5"),
 ) -> dict:
     """Compound today's net worth forward month by month.
 
-    value(t+1) = value(t) × (1 + r_monthly) + monthly_contribution, where
-    r_monthly is the monthly-compounded equivalent of the annual assumption.
+    value(t+1) = value(t) × (1 + r_monthly) + contribution, where r_monthly is
+    the monthly-compounded equivalent of the annual assumption. With no custom
+    contribution, it's derived from the user's cashflow (income − bills − avg
+    spending) and the basis is returned so the UI shows the working. Negative
+    contributions are allowed — drawdown is a legitimate projection.
     Returns a monthly timeline (for the dashed chart extension), the first
     month the target is reached (or None within 50 years), and the assumptions
     echoed back so the UI can show exactly what was computed.
@@ -44,7 +110,13 @@ def net_worth_projection(
 
     growth = max(Decimal("-50"), min(annual_growth_pct, Decimal("50"))) / Decimal(100)
     monthly_rate = Decimal(str((1 + float(growth)) ** (1 / 12) - 1))
-    contribution = max(Decimal(0), monthly_contribution)
+
+    basis: dict | None = None
+    if monthly_contribution is None:
+        basis = derived_contribution(db, user)
+        contribution = basis["contribution"]
+    else:
+        contribution = monthly_contribution
 
     timeline: list[dict] = [{"date": today, "value": _round2(current)}]
     # Already there today (e.g. a target below current net worth) — say so,
@@ -73,6 +145,9 @@ def net_worth_projection(
         "target_amount": target_amount,
         "target_date": target_date,
         "monthly_contribution": _round2(contribution),
+        # Non-null when the contribution was derived from the user's cashflow —
+        # the UI renders the working (income − bills − avg spending).
+        "contribution_basis": basis,
         "annual_growth_pct": annual_growth_pct,
         "as_of": today,
         "timeline": timeline,

@@ -113,6 +113,11 @@ export default function NetWorthPage() {
   const [target, setTarget] = useState(() => localStorage.getItem('wealth.target') ?? '')
   const [monthly, setMonthly] = useState(() => localStorage.getItem('wealth.monthly') ?? '')
   const [growth, setGrowth] = useState(() => localStorage.getItem('wealth.growth') ?? '5')
+  // 'cashflow' derives the contribution from income − bills − avg spending
+  // server-side; 'custom' sends the typed figure.
+  const [contribMode, setContribMode] = useState<'cashflow' | 'custom'>(
+    () => (localStorage.getItem('wealth.contribMode') === 'custom' ? 'custom' : 'cashflow'),
+  )
   const [showTargetForm, setShowTargetForm] = useState(false)
   const [projection, setProjection] = useState<Projection | null>(null)
   const [decomp, setDecomp] = useState<AssetDecomposition | null>(null)
@@ -166,6 +171,7 @@ export default function NetWorthPage() {
     localStorage.setItem('wealth.target', target)
     localStorage.setItem('wealth.monthly', monthly)
     localStorage.setItem('wealth.growth', growth)
+    localStorage.setItem('wealth.contribMode', contribMode)
     const t = Number(target)
     if (!target || !Number.isFinite(t) || t <= 0) {
       setProjection(null)
@@ -176,7 +182,9 @@ export default function NetWorthPage() {
       assetsAPI
         .netWorthProjection({
           target_amount: t,
-          monthly_contribution: Math.max(0, Number(monthly) || 0),
+          // Omitted in cashflow mode → the server derives it from income −
+          // bills − average spending and returns the working.
+          monthly_contribution: contribMode === 'custom' ? Number(monthly) || 0 : undefined,
           annual_growth_pct: Number(growth) || 0,
         })
         .then((res) => !cancelled && setProjection(res.data))
@@ -186,7 +194,7 @@ export default function NetWorthPage() {
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [target, monthly, growth])
+  }, [target, monthly, growth, contribMode])
 
   const handleConnectBank = async () => {
     setConnecting(true)
@@ -401,8 +409,32 @@ export default function NetWorthPage() {
               <input type="number" min="0" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="e.g. 250000" className="input !w-36" />
             </div>
             <div>
-              <label className="label">Adding monthly (£)</label>
-              <input type="number" min="0" value={monthly} onChange={(e) => setMonthly(e.target.value)} className="input !w-32" />
+              <label className="label">Adding monthly</label>
+              <div className="flex items-center gap-0.5">
+                <button
+                  onClick={() => setContribMode('cashflow')}
+                  className={contribMode === 'cashflow' ? 'seg-active' : 'seg'}
+                  title="Derived from your confirmed income and bills minus your average everyday spending"
+                >
+                  From my cashflow
+                </button>
+                <button
+                  onClick={() => setContribMode('custom')}
+                  className={contribMode === 'custom' ? 'seg-active' : 'seg'}
+                >
+                  Custom
+                </button>
+                {contribMode === 'custom' && (
+                  <input
+                    type="number"
+                    step="10"
+                    value={monthly}
+                    onChange={(e) => setMonthly(e.target.value)}
+                    placeholder="£/mo"
+                    className="input !w-28 ml-2"
+                  />
+                )}
+              </div>
             </div>
             <div>
               <label className="label">Growth %/yr</label>
@@ -462,7 +494,21 @@ export default function NetWorthPage() {
               <>Not reached within 50 years on these assumptions.</>
             )}{' '}
             Assumes {Number(projection.annual_growth_pct)}%/yr growth and{' '}
-            {gbp(Number(projection.monthly_contribution))}/mo added — an estimate based on your inputs, not advice.
+            <span className="tnum">{gbp(Number(projection.monthly_contribution))}/mo</span>
+            {projection.contribution_basis ? (
+              <>
+                {' '}from your cashflow (
+                <span className="tnum">
+                  {gbp(Number(projection.contribution_basis.income_monthly))} income −{' '}
+                  {gbp(Number(projection.contribution_basis.bills_monthly))} bills −{' '}
+                  {gbp(Number(projection.contribution_basis.avg_spending_monthly))} avg spending
+                </span>
+                )
+              </>
+            ) : (
+              <> added</>
+            )}{' '}
+            — an estimate based on your {projection.contribution_basis ? 'data' : 'inputs'}, not advice.
           </p>
         )}
       </div>

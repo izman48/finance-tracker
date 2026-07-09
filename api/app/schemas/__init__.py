@@ -198,6 +198,10 @@ class ContributionBasis(BaseModel):
     # False = the "all my future cashflow into my wealth" scenario: the
     # measured average is shown but NOT subtracted from the surplus.
     spending_subtracted: bool = True
+    # What was actually subtracted, and where it came from: the history
+    # measurement ('measured') or the user's own estimate ('custom').
+    spending_applied: Decimal = Decimal(0)
+    spending_source: str = "measured"
     # The evidence: each sampled month's measured spending.
     sampled_months: list[SampledMonth] = []
 

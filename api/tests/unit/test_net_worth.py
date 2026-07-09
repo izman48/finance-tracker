@@ -208,6 +208,38 @@ class TestDerivedContribution:
         assert p["contribution_basis"] is None
         assert p["timeline"][1]["value"] == Decimal("900.00")  # drawdown honoured
 
+    def test_deficit_drains_cash_linearly_and_never_compounds(self, db_session):
+        """A persistent deficit must NOT compound at the growth rate — that
+        would model borrowing at +10%/yr and produce an exponential cliff."""
+        user = _user(db_session)
+        _account(db_session, user, 1000)
+        p = svc.net_worth_projection(
+            db_session, user,
+            monthly_contribution=Decimal("-500"),
+            annual_growth_pct=Decimal("10"),
+        )
+        # Cash drains first: 1000 → 500 → 0, then pure linear shortfall.
+        assert p["timeline"][1]["value"] == Decimal("500.00")
+        assert p["timeline"][2]["value"] == Decimal("0.00")
+        assert p["timeline"][3]["value"] == Decimal("-500.00")
+        # Ten years out the loss is exactly linear (120 × 500 − 1000), not
+        # the ~×2 exponential the old model produced.
+        ten_years = [pt for pt in p["timeline"] if pt["date"] == svc._add_months(svc._today(), 120)]
+        assert ten_years and ten_years[0]["value"] == Decimal("-59000.00")
+
+    def test_deficit_sells_investments_after_cash(self, db_session):
+        user = _user(db_session)
+        _account(db_session, user, 300)
+        p = svc.net_worth_projection(
+            db_session, user,
+            monthly_contribution=Decimal("-100"),
+            annual_growth_pct=Decimal("0"),
+        )
+        # 300 cash absorbs three months, then shortfall accrues linearly.
+        assert p["timeline"][3]["value"] == Decimal("0.00")
+        assert p["timeline"][5]["value"] == Decimal("-200.00")
+        assert p["timeline"][3]["cash"] == Decimal("0.00")
+
 
 class TestNetWorthProjection:
     def test_zero_growth_is_linear_contributions(self, db_session):

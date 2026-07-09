@@ -179,6 +179,7 @@ export interface AssetDecomposition {
 export interface ProjectionPoint {
   date: string
   value: string
+  cash?: string
   invested?: string
   assets?: string
 }

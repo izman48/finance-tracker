@@ -169,8 +169,9 @@ class NudgeResponse(BaseModel):
 class ProjectionPoint(BaseModel):
     date: date
     value: Decimal
-    # Component breakdown: the swept-surplus bucket and manual assets (bank is
-    # the flat bank_component on the response).
+    # Component breakdown: cash buffer (drained first in negative months),
+    # the swept-surplus bucket, and manual assets.
+    cash: Decimal | None = None
     invested: Decimal | None = None
     assets: Decimal | None = None
 

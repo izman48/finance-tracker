@@ -224,6 +224,7 @@ def net_worth_projection(
     timeline: list[dict] = [{
         "date": today,
         "value": _round2(current),
+        "cash": _round2(bank_now),
         "invested": Decimal("0.00"),
         "assets": _round2(current - bank_now),
     }]
@@ -232,9 +233,27 @@ def net_worth_projection(
     target_date: date | None = (
         today if target_amount is not None and current >= target_amount else None
     )
+    # Surplus waterfall: positive months are swept into investments (which
+    # compound); negative months drain the cash buffer first, then sell down
+    # investments, and any shortfall beyond that sits at 0% — a deficit must
+    # never compound at the GROWTH rate (that would model borrowing at +10%).
+    cash = bank_now
     invested = Decimal(0)
     for m in range(1, MAX_MONTHS + 1):
-        invested = invested * (1 + r_global) + surplus[m - 1]
+        invested *= 1 + r_global
+        s = surplus[m - 1]
+        if s >= 0:
+            invested += s
+        else:
+            cash += s
+            if cash < 0:
+                invested += cash  # buffer exhausted — draw from investments
+                cash = Decimal(0)
+                if invested < 0:
+                    # Everything exhausted: park the shortfall as (negative)
+                    # cash so it accrues nothing rather than compounding.
+                    cash = invested
+                    invested = Decimal(0)
         assets_value = Decimal(0)
         for c in components:
             c["value"] = c["value"] * (1 + c["rate"]) + c["contribution"]
@@ -242,7 +261,7 @@ def net_worth_projection(
             if c["is_liability"] and c["value"] > 0:
                 c["value"] = Decimal(0)
             assets_value += c["value"]
-        value = bank_now + invested + assets_value
+        value = cash + invested + assets_value
         when = _add_months(today, m)
         if target_amount is not None and target_date is None and value >= target_amount:
             target_date = when
@@ -255,6 +274,7 @@ def net_worth_projection(
             timeline.append({
                 "date": when,
                 "value": _round2(value),
+                "cash": _round2(cash),
                 "invested": _round2(invested),
                 "assets": _round2(assets_value),
             })

@@ -162,6 +162,7 @@ def net_worth_projection(
     target_amount: Decimal | None = None,
     monthly_contribution: Decimal | None = None,
     annual_growth_pct: Decimal = Decimal("5"),
+    subtract_spending: bool = True,
 ) -> dict:
     """Project the whole balance sheet forward, month by month.
 
@@ -212,7 +213,14 @@ def net_worth_projection(
     if monthly_contribution is None:
         mode = "cashflow"
         basis = derived_contribution(db, user)
-        surplus = monthly_surplus_series(db, user, MAX_MONTHS, basis["avg_spending_monthly"])
+        # subtract_spending=False is the "all my future cashflow lands in my
+        # wealth" scenario: income − bills only, matching the trajectory of
+        # the Cashflow forecast chart (which never subtracts everyday
+        # spending). The measured average stays in the basis so the caption
+        # can say exactly what was NOT subtracted.
+        basis["spending_subtracted"] = subtract_spending
+        spend_leg = basis["avg_spending_monthly"] if subtract_spending else Decimal(0)
+        surplus = monthly_surplus_series(db, user, MAX_MONTHS, spend_leg)
         # Display figure: the first year's average — the math uses the series.
         year1 = surplus[:12]
         display_contribution = sum(year1, Decimal(0)) / len(year1)

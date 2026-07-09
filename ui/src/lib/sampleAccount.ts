@@ -465,16 +465,21 @@ function projectionResponse(q: Record<string, any>) {
   const BILLS_MONTHLY = 1100 + 32 + 20 + 12.99 + 11.99
   const AVG_SPENDING = round2((980 + 1120 + 1040 + 1210 + 1005 + 1180) / 6)
   const derived = q.monthly_contribution == null
+  // subtract_spending=false: "all my forecasted cashflow lands in my wealth" —
+  // the average is shown but not subtracted (mirrors the backend).
+  const subtractSpending = String(q.subtract_spending ?? 'true') !== 'false'
+  const spendLeg = subtractSpending ? AVG_SPENDING : 0
   const basis = derived
     ? {
         income_monthly: String(round2(INCOME_MONTHLY)),
         bills_monthly: String(round2(BILLS_MONTHLY)),
         avg_spending_monthly: String(AVG_SPENDING),
-        contribution: String(round2(INCOME_MONTHLY - BILLS_MONTHLY - AVG_SPENDING)),
+        contribution: String(round2(INCOME_MONTHLY - BILLS_MONTHLY - spendLeg)),
         spending_months_sampled: 6,
+        spending_subtracted: subtractSpending,
       }
     : null
-  const monthly = derived ? round2(INCOME_MONTHLY - BILLS_MONTHLY - AVG_SPENDING) : Number(q.monthly_contribution) || 0
+  const monthly = derived ? round2(INCOME_MONTHLY - BILLS_MONTHLY - spendLeg) : Number(q.monthly_contribution) || 0
   const growth = Math.min(50, Math.max(-50, Number(q.annual_growth_pct) || 0)) / 100
   const r = Math.pow(1 + growth, 1 / 12) - 1
   const addM = (m: number) => {

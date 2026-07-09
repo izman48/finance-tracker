@@ -197,6 +197,26 @@ class TestDerivedContribution:
         # month 1 = 1000 + 1500
         assert p["timeline"][1]["value"] == Decimal("2500.00")
 
+    def test_subtract_spending_false_uses_income_minus_bills_only(self, db_session):
+        """The "all my future cashflow into my wealth" scenario: everyday
+        spending is measured (shown in the basis) but not subtracted."""
+        user = _user(db_session)
+        acc = _account(db_session, user, 1000)
+        self._commit(db_session, user, "income", 2000)
+        self._commit(db_session, user, "expense", 500)
+        # Real everyday spending exists last month — must not affect the series.
+        last_m = date(svc._today().year, svc._today().month, 1) - timedelta(days=1)
+        _tx(db_session, acc, 800, last_m.replace(day=10), ttype="debit")
+
+        p = svc.net_worth_projection(
+            db_session, user, annual_growth_pct=Decimal("0"), subtract_spending=False,
+        )
+        assert p["contribution_basis"]["spending_subtracted"] is False
+        # Measured average still reported for the caption…
+        assert p["contribution_basis"]["avg_spending_monthly"] > 0
+        # …but the surplus is income − bills only: 1000 + 1500.
+        assert p["timeline"][1]["value"] == Decimal("2500.00")
+
     def test_custom_contribution_skips_derivation_and_allows_negative(self, db_session):
         user = _user(db_session)
         _account(db_session, user, 1000)

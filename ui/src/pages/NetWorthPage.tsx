@@ -118,6 +118,11 @@ export default function NetWorthPage() {
   const [contribMode, setContribMode] = useState<'cashflow' | 'custom'>(
     () => (localStorage.getItem('wealth.contribMode') === 'custom' ? 'custom' : 'cashflow'),
   )
+  // Unticked = "all my future cashflow lands in my wealth": everyday spending
+  // is measured and shown, but not subtracted (matches the Cashflow chart).
+  const [subtractSpending, setSubtractSpending] = useState(
+    () => localStorage.getItem('wealth.subtractSpending') !== '0',
+  )
   const [showTargetForm, setShowTargetForm] = useState(false)
   const [projection, setProjection] = useState<Projection | null>(null)
   const [decomp, setDecomp] = useState<AssetDecomposition | null>(null)
@@ -172,6 +177,7 @@ export default function NetWorthPage() {
     localStorage.setItem('wealth.monthly', monthly)
     localStorage.setItem('wealth.growth', growth)
     localStorage.setItem('wealth.contribMode', contribMode)
+    localStorage.setItem('wealth.subtractSpending', subtractSpending ? '1' : '0')
     const t = Number(target)
     if (!target || !Number.isFinite(t) || t <= 0) {
       setProjection(null)
@@ -186,6 +192,7 @@ export default function NetWorthPage() {
           // bills − average spending and returns the working.
           monthly_contribution: contribMode === 'custom' ? Number(monthly) || 0 : undefined,
           annual_growth_pct: Number(growth) || 0,
+          subtract_spending: contribMode === 'cashflow' ? subtractSpending : undefined,
         })
         .then((res) => !cancelled && setProjection(res.data))
         .catch((e) => console.error('Failed to load projection', e))
@@ -194,7 +201,7 @@ export default function NetWorthPage() {
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [target, monthly, growth, contribMode])
+  }, [target, monthly, growth, contribMode, subtractSpending])
 
   const handleConnectBank = async () => {
     setConnecting(true)
@@ -445,6 +452,22 @@ export default function NetWorthPage() {
                 Clear target
               </button>
             )}
+            {contribMode === 'cashflow' && (
+              <label className="basis-full flex items-start sm:items-center cursor-pointer -mt-1">
+                <input
+                  type="checkbox"
+                  checked={subtractSpending}
+                  onChange={(e) => setSubtractSpending(e.target.checked)}
+                  className="checkbox mt-0.5 sm:mt-0"
+                />
+                <span className="ml-2 text-sm text-slate-300">
+                  Subtract my average everyday spending
+                  <span className="ml-1 text-xs text-slate-500">
+                    (untick to assume all your forecasted cashflow lands in your wealth, like the Cashflow chart)
+                  </span>
+                </span>
+              </label>
+            )}
           </div>
         )}
 
@@ -496,15 +519,28 @@ export default function NetWorthPage() {
             Your monthly surplus of{' '}
             <span className="tnum">~{gbp(Number(projection.monthly_contribution))}/mo</span>
             {projection.contribution_basis ? (
-              <>
-                {' '}(from your cashflow:{' '}
-                <span className="tnum">
-                  {gbp(Number(projection.contribution_basis.income_monthly))} income −{' '}
-                  {gbp(Number(projection.contribution_basis.bills_monthly))} bills −{' '}
-                  {gbp(Number(projection.contribution_basis.avg_spending_monthly))} avg spending
-                </span>
-                , month by month like the Cashflow forecast)
-              </>
+              projection.contribution_basis.spending_subtracted ? (
+                <>
+                  {' '}(from your cashflow:{' '}
+                  <span className="tnum">
+                    {gbp(Number(projection.contribution_basis.income_monthly))} income −{' '}
+                    {gbp(Number(projection.contribution_basis.bills_monthly))} bills −{' '}
+                    {gbp(Number(projection.contribution_basis.avg_spending_monthly))} avg spending
+                  </span>
+                  , month by month like the Cashflow forecast)
+                </>
+              ) : (
+                <>
+                  {' '}(all of your forecasted cashflow:{' '}
+                  <span className="tnum">
+                    {gbp(Number(projection.contribution_basis.income_monthly))} income −{' '}
+                    {gbp(Number(projection.contribution_basis.bills_monthly))} bills
+                  </span>
+                  ; your measured{' '}
+                  <span className="tnum">{gbp(Number(projection.contribution_basis.avg_spending_monthly))}/mo</span>{' '}
+                  everyday spending is <span className="text-warn">not subtracted</span>)
+                </>
+              )
             ) : null}{' '}
             is swept into investments at {Number(projection.annual_growth_pct)}%/yr; your{' '}
             <span className="tnum">{gbp(Number(projection.bank_component))}</span> cash buffer stays as cash

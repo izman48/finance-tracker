@@ -43,6 +43,15 @@ class Asset(Base):
         Numeric(5, 2), nullable=True
     )
 
+    # Planned monthly saving into this asset (e.g. an ISA direct debit). The
+    # projection adds it to the asset each month; the cash side is already in
+    # measured spending, so declaring it here moves the money from "consumption"
+    # to "wealth". Positive on a liability = paydown. Describes the user's
+    # saving behaviour — DEK-encrypted like valuation amounts.
+    monthly_contribution: Mapped[Decimal | None] = mapped_column(
+        UserEncryptedDecimal, nullable=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

@@ -57,6 +57,7 @@ def create_asset(
         name=body.name.strip(),
         asset_type=body.asset_type,
         assumed_growth_pct=body.assumed_growth_pct,
+        monthly_contribution=body.monthly_contribution,
     )
     db.add(asset)
     db.flush()
@@ -86,8 +87,11 @@ def update_asset(
         asset.asset_type = body.asset_type
     # exclude_unset: "field absent" leaves the assumption alone, an explicit
     # null clears it back to the projection default.
-    if "assumed_growth_pct" in body.model_dump(exclude_unset=True):
+    updates = body.model_dump(exclude_unset=True)
+    if "assumed_growth_pct" in updates:
         asset.assumed_growth_pct = body.assumed_growth_pct
+    if "monthly_contribution" in updates:
+        asset.monthly_contribution = body.monthly_contribution
     db.commit()
     db.refresh(asset)
     return asset

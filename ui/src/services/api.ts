@@ -153,6 +153,8 @@ export interface Asset {
   asset_type: string
   // Projection assumption (%/yr, may be negative); null → projection default.
   assumed_growth_pct: string | null
+  // Planned monthly saving into this asset (paydown on a liability).
+  monthly_contribution: string | null
   valuations: AssetValuation[]
 }
 
@@ -184,6 +186,7 @@ export interface ProjectionPoint {
 export interface AssetAssumption {
   name: string
   growth_pct: string
+  monthly_contribution: string
 }
 
 export interface ContributionBasis {
@@ -214,7 +217,7 @@ export const assetsAPI = {
   list: () => api.get<Asset[]>('/assets'),
   create: (data: { name: string; asset_type: string; value: number; valued_at?: string }) =>
     api.post('/assets', data),
-  update: (id: string, data: { name?: string; asset_type?: string; assumed_growth_pct?: number | null }) =>
+  update: (id: string, data: { name?: string; asset_type?: string; assumed_growth_pct?: number | null; monthly_contribution?: number | null }) =>
     api.patch(`/assets/${id}`, data),
   remove: (id: string) => api.delete(`/assets/${id}`),
   addValuation: (id: string, data: { value: number; valued_at?: string }) =>

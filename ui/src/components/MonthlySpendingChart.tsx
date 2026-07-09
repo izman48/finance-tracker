@@ -25,8 +25,14 @@ function TrendTooltip({ active, payload }: any) {
 
 export default function MonthlySpendingChart({
   excludeCommitments = false,
+  selectedMonth = null,
+  onSelectMonth,
 }: {
   excludeCommitments?: boolean
+  /** YYYY-MM of the month the page is currently drilled into, if any. */
+  selectedMonth?: string | null
+  /** Click a bar to filter the whole page to that calendar month. */
+  onSelectMonth?: (month: string) => void
 }) {
   const [months, setMonths] = useState(6)
   const [data, setData] = useState<MonthSpend[]>([])
@@ -60,7 +66,14 @@ export default function MonthlySpendingChart({
         <div>
           <h2 className="font-display font-semibold text-slate-100">Spending history</h2>
           <p className="text-xs text-slate-500">
-            Whole calendar months — a longer view than the period above.
+            {selectedMonth ? (
+              <>
+                Showing <span className="text-accent">{monthLabel(selectedMonth)}</span> across the page —
+                click the bar again to clear.
+              </>
+            ) : (
+              <>Whole calendar months — click a bar to see that month's insights below.</>
+            )}
           </p>
         </div>
         {/* A range for this chart only — kept visually distinct from the page's
@@ -94,10 +107,27 @@ export default function MonthlySpendingChart({
             <XAxis dataKey="label" fontSize={12} tickLine={false} axisLine={false} />
             <YAxis tickFormatter={(v) => gbp(v)} width={64} fontSize={12} tickLine={false} axisLine={false} />
             <Tooltip content={<TrendTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
-            <Bar dataKey="total" radius={[6, 6, 0, 0]}>
-              {chartData.map((d) => (
-                <Cell key={d.month} fill={d.total === max && max > 0 ? '#FB7185' : '#2DD4A7'} fillOpacity={d.total === max && max > 0 ? 0.9 : 0.75} />
-              ))}
+            <Bar
+              dataKey="total"
+              radius={[6, 6, 0, 0]}
+              cursor={onSelectMonth ? 'pointer' : undefined}
+              onClick={(data: any) => {
+                const month = data?.month ?? data?.payload?.month
+                if (onSelectMonth && month) onSelectMonth(month)
+              }}
+            >
+              {chartData.map((d) => {
+                const selected = d.month === selectedMonth
+                return (
+                  <Cell
+                    key={d.month}
+                    fill={d.total === max && max > 0 ? '#FB7185' : '#2DD4A7'}
+                    fillOpacity={selected ? 1 : d.total === max && max > 0 ? 0.9 : 0.75}
+                    stroke={selected ? '#E2E8F0' : 'none'}
+                    strokeWidth={selected ? 2 : 0}
+                  />
+                )
+              })}
             </Bar>
           </BarChart>
         </ResponsiveContainer>

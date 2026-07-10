@@ -188,7 +188,7 @@ export default function HomePage() {
       <div className="orb w-[28rem] h-[28rem] bg-sky2/10 top-64 -left-48 animate-float-slower" />
 
       <div className="relative max-w-7xl mx-auto px-4 pt-14 sm:pt-24 pb-16">
-        <div className="grid lg:grid-cols-2 gap-12 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
           <div className="text-center lg:text-left">
             <div data-hero="kicker" className="chip-pos mb-5">
               Open banking · your data stays yours
@@ -273,7 +273,7 @@ export default function HomePage() {
             </p>
           </div>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
             {SECURITY.map(({ icon: Icon, title, body }) => (
               <div key={title} data-sec className="card-pad hover:border-accent/25 transition-colors">
                 <span className="w-10 h-10 rounded-xl bg-accent/15 border border-accent/20 flex items-center justify-center mb-4">

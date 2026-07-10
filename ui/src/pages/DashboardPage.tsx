@@ -253,7 +253,7 @@ export default function DashboardPage() {
 
       {/* Cashflow summary */}
       {summary && hasAccounts && (
-        <div className="mb-6 grid lg:grid-cols-3 gap-4 sm:gap-6">
+        <div className="mb-6 grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
           {/* Safe to spend hero */}
           <div className="lg:col-span-2 card p-6 sm:p-8 relative overflow-hidden" data-reveal>
             <div className="orb w-72 h-72 bg-accent/15 -top-24 -right-20" />
@@ -280,11 +280,13 @@ export default function DashboardPage() {
                   { icon: PiggyBank, label: 'Savable (30d)', value: formatCurrency(summary.savable), tone: 'text-pos', explain: EXPLAIN.savable },
                   { icon: ShieldAlert, label: 'Overdraft cushion', value: formatCurrency(summary.overdraft_cushion), tone: 'text-slate-400', explain: EXPLAIN.overdraftCushion },
                 ].map((s) => (
-                  <div key={s.label}>
+                  <div key={s.label} className="min-w-0">
                     <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-1">
-                      <s.icon className="w-3.5 h-3.5" />
-                      {s.label}
-                      <InfoTip text={s.explain} align="left" />
+                      <s.icon className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate min-w-0">{s.label}</span>
+                      <span className="shrink-0 inline-flex">
+                        <InfoTip text={s.explain} align="left" />
+                      </span>
                     </div>
                     <div className={`font-semibold tnum ${s.tone}`}>{s.value}</div>
                   </div>

@@ -54,16 +54,38 @@ def _detect_internal_transfers(txns: list[Transaction]) -> set:
     return excluded
 
 
+def _effective_transfers(txns: list[Transaction]) -> set:
+    """Transfer IDs after user overrides: detection can't see transfers to
+    unconnected destinations (an ISA direct debit has no visible incoming
+    leg), so counts_as_override='transfer' adds a transaction, and any other
+    override removes it — the user's word beats the pairing heuristic."""
+    transfers = _detect_internal_transfers(txns)
+    for tx in txns:
+        if tx.counts_as_override == "transfer":
+            transfers.add(tx.id)
+        elif tx.counts_as_override in ("spending", "card_payment"):
+            transfers.discard(tx.id)
+    return transfers
+
+
 def classify_noise(txns: list[Transaction], roles: dict) -> dict:
     """Map transaction id -> excluded reason for list display.
 
     Marks both halves of internal transfers, payments received onto credit
     cards, and card-settling debits from other accounts — the same signals the
     spending aggregates exclude, so the list and the totals can never disagree.
+    User counts_as_override wins over every automatic signal.
     """
-    transfers = _detect_internal_transfers(txns)
+    transfers = _effective_transfers(txns)
     reasons: dict = {}
     for tx in txns:
+        if tx.counts_as_override is not None:
+            # The user's word: 'spending' means no reason at all.
+            if tx.counts_as_override == "transfer":
+                reasons[tx.id] = "internal_transfer"
+            elif tx.counts_as_override == "card_payment":
+                reasons[tx.id] = "card_payment"
+            continue
         if tx.id in transfers:
             reasons[tx.id] = "internal_transfer"
             continue
@@ -138,7 +160,7 @@ def get_spending(
         .all()
     )
     # Detect transfers on the full set (pairing needs both accounts), then scope.
-    transfers = _detect_internal_transfers(txns_all)
+    transfers = _effective_transfers(txns_all)
     txns = [tx for tx in txns_all if not account_id or str(tx.account_id) == account_id]
     kind_scope = kind if kind in ("cash", "credit") else None
 
@@ -214,7 +236,10 @@ def _tally(by_category, by_merchant, tx, amount):
 
 
 def _is_card_repayment(tx, roles) -> bool:
-    """A debit on a spending account that settles a credit card."""
+    """A debit that settles a credit card. The user's counts_as_override wins
+    over the description indicators (which miss e.g. "PAYMENT REF 123")."""
+    if tx.counts_as_override is not None:
+        return tx.counts_as_override == "card_payment"
     if roles.get(tx.account_id) != AccountRole.SPENDING or tx.transaction_type != "debit":
         return False
     desc = f"{tx.description or ''} {tx.merchant_name or ''}".lower()
@@ -255,13 +280,12 @@ def _iter_spending(txns, transfers, roles, financed, commitment_keys):
             continue  # moved to a payment plan — counted via its installments
         if commitment_keys and transaction_match_key(tx) in commitment_keys:
             continue
+        if _is_card_repayment(tx, roles):
+            continue  # repayment, not new spending (override-aware)
         role = roles.get(tx.account_id)
         if role == AccountRole.CREDIT:
             yield tx, "credit"
         elif role == AccountRole.SPENDING:
-            desc = f"{tx.description or ''} {tx.merchant_name or ''}".lower()
-            if any(ind in desc for ind in _CARD_PAYMENT_INDICATORS):
-                continue  # repayment, not new spending
             yield tx, "cash"
         # savings / excluded accounts: not spending
 
@@ -292,7 +316,7 @@ def spending_transactions(
         )
         .all()
     )
-    transfers = _detect_internal_transfers(txns)
+    transfers = _effective_transfers(txns)
 
     out: list[dict] = []
     for tx, k in _iter_spending(txns, transfers, roles, financed, commitment_keys):
@@ -349,7 +373,7 @@ def get_spending_trend(
         )
         .all()
     )
-    transfers = _detect_internal_transfers(txns)
+    transfers = _effective_transfers(txns)
 
     # Seed every month in range so quiet months show as zero, not gaps.
     buckets: dict[str, dict] = {}
@@ -365,14 +389,13 @@ def get_spending_trend(
             continue  # moved to a payment plan — counted via its installments
         if commitment_keys and transaction_match_key(tx) in commitment_keys:
             continue
+        if _is_card_repayment(tx, roles):
+            continue  # override-aware
         role = roles.get(tx.account_id)
         amount = _d(tx.amount)
         if role == AccountRole.CREDIT:
             kind = "credit"
         elif role == AccountRole.SPENDING:
-            desc = f"{tx.description or ''} {tx.merchant_name or ''}".lower()
-            if any(ind in desc for ind in _CARD_PAYMENT_INDICATORS):
-                continue
             kind = "cash"
         else:
             continue

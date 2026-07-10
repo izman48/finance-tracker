@@ -108,6 +108,7 @@ def create_rule(
         match_type=body.match_type,
         match_field=body.match_field,
         category=body.category.strip(),
+        counts_as=body.counts_as,
         source="manual",
     )
     db.add(rule)
@@ -135,6 +136,10 @@ def update_rule(
         value = getattr(body, field)
         if value is not None:
             setattr(rule, field, value.strip() if isinstance(value, str) else value)
+    # counts_as is clearable: explicit null removes the reclassification
+    # (field absent = unchanged) — matching the transactions PATCH semantics.
+    if "counts_as" in body.model_dump(exclude_unset=True):
+        rule.counts_as = body.counts_as
     db.commit()
     db.refresh(rule)
     return rule

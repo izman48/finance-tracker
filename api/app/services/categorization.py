@@ -93,23 +93,44 @@ def categorize(rules: list[CategoryRule], tx: Transaction) -> str | None:
     return None
 
 
-def apply_rules(db: Session, user_id, transactions: list[Transaction]) -> int:
-    """Apply the user's rules to the given transactions (skipping locked ones).
+def counts_as_for(rules: list[CategoryRule], tx: Transaction) -> str | None:
+    """Best-matching counts_as reclassification (transfer/card_payment/
+    spending), or None. `rules` must be pre-sorted by active_rules()."""
+    for rule in rules:
+        if rule.counts_as and _rule_matches(rule, tx):
+            return rule.counts_as
+    return None
 
+
+def apply_rules(db: Session, user_id, transactions: list[Transaction]) -> int:
+    """Apply the user's rules to the given transactions.
+
+    Each field has its own lock: category respects category_locked, and
+    counts_as_override respects counts_as_locked (hand-set always wins). An
+    unlocked counts_as_override is RECOMPUTED from the current rules — set,
+    changed, or cleared back to automatic when no rule claims it anymore — so
+    editing or deleting a rule actually corrects history on the next run.
     Used for newly synced transactions and retroactive runs. Does not commit —
     the caller owns the session. Returns the number of transactions changed.
     """
+    # No early-return on empty rules: deleting the last rule must still clear
+    # the unlocked counts_as stamps it left behind on the next run.
     rules = active_rules(db, user_id)
-    if not rules:
-        return 0
 
     changed = 0
     for tx in transactions:
-        if tx.category_locked:
-            continue
-        category = categorize(rules, tx)
-        if category and category != tx.category:
-            tx.category = category
+        tx_changed = False
+        if not tx.category_locked:
+            category = categorize(rules, tx)
+            if category and category != tx.category:
+                tx.category = category
+                tx_changed = True
+        if not tx.counts_as_locked:
+            counts = counts_as_for(rules, tx)
+            if counts != tx.counts_as_override:
+                tx.counts_as_override = counts
+                tx_changed = True
+        if tx_changed:
             changed += 1
     if changed:
         logger.info(f"Rules categorized {changed} transactions for user {user_id}")
@@ -117,11 +138,16 @@ def apply_rules(db: Session, user_id, transactions: list[Transaction]) -> int:
 
 
 def apply_rules_to_all(db: Session, user_id) -> int:
-    """Retroactively run the rule engine over every unlocked transaction."""
+    """Retroactively run the rule engine over every transaction.
+
+    Loads all of them (not just category-unlocked): a hand-categorized
+    transaction can still receive a rule's counts_as — the per-field locks
+    inside apply_rules decide what may change.
+    """
     transactions = (
         db.query(Transaction)
         .join(Account)
-        .filter(Account.user_id == user_id, Transaction.category_locked.is_(False))
+        .filter(Account.user_id == user_id)
         .all()
     )
     return apply_rules(db, user_id, transactions)

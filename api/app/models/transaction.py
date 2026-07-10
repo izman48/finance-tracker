@@ -51,6 +51,16 @@ class Transaction(Base):
     # (including imported packs) never overwrite a locked category.
     category_locked: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # Override of the automatic noise classification: spending | transfer |
+    # card_payment; null = automatic. Beats pair-detection and description
+    # indicators everywhere (list labels, both spending lenses, the trend —
+    # and so the projection's surplus).
+    counts_as_override: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Mirrors category_locked: True = hand-set by the user, rules never touch
+    # it; False = a rule may (re)compute the override — including clearing it
+    # when the rule no longer matches or was deleted.
+    counts_as_locked: Mapped[bool] = mapped_column(Boolean, default=False)
+
     # Recurring payment detection
     is_recurring: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     recurring_group_id: Mapped[uuid.UUID | None] = mapped_column(

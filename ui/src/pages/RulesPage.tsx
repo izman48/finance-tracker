@@ -230,6 +230,11 @@ function RuleList({
             <span className="font-mono font-medium text-slate-200 break-all">{r.pattern}</span>
             <span className="text-slate-500"> → </span>
             <span className="chip">{r.category}</span>
+            {r.counts_as && (
+              <span className="ml-1 chip-info" title="Matching transactions also count as this in spending figures">
+                {r.counts_as === 'card_payment' ? 'card payment' : r.counts_as}
+              </span>
+            )}
             {r.source === 'learned' && <span className="ml-1 text-xs text-slate-600">(learned)</span>}
           </div>
           <div className="flex gap-3 text-sm whitespace-nowrap">

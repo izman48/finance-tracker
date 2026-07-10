@@ -20,6 +20,10 @@ export interface Transaction {
   // Why this is hidden from spending by default — same detection as the
   // aggregates, so figures and list always reconcile.
   excluded_reason: 'internal_transfer' | 'card_payment' | null
+  // The reclassification in effect; null = automatic detection. locked=true
+  // means hand-set (rules never touch it), false means a rule applied it.
+  counts_as_override?: 'spending' | 'transfer' | 'card_payment' | null
+  counts_as_locked?: boolean
   transaction_date: string
 }
 

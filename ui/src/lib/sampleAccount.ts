@@ -206,6 +206,8 @@ function txItem(tx: SampleTx) {
     is_commitment: tx.is_commitment,
     is_financed: false,
     excluded_reason: tx.excluded_reason,
+    counts_as_override: null,
+    counts_as_locked: false,
     transaction_date: isoDateTime(nowMinus(tx.daysAgo)),
   }
 }

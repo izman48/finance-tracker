@@ -533,6 +533,12 @@ def update_transaction(
         categorization.learn_and_apply(db, current_user.id, transaction)
     if update_data.subcategory is not None:
         transaction.subcategory = update_data.subcategory
+    # exclude_unset: field absent = unchanged; explicit null = back to
+    # automatic (detection + rules). Setting a value locks it against rules,
+    # clearing unlocks — mirroring category_locked.
+    if "counts_as" in update_data.model_dump(exclude_unset=True):
+        transaction.counts_as_override = update_data.counts_as
+        transaction.counts_as_locked = update_data.counts_as is not None
 
     db.commit()
     db.refresh(transaction)

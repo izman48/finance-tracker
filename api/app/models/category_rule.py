@@ -76,6 +76,10 @@ class CategoryRule(Base):
     # any | merchant | description
     match_field: Mapped[str] = mapped_column(String(12), default="any")
     category: Mapped[str] = mapped_column(String(100))
+    # Optional noise reclassification applied alongside the category:
+    # spending | transfer | card_payment. Lets a rule mark e.g. every payment
+    # to an investment platform as a transfer, so future syncs stay clean.
+    counts_as: Mapped[str | None] = mapped_column(String(20), nullable=True)
     # learned | manual | imported
     source: Mapped[str] = mapped_column(String(10), default="learned")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)

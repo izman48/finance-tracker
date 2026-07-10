@@ -866,7 +866,7 @@ export default function SpendingPage() {
 
           {showFilters && (
             <div className="mt-4 pt-4 border-t border-white/[0.06]">
-              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                 <div>
                   <label className="label">Start date</label>
                   <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="input" />
@@ -891,7 +891,7 @@ export default function SpendingPage() {
                 </div>
               </div>
 
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
                 <div>
                   <label className="label">Merchant</label>
                   <select value={selectedMerchant} onChange={(e) => setSelectedMerchant(e.target.value)} className="input">

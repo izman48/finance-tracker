@@ -368,9 +368,11 @@ class TransactionResponse(BaseModel):
     # Uses the same detection as the spending aggregates so the list and the
     # totals can never disagree.
     excluded_reason: str | None = None
-    # The user's manual reclassification (spending/transfer/card_payment),
-    # null = automatic. When set, excluded_reason reflects it.
+    # The reclassification in effect (spending/transfer/card_payment), null =
+    # automatic. counts_as_locked distinguishes hand-set (True — rules never
+    # touch it) from rule-applied (False).
     counts_as_override: str | None = None
+    counts_as_locked: bool = False
     transaction_date: datetime
 
     model_config = ConfigDict(from_attributes=True)

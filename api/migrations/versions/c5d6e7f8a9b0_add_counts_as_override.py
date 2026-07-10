@@ -28,6 +28,12 @@ def upgrade() -> None:
         "transactions",
         sa.Column("counts_as_override", sa.String(20), nullable=True),
     )
+    # Mirrors category_locked: True = the user set the override by hand and
+    # rules must never touch it; False = rules may (re)compute it.
+    op.add_column(
+        "transactions",
+        sa.Column("counts_as_locked", sa.Boolean(), nullable=False, server_default=sa.false()),
+    )
     op.add_column(
         "category_rules",
         sa.Column("counts_as", sa.String(20), nullable=True),
@@ -36,4 +42,5 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_column("category_rules", "counts_as")
+    op.drop_column("transactions", "counts_as_locked")
     op.drop_column("transactions", "counts_as_override")

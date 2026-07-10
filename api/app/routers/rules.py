@@ -132,10 +132,14 @@ def update_rule(
         if error:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error)
 
-    for field in ("pattern", "match_type", "match_field", "category", "counts_as", "enabled"):
+    for field in ("pattern", "match_type", "match_field", "category", "enabled"):
         value = getattr(body, field)
         if value is not None:
             setattr(rule, field, value.strip() if isinstance(value, str) else value)
+    # counts_as is clearable: explicit null removes the reclassification
+    # (field absent = unchanged) — matching the transactions PATCH semantics.
+    if "counts_as" in body.model_dump(exclude_unset=True):
+        rule.counts_as = body.counts_as
     db.commit()
     db.refresh(rule)
     return rule

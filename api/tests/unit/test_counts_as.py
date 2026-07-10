@@ -43,6 +43,8 @@ def _tx(db, account, amount, when, ttype="debit", merchant="Acme", counts_as=Non
         description=merchant, merchant_name=merchant,
         transaction_date=datetime.combine(when, datetime.min.time(), tzinfo=timezone.utc),
         counts_as_override=counts_as,
+        # A counts_as passed here models a hand-set override (locked).
+        counts_as_locked=counts_as is not None,
     )
     db.add(t)
     db.commit()
@@ -129,21 +131,61 @@ class TestListLabels:
 
 
 class TestRuleCountsAs:
+    def _rule(self, db, user, counts_as="transfer"):
+        r = CategoryRule(
+            user_id=user.id, pattern="Vanguard", match_type="contains",
+            match_field="any", category="Investing", counts_as=counts_as,
+            source="manual",
+        )
+        db.add(r)
+        db.commit()
+        return r
+
     def test_rule_fills_override_but_never_overwrites_hand_set(self, db_session):
         user = _user(db_session)
         acc = _account(db_session, user)
         d = svc._today() - timedelta(days=2)
         auto = _tx(db_session, acc, 500, d, merchant="Vanguard")
         hand = _tx(db_session, acc, 500, d, merchant="Vanguard", counts_as="spending")
-        db_session.add(CategoryRule(
-            user_id=user.id, pattern="Vanguard", match_type="contains",
-            match_field="any", category="Investing", counts_as="transfer",
-            source="manual",
-        ))
-        db_session.commit()
+        self._rule(db_session, user)
 
         categorization.apply_rules(db_session, user.id, [auto, hand])
         db_session.commit()
-        assert auto.counts_as_override == "transfer"   # filled by the rule
+        assert auto.counts_as_override == "transfer"    # filled by the rule
+        assert auto.counts_as_locked is False           # …and stays rule-owned
         assert auto.category == "Investing"
-        assert hand.counts_as_override == "spending"   # hand-set wins
+        assert hand.counts_as_override == "spending"    # hand-set (locked) wins
+
+    def test_deleting_the_rule_clears_its_stamps_on_the_next_run(self, db_session):
+        user = _user(db_session)
+        acc = _account(db_session, user)
+        d = svc._today() - timedelta(days=2)
+        tx = _tx(db_session, acc, 500, d, merchant="Vanguard")
+        rule = self._rule(db_session, user)
+        categorization.apply_rules(db_session, user.id, [tx])
+        db_session.commit()
+        assert tx.counts_as_override == "transfer"
+
+        db_session.delete(rule)
+        db_session.commit()
+        categorization.apply_rules_to_all(db_session, user.id)
+        db_session.commit()
+        # No rule claims it anymore → back to automatic, not stuck stale.
+        assert tx.counts_as_override is None
+
+    def test_hand_categorized_transactions_still_receive_counts_as(self, db_session):
+        """category_locked protects the category, not the counts_as — the
+        user's most-curated transactions must not stay polluted."""
+        user = _user(db_session)
+        acc = _account(db_session, user)
+        d = svc._today() - timedelta(days=2)
+        tx = _tx(db_session, acc, 500, d, merchant="Vanguard")
+        tx.category = "My custom"
+        tx.category_locked = True
+        db_session.commit()
+        self._rule(db_session, user)
+
+        categorization.apply_rules_to_all(db_session, user.id)
+        db_session.commit()
+        assert tx.counts_as_override == "transfer"  # counts_as applied
+        assert tx.category == "My custom"           # category untouched

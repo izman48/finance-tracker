@@ -47,8 +47,10 @@ export default function TransactionDetailSheet({
   const [newCategory, setNewCategory] = useState('')
   const [savingCadence, setSavingCadence] = useState<string | null>(null)
   // Local mirror of the counts-as override so the sheet reflects a change
-  // immediately (the page refetches behind it).
+  // immediately (the page refetches behind it). `locked` = hand-set by the
+  // user; an unlocked override came from a rule.
   const [countsAs, setCountsAs] = useState<string | null>(transaction.counts_as_override ?? null)
+  const [countsAsLocked, setCountsAsLocked] = useState<boolean>(!!transaction.counts_as_locked)
 
   const label = transaction.merchant_name || transaction.description
   const isCredit = transaction.transaction_type === 'credit'
@@ -67,6 +69,7 @@ export default function TransactionDetailSheet({
     try {
       await bankingAPI.updateTransaction(transaction.id, { counts_as: value })
       setCountsAs(value)
+      setCountsAsLocked(value !== null)
       onChanged()
       showToast(
         value === null
@@ -165,7 +168,7 @@ export default function TransactionDetailSheet({
             </div>
             {countsAs ? (
               <span className="text-xs text-slate-500">
-                set by you ·{' '}
+                {countsAsLocked ? 'set by you' : 'from a rule'} ·{' '}
                 <button onClick={() => saveCountsAs(null)} className="text-accent hover:underline">
                   use automatic
                 </button>

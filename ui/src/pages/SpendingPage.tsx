@@ -44,6 +44,18 @@ interface Spending {
 
 type Lens = 'money_out' | 'purchases'
 type SpendKind = 'spend' | 'cash' | 'credit' | 'money_out'
+// The page's sections, viewable together ("all") or one at a time — user
+// feedback: the stacked page is a lot to take in; sections read like their
+// own pages while staying ONE page, so figures still reconcile to the list.
+type Section = 'all' | 'overview' | 'history' | 'activity'
+
+const SECTIONS: { key: Section; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'overview', label: 'Overview' },
+  { key: 'history', label: 'History' },
+  { key: 'activity', label: 'Activity' },
+]
+const SECTION_KEY = 'insights.section'
 
 const MERCHANTS_DEFAULT = 10
 const PAGE_SIZE = 50
@@ -98,6 +110,18 @@ export default function SpendingPage() {
     setLensState(l)
     setDrillKind(null) // a drill from the old lens no longer applies
   }
+  // Which section is shown; persisted so the layout choice sticks.
+  const [section, setSectionState] = useState<Section>(() => {
+    const s = localStorage.getItem(SECTION_KEY)
+    return s === 'overview' || s === 'history' || s === 'activity' ? s : 'all'
+  })
+  const setSection = (s: Section) => {
+    localStorage.setItem(SECTION_KEY, s)
+    setSectionState(s)
+  }
+  const showOverview = section === 'all' || section === 'overview'
+  const showHistory = section === 'all' || section === 'history'
+  const showActivity = section === 'all' || section === 'activity'
 
   // ---- the transaction list (server-driven; shares the figures' context) ---
   const [items, setItems] = useState<Transaction[]>([])
@@ -355,6 +379,9 @@ export default function SpendingPage() {
       setFrm(b.start)
       setTo(b.end)
       setPeriod('custom')
+      // Clicking a month asks "show me that month's insights" — in a
+      // sectioned view, take the user to them.
+      if (section === 'history') setSection('overview')
     }
   }
 
@@ -371,7 +398,13 @@ export default function SpendingPage() {
     if (patch.kind !== undefined) setDrillKind(patch.kind)
     if (patch.category !== undefined) setSelectedCategories(patch.category ? [patch.category] : [])
     if (patch.merchant !== undefined) setSelectedMerchant(patch.merchant)
-    scrollToList()
+    // A drill's destination is the transactions behind the figure: in a
+    // sectioned view, take the user to Activity; in "all", scroll to it.
+    if (section === 'all') scrollToList()
+    else if (section !== 'activity') {
+      setSection('activity')
+      window.scrollTo({ top: 0 })
+    }
   }
 
   const clearAllFilters = () => {
@@ -579,11 +612,28 @@ export default function SpendingPage() {
         <div className="mb-5" />
       )}
 
-      <MonthlySpendingChart
-        excludeCommitments={excludeCommitments}
-        selectedMonth={selectedMonth}
-        onSelectMonth={handleSelectMonth}
-      />
+      {/* Section control: the page's three parts, together or one at a time.
+          Same state either way — figures always reconcile to the list. */}
+      <div className="flex flex-wrap gap-0.5 mb-5">
+        {SECTIONS.map((s) => (
+          <button
+            key={s.key}
+            onClick={() => setSection(s.key)}
+            className={section === s.key ? 'seg-active' : 'seg'}
+            aria-pressed={section === s.key}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+
+      {showHistory && (
+        <MonthlySpendingChart
+          excludeCommitments={excludeCommitments}
+          selectedMonth={selectedMonth}
+          onSelectMonth={handleSelectMonth}
+        />
+      )}
 
       {period === 'custom' && (
         <div className="flex flex-wrap gap-3 mb-6">
@@ -600,6 +650,8 @@ export default function SpendingPage() {
             {longDate(data.period_start)} – {longDate(data.period_end)}
           </p>
 
+          {showOverview && (
+          <>
           {lens === 'purchases' ? (
           <>
           {/* Headline split — each tile filters the list below. */}
@@ -687,7 +739,14 @@ export default function SpendingPage() {
               <div className="card-pad mb-6" data-reveal>
                 <div className="text-xs text-slate-500 mb-3 flex items-center justify-between gap-2">
                   <span>What's inside this figure</span>
-                  <button onClick={() => setShowFilters(true)} className="text-accent hover:underline">
+                  <button
+                    onClick={() => {
+                      setShowFilters(true)
+                      // The filters live in Activity — take the user there.
+                      if (section !== 'all') setSection('activity')
+                    }}
+                    className="text-accent hover:underline"
+                  >
                     Exclude any of these →
                   </button>
                 </div>
@@ -791,10 +850,13 @@ export default function SpendingPage() {
               )}
             </div>
           </div>
+          </>
+          )}
         </>
       )}
 
       {/* ---- Activity: the transactions behind the figures ---- */}
+      {showActivity && (
       <div ref={listRef} className="scroll-mt-20">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div className="flex items-baseline gap-3">
@@ -1215,6 +1277,7 @@ export default function SpendingPage() {
           )}
         </div>
       </div>
+      )}
 
       {sheetTx && (
         <TransactionDetailSheet

@@ -563,42 +563,53 @@ export default function SpendingPage() {
 
   return (
     <div ref={revealRef} className="max-w-6xl mx-auto px-4 py-6 sm:py-10">
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+      {/* One quiet header row: the title, and the time scope as a compact
+          dropdown (it's set occasionally — it doesn't need four pills). */}
+      <div className="flex items-center justify-between gap-3 mb-1">
         <h1 className="font-display font-bold text-2xl sm:text-3xl text-slate-50">Spending</h1>
-        <div className="flex flex-wrap gap-0.5">
+        <select
+          value={period}
+          onChange={(e) => setPeriod(e.target.value)}
+          className="input !w-auto !py-2 !text-sm"
+          aria-label="Time range"
+        >
           {PERIODS.map((p) => (
+            <option key={p.key} value={p.key}>{p.label}</option>
+          ))}
+        </select>
+      </div>
+
+      {period === 'custom' && (
+        <div className="flex flex-wrap justify-end gap-3 mt-2">
+          <input type="date" value={frm} onChange={(e) => setFrm(e.target.value)} className="input !w-auto" />
+          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="input !w-auto" />
+        </div>
+      )}
+
+      {/* The page's primary navigation: full-width tabs, sticky under the app
+          header so they persist while you scroll. Same state whichever tab —
+          figures always reconcile to the list. */}
+      <div className="sticky top-16 z-30 -mx-4 px-4 mt-3 mb-5 bg-ink-900/80 backdrop-blur-xl border-b border-white/[0.06]">
+        <div className="flex lg:gap-8">
+          {SECTIONS.map((s) => (
             <button
-              key={p.key}
-              onClick={() => setPeriod(p.key)}
-              className={period === p.key ? 'seg-active' : 'seg'}
+              key={s.key}
+              onClick={() => setSection(s.key)}
+              aria-pressed={section === s.key}
+              className={`flex-1 lg:flex-none py-3 text-sm text-center border-b-2 -mb-px transition-colors ${
+                section === s.key
+                  ? 'border-accent text-accent font-medium'
+                  : 'border-transparent text-slate-400 hover:text-slate-200'
+              }`}
             >
-              {p.label}
+              {s.label}
             </button>
           ))}
         </div>
       </div>
 
-      {/* The lens: what the headline means. */}
-      <div className="flex flex-wrap items-center gap-3 mb-3">
-        <div className="flex gap-0.5">
-          <button onClick={() => setLens('money_out')} className={lens === 'money_out' ? 'seg-active' : 'seg'}>
-            Money out
-          </button>
-          <button onClick={() => setLens('purchases')} className={lens === 'purchases' ? 'seg-active' : 'seg'}>
-            Purchases
-          </button>
-        </div>
-        <span className="text-xs text-slate-500">
-          {lens === 'money_out'
-            ? 'cash that actually left your bank — reconciles to your statement'
-            : 'spend booked when you buy, split by cash vs credit'}
-        </span>
-      </div>
-
-      {/* Exclusions (commitments / transfers / card payments) all live in one
-          place — the Filters panel below. When a drill is active, a prominent
-          reset sits right here, next to the figures it's scoping. */}
-      {chips.length > 0 ? (
+      {/* Contextual: only exists while filters narrow the view. */}
+      {chips.length > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3 mb-5 rounded-xl border border-accent/25 bg-accent/[0.06] px-4 py-3">
           <span className="text-sm text-slate-300">
             You're viewing a filtered slice — {chips.length} filter{chips.length !== 1 ? 's' : ''} applied.
@@ -608,24 +619,7 @@ export default function SpendingPage() {
             Remove all filters
           </button>
         </div>
-      ) : (
-        <div className="mb-5" />
       )}
-
-      {/* Section control: the page's three parts, together or one at a time.
-          Same state either way — figures always reconcile to the list. */}
-      <div className="flex flex-wrap gap-0.5 mb-5">
-        {SECTIONS.map((s) => (
-          <button
-            key={s.key}
-            onClick={() => setSection(s.key)}
-            className={section === s.key ? 'seg-active' : 'seg'}
-            aria-pressed={section === s.key}
-          >
-            {s.label}
-          </button>
-        ))}
-      </div>
 
       {showHistory && (
         <MonthlySpendingChart
@@ -635,20 +629,34 @@ export default function SpendingPage() {
         />
       )}
 
-      {period === 'custom' && (
-        <div className="flex flex-wrap gap-3 mb-6">
-          <input type="date" value={frm} onChange={(e) => setFrm(e.target.value)} className="input !w-auto" />
-          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="input !w-auto" />
-        </div>
-      )}
-
       {loading || !data ? (
         <div className="text-center py-16 text-slate-500">Loading spending…</div>
       ) : (
         <>
-          <p className="text-sm text-slate-500 mb-4">
-            {longDate(data.period_start)} – {longDate(data.period_end)}
-          </p>
+          {/* Period caption + the lens (a rarely-touched mode, so it lives
+              beside the figures it changes, explainer in the tooltip). */}
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+            <p className="text-sm text-slate-500">
+              {longDate(data.period_start)} – {longDate(data.period_end)}
+            </p>
+            {showOverview && (
+              <div className="flex items-center gap-1.5">
+                <div className="flex gap-0.5">
+                  <button onClick={() => setLens('money_out')} className={`${lens === 'money_out' ? 'seg-active' : 'seg'} !text-xs`}>
+                    Money out
+                  </button>
+                  <button onClick={() => setLens('purchases')} className={`${lens === 'purchases' ? 'seg-active' : 'seg'} !text-xs`}>
+                    Purchases
+                  </button>
+                </div>
+                <InfoTip
+                  text="Money out: cash that actually left your bank — reconciles to your statement. Purchases: spend booked when you buy, split by cash vs credit."
+                  side="bottom"
+                  align="right"
+                />
+              </div>
+            )}
+          </div>
 
           {showOverview && (
           <>

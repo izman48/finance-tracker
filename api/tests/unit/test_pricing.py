@@ -53,13 +53,28 @@ class TestPriceCache:
         assert p2.id == p1.id
         assert calls["n"] == 1  # cache hit, no second call
 
+    def test_lagging_provider_timestamp_still_caches(self, db_session, monkeypatch):
+        """Freshness keys on our fetch time, not the provider's as_of — a coin
+        whose as_of lags the TTL must still hit the cache, not refetch forever."""
+        inst = _instrument(db_session)
+        calls = {"n": 0}
+
+        def fake_quote(*a):
+            calls["n"] += 1
+            return _quote("100", as_of=datetime.now(timezone.utc) - timedelta(hours=3))
+
+        monkeypatch.setattr(providers, "quote", fake_quote)
+        service.get_or_refresh_price(db_session, inst)
+        service.get_or_refresh_price(db_session, inst)  # created_at is fresh
+        assert calls["n"] == 1
+
     def test_stale_cache_refetches(self, db_session, monkeypatch):
         inst = _instrument(db_session)
         prices = iter([_quote("100"), _quote("200")])
         monkeypatch.setattr(providers, "quote", lambda *a: next(prices))
         first = service.get_or_refresh_price(db_session, inst)
-        # Age the cached row past the TTL.
-        first.as_of = datetime.now(timezone.utc) - service.PRICE_TTL - timedelta(minutes=1)
+        # Age the cached row's FETCH time past the TTL.
+        first.created_at = datetime.now(timezone.utc) - service.PRICE_TTL - timedelta(minutes=1)
         db_session.commit()
         second = service.get_or_refresh_price(db_session, inst)
         assert second.price_gbp == Decimal("200")
@@ -68,7 +83,7 @@ class TestPriceCache:
         inst = _instrument(db_session)
         monkeypatch.setattr(providers, "quote", lambda *a: _quote("100"))
         good = service.get_or_refresh_price(db_session, inst)
-        good.as_of = datetime.now(timezone.utc) - service.PRICE_TTL - timedelta(minutes=1)
+        good.created_at = datetime.now(timezone.utc) - service.PRICE_TTL - timedelta(minutes=1)
         db_session.commit()
         monkeypatch.setattr(providers, "quote", lambda *a: None)  # network down
         served = service.get_or_refresh_price(db_session, inst)
@@ -86,7 +101,7 @@ class TestSnapshot:
 
         n = service.price_and_snapshot(db_session, user)
         assert n == 1
-        today = date.today()
+        today = service._today()
         val = (
             db_session.query(AssetValuation)
             .filter(AssetValuation.asset_id == asset.id, AssetValuation.valued_at == today)
@@ -104,16 +119,16 @@ class TestSnapshot:
         monkeypatch.setattr(providers, "quote", lambda *a: next(prices))
 
         service.price_and_snapshot(db_session, user)
-        # Force a refetch by ageing the cache, then snapshot again same day.
+        # Force a refetch by ageing the cache (fetch time), then snapshot again.
         db_session.query(service.InstrumentPrice).update(
-            {"as_of": datetime.now(timezone.utc) - service.PRICE_TTL - timedelta(minutes=1)}
+            {"created_at": datetime.now(timezone.utc) - service.PRICE_TTL - timedelta(minutes=1)}
         )
         db_session.commit()
         service.price_and_snapshot(db_session, user)
 
         vals = (
             db_session.query(AssetValuation)
-            .filter(AssetValuation.asset_id == asset.id, AssetValuation.valued_at == date.today())
+            .filter(AssetValuation.asset_id == asset.id, AssetValuation.valued_at == service._today())
             .all()
         )
         assert len(vals) == 1 and vals[0].value == Decimal("41000.00")

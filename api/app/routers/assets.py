@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.database import get_db
 from app.core.security import CurrentUser
 from app.models import Asset, AssetFlow, AssetValuation, Instrument
+from app.models.asset import LIABILITY_TYPES
 from app.schemas import (
     AssetCreate,
     AssetFlowCreate,
@@ -92,6 +93,13 @@ def link_instrument(
     """Link a manual asset to a live-priced instrument and set units held.
     Immediately snapshots a live valuation so the balance sheet updates."""
     asset = _own_asset(db, current_user.id, asset_id)
+    if asset.asset_type in LIABILITY_TYPES:
+        # Live pricing yields a positive units×price valuation; liabilities are
+        # stored negative (amount owed), so linking one would flip its sign.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Liabilities can't be linked to a live price",
+        )
     instrument = db.query(Instrument).filter(Instrument.id == body.instrument_id).first()
     if instrument is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Instrument not found")

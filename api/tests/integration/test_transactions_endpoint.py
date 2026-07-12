@@ -242,14 +242,14 @@ class TestHoldingsLinkEndpoints:
     def test_link_prices_the_asset_and_unlink_keeps_history(self, client, db_session, monkeypatch):
         from decimal import Decimal
         from app.models import Asset, AssetValuation, Instrument
-        from app.services.pricing import providers
+        from app.services.pricing import providers, service as pxsvc
 
         user, ctx = _setup(client, db_session)
         # A manual crypto asset with a placeholder value.
         asset = Asset(user_id=user.id, name="My BTC", asset_type="crypto")
         db_session.add(asset)
         db_session.flush()
-        db_session.add(AssetValuation(asset_id=asset.id, value=Decimal("1"), valued_at=date.today() - timedelta(days=1)))
+        db_session.add(AssetValuation(asset_id=asset.id, value=Decimal("1"), valued_at=pxsvc._today() - timedelta(days=1)))
         inst = Instrument(symbol="BTC", name="Bitcoin", kind="crypto", provider="coingecko", provider_ref="bitcoin", currency="GBP")
         db_session.add(inst)
         db_session.commit()
@@ -265,14 +265,14 @@ class TestHoldingsLinkEndpoints:
         assert body["instrument"]["symbol"] == "BTC"
         assert Decimal(str(body["unit_price_gbp"])) == Decimal("30000")
         # today's live valuation = 0.25 x 30000
-        today_val = next(v for v in body["valuations"] if v["valued_at"] == date.today().isoformat())
+        today_val = next(v for v in body["valuations"] if v["valued_at"] == pxsvc._today().isoformat())
         assert Decimal(str(today_val["value"])) == Decimal("7500.00")
 
         # Unlink keeps the valuation history.
         res = client.post(f"/api/v1/assets/{asset.id}/unlink")
         assert res.status_code == 200
         assert res.json()["instrument"] is None
-        assert any(v["valued_at"] == date.today().isoformat() for v in res.json()["valuations"])
+        assert any(v["valued_at"] == pxsvc._today().isoformat() for v in res.json()["valuations"])
         user_crypto.current_dek.reset(ctx)
 
     def test_instrument_search_upserts(self, client, db_session, monkeypatch):
@@ -284,4 +284,17 @@ class TestHoldingsLinkEndpoints:
         res = client.get("/api/v1/instruments/search", params={"q": "eth"})
         assert res.status_code == 200
         assert res.json()[0]["symbol"] == "ETH"
+        user_crypto.current_dek.reset(ctx)
+
+
+class TestHoldingsLiabilityGuard:
+    def test_liability_cannot_be_linked(self, client, db_session):
+        from app.models import Asset, Instrument
+        user, ctx = _setup(client, db_session)
+        loan = Asset(user_id=user.id, name="Car loan", asset_type="loan")
+        inst = Instrument(symbol="BTC", name="Bitcoin", kind="crypto", provider="coingecko", provider_ref="bitcoin", currency="GBP")
+        db_session.add_all([loan, inst])
+        db_session.commit()
+        res = client.post(f"/api/v1/assets/{loan.id}/link", json={"instrument_id": str(inst.id), "units": "1"})
+        assert res.status_code == 400
         user_crypto.current_dek.reset(ctx)

@@ -16,7 +16,9 @@ export default function UpdateAssetValueModal({
   onDelete?: () => void
 }) {
   const isLiab = isLiabilityType(asset.asset_type)
-  const linked = !!asset.instrument
+  // Match the balance sheet's notion of a priced holding (both link + units),
+  // so the modal and the row never disagree about whether it's live.
+  const linked = !!asset.instrument && asset.units != null
   const showToast = useToast()
   // Liabilities are shown/entered as a positive "owed" figure, stored negative.
   const [value, setValue] = useState(String(Math.abs(latestValue(asset))))
@@ -41,23 +43,26 @@ export default function UpdateAssetValueModal({
   const [units, setUnits] = useState(asset.units ?? '')
   const [linking, setLinking] = useState(false)
   const searchTimer = useRef<ReturnType<typeof setTimeout>>()
+  const searchSeq = useRef(0)  // ignore responses to superseded queries
 
   useEffect(() => {
     clearTimeout(searchTimer.current)
-    if (query.trim().length < 2) {
+    if (selected || query.trim().length < 2) {
       setResults([])
+      setSearching(false)
       return
     }
     setSearching(true)
+    const seq = ++searchSeq.current
     searchTimer.current = setTimeout(() => {
       assetsAPI
         .searchInstruments(query.trim())
-        .then((r) => setResults(r.data))
-        .catch(() => setResults([]))
-        .finally(() => setSearching(false))
+        .then((r) => { if (seq === searchSeq.current) setResults(r.data) })
+        .catch(() => { if (seq === searchSeq.current) setResults([]) })
+        .finally(() => { if (seq === searchSeq.current) setSearching(false) })
     }, 400)
     return () => clearTimeout(searchTimer.current)
-  }, [query])
+  }, [query, selected])
 
   const link = async () => {
     if (!selected || !units || Number(units) <= 0) return

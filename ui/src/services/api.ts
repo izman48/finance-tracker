@@ -262,7 +262,10 @@ export const assetsAPI = {
   linkInstrument: (id: string, data: { instrument_id: string; units: number }) =>
     api.post<Asset>(`/assets/${id}/link`, data),
   unlinkInstrument: (id: string) => api.post<Asset>(`/assets/${id}/unlink`),
-  refreshPrices: () => api.post<Asset[]>('/assets/refresh-prices'),
+  // Bounded client-side so a slow market-data provider can never hold up the
+  // Wealth page — on timeout we fall back to the cached list; the snapshot
+  // lands on the next visit.
+  refreshPrices: () => api.post<Asset[]>('/assets/refresh-prices', undefined, { timeout: 5000 }),
   decomposition: (months = 12) =>
     api.get<AssetDecomposition>('/analytics/net-worth-decomposition', { params: { months } }),
   netWorthHistory: (months = 12) =>

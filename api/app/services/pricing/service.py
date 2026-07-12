@@ -12,6 +12,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import Asset, AssetValuation, Instrument, InstrumentPrice
@@ -33,32 +34,48 @@ def _aware(dt: datetime | None) -> datetime | None:
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
-def search_instruments(db: Session, query: str) -> list[Instrument]:
-    """Search providers and upsert the hits so the UI can link by a stable id."""
-    out: list[Instrument] = []
-    for h in providers.search(query):
+def _get_or_create_instrument(db: Session, h) -> Instrument:
+    inst = (
+        db.query(Instrument)
+        .filter(Instrument.provider == h.provider, Instrument.provider_ref == h.provider_ref)
+        .first()
+    )
+    if inst is not None:
+        return inst
+    inst = Instrument(
+        symbol=h.symbol, name=h.name, kind=h.kind, provider=h.provider,
+        provider_ref=h.provider_ref, currency=h.currency,
+    )
+    db.add(inst)
+    try:
+        db.flush()
+    except IntegrityError:
+        # Another request inserted the same (provider, provider_ref) first —
+        # roll back and use theirs (unique constraint, not a real failure).
+        db.rollback()
         inst = (
             db.query(Instrument)
             .filter(Instrument.provider == h.provider, Instrument.provider_ref == h.provider_ref)
             .first()
         )
-        if inst is None:
-            inst = Instrument(
-                symbol=h.symbol, name=h.name, kind=h.kind, provider=h.provider,
-                provider_ref=h.provider_ref, currency=h.currency,
-            )
-            db.add(inst)
-            db.flush()
-        out.append(inst)
+    return inst
+
+
+def search_instruments(db: Session, query: str) -> list[Instrument]:
+    """Search providers and upsert the hits so the UI can link by a stable id."""
+    out = [_get_or_create_instrument(db, h) for h in providers.search(query)]
+    out = [i for i in out if i is not None]
     db.commit()
     return out
 
 
 def latest_price(db: Session, instrument_id) -> InstrumentPrice | None:
+    # Most recently FETCHED row is the current price (created_at), not the one
+    # with the newest provider as_of — a provider can hand back an older as_of.
     return (
         db.query(InstrumentPrice)
         .filter(InstrumentPrice.instrument_id == instrument_id)
-        .order_by(InstrumentPrice.as_of.desc())
+        .order_by(InstrumentPrice.created_at.desc(), InstrumentPrice.as_of.desc())
         .first()
     )
 
@@ -66,12 +83,17 @@ def latest_price(db: Session, instrument_id) -> InstrumentPrice | None:
 def get_or_refresh_price(db: Session, instrument: Instrument, force: bool = False) -> InstrumentPrice | None:
     """Return the freshest price, hitting the provider only when the cache is
     stale (or forced). On a provider failure, serve the stale price if we have
-    one rather than nothing."""
+    one rather than nothing.
+
+    Freshness is keyed on WHEN WE FETCHED (created_at), never the provider's
+    own as_of — a lagging or future provider timestamp must not defeat the
+    cache (perpetual refetch) or freeze the price (perpetual hit).
+    """
     last = latest_price(db, instrument.id)
     now = datetime.now(timezone.utc)
     if last is not None and not force:
-        age = now - (_aware(last.as_of) or now)
-        if age < PRICE_TTL:
+        age = (now - (_aware(last.created_at) or now)).total_seconds()
+        if 0 <= age < PRICE_TTL.total_seconds():
             return last
     q = providers.quote(instrument.provider, instrument.provider_ref, instrument.currency)
     if q is None:

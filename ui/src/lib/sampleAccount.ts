@@ -598,7 +598,7 @@ function instrumentsSearchResponse(q: string) {
   const all = [
     { id: 'sinst-btc', symbol: 'BTC', name: 'Bitcoin', kind: 'crypto', provider: 'coingecko', currency: 'GBP' },
     { id: 'sinst-eth', symbol: 'ETH', name: 'Ethereum', kind: 'crypto', provider: 'coingecko', currency: 'GBP' },
-    { id: 'sinst-vusa', symbol: 'VUSA.LON', name: 'Vanguard S&P 500 ETF', kind: 'etf', provider: 'alphavantage', currency: 'GBX' },
+    { id: 'sinst-vusa', symbol: 'VUSA', name: 'Vanguard S&P 500 ETF', kind: 'etf', provider: 'twelvedata', currency: 'GBX' },
   ]
   const s = (q || '').toLowerCase()
   return all.filter((i) => i.symbol.toLowerCase().includes(s) || i.name.toLowerCase().includes(s))

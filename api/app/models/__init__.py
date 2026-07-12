@@ -19,6 +19,7 @@ from app.models.planned_item import PlannedItem, PlannedKind
 from app.models.repayment_schedule_item import RepaymentScheduleItem
 from app.models.category_rule import CategoryRule, RulePack, merchant_match_key
 from app.models.asset import Asset, AssetFlow, AssetValuation, ASSET_TYPES
+from app.models.instrument import Instrument, InstrumentPrice
 
 __all__ = [
     "User",
@@ -45,5 +46,7 @@ __all__ = [
     "Asset",
     "AssetFlow",
     "AssetValuation",
+    "Instrument",
+    "InstrumentPrice",
     "ASSET_TYPES",
 ]

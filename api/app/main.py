@@ -12,6 +12,7 @@ from app.routers import (
     analytics_router,
     rules_router,
     assets_router,
+    instruments_router,
 )
 
 settings = get_settings()
@@ -60,6 +61,7 @@ app.include_router(banking_router, prefix="/api/v1")
 app.include_router(analytics_router, prefix="/api/v1")
 app.include_router(rules_router, prefix="/api/v1")
 app.include_router(assets_router, prefix="/api/v1")
+app.include_router(instruments_router, prefix="/api/v1")
 
 
 @app.get("/")

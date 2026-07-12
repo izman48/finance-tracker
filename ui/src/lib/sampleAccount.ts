@@ -58,13 +58,23 @@ const ACCOUNTS: SampleAccount[] = [
 ]
 const ROLE: Record<string, Role> = Object.fromEntries(ACCOUNTS.map((a) => [a.id, a.role]))
 
-const ASSETS = [
+const ASSETS: {
+  id: string; name: string; asset_type: string; value: number; monthly: number
+  instrument?: { id: string; symbol: string; name: string; kind: string; currency: string }
+  units?: number; unit_price_gbp?: number
+}[] = [
   // monthly: planned contribution (paydown on the loan) — demoes the
   // per-asset contribution leg of the unified projection.
   { id: 'sas1', name: 'Meridian S&S ISA', asset_type: 'isa', value: 18500, monthly: 400 },
   { id: 'sas2', name: 'Sterling Pension', asset_type: 'pension', value: 24000, monthly: 0 },
   // A liability: stored as a negative valuation (amount owed), subtracts from net worth.
   { id: 'sas3', name: 'Car loan', asset_type: 'loan', value: -6800, monthly: 0 },
+  // A live-priced crypto holding, so anonymise mode demos the "live" chip.
+  {
+    id: 'sas4', name: 'Bitcoin', asset_type: 'crypto', value: 4200, monthly: 0,
+    instrument: { id: 'sinst-btc', symbol: 'BTC', name: 'Bitcoin', kind: 'crypto', currency: 'GBP' },
+    units: 0.12, unit_price_gbp: 35000,
+  },
 ]
 
 // One authored ledger everything else is computed from. Spans ~6 months (a
@@ -584,11 +594,25 @@ function projectionResponse(q: Record<string, any>) {
   }
 }
 
+function instrumentsSearchResponse(q: string) {
+  const all = [
+    { id: 'sinst-btc', symbol: 'BTC', name: 'Bitcoin', kind: 'crypto', provider: 'coingecko', currency: 'GBP' },
+    { id: 'sinst-eth', symbol: 'ETH', name: 'Ethereum', kind: 'crypto', provider: 'coingecko', currency: 'GBP' },
+    { id: 'sinst-vusa', symbol: 'VUSA', name: 'Vanguard S&P 500 ETF', kind: 'etf', provider: 'twelvedata', currency: 'GBX' },
+  ]
+  const s = (q || '').toLowerCase()
+  return all.filter((i) => i.symbol.toLowerCase().includes(s) || i.name.toLowerCase().includes(s))
+}
+
 function assetsResponse() {
   return ASSETS.map((a) => ({
     id: a.id, name: a.name, asset_type: a.asset_type,
     assumed_growth_pct: null,
     monthly_contribution: a.monthly ? String(a.monthly) : null,
+    instrument: a.instrument ?? null,
+    units: a.units != null ? String(a.units) : null,
+    unit_price_gbp: a.unit_price_gbp != null ? String(a.unit_price_gbp) : null,
+    priced_at: a.unit_price_gbp != null ? new Date().toISOString() : null,
     valuations: [
       // Assets grow over time; liabilities (negative) get paid down, so the
       // older figure is further from zero in both cases.
@@ -664,6 +688,7 @@ export function sampleResponse(url: string, params: unknown): unknown {
   if (path.includes('/analytics/net-worth-decomposition')) return decompositionResponse(Number(p.months) || 12)
   if (path.includes('/analytics/net-worth-projection')) return projectionResponse(p as Record<string, any>)
   if (path.includes('/analytics/net-worth-history')) return netWorthHistory(Number(p.months) || 12)
+  if (is('/instruments/search')) return instrumentsSearchResponse(String(p.q ?? ''))
   if (is('/assets')) return assetsResponse()
   if (is('/rules')) return { packs: [], personal: [] }
   return {}

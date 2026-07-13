@@ -29,6 +29,8 @@ services:
       TRUELAYER_CLIENT_SECRET: ${TRUELAYER_CLIENT_SECRET:-}
       TRUELAYER_REDIRECT_URI: ${TRUELAYER_REDIRECT_URI:-http://localhost:8000/api/v1/banking/callback}
       TRUELAYER_SANDBOX: ${TRUELAYER_SANDBOX:-true}
+      # Optional: live pricing for stocks/ETFs (crypto works keyless). Absent → equities off.
+      TWELVEDATA_API_KEY: ${TWELVEDATA_API_KEY:-}
       ENVIRONMENT: ${ENVIRONMENT:-development}
     ports:
       - "8000:8000"

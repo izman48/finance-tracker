@@ -34,7 +34,7 @@ class InstrumentHit:
     symbol: str
     name: str
     kind: str          # crypto | equity | etf
-    provider: str      # coingecko | alphavantage
+    provider: str      # coingecko | twelvedata
     provider_ref: str
     currency: str      # native quote currency (GBP for coingecko here)
 

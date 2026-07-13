@@ -149,18 +149,6 @@ export interface AssetValuation {
   valued_at: string
 }
 
-export interface Instrument {
-  id: string
-  symbol: string
-  name: string
-  kind: string      // crypto | equity | etf
-  currency: string
-}
-
-export interface InstrumentSearchResult extends Instrument {
-  provider: string
-}
-
 export interface Asset {
   id: string
   name: string
@@ -169,11 +157,6 @@ export interface Asset {
   assumed_growth_pct: string | null
   // Planned monthly saving into this asset (paydown on a liability).
   monthly_contribution: string | null
-  // Live pricing (present when linked to an instrument).
-  instrument: Instrument | null
-  units: string | null
-  unit_price_gbp: string | null
-  priced_at: string | null
   valuations: AssetValuation[]
 }
 
@@ -255,17 +238,6 @@ export const assetsAPI = {
   // Record money added (+) / withdrawn (−) so growth can be told from saving.
   addFlow: (id: string, data: { amount: number; flow_date?: string }) =>
     api.post(`/assets/${id}/flows`, data),
-  // Live pricing: search public instruments, link/unlink one to an asset, and
-  // reprice all linked assets (snapshots today's value into a valuation).
-  searchInstruments: (q: string) =>
-    api.get<InstrumentSearchResult[]>('/instruments/search', { params: { q } }),
-  linkInstrument: (id: string, data: { instrument_id: string; units: number }) =>
-    api.post<Asset>(`/assets/${id}/link`, data),
-  unlinkInstrument: (id: string) => api.post<Asset>(`/assets/${id}/unlink`),
-  // Bounded client-side so a slow market-data provider can never hold up the
-  // Wealth page — on timeout we fall back to the cached list; the snapshot
-  // lands on the next visit.
-  refreshPrices: () => api.post<Asset[]>('/assets/refresh-prices', undefined, { timeout: 5000 }),
   decomposition: (months = 12) =>
     api.get<AssetDecomposition>('/analytics/net-worth-decomposition', { params: { months } }),
   netWorthHistory: (months = 12) =>

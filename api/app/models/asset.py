@@ -52,18 +52,6 @@ class Asset(Base):
         UserEncryptedDecimal, nullable=True
     )
 
-    # Live pricing: link to a public instrument + how many units you hold. When
-    # both are set the asset is priced (value = units x latest price, snapshot
-    # into a valuation on each Wealth load). instrument_id is a plaintext FK
-    # (public reference data, must join to prices) — the sensitive part, how
-    # much you hold, is the encrypted `units`.
-    instrument_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("instruments.id", ondelete="SET NULL"), nullable=True
-    )
-    units: Mapped[Decimal | None] = mapped_column(UserEncryptedDecimal, nullable=True)
-
-    instrument: Mapped["Instrument | None"] = relationship("Instrument", lazy="joined")  # noqa: F821
-
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

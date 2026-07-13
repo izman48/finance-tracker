@@ -109,45 +109,12 @@ class AssetValuationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class InstrumentInfo(BaseModel):
-    id: uuid.UUID
-    symbol: str
-    name: str
-    kind: str
-    currency: str
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class InstrumentSearchResult(BaseModel):
-    id: uuid.UUID
-    symbol: str
-    name: str
-    kind: str
-    provider: str
-    currency: str
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class AssetLink(BaseModel):
-    """Link an asset to a live-priced instrument, holding `units` of it."""
-
-    instrument_id: uuid.UUID
-    units: Decimal = Field(gt=0)
-
-
 class AssetResponse(BaseModel):
     id: uuid.UUID
     name: str
     asset_type: str
     assumed_growth_pct: Decimal | None = None
     monthly_contribution: Decimal | None = None
-    # Live pricing (present when the asset is linked to an instrument).
-    instrument: InstrumentInfo | None = None
-    units: Decimal | None = None
-    unit_price_gbp: Decimal | None = None   # latest cached price, per unit
-    priced_at: datetime | None = None       # when that price is from
     valuations: list[AssetValuationResponse] = []
 
     model_config = ConfigDict(from_attributes=True)

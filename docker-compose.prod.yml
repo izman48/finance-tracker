@@ -32,8 +32,6 @@ services:
       TRUELAYER_CLIENT_SECRET: ${TRUELAYER_CLIENT_SECRET}
       TRUELAYER_REDIRECT_URI: https://${DOMAIN}/api/v1/banking/callback
       TRUELAYER_SANDBOX: ${TRUELAYER_SANDBOX:-true}
-      # Optional: live pricing for stocks/ETFs (crypto works keyless). Absent → equities off.
-      TWELVEDATA_API_KEY: ${TWELVEDATA_API_KEY:-}
       FRONTEND_URL: https://${DOMAIN}
       ENVIRONMENT: production
       SMTP_HOST: ${SMTP_HOST:-}

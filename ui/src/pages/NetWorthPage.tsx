@@ -23,7 +23,6 @@ import InfoTip from '../components/ui/InfoTip'
 import { useConfirm } from '../components/ui/ConfirmDialog'
 import { EXPLAIN } from '../copy/statExplainers'
 import useReveal from '../components/ui/useReveal'
-import { isAnonymized } from '../lib/anonymize'
 
 const RANGES = [
   { months: 6, label: '6m' },
@@ -140,21 +139,9 @@ export default function NetWorthPage() {
 
   const load = async (m = months) => {
     try {
-      // Reprice linked holdings FIRST (it snapshots today's value into a
-      // valuation), so the history + summary below read the fresh figures.
-      // Skipped in anonymise mode (writes are blocked; the sample is static).
-      let assetRows: Asset[] | null = null
-      if (!isAnonymized()) {
-        try {
-          const r = await assetsAPI.refreshPrices()
-          assetRows = r.data
-        } catch {
-          /* provider/ network hiccup — fall back to the plain list below */
-        }
-      }
       const [h, a, s, b, d] = await Promise.all([
         assetsAPI.netWorthHistory(m),
-        assetRows ? Promise.resolve({ data: assetRows }) : assetsAPI.list(),
+        assetsAPI.list(),
         analyticsAPI.getSummary(),
         bankingAPI.getConnectionStatus(),
         assetsAPI.decomposition(m),
@@ -343,11 +330,6 @@ export default function NetWorthPage() {
     const value = latestValue(asset)
     const last = asset.valuations[asset.valuations.length - 1]
     const ageDays = last ? (now - new Date(last.valued_at).getTime()) / 86400000 : undefined
-    // A linked, priced holding shows as "live" with its units × price sub-line.
-    const priced = !!asset.instrument && asset.units != null && asset.unit_price_gbp != null
-    const sub = priced
-      ? `${Number(asset.units)} ${asset.instrument!.symbol} · ${gbp(Number(asset.unit_price_gbp))}`
-      : ASSET_TYPE_LABEL[asset.asset_type] ?? asset.asset_type
     rows.push({
       key: `asset-${asset.id}`,
       group: isLiabilityType(asset.asset_type)
@@ -356,10 +338,10 @@ export default function NetWorthPage() {
           ? 'owed'
           : ASSET_GROUP[asset.asset_type] ?? 'other',
       name: asset.name,
-      sub,
+      sub: ASSET_TYPE_LABEL[asset.asset_type] ?? asset.asset_type,
       value,
-      live: priced,
-      ageDays: priced ? undefined : ageDays,
+      live: false,
+      ageDays,
       onClick: () => setUpdating(asset),
     })
   }

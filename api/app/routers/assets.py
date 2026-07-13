@@ -1,6 +1,5 @@
 """Manually tracked assets (ISAs, pensions, property …) and their valuations."""
 import logging
-import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -8,19 +7,16 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
 from app.core.security import CurrentUser
-from app.models import Asset, AssetFlow, AssetValuation, Instrument
-from app.models.asset import LIABILITY_TYPES
+from app.models import Asset, AssetFlow, AssetValuation
 from app.schemas import (
     AssetCreate,
     AssetFlowCreate,
     AssetFlowResponse,
-    AssetLink,
     AssetResponse,
     AssetUpdate,
     AssetValuationCreate,
 )
 from app.services import analytics_service
-from app.services.pricing import service as pricing_service
 
 logger = logging.getLogger(__name__)
 
@@ -28,14 +24,10 @@ router = APIRouter(prefix="/assets", tags=["assets"])
 
 
 def _own_asset(db: Session, user_id, asset_id: str) -> Asset:
-    try:
-        aid = uuid.UUID(str(asset_id))
-    except ValueError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
     asset = (
         db.query(Asset)
         .options(joinedload(Asset.valuations))
-        .filter(Asset.id == aid, Asset.user_id == user_id)
+        .filter(Asset.id == asset_id, Asset.user_id == user_id)
         .first()
     )
     if not asset:
@@ -43,88 +35,15 @@ def _own_asset(db: Session, user_id, asset_id: str) -> Asset:
     return asset
 
 
-def _with_price(db: Session, asset: Asset) -> Asset:
-    """Attach the latest cached unit price as transient attributes so the
-    response serialiser (from_attributes) can surface it. Not persisted."""
-    if asset.instrument_id:
-        p = pricing_service.latest_price(db, asset.instrument_id)
-        asset.unit_price_gbp = p.price_gbp if p else None
-        asset.priced_at = p.as_of if p else None
-    else:
-        asset.unit_price_gbp = None
-        asset.priced_at = None
-    return asset
-
-
 @router.get("", response_model=list[AssetResponse])
 def list_assets(current_user: CurrentUser, db: Annotated[Session, Depends(get_db)]) -> list[Asset]:
-    assets = (
+    return (
         db.query(Asset)
         .options(joinedload(Asset.valuations))
         .filter(Asset.user_id == current_user.id)
         .order_by(Asset.created_at)
         .all()
     )
-    return [_with_price(db, a) for a in assets]
-
-
-@router.post("/refresh-prices", response_model=list[AssetResponse])
-def refresh_prices(current_user: CurrentUser, db: Annotated[Session, Depends(get_db)]) -> list[Asset]:
-    """Reprice every linked asset and snapshot today's value into a valuation,
-    then return the balance sheet. Called on Wealth load, before history."""
-    pricing_service.price_and_snapshot(db, current_user)
-    assets = (
-        db.query(Asset)
-        .options(joinedload(Asset.valuations))
-        .filter(Asset.user_id == current_user.id)
-        .order_by(Asset.created_at)
-        .all()
-    )
-    return [_with_price(db, a) for a in assets]
-
-
-@router.post("/{asset_id}/link", response_model=AssetResponse)
-def link_instrument(
-    asset_id: str,
-    body: AssetLink,
-    current_user: CurrentUser,
-    db: Annotated[Session, Depends(get_db)],
-) -> Asset:
-    """Link a manual asset to a live-priced instrument and set units held.
-    Immediately snapshots a live valuation so the balance sheet updates."""
-    asset = _own_asset(db, current_user.id, asset_id)
-    if asset.asset_type in LIABILITY_TYPES:
-        # Live pricing yields a positive units×price valuation; liabilities are
-        # stored negative (amount owed), so linking one would flip its sign.
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Liabilities can't be linked to a live price",
-        )
-    instrument = db.query(Instrument).filter(Instrument.id == body.instrument_id).first()
-    if instrument is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Instrument not found")
-    asset.instrument_id = instrument.id
-    asset.units = body.units
-    db.commit()
-    pricing_service.price_and_snapshot(db, current_user)
-    db.refresh(asset)
-    return _with_price(db, asset)
-
-
-@router.post("/{asset_id}/unlink", response_model=AssetResponse)
-def unlink_instrument(
-    asset_id: str,
-    current_user: CurrentUser,
-    db: Annotated[Session, Depends(get_db)],
-) -> Asset:
-    """Stop live-pricing an asset (its valuation history is kept — it just
-    goes back to manual updates)."""
-    asset = _own_asset(db, current_user.id, asset_id)
-    asset.instrument_id = None
-    asset.units = None
-    db.commit()
-    db.refresh(asset)
-    return _with_price(db, asset)
 
 
 @router.post("", response_model=AssetResponse, status_code=status.HTTP_201_CREATED)
@@ -151,7 +70,7 @@ def create_asset(
     )
     db.commit()
     db.refresh(asset)
-    return _with_price(db, asset)
+    return asset
 
 
 @router.patch("/{asset_id}", response_model=AssetResponse)
@@ -175,7 +94,7 @@ def update_asset(
         asset.monthly_contribution = body.monthly_contribution
     db.commit()
     db.refresh(asset)
-    return _with_price(db, asset)
+    return asset
 
 
 @router.delete("/{asset_id}")
@@ -211,7 +130,7 @@ def add_valuation(
         db.add(AssetValuation(asset_id=asset.id, value=body.value, valued_at=valued_at))
     db.commit()
     db.refresh(asset)
-    return _with_price(db, asset)
+    return asset
 
 
 @router.delete("/{asset_id}/valuations/{valuation_id}")

@@ -15,12 +15,14 @@ from sqlalchemy.orm import Session
 from app.models import Account, AccountRole, PlannedItem, Transaction
 
 from .commitments import commitment_match_keys, last_payday, transaction_match_key
-from .common import _add_months, _d, _load, _today, resolve_roles
-
-# Descriptions that indicate a transfer to settle a credit card (not new spend).
-_CARD_PAYMENT_INDICATORS = (
-    "american express", "amex", "monzo flex", "barclaycard",
-    "credit card", "cc payment", "card payment",
+from .common import (
+    CARD_PAYMENT_INDICATORS as _CARD_PAYMENT_INDICATORS,
+    _add_months,
+    _d,
+    _load,
+    _today,
+    detect_internal_transfers as _detect_internal_transfers,
+    resolve_roles,
 )
 
 
@@ -34,24 +36,6 @@ def _spending_range(db, user, period: str, frm: date | None, to: date | None, to
     # since_payday (default)
     payday = last_payday(db, user, today)
     return (payday or today - timedelta(days=30)), today
-
-
-def _detect_internal_transfers(txns: list[Transaction]) -> set:
-    """IDs of debit/credit pairs that look like money moving between own accounts."""
-    excluded: set = set()
-    ordered = sorted(txns, key=lambda t: t.transaction_date)
-    for i, a in enumerate(ordered):
-        for b in ordered[i + 1:]:
-            if (b.transaction_date - a.transaction_date).days > 2:
-                break
-            if a.account_id == b.account_id:
-                continue
-            if abs(_d(a.amount) - _d(b.amount)) > Decimal("0.01"):
-                continue
-            if {a.transaction_type, b.transaction_type} == {"debit", "credit"}:
-                excluded.add(a.id)
-                excluded.add(b.id)
-    return excluded
 
 
 def _effective_transfers(txns: list[Transaction]) -> set:

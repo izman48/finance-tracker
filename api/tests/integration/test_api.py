@@ -120,3 +120,90 @@ class TestAuthEndpoints:
         response = client.get("/api/v1/auth/me")
 
         assert response.status_code == 401
+
+
+class TestCommitmentsEndpoint:
+    """The GET that re-keys stale match_keys. It's a mutating read that writes a
+    DEK-encrypted column, so it needs exercising over real HTTP with the token's
+    own session key — a service-level call wouldn't catch a DEK failure here.
+    """
+
+    def _seed_loan_payments(self, client, db_session):
+        """Register + login, then seed a regular loan DD whose reference changes
+        every month, under the token's DEK (as production writes would be)."""
+        import uuid as _uuid
+        from datetime import datetime, timedelta, timezone
+        from decimal import Decimal
+
+        from jose import jwt
+
+        from app.core import user_crypto
+        from app.core.config import get_settings
+        from app.models import Account, BankConnection, Transaction, User
+
+        email = "commitments@example.com"
+        password = "securepassword123"
+        client.post("/api/v1/auth/register", json={"email": email, "password": password})
+        token = client.post(
+            "/api/v1/auth/login", data={"username": email, "password": password}
+        ).json()["access_token"]
+        client.headers["Authorization"] = f"Bearer {token}"
+
+        payload = jwt.decode(token, get_settings().secret_key, algorithms=["HS256"])
+        dek = user_crypto.unwrap_session_dek(payload["dk"])
+        user = db_session.query(User).filter(User.email == email).first()
+
+        ctx = user_crypto.current_dek.set(dek)
+        try:
+            conn = BankConnection(
+                user_id=user.id, provider_id="ob-loan", provider_name="Test Bank",
+                access_token="t", refresh_token="r",
+            )
+            db_session.add(conn)
+            db_session.flush()
+            acc = Account(
+                user_id=user.id, bank_connection_id=conn.id,
+                external_id=f"ext-{_uuid.uuid4()}", provider_name="Test Bank",
+                account_type="TRANSACTION", display_name="Current",
+                current_balance=Decimal("1000"),
+            )
+            db_session.add(acc)
+            db_session.commit()
+            db_session.refresh(acc)
+
+            today = datetime.now(timezone.utc)
+            for i in range(4):
+                db_session.add(Transaction(
+                    account_id=acc.id, external_id=f"ext-loanpay-{i}",
+                    transaction_type="debit", amount=Decimal("250.00"), currency="GBP",
+                    description=f"LOAN PAYMENT REF {4471 + i}", merchant_name=None,
+                    transaction_date=today - timedelta(days=30 * (3 - i)),
+                ))
+            db_session.commit()
+        finally:
+            user_crypto.current_dek.reset(ctx)
+
+    def test_loan_payment_is_suggested_over_http(self, client, db_session):
+        """The headline fix, end to end: a loan DD with a per-payment reference
+        used to land in groups of one and never be suggested."""
+        self._seed_loan_payments(client, db_session)
+
+        response = client.get("/api/v1/analytics/commitments")
+
+        assert response.status_code == 200
+        labels = [c["label"].upper() for c in response.json()]
+        assert any("LOAN PAYMENT" in label for label in labels), labels
+
+    def test_repeat_call_does_not_duplicate(self, client, db_session):
+        """sync_suggestions runs on every GET — re-keying must not make it
+        re-suggest something it already stored."""
+        self._seed_loan_payments(client, db_session)
+
+        first = client.get("/api/v1/analytics/commitments").json()
+        second = client.get("/api/v1/analytics/commitments").json()
+
+        loans_first = [c for c in first if "LOAN PAYMENT" in c["label"].upper()]
+        loans_second = [c for c in second if "LOAN PAYMENT" in c["label"].upper()]
+        assert len(loans_first) == 1
+        assert len(loans_second) == 1
+        assert loans_first[0]["id"] == loans_second[0]["id"]

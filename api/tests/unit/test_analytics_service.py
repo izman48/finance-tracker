@@ -715,3 +715,180 @@ class TestSkipCommitment:
         import uuid as _u
         user = _user(db_session)
         assert svc.skip_commitment(db_session, user, str(_u.uuid4())) is None
+
+
+# --------------------------------------------------------------------------- #
+# Merchant normalisation: the reason regular loan/bill payments went undetected
+# --------------------------------------------------------------------------- #
+from app.models import AccountRole, AccountType, CommitmentSource  # noqa: E402
+from app.services.analytics.commitments import (  # noqa: E402
+    _match_key,
+    _normalise_merchant,
+)
+from app.services.analytics.common import default_role  # noqa: E402
+
+
+def _tx_desc(db, account, amount, when, ttype="debit", description="X", merchant=None):
+    """A transaction whose description and merchant_name differ — banks leave
+    merchant_name null for direct debits, which is exactly the case that broke."""
+    t = Transaction(
+        account_id=account.id,
+        # Both legs of a transfer share a description and date, so the account
+        # and direction have to be part of the id to stay unique.
+        external_id=f"tx-{account.id}-{ttype}-{description}-{when.isoformat()}",
+        transaction_type=ttype, amount=Decimal(str(amount)), currency="GBP",
+        description=description, merchant_name=merchant,
+        transaction_date=datetime.combine(when, datetime.min.time(), tzinfo=timezone.utc),
+    )
+    db.add(t)
+    db.commit()
+    return t
+
+
+class TestMerchantNormalisation:
+    def test_strips_payment_reference(self):
+        assert _normalise_merchant("LOAN PAYMENT REF 4471") == "LOAN PAYMENT REF"
+        assert _normalise_merchant("LOAN PAYMENT REF 8123") == "LOAN PAYMENT REF"
+
+    def test_strips_embedded_date(self):
+        assert _normalise_merchant("DD TESCO BANK 12/07") == "DD TESCO BANK"
+        assert _normalise_merchant("DD TESCO BANK 12-07-25") == "DD TESCO BANK"
+
+    def test_keeps_short_digits_and_alphanumerics(self):
+        # O2 and MONZO123 are merchant names, not references — stripping them
+        # would over-merge unrelated payments.
+        assert _normalise_merchant("O2") == "O2"
+        assert _normalise_merchant("MONZO123") == "MONZO123"
+
+    def test_falls_back_when_nothing_survives(self):
+        assert _normalise_merchant("123456") == "123456"
+
+    def test_case_and_punctuation_insensitive(self):
+        assert _normalise_merchant("Netflix.com") == _normalise_merchant("NETFLIX COM")
+
+    def test_match_key_unchanged_for_plain_merchants(self):
+        """Existing stored keys must keep matching: for a merchant with no
+        digits the new key is byte-identical to the old lower/strip form."""
+        assert _match_key("expense", "Netflix") == "expense:netflix"
+        assert _match_key("income", " Salary ") == "income:salary"
+
+
+class TestDetectionExclusions:
+    def test_loan_payment_with_varying_reference_is_detected(self, db_session):
+        """The headline bug: a perfectly regular loan DD whose reference changes
+        every month used to land in groups of one and never be suggested."""
+        user = _user(db_session)
+        acc = _account(db_session, user, name="Cur")
+        base = svc._add_months(date.today(), -3)
+        for i in range(4):
+            _tx_desc(
+                db_session, acc, 250, svc._add_months(base, i),
+                description=f"LOAN PAYMENT REF {4471 + i}",
+            )
+
+        found = svc.detect_recurring(db_session, user)
+        loans = [c for c in found if "LOAN PAYMENT" in c["label"].upper()]
+        assert len(loans) == 1
+        assert loans[0]["cadence"] == "monthly"
+        assert loans[0]["amount"] == Decimal("250.00")
+
+    def test_card_settlement_is_not_detected_as_commitment(self, db_session):
+        """Repayments are already derived from the card's balance + schedule;
+        detecting them again would double-count them in safe-to-spend."""
+        user = _user(db_session)
+        cur = _account(db_session, user, name="Cur")
+        base = svc._add_months(date.today(), -3)
+        for i in range(4):
+            _tx_desc(
+                db_session, cur, 300, svc._add_months(base, i),
+                description="AMEX CARD PAYMENT",
+            )
+
+        labels = {c["label"].upper() for c in svc.detect_recurring(db_session, user)}
+        assert "AMEX CARD PAYMENT" not in labels
+
+    def test_incoming_transfer_leg_not_income_but_outgoing_leg_kept(self, db_session):
+        """Moving money to your own savings isn't income — but the standing
+        order leaving the current account is still a real monthly outflow."""
+        user = _user(db_session)
+        cur = _account(db_session, user, name="Cur")
+        sav = _account(db_session, user, atype="SAVINGS", name="Sav")
+        base = svc._add_months(date.today(), -3)
+        for i in range(4):
+            when = svc._add_months(base, i)
+            _tx_desc(db_session, cur, 200, when, ttype="debit", description="MONTHLY SAVER")
+            _tx_desc(db_session, sav, 200, when, ttype="credit", description="MONTHLY SAVER")
+
+        found = svc.detect_recurring(db_session, user)
+        directions = {(c["direction"], c["label"].upper()) for c in found}
+        assert ("income", "MONTHLY SAVER") not in directions
+        assert ("expense", "MONTHLY SAVER") in directions
+
+    def test_excluded_account_generates_no_commitments(self, db_session):
+        user = _user(db_session)
+        other = _account(db_session, user, atype="OTHER", name="Other")
+        base = svc._add_months(date.today(), -3)
+        for i in range(4):
+            _tx_desc(db_session, other, 75, svc._add_months(base, i), description="SOMETHING")
+
+        assert svc.detect_recurring(db_session, user) == []
+
+
+class TestLoanAccountRole:
+    def test_loan_and_mortgage_count_as_liabilities(self, db_session):
+        """They used to fall through to EXCLUDED, so a mortgage was invisible
+        to net worth entirely."""
+        user = _user(db_session)
+        loan = _account(db_session, user, atype="LOAN", balance="-5000", name="Loan")
+        mortgage = _account(db_session, user, atype="MORTGAGE", balance="-200000", name="Mortgage")
+        assert default_role(loan) == AccountRole.CREDIT
+        assert default_role(mortgage) == AccountRole.CREDIT
+
+    def test_loan_alone_schedules_no_repayments(self, db_session):
+        """Safety: without an explicit AccountSetting a loan must not put its
+        whole balance into the forecast as a single payment."""
+        user = _user(db_session)
+        _account(db_session, user, atype="MORTGAGE", balance="-200000", name="Mortgage")
+        events = svc.repayment_events(
+            db_session, user, date.today(), date.today() + timedelta(days=90)
+        )
+        assert events == []
+
+
+class TestMatchKeySelfHeal:
+    def test_stale_detected_key_is_rekeyed(self, db_session):
+        """match_key is DEK-encrypted so it can't be migrated in SQL — it heals
+        on read, where the user's key is in scope."""
+        user = _user(db_session)
+        _account(db_session, user, name="Cur")
+        rule = CommitmentRule(
+            user_id=user.id, direction="expense", label="LOAN PAYMENT REF 4471",
+            amount=Decimal("250"), cadence="monthly", next_date=date.today(),
+            source=CommitmentSource.DETECTED.value,
+            status=CommitmentStatus.CONFIRMED.value,
+            match_key="expense:loan payment ref 4471",  # pre-normalisation key
+        )
+        db_session.add(rule)
+        db_session.commit()
+
+        svc.sync_suggestions(db_session, user)
+        db_session.refresh(rule)
+        assert rule.match_key == "expense:loan payment ref"
+
+    def test_manual_key_is_left_alone(self, db_session):
+        """A manual rule's key is the user's own merchant text, not ours to rewrite."""
+        user = _user(db_session)
+        _account(db_session, user, name="Cur")
+        rule = CommitmentRule(
+            user_id=user.id, direction="expense", label="My loan",
+            amount=Decimal("250"), cadence="monthly", next_date=date.today(),
+            source=CommitmentSource.MANUAL.value,
+            status=CommitmentStatus.CONFIRMED.value,
+            match_key="expense:santander 998877",
+        )
+        db_session.add(rule)
+        db_session.commit()
+
+        svc.sync_suggestions(db_session, user)
+        db_session.refresh(rule)
+        assert rule.match_key == "expense:santander 998877"

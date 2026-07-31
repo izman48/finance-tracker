@@ -1,9 +1,10 @@
 """Recurring commitments: detection, match keys, paydays, and transaction conversion."""
 from __future__ import annotations
 
+import re
 import statistics
 import uuid as _uuid
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -11,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     Account,
+    AccountRole,
     CommitmentDirection,
     CommitmentCadence,
     CommitmentRule,
@@ -22,15 +24,40 @@ from app.models import (
 )
 
 from .cadence import _cadence_from_interval, _step, _step_back, commitment_occurrences
-from .common import _d, _today
+from .common import _d, _load, _today, detect_internal_transfers, is_card_settlement, resolve_roles
 
 # Detection thresholds (mirrors the frontend Bills heuristic).
 _MIN_OCCURRENCES = 3
 _MAX_INTERVAL_CV = 0.30  # std-dev must be < 30% of the mean interval
 
+# Tokens that vary between otherwise-identical payments, so they must not be
+# part of the grouping key. Banks rarely populate merchant_name for direct
+# debits and standing orders, so we fall back to the description — which often
+# carries a per-payment reference ("LOAN PAYMENT REF 4471"). Left in, every
+# month lands in its own group of one and never reaches _MIN_OCCURRENCES, so a
+# perfectly regular loan or bill is invisible to detection.
+_DIGIT_RUN = re.compile(r"^\d{3,}$")                       # 4471, 0123456
+_DATE_TOKEN = re.compile(r"^\d{1,2}[/-]\d{1,2}([/-]\d{2,4})?$")  # 12/07, 12-07-25
+
+
+def _normalise_merchant(raw: str | None) -> str:
+    """Collapse a bank description to a key that's stable across payments.
+
+    Deliberately conservative: only pure digit runs and dates are dropped.
+    Mixed alphanumerics are left alone, because stripping them would eat real
+    merchant names ("O2", "MONZO123") and over-merge unrelated payments.
+    """
+    text = re.sub(r"[^A-Z0-9/\- ]+", " ", (raw or "").upper())
+    tokens = [t for t in text.split() if not _DIGIT_RUN.match(t) and not _DATE_TOKEN.match(t)]
+    # Fall back to the raw text if normalising left nothing (e.g. "123456").
+    return " ".join(tokens).strip() or (raw or "").strip().upper()
+
 
 def _match_key(direction: str, merchant: str) -> str:
-    return f"{direction}:{merchant.strip().lower()}"
+    # Normalised, so the same real-world payment keys identically however its
+    # reference varies. For merchants without digits this is byte-identical to
+    # the old `merchant.strip().lower()`, so existing stored keys still match.
+    return f"{direction}:{_normalise_merchant(merchant).lower()}"
 
 
 def merchant_match_key(direction: str, merchant: str | None) -> str | None:
@@ -85,15 +112,36 @@ def detect_recurring(db: Session, user) -> list[dict]:
         .all()
     )
 
+    accounts, settings = _load(db, user)
+    roles = resolve_roles(accounts, settings)
+    transfers = detect_internal_transfers(txns)
+
     groups: dict[tuple[str, str], list[Transaction]] = defaultdict(list)
     for tx in txns:
+        role = roles.get(tx.account_id)
+        # Accounts held out of the cashflow picture shouldn't generate
+        # commitments — including the loan/mortgage accounts that default to
+        # excluded, whose incoming payments would otherwise read as income.
+        if role == AccountRole.EXCLUDED:
+            continue
+        # Card settlements are already modelled as repayment events, derived
+        # from the card's balance and schedule; detecting them here as well
+        # would count the same money twice in safe-to-spend and the forecast.
+        if is_card_settlement(tx, role):
+            continue
+        # Only the *receiving* leg of a transfer between your own accounts is
+        # dropped — that isn't income. The paying leg is kept deliberately: a
+        # standing order into savings is still a real monthly outflow, and the
+        # forecast overstates your balance if it doesn't know about it.
+        if tx.transaction_type == "credit" and tx.id in transfers:
+            continue
         direction = (
             CommitmentDirection.INCOME.value
             if tx.transaction_type == "credit"
             else CommitmentDirection.EXPENSE.value
         )
-        merchant = (tx.merchant_name or tx.description or "Unknown").strip()
-        groups[(direction, merchant)].append(tx)
+        raw = (tx.merchant_name or tx.description or "Unknown").strip()
+        groups[(direction, _normalise_merchant(raw))].append(tx)
 
     candidates: list[dict] = []
     for (direction, merchant), group in groups.items():
@@ -131,10 +179,16 @@ def detect_recurring(db: Session, user) -> list[dict]:
             next_date = _step(next_date, cadence, interval_days, interval_months)
             guard += 1
 
+        # Label from the real descriptions, not the normalised key — the key is
+        # an internal grouping artefact and reads badly ("LOAN PAYMENT REF").
+        display = Counter(
+            (t.merchant_name or t.description or "Unknown").strip() for t in group
+        ).most_common(1)[0][0]
+
         candidates.append(
             {
                 "direction": direction,
-                "label": merchant,
+                "label": display,
                 "amount": avg_amount.quantize(Decimal("0.01")),
                 "cadence": cadence,
                 "interval_days": interval_days,
@@ -286,6 +340,22 @@ def sync_suggestions(db: Session, user) -> None:
     """Persist newly-detected commitments as `suggested`, without touching ones
     the user has already confirmed or dismissed."""
     existing_rules = db.query(CommitmentRule).filter(CommitmentRule.user_id == user.id).all()
+
+    # Re-key detected rules whose match_key predates a change in how merchants
+    # are normalised. match_key is DEK-encrypted, so this can't be a SQL data
+    # migration — it heals here, where the user's key is in scope. Without it a
+    # stale key stops matching its transactions (they'd leak back into spending)
+    # and stops suppressing re-detection (the same commitment gets suggested
+    # again as a duplicate). Only DETECTED rules: their key has always been
+    # derived from the label, whereas a manual rule's key is the user's own
+    # merchant text and is not ours to rewrite.
+    for rule in existing_rules:
+        if rule.source != CommitmentSource.DETECTED.value or not rule.match_key:
+            continue
+        expected = _match_key(rule.direction, rule.label or "")
+        if rule.match_key != expected:
+            rule.match_key = expected
+
     existing_keys = {rule.match_key for rule in existing_rules if rule.match_key}
 
     # Maintenance: advance stale next_dates so the review list never shows a

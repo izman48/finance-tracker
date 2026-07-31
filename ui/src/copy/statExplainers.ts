@@ -4,6 +4,8 @@
 // computes, not what marketing wishes it computed.
 
 export const EXPLAIN = {
+  totalCash:
+    'The combined current balance of every account marked as “Spending” or “Savings”. Credit cards are listed separately as what you owe, and accounts you’ve excluded from cashflow aren’t counted.',
   safeToSpend:
     'Your available cash minus everything already committed before your next payday: confirmed recurring bills plus scheduled card repayments. Your overdraft is never counted. If commitments exceed cash this shows £0 — the forecast below shows how deep the dip goes.',
   availableCash:

@@ -126,6 +126,13 @@ export default function DashboardPage() {
 
   const hasAccounts = (summary?.accounts.length ?? 0) > 0
   const safeToSpendNegative = (summary?.safe_to_spend ?? 0) < 0
+
+  // Accounts, split for the hero. `excluded` accounts are deliberately out of
+  // the cashflow picture, so they stay out of the total and the list.
+  const listedAccounts = (summary?.accounts ?? []).filter((a) => a.role !== 'excluded')
+  const cashAccounts = listedAccounts.filter((a) => a.role === 'spending' || a.role === 'savings')
+  const creditAccounts = listedAccounts.filter((a) => a.role === 'credit')
+  const totalCash = cashAccounts.reduce((sum, a) => sum + Number(a.current_balance ?? 0), 0)
   const suggestedCount = commitments.filter((c) => c.status === 'suggested').length
 
   // "Coming up": the next few dated movements — confirmed commitments and
@@ -254,28 +261,53 @@ export default function DashboardPage() {
       {/* Cashflow summary */}
       {summary && hasAccounts && (
         <div className="mb-6 grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-          {/* Safe to spend hero */}
+          {/* Accounts hero — what you actually have, per account. Safe-to-spend
+              is demoted to the stat strip below: it still drives the forecast
+              and nudges, but balances are what gets checked day to day. */}
           <div className="lg:col-span-2 card p-6 sm:p-8 relative overflow-hidden" data-reveal>
             <div className="orb w-72 h-72 bg-accent/15 -top-24 -right-20" />
             <div className="relative">
               <div className="text-sm text-slate-400 mb-2 flex items-center gap-1.5">
-                Safe to spend
-                <InfoTip text={EXPLAIN.safeToSpend} side="bottom" align="left" />
+                Total cash
+                <InfoTip text={EXPLAIN.totalCash} side="bottom" align="left" />
               </div>
-              <div
-                className={`stat-figure text-5xl sm:text-6xl ${
-                  safeToSpendNegative ? 'text-neg' : 'text-slate-50'
-                }`}
-              >
-                <AnimatedNumber value={summary.safe_to_spend} />
+              <div className="stat-figure text-5xl sm:text-6xl text-slate-50">
+                <AnimatedNumber value={totalCash} />
               </div>
               <div className="text-sm text-slate-500 mt-2">
-                until {summary.next_payday ? `payday on ${formatDate(summary.next_payday)}` : 'next 30 days'}
+                across {cashAccounts.length} account{cashAccounts.length !== 1 ? 's' : ''}
+                {creditAccounts.length > 0 && (
+                  <> · {formatCurrency(summary.credit_owed)} owed on {creditAccounts.length} card{creditAccounts.length !== 1 ? 's' : ''}</>
+                )}
+              </div>
+
+              {/* Every account and what's in it, so this doesn't need a trip to
+                  Wealth. Credit shows what's owed, in amber. */}
+              <div className="mt-6 -mx-2 divide-y divide-white/[0.06]">
+                {listedAccounts.map((a) => (
+                  <div key={a.id} className="flex items-center justify-between gap-3 px-2 py-2.5">
+                    <div className="min-w-0">
+                      <div className="text-sm text-slate-200 truncate">{a.display_name}</div>
+                      <div className="text-xs text-slate-500 truncate">
+                        {a.provider_name}
+                        {a.role === 'savings' && ' · Savings'}
+                        {a.role === 'credit' && ' · Credit'}
+                      </div>
+                    </div>
+                    <div
+                      className={`font-semibold tnum shrink-0 ${
+                        a.role === 'credit' ? 'text-warn' : 'text-slate-100'
+                      }`}
+                    >
+                      {formatCurrency(Math.abs(Number(a.current_balance ?? 0)))}
+                    </div>
+                  </div>
+                ))}
               </div>
 
               <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-4">
                 {[
-                  { icon: Banknote, label: 'Available cash', value: formatCurrency(summary.available_cash), tone: 'text-slate-100', explain: EXPLAIN.availableCash },
+                  { icon: Banknote, label: 'Safe to spend', value: formatCurrency(summary.safe_to_spend), tone: safeToSpendNegative ? 'text-neg' : 'text-slate-100', explain: EXPLAIN.safeToSpend },
                   { icon: CalendarClock, label: 'Committed soon', value: `−${formatCurrency(summary.committed_before_payday)}`, tone: 'text-neg', explain: EXPLAIN.committedSoon },
                   { icon: PiggyBank, label: 'Savable (30d)', value: formatCurrency(summary.savable), tone: 'text-pos', explain: EXPLAIN.savable },
                   { icon: ShieldAlert, label: 'Overdraft cushion', value: formatCurrency(summary.overdraft_cushion), tone: 'text-slate-400', explain: EXPLAIN.overdraftCushion },

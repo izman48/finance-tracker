@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { analyticsAPI } from '../services/api'
-import { Commitment } from '../types'
+import { Commitment, NextRepayment } from '../types'
 import { gbp as formatCurrency, dateLong as formatDate } from '../lib/format'
 import { cadenceLabel, isYearly, monthlyEquivalent } from '../lib/cadence'
 import AddCommitmentModal from '../components/AddCommitmentModal'
@@ -10,6 +11,7 @@ import useReveal from '../components/ui/useReveal'
 
 export default function CommitmentsPage() {
   const [commitments, setCommitments] = useState<Commitment[]>([])
+  const [repayments, setRepayments] = useState<NextRepayment[]>([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [editing, setEditing] = useState<Commitment | null>(null)
@@ -19,8 +21,16 @@ export default function CommitmentsPage() {
   const load = async () => {
     setLoading(true)
     try {
-      const c = await analyticsAPI.getCommitments()
+      // Card repayments aren't commitment rules — they're derived from each
+      // credit account's balance and repayment settings — but they're money
+      // leaving on a schedule, so they belong in this list too (they already
+      // drive the forecast and Home's "coming up").
+      const [c, s] = await Promise.all([
+        analyticsAPI.getCommitments(),
+        analyticsAPI.getSummary(),
+      ])
       setCommitments(c.data)
+      setRepayments(s.data.next_repayments ?? [])
     } catch (error) {
       console.error('Failed to load commitments:', error)
     } finally {
@@ -65,6 +75,16 @@ export default function CommitmentsPage() {
   const regular = confirmed.filter((c) => !isYearly(c))
   const confirmedIncome = regular.filter((c) => c.direction === 'income')
   const confirmedExpense = regular.filter((c) => c.direction === 'expense')
+
+  // One row per credit account — its soonest repayment. The summary returns a
+  // 92-day window, so an installment plan would otherwise flood the list with
+  // every future instalment of the same card.
+  const nextRepayments = Object.values(
+    repayments.reduce<Record<string, NextRepayment>>((acc, r) => {
+      if (!acc[r.account_id] || r.due_date < acc[r.account_id].due_date) acc[r.account_id] = r
+      return acc
+    }, {}),
+  )
 
   if (loading) {
     return (
@@ -138,7 +158,7 @@ export default function CommitmentsPage() {
           max-content track that overflows (see CLAUDE.md gotcha). */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6" data-reveal>
         <ConfirmedList title="Regular income" items={confirmedIncome} onRemove={(id) => setStatus(id, 'dismissed')} onEdit={setEditing} onSkip={handleSkip} onPayday={handlePayday} positive />
-        <ConfirmedList title="Regular expenses" items={confirmedExpense} onRemove={(id) => setStatus(id, 'dismissed')} onEdit={setEditing} onSkip={handleSkip} />
+        <ConfirmedList title="Regular expenses" items={confirmedExpense} repayments={nextRepayments} onRemove={(id) => setStatus(id, 'dismissed')} onEdit={setEditing} onSkip={handleSkip} />
       </div>
 
       {/* Yearly commitments — billed once a year, so they get their own totals
@@ -190,6 +210,7 @@ export default function CommitmentsPage() {
 function ConfirmedList({
   title,
   items,
+  repayments,
   onRemove,
   onEdit,
   onSkip,
@@ -198,14 +219,24 @@ function ConfirmedList({
 }: {
   title: string
   items: Commitment[]
+  repayments?: NextRepayment[]
   onRemove: (id: string) => void
   onEdit: (c: Commitment) => void
   onSkip: (c: Commitment) => void
   onPayday?: (c: Commitment) => void
   positive?: boolean
 }) {
-  const total = items.reduce((sum, c) => sum + monthlyEquivalent(c), 0)
-  const sorted = [...items].sort((a, b) => monthlyEquivalent(b) - monthlyEquivalent(a))
+  const reps = repayments ?? []
+  const total =
+    items.reduce((sum, c) => sum + monthlyEquivalent(c), 0) +
+    reps.reduce((sum, r) => sum + Number(r.amount), 0)
+  // Card repayments sit in the same ranked list as the rules — they're the same
+  // kind of thing to the user (money that leaves on a schedule), even though
+  // they're derived from the card balance rather than stored as a rule.
+  const sorted = [
+    ...items.map((c) => ({ key: `c-${c.id}`, monthly: monthlyEquivalent(c), commitment: c, repayment: null })),
+    ...reps.map((r) => ({ key: `r-${r.account_id}`, monthly: Number(r.amount), commitment: null, repayment: r })),
+  ].sort((a, b) => b.monthly - a.monthly)
   // Nudge the user to pick a payday when they have several incomes and haven't.
   const showPaydayHint = !!onPayday && items.length > 1 && !items.some((c) => c.is_payday)
 
@@ -213,7 +244,7 @@ function ConfirmedList({
     <div className="card">
       <div className="px-4 py-3 border-b border-white/[0.06] flex items-center justify-between">
         <span className="font-display font-semibold text-slate-100">{title}</span>
-        {items.length > 0 && (
+        {sorted.length > 0 && (
           <span className={`text-sm font-semibold tnum ${positive ? 'text-pos' : 'text-slate-100'}`}>
             {positive ? '+' : ''}{formatCurrency(total)}/mo
           </span>
@@ -224,53 +255,102 @@ function ConfirmedList({
           Several incomes — star the one that's your payday so safe-to-spend and the forecast use it.
         </div>
       )}
-      {items.length === 0 ? (
+      {sorted.length === 0 ? (
         <div className="p-4 text-sm text-slate-600">None confirmed yet.</div>
       ) : (
         <div className="divide-y divide-white/[0.06]">
-          {sorted.map((c) => (
-            <div key={c.id} className="p-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
-              <div className="min-w-0 flex-1 basis-40">
-                <div className="font-medium text-slate-200 flex items-center gap-2">
-                  <span className="truncate">{c.label}</span>
-                  {c.is_payday && <span className="chip-pos shrink-0">Payday</span>}
+          {sorted.map((row) =>
+            row.repayment ? (
+              <div key={row.key} className="p-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+                <div className="min-w-0 flex-1 basis-40">
+                  <div className="font-medium text-slate-200 flex items-center gap-2">
+                    <span className="truncate">{row.repayment.label}</span>
+                    <span className="chip-warn shrink-0">Card</span>
+                  </div>
+                  <div className="text-sm text-slate-500">
+                    Repayment · due {formatDate(row.repayment.due_date)}
+                  </div>
                 </div>
-                <div className="text-sm text-slate-500">
-                  {cadenceLabel(c)} · next {formatDate(c.next_date)}
-                </div>
-              </div>
-              {/* Wraps under the label on narrow phones instead of forcing
-                  the row (and the page) wider than the viewport. */}
-              <div className="flex flex-wrap items-center gap-3">
-                <span className={`font-semibold tnum ${positive ? 'text-pos' : 'text-slate-100'}`}>
-                  {positive ? '+' : ''}{formatCurrency(c.amount)}
-                </span>
-                {onPayday && (
-                  <button
-                    onClick={() => onPayday(c)}
-                    className={`text-sm transition-colors ${c.is_payday ? 'text-accent' : 'text-slate-500 hover:text-accent'}`}
-                    title={c.is_payday
-                      ? 'This is your payday — sets your safe-to-spend window and forecast. Click to unset.'
-                      : 'Mark this as your payday'}
-                    aria-pressed={!!c.is_payday}
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="font-semibold tnum text-slate-100">
+                    {formatCurrency(row.repayment.amount)}
+                  </span>
+                  {/* Derived from the card's balance + repayment settings, so
+                      it's edited where those live rather than here. */}
+                  <Link
+                    to="/networth"
+                    className="text-sm text-slate-500 hover:text-accent transition-colors"
+                    title="Change how this card is repaid"
                   >
-                    {c.is_payday ? '★' : '☆'} Payday
-                  </button>
-                )}
-                <button onClick={() => onSkip(c)} className="text-sm text-slate-500 hover:text-accent transition-colors" title={`Skip the ${formatDate(c.next_date)} occurrence (e.g. paid early)`}>
-                  Skip
-                </button>
-                <button onClick={() => onEdit(c)} className="text-sm text-slate-500 hover:text-accent transition-colors">
-                  Edit
-                </button>
-                <button onClick={() => onRemove(c.id)} className="text-sm text-slate-500 hover:text-neg transition-colors">
-                  Remove
-                </button>
+                    Settings
+                  </Link>
+                </div>
               </div>
-            </div>
-          ))}
+            ) : (
+              renderCommitmentRow(row.commitment!, { onRemove, onEdit, onSkip, onPayday, positive })
+            ),
+          )}
         </div>
       )}
+    </div>
+  )
+}
+
+function renderCommitmentRow(
+  c: Commitment,
+  {
+    onRemove,
+    onEdit,
+    onSkip,
+    onPayday,
+    positive,
+  }: {
+    onRemove: (id: string) => void
+    onEdit: (c: Commitment) => void
+    onSkip: (c: Commitment) => void
+    onPayday?: (c: Commitment) => void
+    positive?: boolean
+  },
+) {
+  return (
+    <div key={c.id} className="p-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+      <div className="min-w-0 flex-1 basis-40">
+        <div className="font-medium text-slate-200 flex items-center gap-2">
+          <span className="truncate">{c.label}</span>
+          {c.is_payday && <span className="chip-pos shrink-0">Payday</span>}
+        </div>
+        <div className="text-sm text-slate-500">
+          {cadenceLabel(c)} · next {formatDate(c.next_date)}
+        </div>
+      </div>
+      {/* Wraps under the label on narrow phones instead of forcing
+          the row (and the page) wider than the viewport. */}
+      <div className="flex flex-wrap items-center gap-3">
+        <span className={`font-semibold tnum ${positive ? 'text-pos' : 'text-slate-100'}`}>
+          {positive ? '+' : ''}{formatCurrency(c.amount)}
+        </span>
+        {onPayday && (
+          <button
+            onClick={() => onPayday(c)}
+            className={`text-sm transition-colors ${c.is_payday ? 'text-accent' : 'text-slate-500 hover:text-accent'}`}
+            title={c.is_payday
+              ? 'This is your payday — sets your safe-to-spend window and forecast. Click to unset.'
+              : 'Mark this as your payday'}
+            aria-pressed={!!c.is_payday}
+          >
+            {c.is_payday ? '★' : '☆'} Payday
+          </button>
+        )}
+        <button onClick={() => onSkip(c)} className="text-sm text-slate-500 hover:text-accent transition-colors" title={`Skip the ${formatDate(c.next_date)} occurrence (e.g. paid early)`}>
+          Skip
+        </button>
+        <button onClick={() => onEdit(c)} className="text-sm text-slate-500 hover:text-accent transition-colors">
+          Edit
+        </button>
+        <button onClick={() => onRemove(c.id)} className="text-sm text-slate-500 hover:text-neg transition-colors">
+          Remove
+        </button>
+      </div>
     </div>
   )
 }

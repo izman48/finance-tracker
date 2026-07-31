@@ -6,9 +6,24 @@
 		reverse_proxy api:8000
 	}
 
-	# React SPA — serve static build, fall back to index.html for client routes
+	# Vite writes a content hash into every asset filename, so a given URL's
+	# bytes never change — cache them hard.
+	handle /assets/* {
+		root * /srv
+		header Cache-Control "public, max-age=31536000, immutable"
+		file_server
+	}
+
+	# React SPA — serve static build, fall back to index.html for client routes.
+	# index.html must be revalidated on every load: it names the hashed bundles,
+	# so a cached copy pins the browser to the previous build and deploys stay
+	# invisible until the browser happens to revalidate on its own. Without an
+	# explicit Cache-Control browsers fall back to heuristic freshness, which is
+	# exactly that failure. "no-cache" still allows a 304 via ETag, so this
+	# revalidates rather than re-downloads.
 	handle {
 		root * /srv
+		header Cache-Control "no-cache"
 		try_files {path} /index.html
 		file_server
 	}

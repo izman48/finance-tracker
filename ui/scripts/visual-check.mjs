@@ -98,8 +98,9 @@ const commitments = [
 ]
 
 const planned = [
-  { id: 'p1', name: 'New laptop', direction: 'expense', kind: 'installment_plan', start_date: daysFromNow(10), amount: null, total_amount: 1200, installments: 6 },
-  { id: 'p2', name: 'Tax refund', direction: 'income', kind: 'one_off', start_date: daysFromNow(21), amount: 350, total_amount: null, installments: null },
+  { id: 'p1', name: 'New laptop', direction: 'expense', kind: 'installment_plan', start_date: daysFromNow(10), amount: null, total_amount: 1200, installments: 6, cadence: 'monthly', interval_days: null, interval_months: null, end_date: null, apr: null, fee_amount: null, active: true },
+  { id: 'p2', name: 'Tax refund', direction: 'income', kind: 'one_off', start_date: daysFromNow(21), amount: 350, total_amount: null, installments: null, cadence: null, interval_days: null, interval_months: null, end_date: null, apr: null, fee_amount: null, active: true },
+  { id: 'p3', name: 'Piano lessons', direction: 'expense', kind: 'recurring', start_date: daysFromNow(5), amount: 90, total_amount: null, installments: null, cadence: 'monthly', interval_days: null, interval_months: null, end_date: null, apr: null, fee_amount: null, active: true },
 ]
 
 const merchants = ['Tesco', 'Deliveroo', 'TfL', 'Amazon', 'Pret a Manger', 'Spotify', 'Netflix']

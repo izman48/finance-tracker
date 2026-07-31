@@ -1,16 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { analyticsAPI } from '../services/api'
 import { PlannedItem } from '../types'
 import { gbp, dateLong as shortDate } from '../lib/format'
-
-// Mirrors backend analytics_service.installment_amount (even split + simple interest + fee).
-function perInstallment(total: number, n: number, apr: number, fee: number) {
-  if (!n) return 0
-  let base = total
-  if (fee) base += fee
-  if (apr) base += total * (apr / 100) * (n / 12)
-  return Math.round((base / n) * 100) / 100
-}
+import { perInstallment } from '../lib/planned'
 
 function addMonths(iso: string, months: number) {
   const d = new Date(iso)
@@ -18,26 +10,20 @@ function addMonths(iso: string, months: number) {
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
 }
 
-export default function PlannedItems({ onChanged }: { onChanged: () => void }) {
-  const [items, setItems] = useState<PlannedItem[]>([])
+/** `items` is owned by the page: plans and manual recurring items are shown in
+ *  the regular income/expense lists, so the page needs the same data and one
+ *  fetch has to serve both. What lands here is the remainder — one-offs. */
+export default function PlannedItems({
+  items,
+  onChanged,
+}: {
+  items: PlannedItem[]
+  onChanged: () => void
+}) {
   const [showAdd, setShowAdd] = useState(false)
-
-  const load = async () => {
-    try {
-      const res = await analyticsAPI.getPlannedItems()
-      setItems(res.data)
-    } catch (e) {
-      console.error('Failed to load planned items', e)
-    }
-  }
-
-  useEffect(() => {
-    load()
-  }, [])
 
   const remove = async (id: string) => {
     await analyticsAPI.deletePlannedItem(id)
-    await load()
     onChanged()
   }
 
@@ -87,7 +73,6 @@ export default function PlannedItems({ onChanged }: { onChanged: () => void }) {
           onClose={() => setShowAdd(false)}
           onAdded={async () => {
             setShowAdd(false)
-            await load()
             onChanged()
           }}
         />

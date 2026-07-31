@@ -112,4 +112,11 @@ export interface PlannedItem {
   amount: number | null
   total_amount: number | null
   installments: number | null
+  cadence: string | null
+  interval_days: number | null
+  interval_months: number | null
+  end_date: string | null
+  apr: number | null
+  fee_amount: number | null
+  active: boolean
 }

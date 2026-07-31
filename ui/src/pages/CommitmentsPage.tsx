@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { analyticsAPI } from '../services/api'
-import { Commitment, NextRepayment } from '../types'
+import { Commitment, NextRepayment, PlannedItem } from '../types'
 import { gbp as formatCurrency, dateLong as formatDate } from '../lib/format'
 import { cadenceLabel, isYearly, monthlyEquivalent } from '../lib/cadence'
+import { isRegularPlanned, plannedMonthly, plannedPerPayment } from '../lib/planned'
 import AddCommitmentModal from '../components/AddCommitmentModal'
 import EditCommitmentModal from '../components/EditCommitmentModal'
 import PlannedItems from '../components/PlannedItems'
@@ -12,6 +13,7 @@ import useReveal from '../components/ui/useReveal'
 export default function CommitmentsPage() {
   const [commitments, setCommitments] = useState<Commitment[]>([])
   const [repayments, setRepayments] = useState<NextRepayment[]>([])
+  const [planned, setPlanned] = useState<PlannedItem[]>([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [editing, setEditing] = useState<Commitment | null>(null)
@@ -25,12 +27,14 @@ export default function CommitmentsPage() {
       // credit account's balance and repayment settings — but they're money
       // leaving on a schedule, so they belong in this list too (they already
       // drive the forecast and Home's "coming up").
-      const [c, s] = await Promise.all([
+      const [c, s, p] = await Promise.all([
         analyticsAPI.getCommitments(),
         analyticsAPI.getSummary(),
+        analyticsAPI.getPlannedItems(),
       ])
       setCommitments(c.data)
       setRepayments(s.data.next_repayments ?? [])
+      setPlanned(p.data ?? [])
     } catch (error) {
       console.error('Failed to load commitments:', error)
     } finally {
@@ -60,6 +64,11 @@ export default function CommitmentsPage() {
     await load()
   }
 
+  const removePlanned = async (id: string) => {
+    await analyticsAPI.deletePlannedItem(id)
+    await load()
+  }
+
   const dismissAllSuggested = async () => {
     await Promise.all(
       commitments
@@ -75,6 +84,15 @@ export default function CommitmentsPage() {
   const regular = confirmed.filter((c) => !isYearly(c))
   const confirmedIncome = regular.filter((c) => c.direction === 'income')
   const confirmedExpense = regular.filter((c) => c.direction === 'expense')
+
+  // A payment plan or a manual recurring item is money out on a schedule, so
+  // it belongs beside the other regular expenses rather than in a footnote
+  // section. One-offs aren't regular, so they stay in the Planned section.
+  const activePlanned = planned.filter((p) => p.active !== false)
+  const plannedRegular = activePlanned.filter(isRegularPlanned)
+  const plannedOneOff = activePlanned.filter((p) => !isRegularPlanned(p))
+  const plannedIncome = plannedRegular.filter((p) => p.direction === 'income')
+  const plannedExpense = plannedRegular.filter((p) => p.direction !== 'income')
 
   // One row per credit account — its soonest repayment. The summary returns a
   // 92-day window, so an installment plan would otherwise flood the list with
@@ -157,8 +175,8 @@ export default function CommitmentsPage() {
       {/* Explicit base column so mobile gets minmax(0,1fr), not an implicit
           max-content track that overflows (see CLAUDE.md gotcha). */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6" data-reveal>
-        <ConfirmedList title="Regular income" items={confirmedIncome} onRemove={(id) => setStatus(id, 'dismissed')} onEdit={setEditing} onSkip={handleSkip} onPayday={handlePayday} positive />
-        <ConfirmedList title="Regular expenses" items={confirmedExpense} repayments={nextRepayments} onRemove={(id) => setStatus(id, 'dismissed')} onEdit={setEditing} onSkip={handleSkip} />
+        <ConfirmedList title="Regular income" items={confirmedIncome} planned={plannedIncome} onRemovePlanned={removePlanned} onRemove={(id) => setStatus(id, 'dismissed')} onEdit={setEditing} onSkip={handleSkip} onPayday={handlePayday} positive />
+        <ConfirmedList title="Regular expenses" items={confirmedExpense} repayments={nextRepayments} planned={plannedExpense} onRemovePlanned={removePlanned} onRemove={(id) => setStatus(id, 'dismissed')} onEdit={setEditing} onSkip={handleSkip} />
       </div>
 
       {/* Yearly commitments — billed once a year, so they get their own totals
@@ -174,7 +192,7 @@ export default function CommitmentsPage() {
 
       {/* One-off costs, expected income, and payment plans */}
       <div className="mt-6" data-reveal>
-        <PlannedItems onChanged={load} />
+        <PlannedItems items={plannedOneOff} onChanged={load} />
       </div>
 
       {confirmed.length === 0 && suggested.length === 0 && (
@@ -211,6 +229,8 @@ function ConfirmedList({
   title,
   items,
   repayments,
+  planned,
+  onRemovePlanned,
   onRemove,
   onEdit,
   onSkip,
@@ -220,6 +240,8 @@ function ConfirmedList({
   title: string
   items: Commitment[]
   repayments?: NextRepayment[]
+  planned?: PlannedItem[]
+  onRemovePlanned?: (id: string) => void
   onRemove: (id: string) => void
   onEdit: (c: Commitment) => void
   onSkip: (c: Commitment) => void
@@ -227,15 +249,18 @@ function ConfirmedList({
   positive?: boolean
 }) {
   const reps = repayments ?? []
+  const plans = planned ?? []
   const total =
     items.reduce((sum, c) => sum + monthlyEquivalent(c), 0) +
-    reps.reduce((sum, r) => sum + Number(r.amount), 0)
-  // Card repayments sit in the same ranked list as the rules — they're the same
-  // kind of thing to the user (money that leaves on a schedule), even though
-  // they're derived from the card balance rather than stored as a rule.
+    reps.reduce((sum, r) => sum + Number(r.amount), 0) +
+    plans.reduce((sum, p) => sum + plannedMonthly(p), 0)
+  // Rules, card repayments and payment plans sit in one ranked list — to the
+  // user they're the same kind of thing (money that leaves on a schedule),
+  // however differently they're stored.
   const sorted = [
-    ...items.map((c) => ({ key: `c-${c.id}`, monthly: monthlyEquivalent(c), commitment: c, repayment: null })),
-    ...reps.map((r) => ({ key: `r-${r.account_id}`, monthly: Number(r.amount), commitment: null, repayment: r })),
+    ...items.map((c) => ({ key: `c-${c.id}`, monthly: monthlyEquivalent(c), commitment: c, repayment: null, plan: null })),
+    ...reps.map((r) => ({ key: `r-${r.account_id}`, monthly: Number(r.amount), commitment: null, repayment: r, plan: null })),
+    ...plans.map((p) => ({ key: `p-${p.id}`, monthly: plannedMonthly(p), commitment: null, repayment: null, plan: p })),
   ].sort((a, b) => b.monthly - a.monthly)
   // Nudge the user to pick a payday when they have several incomes and haven't.
   const showPaydayHint = !!onPayday && items.length > 1 && !items.some((c) => c.is_payday)
@@ -260,7 +285,39 @@ function ConfirmedList({
       ) : (
         <div className="divide-y divide-white/[0.06]">
           {sorted.map((row) =>
-            row.repayment ? (
+            row.plan ? (
+              <div key={row.key} className="p-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+                <div className="min-w-0 flex-1 basis-40">
+                  <div className="font-medium text-slate-200 flex items-center gap-2">
+                    <span className="truncate">{row.plan.name}</span>
+                    <span className="chip-info shrink-0">
+                      {row.plan.kind === 'installment_plan' ? 'Plan' : 'Planned'}
+                    </span>
+                  </div>
+                  <div className="text-sm text-slate-500">
+                    {cadenceLabel({
+                      cadence: row.plan.cadence || 'monthly',
+                      interval_days: row.plan.interval_days,
+                      interval_months: row.plan.interval_months,
+                    })}
+                    {row.plan.kind === 'installment_plan' && ` · ${row.plan.installments} payments`}
+                    {' · from '}
+                    {formatDate(row.plan.start_date)}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className={`font-semibold tnum ${positive ? 'text-pos' : 'text-slate-100'}`}>
+                    {positive ? '+' : ''}{formatCurrency(plannedPerPayment(row.plan))}
+                  </span>
+                  <button
+                    onClick={() => onRemovePlanned?.(row.plan!.id)}
+                    className="text-sm text-slate-500 hover:text-neg transition-colors"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ) : row.repayment ? (
               <div key={row.key} className="p-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
                 <div className="min-w-0 flex-1 basis-40">
                   <div className="font-medium text-slate-200 flex items-center gap-2">

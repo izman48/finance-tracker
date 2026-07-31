@@ -13,6 +13,13 @@ _DEFAULT_ROLE_BY_TYPE = {
     AccountType.TRANSACTION: AccountRole.SPENDING,
     AccountType.SAVINGS: AccountRole.SAVINGS,
     AccountType.CREDIT_CARD: AccountRole.CREDIT,
+    # Loans and mortgages are money owed, so they belong in net worth as
+    # liabilities rather than being invisible. They only generate scheduled
+    # repayments once the user configures one (repayment_events requires an
+    # AccountSetting), so defaulting them here can't put a whole mortgage
+    # balance into the forecast as a single payment.
+    AccountType.LOAN: AccountRole.CREDIT,
+    AccountType.MORTGAGE: AccountRole.CREDIT,
 }
 
 
@@ -59,3 +66,47 @@ def _load(db: Session, user):
         for s in db.query(AccountSetting).filter(AccountSetting.user_id == user.id).all()
     }
     return accounts, settings
+
+
+# --- transfers and card settlements ------------------------------------------ #
+# Lives here rather than in spending.py because commitment detection needs it
+# too, and spending.py already imports from commitments.py (a cycle otherwise).
+
+# Descriptions that indicate a transfer to settle a credit card (not new spend).
+CARD_PAYMENT_INDICATORS = (
+    "american express", "amex", "monzo flex", "barclaycard",
+    "credit card", "cc payment", "card payment",
+)
+
+
+def detect_internal_transfers(txns: list) -> set:
+    """IDs of debit/credit pairs that look like money moving between own accounts."""
+    excluded: set = set()
+    ordered = sorted(txns, key=lambda t: t.transaction_date)
+    for i, a in enumerate(ordered):
+        for b in ordered[i + 1:]:
+            if (b.transaction_date - a.transaction_date).days > 2:
+                break
+            if a.account_id == b.account_id:
+                continue
+            if abs(_d(a.amount) - _d(b.amount)) > Decimal("0.01"):
+                continue
+            if {a.transaction_type, b.transaction_type} == {"debit", "credit"}:
+                excluded.add(a.id)
+                excluded.add(b.id)
+    return excluded
+
+
+def is_card_settlement(tx, role: AccountRole | None) -> bool:
+    """True if this transaction is paying a credit card off, either leg.
+
+    Card settlements are already modelled as repayment events (derived from the
+    card's balance and repayment settings), so counting them anywhere else —
+    as spending, or as a detected commitment — double-counts the same money.
+    """
+    if role == AccountRole.CREDIT and tx.transaction_type == "credit":
+        return True  # money arriving to settle the card
+    if role != AccountRole.CREDIT and tx.transaction_type == "debit":
+        desc = f"{tx.description or ''} {tx.merchant_name or ''}".lower()
+        return any(ind in desc for ind in CARD_PAYMENT_INDICATORS)
+    return False

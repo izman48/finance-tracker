@@ -3,13 +3,14 @@ from typing import Annotated
 from datetime import datetime, timedelta, timezone
 
 from cryptography.fernet import InvalidToken
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, Request, status, Query
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.database import get_db
+from app.core.rate_limit import auth_rate_limiter
 from app.core.security import (
     create_access_token,
     create_password_reset_token,
@@ -58,6 +59,7 @@ def _provision_dek(user: User, password: str) -> str:
 def register(
     user_data: UserCreate,
     db: Annotated[Session, Depends(get_db)],
+    request: Request,
 ) -> RegisterResponse:
     """
     Register a new user.
@@ -66,6 +68,7 @@ def register(
     recovery code. The code is shown exactly once: losing it and the password
     means the encrypted data cannot be recovered.
     """
+    auth_rate_limiter.check(request, "register", limit=5, window_seconds=60 * 60)
     # Check if email already exists
     existing_user = db.query(User).filter(User.email == user_data.email).first()
     if existing_user:
@@ -96,6 +99,7 @@ def register(
 def login(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: Annotated[Session, Depends(get_db)],
+    request: Request,
 ) -> Token:
     """
     Login to get access token.
@@ -104,6 +108,7 @@ def login(
     the user's data-encryption key with the password-derived KEK and carries
     it in the token (`dk` claim) — the only window where the server holds it.
     """
+    auth_rate_limiter.check(request, "login", limit=10, window_seconds=15 * 60)
     user = db.query(User).filter(User.email == form_data.username).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
@@ -130,16 +135,18 @@ def login(
             detail="Could not unlock your encrypted data. Contact support.",
         )
 
-    access_token = create_access_token(data={"sub": str(user.id)}, dek=dek)
+    access_token = create_access_token(
+        data={"sub": str(user.id)}, dek=dek, session_version=user.session_version
+    )
     return Token(access_token=access_token, recovery_code=recovery_code)
 
 
-@router.post("/change-password")
+@router.post("/change-password", response_model=Token)
 def change_password(
     body: ChangePasswordRequest,
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
-) -> dict:
+) -> Token:
     """Change password while authenticated.
 
     The DEK is unwrapped with the old password and rewrapped with the new one,
@@ -174,9 +181,16 @@ def change_password(
     current_user.wrapped_dek = user_crypto.wrap_dek(
         dek, body.new_password, current_user.dek_salt
     )
+    current_user.session_version += 1
     db.commit()
     logger.info(f"Password changed (DEK rewrapped) for user {current_user.id}")
-    return {"message": "Password updated."}
+    return Token(
+        access_token=create_access_token(
+            data={"sub": str(current_user.id)},
+            dek=dek,
+            session_version=current_user.session_version,
+        )
+    )
 
 
 @router.get("/me", response_model=UserResponse)
@@ -193,12 +207,14 @@ def get_current_user_info(current_user: CurrentUser) -> User:
 def forgot_password(
     body: ForgotPasswordRequest,
     db: Annotated[Session, Depends(get_db)],
+    request: Request,
 ) -> dict:
     """Email a password reset link.
 
     Always returns 202 so the endpoint can't be used to probe which emails
     have accounts.
     """
+    auth_rate_limiter.check(request, "forgot-password", limit=5, window_seconds=60 * 60)
     user = db.query(User).filter(User.email == body.email).first()
     if user:
         token = create_password_reset_token(user)
@@ -219,6 +235,7 @@ def forgot_password(
 def reset_password(
     body: ResetPasswordRequest,
     db: Annotated[Session, Depends(get_db)],
+    request: Request,
 ) -> dict:
     """Set a new password using a token from the reset email.
 
@@ -227,6 +244,7 @@ def reset_password(
     recovery code) is issued and the now-unreadable bank data is purged — the
     user rebuilds it by reconnecting/re-syncing their banks.
     """
+    auth_rate_limiter.check(request, "reset-password", limit=10, window_seconds=15 * 60)
     try:
         user = verify_password_reset_token(body.token, db)
     except ValueError as exc:
@@ -259,6 +277,7 @@ def reset_password(
         logger.info(f"Password reset without recovery code for user {user.id}: bank data purged, new DEK issued")
 
     user.hashed_password = get_password_hash(body.new_password)
+    user.session_version += 1
     db.commit()
     logger.info(f"Password reset completed for user {user.id}")
     if new_recovery_code:

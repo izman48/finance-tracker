@@ -176,6 +176,9 @@ const routes = [
 const pages = [
   ['home', '/', false],
   ['login', '/login', false],
+  ['register', '/register', false],
+  ['privacy', '/privacy', false],
+  ['terms', '/terms', false],
   ['dashboard', '/dashboard', true],
   ['transactions', '/transactions', true],
   ['insights', '/insights', true],

@@ -120,8 +120,8 @@ const SECURITY = [
   },
   {
     icon: EyeOff,
-    title: 'Your data is never sold',
-    body: 'Your finances are yours. We don’t sell or share your data, and we don’t run third-party ad or tracking scripts on your dashboard.',
+    title: 'No ads. No sale of your data.',
+    body: 'We don’t run third-party ad or tracking scripts on your dashboard, and we don’t sell your financial data. We use TrueLayer and essential service providers only to operate the app.',
   },
   {
     icon: Trash2,
@@ -284,6 +284,9 @@ export default function HomePage() {
               </div>
             ))}
           </div>
+          <p className="mt-7 text-center text-sm text-slate-500">
+            Invite-only beta · <Link to="/privacy" className="btn-link">Privacy summary</Link> · <Link to="/terms" className="btn-link">Beta terms</Link>
+          </p>
         </div>
       </div>
     </div>

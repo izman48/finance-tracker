@@ -320,6 +320,7 @@ class TokenData(BaseModel):
     """Data extracted from JWT token."""
 
     user_id: uuid.UUID | None = None
+    session_version: int = 0
 
 
 # --- Account Schemas ---

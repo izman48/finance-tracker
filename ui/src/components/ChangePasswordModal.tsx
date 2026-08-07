@@ -21,7 +21,10 @@ export default function ChangePasswordModal({ onClose }: { onClose: () => void }
     }
     setSaving(true)
     try {
-      await authApi.changePassword(currentPassword, newPassword)
+      const res = await authApi.changePassword(currentPassword, newPassword)
+      // The API invalidates all prior sessions on a password change. Keep this
+      // device signed in with the freshly issued replacement token.
+      localStorage.setItem('token', res.data.access_token)
       setDone(true)
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to change password')

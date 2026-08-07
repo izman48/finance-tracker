@@ -11,7 +11,7 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { bankingAPI, analyticsAPI, Nudge } from '../services/api'
-import { BankStatus, CashflowSummary, Commitment } from '../types'
+import { BankStatus, CashflowSummary, Commitment, PlannedItem } from '../types'
 import { money as formatCurrency, dateDayMonth as formatDate, timeAgo } from '../lib/format'
 import ForecastChart from '../components/ForecastChart'
 import NudgeFeed, { UiNudge } from '../components/NudgeFeed'
@@ -19,6 +19,7 @@ import AnimatedNumber from '../components/ui/AnimatedNumber'
 import InfoTip from '../components/ui/InfoTip'
 import { EXPLAIN } from '../copy/statExplainers'
 import useReveal from '../components/ui/useReveal'
+import { nextPlannedDate, plannedPerPayment } from '../lib/planned'
 
 interface Upcoming {
   key: string
@@ -33,6 +34,7 @@ export default function DashboardPage() {
   const [bankStatus, setBankStatus] = useState<BankStatus | null>(null)
   const [summary, setSummary] = useState<CashflowSummary | null>(null)
   const [commitments, setCommitments] = useState<Commitment[]>([])
+  const [planned, setPlanned] = useState<PlannedItem[]>([])
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [message, setMessage] = useState('')
@@ -46,6 +48,7 @@ export default function DashboardPage() {
     loadBankStatus()
     loadSummary()
     loadCommitments()
+    loadPlanned()
     analyticsAPI.getNudges().then((res) => setNudges(res.data)).catch(() => {})
 
     const params = new URLSearchParams(window.location.search)
@@ -89,13 +92,22 @@ export default function DashboardPage() {
     }
   }
 
+  const loadPlanned = async () => {
+    try {
+      const response = await analyticsAPI.getPlannedItems()
+      setPlanned(response.data)
+    } catch (error) {
+      console.error('Failed to load planned items:', error)
+    }
+  }
+
   const handleSync = async () => {
     setSyncing(true)
     setMessage('')
     try {
       await bankingAPI.syncAccounts()
       await bankingAPI.syncTransactions(90)
-      await Promise.all([loadBankStatus(), loadSummary(), loadCommitments()])
+      await Promise.all([loadBankStatus(), loadSummary(), loadCommitments(), loadPlanned()])
     } catch (error: any) {
       setMessage('Failed to sync: ' + (error.response?.data?.detail || error.message))
     } finally {
@@ -135,9 +147,9 @@ export default function DashboardPage() {
   const totalCash = cashAccounts.reduce((sum, a) => sum + Number(a.current_balance ?? 0), 0)
   const suggestedCount = commitments.filter((c) => c.status === 'suggested').length
 
-  // "Coming up": the next few dated movements — confirmed commitments and
-  // credit-card repayments interleaved by date. The full management view
-  // lives on the commitments page.
+  // "Coming up": every next dated movement which affects the forecast.
+  // Keeping plans here avoids presenting a deceptively clear runway while a
+  // user-entered one-off or installment is absent from the immediate view.
   const today = new Date().toISOString().slice(0, 10)
   const upcoming: Upcoming[] = [
     ...commitments
@@ -157,6 +169,16 @@ export default function DashboardPage() {
       date: r.due_date,
       income: false,
     })),
+    ...planned.flatMap((p) => {
+      const date = nextPlannedDate(p, today)
+      return date ? [{
+        key: `p-${p.id}-${date}`,
+        label: p.name,
+        amount: plannedPerPayment(p),
+        date,
+        income: p.direction === 'income',
+      }] : []
+    }),
   ]
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(0, 4)
@@ -330,7 +352,10 @@ export default function DashboardPage() {
           {/* Coming up (Plan folded into Home) */}
           <div className="card-pad" data-reveal>
             <div className="flex items-baseline justify-between mb-2">
-              <span className="text-sm text-slate-400">Coming up</span>
+              <span className="text-sm text-slate-400 inline-flex items-center gap-1.5">
+                Coming up
+                <InfoTip text={EXPLAIN.comingUp} align="left" />
+              </span>
               <Link to="/commitments" className="text-xs text-accent hover:underline whitespace-nowrap">
                 All commitments →
               </Link>

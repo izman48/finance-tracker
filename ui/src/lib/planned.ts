@@ -32,6 +32,60 @@ interface PlannedLike {
   interval_months?: number | null
 }
 
+function localDate(iso: string) {
+  return new Date(`${iso}T00:00:00`)
+}
+
+function isoDate(d: Date) {
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+/** Add months the way the backend's `_add_months` does: clamp to the last day
+ *  of the target month rather than overflowing into the next one. `setMonth`
+ *  would turn 31 Jan into 3 Mar, so a plan starting late in the month would
+ *  preview dates the forecast never uses. */
+function addMonths(d: Date, months: number) {
+  const monthIndex = d.getMonth() + months
+  const year = d.getFullYear() + Math.floor(monthIndex / 12)
+  const month = ((monthIndex % 12) + 12) % 12
+  const lastDay = new Date(year, month + 1, 0).getDate()
+  return new Date(year, month, Math.min(d.getDate(), lastDay))
+}
+
+/** Match the backend cadence step for the small number of client-side previews. */
+export function stepPlannedDate(
+  iso: string,
+  cadence: string | null | undefined,
+  intervalDays?: number | null,
+  intervalMonths?: number | null,
+) {
+  const d = localDate(iso)
+  if (cadence === 'weekly') d.setDate(d.getDate() + 7)
+  else if (cadence === 'every_n_months') return isoDate(addMonths(d, intervalMonths || 1))
+  else if (cadence === 'custom_days') d.setDate(d.getDate() + (intervalDays || 30))
+  else return isoDate(addMonths(d, 1))
+  return isoDate(d)
+}
+
+/** The next date on which a planned item affects cashflow, or null when done. */
+export function nextPlannedDate(it: PlannedLike & { start_date: string; end_date?: string | null }, today: string) {
+  if (it.kind === 'one_off') return it.start_date >= today ? it.start_date : null
+  let date = it.start_date
+  // A plan runs for exactly its installments; a recurring item runs until its
+  // end_date. Mirror planned_events(), which applies end_date only to the
+  // recurring branch, so this list can't disagree with the forecast.
+  const plan = it.kind === 'installment_plan'
+  const count = plan ? Number(it.installments) || 0 : 600
+  for (let i = 0; i < count; i += 1) {
+    if (date >= today && (plan || !it.end_date || date <= it.end_date)) return date
+    date = stepPlannedDate(date, it.cadence, it.interval_days, it.interval_months)
+  }
+  return null
+}
+
 /** What actually leaves the account on each occurrence. (Money fields arrive
  *  from the API as strings — coerce before arithmetic.) */
 export function plannedPerPayment(it: PlannedLike): number {

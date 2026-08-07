@@ -52,6 +52,11 @@ services:
     build:
       context: .
       dockerfile: deploy/ui.Dockerfile
+      args:
+        # Optional: the privacy/terms pages name the operator's contact when set
+        # and fall back to prose when not. Deliberately not required — a missing
+        # value must not fail the auto-deploy on push to main.
+        VITE_BETA_CONTACT_EMAIL: ${VITE_BETA_CONTACT_EMAIL:-}
     restart: unless-stopped
     environment:
       DOMAIN: ${DOMAIN:?set in .env.production}

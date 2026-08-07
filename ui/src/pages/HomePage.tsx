@@ -111,7 +111,7 @@ const SECURITY = [
   {
     icon: Lock,
     title: 'Encrypted with your key, not ours',
-    body: 'Your transactions, balances and bank details are encrypted with a key derived from your password — we can’t read them, even with full access to our own database. Bank tokens carry a second server-side layer on top.',
+    body: 'Your transactions, balances and bank details are encrypted with your own key, locked by your password — we can’t read them at rest, even with full access to our own database. Bank tokens carry a second server-side layer on top.',
   },
   {
     icon: KeyRound,

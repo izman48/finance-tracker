@@ -74,7 +74,11 @@ def _load(db: Session, user):
 
 # Descriptions that indicate a transfer to settle a credit card (not new spend).
 CARD_PAYMENT_INDICATORS = (
-    "american express", "amex", "monzo flex", "barclaycard",
+    # "american exp", not "american express": banks truncate the descriptor to
+    # fit a reference, so a real Amex settlement arrives as
+    # "AMERICAN EXP 3773 PB945227708021965 FT" and the full word never matches.
+    # The prefix still covers the untruncated form.
+    "american exp", "amex", "monzo flex", "barclaycard",
     "credit card", "cc payment", "card payment",
 )
 

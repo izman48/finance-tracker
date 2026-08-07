@@ -38,17 +38,29 @@ _MAX_INTERVAL_CV = 0.30  # std-dev must be < 30% of the mean interval
 # perfectly regular loan or bill is invisible to detection.
 _DIGIT_RUN = re.compile(r"^\d{3,}$")                       # 4471, 0123456
 _DATE_TOKEN = re.compile(r"^\d{1,2}[/-]\d{1,2}([/-]\d{2,4})?$")  # 12/07, 12-07-25
+# A long digit run *inside* an otherwise alphanumeric token is a mandate or
+# account reference, not part of the name: "Q42181371737681503" (EE),
+# "UUID-12331371342" (Ikano), "A1539913" (CommunityFibre). Six is the
+# threshold that keeps real names whose digits are short — "O2", "MONZO123",
+# "1606LANDMARKE" — while catching every reference format we've seen.
+_REFERENCE_RUN = re.compile(r"\d{6,}")
 
 
 def _normalise_merchant(raw: str | None) -> str:
     """Collapse a bank description to a key that's stable across payments.
 
-    Deliberately conservative: only pure digit runs and dates are dropped.
-    Mixed alphanumerics are left alone, because stripping them would eat real
-    merchant names ("O2", "MONZO123") and over-merge unrelated payments.
+    Conservative: pure digit runs, dates, and alphanumeric tokens carrying a
+    long digit run are dropped. Short mixed alphanumerics are left alone,
+    because stripping those would eat real merchant names ("O2", "MONZO123")
+    and over-merge unrelated payments.
     """
     text = re.sub(r"[^A-Z0-9/\- ]+", " ", (raw or "").upper())
-    tokens = [t for t in text.split() if not _DIGIT_RUN.match(t) and not _DATE_TOKEN.match(t)]
+    tokens = [
+        t for t in text.split()
+        if not _DIGIT_RUN.match(t)
+        and not _DATE_TOKEN.match(t)
+        and not _REFERENCE_RUN.search(t)
+    ]
     # Fall back to the raw text if normalising left nothing (e.g. "123456").
     return " ".join(tokens).strip() or (raw or "").strip().upper()
 
@@ -356,7 +368,16 @@ def sync_suggestions(db: Session, user) -> None:
         if rule.match_key != expected:
             rule.match_key = expected
 
+    # Dedupe on the stored key *and* the key the label derives today. A manual
+    # rule's stored key is the user's own text and is deliberately never
+    # rewritten above, so after a normalisation change it can go stale — and a
+    # stale key suppresses nothing, letting detection re-add the very
+    # commitment the user already has. Deriving from the label as well closes
+    # that without touching what the user typed.
     existing_keys = {rule.match_key for rule in existing_rules if rule.match_key}
+    existing_keys |= {
+        _match_key(rule.direction, rule.label) for rule in existing_rules if rule.label
+    }
 
     # Maintenance: advance stale next_dates so the review list never shows a
     # "next" occurrence in the past. (Forecasting already rolls forward the

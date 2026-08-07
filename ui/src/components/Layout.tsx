@@ -94,6 +94,13 @@ function UserMenu() {
           >
             <SlidersHorizontal className="w-4 h-4" /> Rules
           </NavLink>
+          <NavLink
+            to="/privacy"
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-300 hover:bg-white/[0.06]"
+          >
+            Privacy & beta terms
+          </NavLink>
           <button
             onClick={() => {
               setOpen(false)
@@ -244,8 +251,9 @@ export default function Layout() {
       )}
 
       <footer className={`border-t border-white/[0.06] py-8 ${isAuthenticated ? 'hidden lg:block' : ''}`}>
-        <div className="max-w-7xl mx-auto px-4 text-center text-sm text-slate-600">
-          nilu. — know what you have, where it went, what's coming, and what you're worth.
+        <div className="max-w-7xl mx-auto px-4 text-center text-sm text-slate-600 space-y-2">
+          <p>nilu. — know what you have, where it went, what's coming, and what you're worth.</p>
+          <p><Link to="/privacy" className="hover:text-slate-300">Privacy</Link> · <Link to="/terms" className="hover:text-slate-300">Beta terms</Link> · Invite-only beta</p>
         </div>
       </footer>
     </div>

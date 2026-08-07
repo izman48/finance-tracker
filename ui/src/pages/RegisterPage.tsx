@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import AuthShell from '../components/ui/AuthShell'
 import RecoveryCodeCard from '../components/RecoveryCodeCard'
+import { BetaNotice } from './BetaInfoPage'
 
 export default function RegisterPage() {
   const [email, setEmail] = useState('')
@@ -107,6 +108,8 @@ export default function RegisterPage() {
           {isLoading ? 'Creating account…' : 'Create account'}
         </button>
       </form>
+
+      <div className="mt-4 text-center"><BetaNotice /></div>
 
       <p className="mt-6 text-center text-sm text-slate-400">
         Already have an account?{' '}

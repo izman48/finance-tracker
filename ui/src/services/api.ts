@@ -77,7 +77,7 @@ export const authApi = {
   me: () => api.get('/auth/me'),
 
   changePassword: (currentPassword: string, newPassword: string) =>
-    api.post('/auth/change-password', {
+    api.post<{ access_token: string; token_type: string }>('/auth/change-password', {
       current_password: currentPassword,
       new_password: newPassword,
     }),

@@ -42,7 +42,10 @@ ACCESS_TOKEN_TYPE = "access"
 
 
 def create_access_token(
-    data: dict, expires_delta: timedelta | None = None, dek: bytes | None = None
+    data: dict,
+    expires_delta: timedelta | None = None,
+    dek: bytes | None = None,
+    session_version: int = 0,
 ) -> str:
     """Create a JWT access token.
 
@@ -54,7 +57,7 @@ def create_access_token(
     expire = datetime.now(timezone.utc) + (
         expires_delta or timedelta(minutes=settings.access_token_expire_minutes)
     )
-    to_encode.update({"exp": expire, "typ": ACCESS_TOKEN_TYPE})
+    to_encode.update({"exp": expire, "typ": ACCESS_TOKEN_TYPE, "sv": session_version})
     if dek is not None:
         to_encode["dk"] = wrap_dek_for_session(dek)
     return jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
@@ -72,13 +75,18 @@ def decode_access_token(token: str) -> TokenData:
             token, settings.secret_key, algorithms=[settings.algorithm]
         )
         user_id: str = payload.get("sub")
-        if user_id is None or payload.get("typ") != ACCESS_TOKEN_TYPE:
+        session_version = payload.get("sv")
+        if (
+            user_id is None
+            or payload.get("typ") != ACCESS_TOKEN_TYPE
+            or not isinstance(session_version, int)
+        ):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        return TokenData(user_id=uuid.UUID(user_id))
+        return TokenData(user_id=uuid.UUID(user_id), session_version=session_version)
     except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -228,6 +236,12 @@ def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if user.session_version != token_data.session_version:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session expired. Please log in again.",
             headers={"WWW-Authenticate": "Bearer"},
         )
     return user

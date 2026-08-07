@@ -30,6 +30,8 @@ export const EXPLAIN = {
     'New purchases on your credit cards — deferred spending you’ll settle later through repayments.',
   forecast:
     'Your spending-account balance projected day by day from today, applying confirmed recurring income, bills, card repayments and planned expenses on their due dates. The lowest point flags any dip below £0 or your overdraft limit.',
+  comingUp:
+    'The next few dated movements the forecast applies: confirmed recurring bills, scheduled card repayments, and payment plans, one-offs and recurring items you’ve planned. Bills still awaiting your confirmation are not counted — review them so this stays complete.',
   netWorthChange:
     'The difference between your net worth at the start and end of the selected range, from the monthly history below.',
   savingsTotal:

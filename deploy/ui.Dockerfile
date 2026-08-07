@@ -10,6 +10,8 @@ COPY ui/ .
 # Empty VITE_API_URL = same-origin requests (Caddy routes /api to the backend)
 ARG VITE_API_URL=
 ENV VITE_API_URL=$VITE_API_URL
+ARG VITE_BETA_CONTACT_EMAIL
+ENV VITE_BETA_CONTACT_EMAIL=$VITE_BETA_CONTACT_EMAIL
 RUN npm run build
 
 FROM caddy:2-alpine

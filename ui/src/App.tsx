@@ -16,6 +16,7 @@ import RulesPage from './pages/RulesPage'
 import NetWorthPage from './pages/NetWorthPage'
 import ImportSharedPage from './pages/ImportSharedPage'
 import CallbackPage from './pages/CallbackPage'
+import { PrivacyPage, TermsPage } from './pages/BetaInfoPage'
 import ProtectedRoute from './components/ProtectedRoute'
 
 function App() {
@@ -31,6 +32,8 @@ function App() {
           <Route path="register" element={<RegisterPage />} />
           <Route path="forgot-password" element={<ForgotPasswordPage />} />
           <Route path="reset-password" element={<ResetPasswordPage />} />
+          <Route path="privacy" element={<PrivacyPage />} />
+          <Route path="terms" element={<TermsPage />} />
           <Route
             path="dashboard"
             element={

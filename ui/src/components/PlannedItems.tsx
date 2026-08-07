@@ -2,12 +2,16 @@ import { useState } from 'react'
 import { analyticsAPI } from '../services/api'
 import { PlannedItem } from '../types'
 import { gbp, dateLong as shortDate } from '../lib/format'
-import { perInstallment } from '../lib/planned'
+import { perInstallment, stepPlannedDate } from '../lib/planned'
 
-function addMonths(iso: string, months: number) {
-  const d = new Date(iso)
-  d.setMonth(d.getMonth() + months)
-  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+function previewDate(iso: string) {
+  return new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+}
+
+function paymentDate(startDate: string, cadence: string, index: number) {
+  let date = startDate
+  for (let i = 0; i < index; i += 1) date = stepPlannedDate(date, cadence)
+  return date
 }
 
 /** `items` is owned by the page: plans and manual recurring items are shown in
@@ -204,7 +208,9 @@ function AddPlannedModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
                   <div className="font-medium text-slate-200 tnum">{gbp(per)} × {n} payments</div>
                   <div className="text-slate-500 mt-1">
                     {Array.from({ length: Math.min(n, 4) }).map((_, i) => (
-                      <span key={i}>{addMonths(startDate || new Date().toISOString(), i)}{i < Math.min(n, 4) - 1 ? ' · ' : ''}</span>
+                      <span key={i}>{previewDate(paymentDate(
+                        startDate || new Date().toISOString().slice(0, 10), cadence, i,
+                      ))}{i < Math.min(n, 4) - 1 ? ' · ' : ''}</span>
                     ))}
                     {n > 4 && ' …'}
                   </div>

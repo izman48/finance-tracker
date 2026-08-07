@@ -627,6 +627,41 @@ class TestMoneyOutLens:
         assert float(c["transfers"]) == 0.0
         assert float(c["card_repayments"]) + float(c["transfers"]) + float(c["commitments"]) + float(c["other"]) == 250.0
 
+    def test_settlement_paired_across_accounts_is_still_a_card_repayment(self, db_session):
+        """Real bank data carries both legs of a payoff: the debit leaving the
+        current account and the credit landing on the card. That pair is an
+        internal transfer, which used to claim the transaction before the
+        card-repayment check ran — leaving card_repayments permanently £0.
+        The descriptor is the truncated form banks actually send.
+        """
+        user = _user(db_session)
+        cur = _account(db_session, user, "TRANSACTION", "1000", "Cur")
+        card = _account(db_session, user, "CREDIT_CARD", "-200", "Card")
+        d = date(2026, 7, 10)
+        _tx(db_session, cur, 200, d, ttype="debit",
+            merchant="AMERICAN EXP 3773 PB945227708021965 FT")
+        _tx(db_session, card, 200, d, ttype="credit", merchant="PAYMENT RECEIVED")
+
+        c = self._win(db_session, user)["composition"]
+        assert float(c["card_repayments"]) == 200.0
+        assert float(c["transfers"]) == 0.0
+
+    def test_a_genuine_transfer_is_still_a_transfer(self, db_session):
+        """The other side of the precedence change: moving money between your
+        own current accounts must not be reported as a card repayment."""
+        user = _user(db_session)
+        a = _account(db_session, user, "TRANSACTION", "1000", "A")
+        b = _account(db_session, user, "TRANSACTION", "0", "B")
+        d = date(2026, 7, 10)
+        # Both legs share a description and date, so _tx_desc is required to
+        # keep external_id unique (as a real paired transfer would be).
+        _tx_desc(db_session, a, 300, d, ttype="debit", description="IESA WAZEER NEW BANK APP FT")
+        _tx_desc(db_session, b, 300, d, ttype="credit", description="IESA WAZEER NEW BANK APP FT")
+
+        c = self._win(db_session, user)["composition"]
+        assert float(c["transfers"]) == 300.0
+        assert float(c["card_repayments"]) == 0.0
+
     def test_purchases_lens_excludes_the_payoff_and_has_no_composition(self, db_session):
         user = self._seed(db_session)
         p = self._win(db_session, user, lens="purchases")

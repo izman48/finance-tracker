@@ -178,10 +178,17 @@ def get_spending(
                 total += amount
                 # Composition (before hides remove them — but hidden ones
                 # already returned None above, so this reflects what's counted).
-                if tx.id in transfers:
-                    comp["transfers"] += amount
-                elif _is_card_repayment(tx, roles):
+                # Card repayment is checked before transfer, because a card
+                # settlement *is* an internal transfer — the debit leaving the
+                # current account pairs with the credit arriving on the card,
+                # so detect_internal_transfers claims it first. Checking
+                # transfers first left card_repayments permanently £0 and
+                # reported every settlement as an untyped transfer. Only the
+                # attribution changes here; the total is unaffected.
+                if _is_card_repayment(tx, roles):
                     comp["card_repayments"] += amount
+                elif tx.id in transfers:
+                    comp["transfers"] += amount
                 elif transaction_match_key(tx) in commitment_keys:
                     comp["commitments"] += amount
                 else:

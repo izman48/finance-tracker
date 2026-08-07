@@ -19,6 +19,23 @@ backend's dependencies.
 | `commitments` | recurring income/expenses |
 | `accounts` | balances, types, providers |
 | `recent_transactions(page, page_size)` | a page of transactions |
+| `rules` | every rule pack and personal rule: pattern, match type/field, category, `counts_as` |
+| `rule_impact` | per rule, `matched` vs `effective` (+ amounts), `shadowed`/`dead` flags, and `gaps` — uncategorized merchants ranked by value |
+| `preview_rule(pattern, match_type, match_field)` | dry-run a candidate rule: how many transactions it would match, with samples |
+
+### Rules: read and propose, never write
+
+An assistant can read your rules, measure what they actually do, and dry-run a
+proposal — but creating, editing and deleting rules stays in the app, where you
+see the diff before it applies. That's deliberate: rules rewrite history across
+every matching transaction, so the blast radius of a bad one is large and not
+obvious at the point of creation.
+
+`rule_impact` is the one to reach for when rules have accumulated. `matched`
+counts transactions a rule hits; `effective` counts the ones whose category it
+actually *decides*. Rules apply best-first, so a rule can match hundreds and
+decide none — reported as `shadowed`, and safe to delete. `dead` means it
+matches nothing at all.
 
 ## Setup
 
@@ -65,7 +82,9 @@ Add to `claude_desktop_config.json`:
 
 ## Notes
 
-- **Read-only** — it only ever GETs; it can't move money or change anything.
+- **Read-only** — it can't move money or change anything. `preview_rule` is a POST
+  only because its input is awkward as a query string; it is a dry run and writes
+  nothing. Keep it that way when adding tools.
 - Your login credentials live in the MCP client config (kept locally).
 - Tool results are sent to the LLM you're using — only connect it to a model you're
   comfortable sharing financial data with.

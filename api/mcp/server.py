@@ -1,8 +1,14 @@
 """Finance Tracker MCP server.
 
 A thin, read-only Model Context Protocol server that exposes your cashflow data
-(safe-to-spend, forecast, spending, commitments, savings goals, transactions) as
-tools so an MCP client (e.g. Claude) can analyse it conversationally.
+(safe-to-spend, forecast, spending, commitments, savings goals, transactions,
+categorization rules) as tools so an MCP client (e.g. Claude) can analyse it
+conversationally.
+
+Read-only is a deliberate property, not an accident of what's been built: an
+assistant can read the rules, measure what they do and dry-run a proposal, but
+creating, editing and deleting rules stays in the app where the user sees the
+diff. Keep it that way.
 
 It is fully decoupled from the app — it just calls the running REST API — so it
 has no dependency on the backend's internals or pinned versions.
@@ -56,6 +62,26 @@ def _get(path: str, params: dict | None = None):
         return r.json()
 
 
+def _post(path: str, payload: dict):
+    """POST an API endpoint. Used ONLY for dry-run reads whose inputs are too
+    awkward for a query string (/rules/preview). Every tool here must leave the
+    user's data unchanged — do not reach for this to add a mutating tool."""
+    if not _token["value"]:
+        _login()
+    for attempt in (1, 2):
+        r = httpx.post(
+            f"{API}{path}",
+            json=payload,
+            headers={"Authorization": f"Bearer {_token['value']}"},
+            timeout=60,
+        )
+        if r.status_code == 401 and attempt == 1:
+            _login()
+            continue
+        r.raise_for_status()
+        return r.json()
+
+
 @mcp.tool()
 def cashflow_summary() -> dict:
     """Current cashflow: safe-to-spend, available cash, overdraft cushion, credit owed, net worth, next card repayments, and per-account roles."""
@@ -96,6 +122,31 @@ def accounts() -> list:
 def recent_transactions(page: int = 1, page_size: int = 100) -> dict:
     """A page of transactions (most recent first), for ad-hoc analysis. page_size up to 100."""
     return _get("/banking/transactions", {"page": page, "page_size": min(page_size, 100)})
+
+
+@mcp.tool()
+def rules() -> dict:
+    """Categorization rules: every rule pack with its rules, plus pack-less personal rules. Each rule has a pattern, match_type (exact|contains|regex), match_field (any|merchant|description), the category it assigns, and an optional counts_as (spending|transfer|card_payment) that reclassifies the transaction as noise."""
+    return _get("/rules")
+
+
+@mcp.tool()
+def rule_impact() -> dict:
+    """What the existing rules actually do, and where the gaps are. Per rule: `matched` (transactions it matches) vs `effective` (transactions whose category it actually decides) with amounts — a rule can match many and decide none because a higher-precedence rule wins first, flagged as `shadowed`; `dead` means it matches nothing. Also returns `gaps`: the merchants no rule categorizes, ranked by total value — the best candidates for a new rule."""
+    return _get("/rules/impact")
+
+
+@mcp.tool()
+def preview_rule(
+    pattern: str,
+    match_type: str = "contains",
+    match_field: str = "any",
+) -> dict:
+    """Dry-run a rule you're considering before proposing it: how many transactions the pattern would match, out of how many total, with up to 5 samples. Changes nothing. match_type is exact|contains|regex, match_field is any|merchant|description."""
+    return _post(
+        "/rules/preview",
+        {"pattern": pattern, "match_type": match_type, "match_field": match_field},
+    )
 
 
 if __name__ == "__main__":

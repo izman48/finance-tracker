@@ -3,6 +3,7 @@ import json
 import logging
 import secrets
 import uuid
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -23,6 +24,7 @@ from app.schemas import (
     RuleUpdate,
 )
 from app.services import categorization
+from app.services.analytics.common import _d
 
 logger = logging.getLogger(__name__)
 
@@ -193,6 +195,91 @@ def preview_rule(
             }
             for tx in matches[:5]
         ],
+    }
+
+
+@router.get("/impact")
+def rules_impact(
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """What each existing rule actually does, and where the gaps are.
+
+    `preview` sizes a rule you're considering; this measures the ones you
+    already have. The distinction that matters is matched vs effective: rules
+    are applied best-first, so a rule can match plenty of transactions and
+    still decide nothing because a higher-precedence rule got there first.
+    Those are safe to delete; a rule matching nothing at all is just dead.
+
+    Read-only. Amounts are DEK-encrypted, so every total is summed in Python.
+    """
+    rules = categorization.active_rules(db, current_user.id)
+    transactions = (
+        db.query(Transaction)
+        .join(Account)
+        .filter(Account.user_id == current_user.id)
+        .all()
+    )
+
+    stats = {
+        r.id: {"matched": 0, "matched_amount": Decimal(0), "effective": 0, "effective_amount": Decimal(0)}
+        for r in rules
+    }
+    uncovered: dict[str, dict] = {}
+
+    for tx in transactions:
+        amount = _d(tx.amount)
+        winner = None
+        for rule in rules:  # already in precedence order
+            if not categorization._rule_matches(rule, tx):
+                continue
+            stats[rule.id]["matched"] += 1
+            stats[rule.id]["matched_amount"] += amount
+            if winner is None and rule.category:
+                winner = rule
+        if winner is not None:
+            stats[winner.id]["effective"] += 1
+            stats[winner.id]["effective_amount"] += amount
+        else:
+            # No rule assigns this a category — a candidate for a new one.
+            key = (tx.merchant_name or tx.description or "Unknown").strip()
+            g = uncovered.setdefault(key, {"count": 0, "total": Decimal(0), "category": tx.category})
+            g["count"] += 1
+            g["total"] += amount
+
+    def _rule_row(r):
+        s = stats[r.id]
+        return {
+            "id": str(r.id),
+            "pattern": r.pattern,
+            "match_type": r.match_type,
+            "match_field": r.match_field,
+            "category": r.category,
+            "counts_as": r.counts_as,
+            "source": r.source,
+            "pack": r.pack.name if r.pack else None,
+            "matched": s["matched"],
+            "matched_amount": s["matched_amount"],
+            "effective": s["effective"],
+            "effective_amount": s["effective_amount"],
+            # Matches something, decides nothing — shadowed by a better rule.
+            "shadowed": s["matched"] > 0 and s["effective"] == 0,
+            "dead": s["matched"] == 0,
+        }
+
+    gaps = sorted(
+        (
+            {"merchant": k, "count": v["count"], "total": v["total"], "current_category": v["category"]}
+            for k, v in uncovered.items()
+        ),
+        key=lambda g: g["total"],
+        reverse=True,
+    )
+    return {
+        "total_transactions": len(transactions),
+        "rules": [_rule_row(r) for r in rules],
+        "uncategorized_transactions": sum(g["count"] for g in gaps),
+        "gaps": gaps[:40],
     }
 
 

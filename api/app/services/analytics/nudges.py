@@ -13,13 +13,17 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from app.models import AccountRole
+from app.models import AccountRole, CommitmentRule, CommitmentStatus
 from app.services.reference import uk_reference as ref
 
 from .common import _d, _load, resolve_roles
 
 # Below this much potential interest a year, the observation is noise.
 CASH_DRAG_MIN_PER_YEAR = Decimal("25")
+
+# Two commitments for the same amount and cadence falling this close together
+# are the same real-world payment, not two coincidental ones.
+DUPLICATE_DAY_TOLERANCE = 2
 
 
 def get_nudges(db: Session, user) -> list[dict]:
@@ -91,4 +95,75 @@ def get_nudges(db: Session, user) -> list[dict]:
             "as_of": None,
         })
 
+    # --- duplicate commitments: the same payment counted twice ---------------
+    # A merchant that renames its descriptor ("ANTHROPIC* CLAUDE SUB" ->
+    # "CLAUDE.AI SUBSCRIPTION") gets detected as a second commitment, and the
+    # original stays confirmed. Match-key normalisation can't catch a rename —
+    # the strings genuinely differ — so surface it instead of merging blind,
+    # which could collapse two real payments that happen to agree.
+    for group in _duplicate_commitment_groups(db, user):
+        first, second = group[0], group[1]
+        amount = _d(first.amount)
+        extra = amount * (len(group) - 1)
+        nudges.append({
+            "id": f"duplicate_commitment_{first.id}",
+            "rank": 0,  # a wrong number matters more than an optimisation
+            "body": (
+                f"“{first.label}” and “{second.label}” are both £{amount:,.2f} "
+                f"{first.cadence} around {first.next_date:%-d %b}. If they're the same "
+                f"payment, £{extra:,.2f}/month is being counted twice."
+            ),
+            "detail": (
+                f"{len(group)} confirmed commitments share an amount (£{amount:,.2f}), a "
+                f"cadence ({first.cadence}) and a due date within "
+                f"{DUPLICATE_DAY_TOLERANCE} days. That usually means the merchant changed "
+                f"its bank descriptor, so the new one was detected while the old one stayed "
+                f"confirmed. We don't merge them automatically because two genuinely "
+                f"separate payments can look identical. Remove whichever is wrong on the "
+                f"commitments page and safe-to-spend corrects itself."
+            ),
+            "source": None,
+            "as_of": None,
+        })
+
     return sorted(nudges, key=lambda n: n["rank"])
+
+
+def _duplicate_commitment_groups(db: Session, user) -> list[list[CommitmentRule]]:
+    """Confirmed commitments that look like the same payment counted twice.
+
+    Grouped on (direction, amount, cadence) — all computed in Python, since
+    amount is DEK-encrypted and can never be grouped in SQL.
+    """
+    rules = (
+        db.query(CommitmentRule)
+        .filter(
+            CommitmentRule.user_id == user.id,
+            CommitmentRule.status == CommitmentStatus.CONFIRMED.value,
+        )
+        .all()
+    )
+    buckets: dict[tuple, list[CommitmentRule]] = {}
+    for rule in rules:
+        if rule.next_date is None:
+            continue
+        buckets.setdefault((rule.direction, _d(rule.amount), rule.cadence), []).append(rule)
+
+    groups = []
+    for bucket in buckets.values():
+        if len(bucket) < 2:
+            continue
+        bucket.sort(key=lambda r: r.next_date)
+        # Only flag members that actually cluster in time: an annual pair six
+        # months apart is two real payments that happen to cost the same.
+        cluster = [bucket[0]]
+        for rule in bucket[1:]:
+            if (rule.next_date - cluster[-1].next_date).days <= DUPLICATE_DAY_TOLERANCE:
+                cluster.append(rule)
+            else:
+                if len(cluster) >= 2:
+                    groups.append(cluster)
+                cluster = [rule]
+        if len(cluster) >= 2:
+            groups.append(cluster)
+    return groups

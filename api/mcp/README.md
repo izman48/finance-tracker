@@ -22,14 +22,23 @@ backend's dependencies.
 | `rules` | every rule pack and personal rule: pattern, match type/field, category, `counts_as` |
 | `rule_impact` | per rule, `matched` vs `effective` (+ amounts), `shadowed`/`dead` flags, and `gaps` — uncategorized merchants ranked by value |
 | `preview_rule(pattern, match_type, match_field)` | dry-run a candidate rule: how many transactions it would match, with samples |
+| `create_rule_pack(name, rules, description, apply)` | **the only write tool** — create a new pack with all its rules, then backfill |
 
-### Rules: read and propose, never write
+### Rules: read, propose, and add — but never edit or delete
 
-An assistant can read your rules, measure what they actually do, and dry-run a
-proposal — but creating, editing and deleting rules stays in the app, where you
-see the diff before it applies. That's deliberate: rules rewrite history across
-every matching transaction, so the blast radius of a bad one is large and not
-obvious at the point of creation.
+Everyone starts with zero rules, and building a useful set one rule at a time is
+the reason most people never do it. So `create_rule_pack` can add a whole pack in
+one request and backfill history.
+
+It is **additive only**. It creates a *new* pack; it cannot edit or delete an
+existing pack or rule, and it never overwrites a category you set by hand. The
+worst case is a pack you didn't want — deleted in the app, taking its rules with
+it. Every pattern is validated before anything is written, so one bad regex fails
+the whole request rather than leaving half a pack behind.
+
+Editing and deleting stay in the app, where you see the diff. That boundary is
+the point: adding a pack is reversible in one action, whereas an agent quietly
+rewriting existing rules is not.
 
 `rule_impact` is the one to reach for when rules have accumulated. `matched`
 counts transactions a rule hits; `effective` counts the ones whose category it
@@ -82,9 +91,11 @@ Add to `claude_desktop_config.json`:
 
 ## Notes
 
-- **Read-only** — it can't move money or change anything. `preview_rule` is a POST
+- **Read-only apart from `create_rule_pack`** — nothing here can move money. The one
+  write is additive and reversible by deleting the pack. `preview_rule` is a POST
   only because its input is awkward as a query string; it is a dry run and writes
-  nothing. Keep it that way when adding tools.
+  nothing. Keep new tools on the read side unless there's a reason as clear as
+  this one.
 - Your login credentials live in the MCP client config (kept locally).
 - Tool results are sent to the LLM you're using — only connect it to a model you're
   comfortable sharing financial data with.

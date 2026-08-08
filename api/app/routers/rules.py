@@ -16,6 +16,7 @@ from app.models import Account, CategoryRule, RulePack, Transaction
 from app.schemas import (
     RuleCreate,
     RuleImportRequest,
+    RulePackBulkCreate,
     RulePackCreate,
     RulePackResponse,
     RulePackUpdate,
@@ -308,6 +309,62 @@ def create_pack(
     db.commit()
     db.refresh(pack)
     return pack
+
+
+@router.post("/packs/bulk", status_code=status.HTTP_201_CREATED)
+def create_pack_bulk(
+    body: RulePackBulkCreate,
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Create a pack and all its rules in one request, then backfill.
+
+    Exists because everyone starts with zero rules, and building a useful set
+    one POST at a time is the reason most users never do it.
+
+    Deliberately additive: it creates a NEW pack and never edits or deletes an
+    existing one, so the worst case is a pack you don't want — undone by
+    deleting it, which cascades to its rules. Every pattern is validated before
+    anything is written, so a bad regex fails the whole request instead of
+    leaving half a pack behind.
+    """
+    for i, rule in enumerate(body.rules):
+        error = categorization.validate_pattern(rule.pattern, rule.match_type)
+        if error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"rule {i} ({rule.pattern!r}): {error}",
+            )
+
+    pack = RulePack(user_id=current_user.id, name=body.name.strip(), description=body.description)
+    db.add(pack)
+    db.flush()
+    for rule in body.rules:
+        db.add(CategoryRule(
+            user_id=current_user.id,
+            pack_id=pack.id,
+            pattern=rule.pattern.strip(),
+            match_type=rule.match_type,
+            match_field=rule.match_field,
+            category=rule.category.strip(),
+            counts_as=rule.counts_as,
+            source="manual",
+        ))
+    db.commit()
+    db.refresh(pack)
+
+    changed = 0
+    if body.apply:
+        changed = categorization.apply_rules_to_all(db, current_user.id)
+        db.commit()
+
+    logger.info(f"Bulk pack {pack.id} created with {len(body.rules)} rules for user {current_user.id}")
+    return {
+        "pack_id": str(pack.id),
+        "name": pack.name,
+        "rules_created": len(body.rules),
+        "transactions_recategorized": changed,
+    }
 
 
 @router.patch("/packs/{pack_id}", response_model=RulePackResponse)

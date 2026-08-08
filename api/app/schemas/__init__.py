@@ -270,6 +270,31 @@ class RulePackCreate(BaseModel):
     description: str | None = Field(default=None, max_length=500)
 
 
+class RulePackBulkRule(BaseModel):
+    """One rule inside a bulk pack create (pack_id comes from the parent)."""
+
+    pattern: str = Field(min_length=1, max_length=200)
+    match_type: str = Field(default="contains", pattern="^(exact|contains|regex)$")
+    match_field: str = Field(default="any", pattern="^(any|merchant|description)$")
+    category: str = Field(min_length=1, max_length=100)
+    counts_as: str | None = Field(default=None, pattern="^(spending|transfer|card_payment)$")
+
+
+class RulePackBulkCreate(BaseModel):
+    """Create a pack and all its rules in one reviewed request.
+
+    Additive only: it can create a new pack, never edit or delete an existing
+    one. Undo is deleting the pack, which cascades to its rules.
+    """
+
+    name: str = Field(min_length=1, max_length=100)
+    description: str | None = Field(default=None, max_length=500)
+    rules: list[RulePackBulkRule] = Field(min_length=1, max_length=200)
+    # Backfill history immediately. A pack that doesn't apply is inert, so this
+    # defaults on; locked categories are still never overwritten.
+    apply: bool = True
+
+
 class RulePackUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     description: str | None = Field(default=None, max_length=500)

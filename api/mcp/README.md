@@ -14,8 +14,8 @@ backend's dependencies.
 |------|-----------------|
 | `cashflow_summary` | safe-to-spend, available cash, overdraft cushion, credit owed, net worth, next repayments |
 | `forecast(horizon)` | balance projection timeline, lowest point, breaches, dated events |
-| `spending(period, frm, to)` | credit-vs-cash breakdown by category & merchant (noise filtered); pass `frm`/`to` as `YYYY-MM-DD` for any date range |
-| `spending_trend(months)` | real spending per month over the last N months |
+| `spending(period, frm, to, lens)` | credit-vs-cash breakdown by category & merchant; pass `frm`/`to` as `YYYY-MM-DD` for any date range; `lens='purchases'` to compare against `spending_trend` (see below) |
+| `spending_trend(months)` | real spending per month over the last N months (always 'purchases'-equivalent — see below) |
 | `commitments` | recurring income/expenses |
 | `accounts` | balances, types, providers |
 | `recent_transactions(page, page_size)` | a page of transactions |
@@ -23,6 +23,18 @@ backend's dependencies.
 | `rule_impact` | per rule, `matched` vs `effective` (+ amounts), `shadowed`/`dead` flags, and `gaps` — uncategorized merchants ranked by value |
 | `preview_rule(pattern, match_type, match_field)` | dry-run a candidate rule: how many transactions it would match, with samples |
 | `create_rule_pack(name, rules, description, apply)` | **the only write tool** — create a new pack with all its rules, then backfill |
+
+### `spending` has two lenses that don't compare
+
+`money_out` (the default) is what left the bank — it counts a credit-card bill
+the day you pay it, not the purchases behind it. `purchases` is what you actually
+bought — it counts a card purchase the day you made it, and excludes the later
+repayment so nothing is counted twice. `spending_trend` always uses `purchases`
+semantics. Compare a `spending(frm, to)` call against a `spending_trend` month
+only with `lens='purchases'` — comparing against the default silently mixes two
+different questions and produces numbers that look wrong (a single month's rent
+line can appear 2-3x too large because a card repayment landed in the same
+window) without erroring.
 
 ### Rules: read, propose, and add — but never edit or delete
 

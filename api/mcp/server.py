@@ -5,10 +5,11 @@ A thin, read-only Model Context Protocol server that exposes your cashflow data
 categorization rules) as tools so an MCP client (e.g. Claude) can analyse it
 conversationally.
 
-Read-only is a deliberate property, not an accident of what's been built: an
-assistant can read the rules, measure what they do and dry-run a proposal, but
-creating, editing and deleting rules stays in the app where the user sees the
-diff. Keep it that way.
+Read-only with ONE deliberate exception: create_rule_pack, which creates a new
+rule pack and backfills. It is additive — it cannot edit or delete an existing
+pack or rule, and it never overwrites a category the user set by hand — so the
+worst case is a pack the user deletes in the app. Nothing else here writes, and
+nothing else should: editing and deleting stay where the user sees the diff.
 
 It is fully decoupled from the app — it just calls the running REST API — so it
 has no dependency on the backend's internals or pinned versions.
@@ -146,6 +147,24 @@ def preview_rule(
     return _post(
         "/rules/preview",
         {"pattern": pattern, "match_type": match_type, "match_field": match_field},
+    )
+
+
+@mcp.tool()
+def create_rule_pack(
+    name: str,
+    rules: list[dict],
+    description: str = "",
+    apply: bool = True,
+) -> dict:
+    """Create a NEW rule pack with all its rules in one go, then backfill history. This is the only tool here that writes.
+
+    Each entry in `rules` is {"pattern", "category", "match_type"?, "match_field"?, "counts_as"?}: match_type is exact|contains|regex (default contains), match_field is any|merchant|description (default any), counts_as is spending|transfer|card_payment and reclassifies the transaction as noise so it leaves the spending figures.
+
+    Additive only — it creates a new pack and can never edit or delete an existing one, so the worst case is a pack the user removes in the app, which cascades to its rules. Categories the user set by hand are never overwritten. Every pattern is validated before anything is written, so one bad regex fails the whole request rather than leaving half a pack behind. Preview patterns with preview_rule first, and show the user what you intend to create before calling this."""
+    return _post(
+        "/rules/packs/bulk",
+        {"name": name, "description": description or None, "rules": rules, "apply": apply},
     )
 
 

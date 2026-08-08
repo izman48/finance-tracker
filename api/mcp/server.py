@@ -96,13 +96,20 @@ def forecast(horizon: str = "90") -> dict:
 
 
 @mcp.tool()
-def spending(period: str = "since_payday", frm: str = "", to: str = "") -> dict:
+def spending(period: str = "since_payday", frm: str = "", to: str = "", lens: str = "money_out") -> dict:
     """Spending breakdown by category and merchant for a period (since_payday | this_month | last_30), or for ANY date range by passing frm and to as YYYY-MM-DD.
 
-    Use the date range for long-run questions the fixed periods can't answer — what a specific expensive month actually went on, or how one year's categories compare with the next. Splits credit-vs-cash; internal transfers and card repayments are excluded from spending."""
+    lens matters and the two are NOT comparable to each other:
+    - 'money_out' (default): cash that left spending accounts, reconciling to a bank statement — includes the card bill on the day it's paid, not the purchases that built it. `composition` names what's inside (transfers/card_repayments/commitments/other).
+    - 'purchases': spend booked when it happened — card purchases + cash purchases, excluding transfers and card repayments so a purchase is never double-counted with its later repayment. This is what spending_trend uses, so use 'purchases' when comparing a custom range against spending_trend's monthly totals — mixing lenses gives numbers that look wrong because they answer different questions, not because anything is broken.
+
+    Use the date range for long-run questions the fixed periods can't answer — what a specific expensive month actually went on, or how one year compares with the next."""
+    params = {"lens": lens}
     if frm and to:
-        return _get("/analytics/spending", {"period": "custom", "frm": frm, "to": to})
-    return _get("/analytics/spending", {"period": period})
+        params.update(period="custom", frm=frm, to=to)
+    else:
+        params["period"] = period
+    return _get("/analytics/spending", params)
 
 
 @mcp.tool()

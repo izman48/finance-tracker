@@ -96,8 +96,12 @@ def forecast(horizon: str = "90") -> dict:
 
 
 @mcp.tool()
-def spending(period: str = "since_payday") -> dict:
-    """Spending breakdown for a period (since_payday | this_month | last_30). Splits credit-vs-cash and lists categories and top merchants. Internal transfers and card repayments are excluded."""
+def spending(period: str = "since_payday", frm: str = "", to: str = "") -> dict:
+    """Spending breakdown by category and merchant for a period (since_payday | this_month | last_30), or for ANY date range by passing frm and to as YYYY-MM-DD.
+
+    Use the date range for long-run questions the fixed periods can't answer — what a specific expensive month actually went on, or how one year's categories compare with the next. Splits credit-vs-cash; internal transfers and card repayments are excluded from spending."""
+    if frm and to:
+        return _get("/analytics/spending", {"period": "custom", "frm": frm, "to": to})
     return _get("/analytics/spending", {"period": period})
 
 

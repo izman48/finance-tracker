@@ -14,7 +14,7 @@ backend's dependencies.
 |------|-----------------|
 | `cashflow_summary` | safe-to-spend, available cash, overdraft cushion, credit owed, net worth, next repayments |
 | `forecast(horizon)` | balance projection timeline, lowest point, breaches, dated events |
-| `spending(period)` | credit-vs-cash breakdown by category & merchant (noise filtered) |
+| `spending(period, frm, to)` | credit-vs-cash breakdown by category & merchant (noise filtered); pass `frm`/`to` as `YYYY-MM-DD` for any date range |
 | `spending_trend(months)` | real spending per month over the last N months |
 | `commitments` | recurring income/expenses |
 | `accounts` | balances, types, providers |

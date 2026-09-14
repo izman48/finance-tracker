@@ -26,6 +26,7 @@ from app.schemas import (
     CommitmentUpdate,
     ForecastResponse,
     NetWorthPoint,
+    NetWorthPosition,
     NudgeResponse,
     PlanFromTransaction,
     PlannedItemCreate,
@@ -68,6 +69,15 @@ def get_net_worth_history(
         NetWorthPoint(**point)
         for point in analytics_service.net_worth_history(db, current_user, months)
     ]
+
+
+@router.get("/net-worth-position", response_model=NetWorthPosition)
+def get_net_worth_position(
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> NetWorthPosition:
+    """Today's net worth and how far it has moved over 1m/3m/6m/1y/all-time."""
+    return NetWorthPosition(**analytics_service.net_worth_position(db, current_user))
 
 
 @router.get("/net-worth-decomposition", response_model=AssetDecomposition)

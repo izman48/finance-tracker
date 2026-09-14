@@ -36,18 +36,19 @@ api/app/
   migrations/   Alembic
   tests/        unit/ + integration/ (pytest)
 ui/src/
-  pages/        the three tabs — DashboardPage (Home), SpendingPage,
-                NetWorthPage (Wealth = the balance sheet) — plus
-                CommitmentsPage (sub-page off Home), RulesPage (user menu),
-                auth pages
+  pages/        the four tabs — OverviewPage (Home: one summary card per
+                tab, each a link into it), DashboardPage (Cashflow),
+                SpendingPage, NetWorthPage (Wealth = the balance sheet) —
+                plus CommitmentsPage (sub-page off Cashflow), RulesPage
+                (user menu), auth pages. HomePage is the marketing landing.
   components/   (components/ui = shared primitives incl. Toast/ConfirmDialog
                 providers)  lib/ (format, cadence, assets)  types.ts
                 services/api.ts  hooks/
   scripts/visual-check.mjs   browser screenshot harness (BASE_URL overridable)
 ```
 
-The IA is three tabs (Home / Spending / Wealth); `REDESIGN_PLAN.md` records
-the redesign and the still-open extensions (demo mode, nudges, theming).
+The IA is four tabs (Home / Cashflow / Spending / Wealth); `REDESIGN_PLAN.md`
+records the redesign and the still-open extensions (demo mode, theming).
 
 ## Commands
 
@@ -104,10 +105,12 @@ quick overflow check, navigate a page and compare `document.documentElement
   (amber for credit), `pos` (green income). Fonts: Inter (body), Space Grotesk
   (`font-display`). Charts use Recharts; motion uses GSAP and must respect
   `prefers-reduced-motion`.
-- **Navigation**: three tabs (Home / Spending / Wealth) — desktop top-nav at
-  `lg+`; below `lg` (phones *and* iPad portrait) a bottom tab bar. Keep that
-  breakpoint consistent. Rules and account management live in the user menu;
-  commitments management is a sub-page off Home.
+- **Navigation**: four tabs (Home / Cashflow / Spending / Wealth) — desktop
+  top-nav at `lg+`; below `lg` (phones *and* iPad portrait) a bottom tab bar.
+  Keep that breakpoint consistent. Login lands on Home (`/home`); Home only
+  summarises — every figure it shows is owned by the tab its card links to.
+  Rules and account management live in the user menu; commitments management
+  is a sub-page off Cashflow.
 - **Auth/security**: every API endpoint filters by `current_user` (no IDOR). JWTs
   carry a `typ` claim — `access`, `pwd_reset`, `oauth_state` — and
   `decode_access_token` rejects anything that isn't `access`, so reset/oauth

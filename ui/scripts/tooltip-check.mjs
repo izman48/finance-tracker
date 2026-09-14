@@ -40,6 +40,7 @@ const routes = [
   ['**/api/v1/analytics/commitments', []],
   ['**/api/v1/analytics/planned-items', []],
   ['**/api/v1/analytics/net-worth-history*', netWorthHistory],
+  ['**/api/v1/analytics/net-worth-position', { as_of: '2026-01-01', net_worth: '0', bank: '0', assets: '0', since: null, changes: [] }],
   ['**/api/v1/assets', []],
   ['**/api/v1/banking/accounts', []],
   ['**/api/v1/banking/transactions*', { items: [], total: 0 }],
@@ -47,6 +48,7 @@ const routes = [
 ]
 
 const PAGES = [
+  ['overview', '/home'],
   ['dashboard', '/dashboard'],
   ['insights', '/insights'],
   ['networth', '/networth'],

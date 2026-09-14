@@ -167,6 +167,28 @@ export interface NetWorthPoint {
   net_worth: string
 }
 
+export interface NetWorthChange {
+  key: '1m' | '3m' | '6m' | '1y' | 'all'
+  label: string
+  from_date: string | null
+  // False when the horizon reaches back before any data we hold.
+  available: boolean
+  from_value: string | null
+  change: string | null
+  // Percent of the starting value; null when that start was ≤ 0.
+  change_pct: string | null
+}
+
+export interface NetWorthPosition {
+  as_of: string
+  net_worth: string
+  bank: string
+  assets: string
+  // First date any wealth data reaches back to.
+  since: string | null
+  changes: NetWorthChange[]
+}
+
 export interface AssetDecomposition {
   start_date: string
   end_date: string
@@ -242,6 +264,8 @@ export const assetsAPI = {
     api.get<AssetDecomposition>('/analytics/net-worth-decomposition', { params: { months } }),
   netWorthHistory: (months = 12) =>
     api.get<NetWorthPoint[]>(`/analytics/net-worth-history?months=${months}`),
+  // Today's net worth and how far it has moved over 1m/3m/6m/1y/all-time.
+  netWorthPosition: () => api.get<NetWorthPosition>('/analytics/net-worth-position'),
   // A projection from stated assumptions — an estimate, not advice.
   netWorthProjection: (params: {
     target_amount?: number

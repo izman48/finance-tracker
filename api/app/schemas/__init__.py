@@ -127,6 +127,32 @@ class NetWorthPoint(BaseModel):
     net_worth: Decimal
 
 
+class NetWorthChange(BaseModel):
+    """How net worth moved over one horizon (1m/3m/6m/1y/all)."""
+
+    key: str
+    label: str
+    from_date: date | None
+    # False when the horizon reaches back before any data we hold.
+    available: bool
+    from_value: Decimal | None
+    change: Decimal | None
+    # Percent of the starting value; null when that start was ≤ 0.
+    change_pct: Decimal | None
+
+
+class NetWorthPosition(BaseModel):
+    """Today's net worth and its movement over several horizons."""
+
+    as_of: date
+    net_worth: Decimal
+    bank: Decimal
+    assets: Decimal
+    # First date any wealth data reaches back to (transactions or valuations).
+    since: date | None
+    changes: list[NetWorthChange]
+
+
 class AssetFlowCreate(BaseModel):
     """Record money added to (+) or withdrawn from (−) an asset."""
 

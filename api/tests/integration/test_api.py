@@ -207,3 +207,47 @@ class TestCommitmentsEndpoint:
         assert len(loans_first) == 1
         assert len(loans_second) == 1
         assert loans_first[0]["id"] == loans_second[0]["id"]
+
+
+class TestNetWorthPositionEndpoint:
+    def test_requires_auth(self, client):
+        assert client.get("/api/v1/analytics/net-worth-position").status_code == 401
+
+    def test_empty_position_shape(self, authenticated_client):
+        response = authenticated_client.get("/api/v1/analytics/net-worth-position")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["net_worth"] == "0"
+        assert data["since"] is None
+        assert [c["key"] for c in data["changes"]] == ["1m", "3m", "6m", "1y", "all"]
+        assert all(c["available"] is False for c in data["changes"])
+
+    def test_position_reflects_manual_assets(self, authenticated_client):
+        from datetime import timedelta
+
+        from app.services.analytics.common import _today
+
+        today = _today()
+        old = authenticated_client.post(
+            "/api/v1/assets",
+            json={"name": "ISA", "asset_type": "isa", "value": 4000,
+                  "valued_at": (today - timedelta(days=200)).isoformat()},
+        )
+        assert old.status_code == 201, old.text
+        new = authenticated_client.post(
+            "/api/v1/assets",
+            json={"name": "Bonus", "asset_type": "savings", "value": 600,
+                  "valued_at": today.isoformat()},
+        )
+        assert new.status_code == 201, new.text
+
+        data = authenticated_client.get("/api/v1/analytics/net-worth-position").json()
+        by = {c["key"]: c for c in data["changes"]}
+        assert data["net_worth"] == "4600"
+        assert data["since"] == (today - timedelta(days=200)).isoformat()
+        assert by["6m"]["available"] is True
+        assert by["6m"]["from_value"] == "4000"
+        assert by["6m"]["change"] == "600"
+        assert by["6m"]["change_pct"] == "15.0"
+        assert by["1y"]["available"] is False
+        assert by["all"]["change"] == "600"

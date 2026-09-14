@@ -3,9 +3,10 @@ import { Link } from 'react-router-dom'
 import { ChevronRight, PieChart, Plug, RefreshCw, Sparkles, TrendingUp, Wallet } from 'lucide-react'
 import { analyticsAPI, bankingAPI, assetsAPI, NetWorthPosition } from '../services/api'
 import { BankStatus, CashflowSummary, Commitment, PlannedItem } from '../types'
-import { gbp0 as gbp, dateDayMonth, timeAgo, changeTone, signedGbp, signedPct } from '../lib/format'
+import { gbp0 as gbp, dateDayMonth, monthLabel, timeAgo, changeTone, signedGbp, signedPct } from '../lib/format'
 import { buildUpcoming } from '../lib/upcoming'
 import AnimatedNumber from '../components/ui/AnimatedNumber'
+import Sparkline, { SparkPoint } from '../components/ui/Sparkline'
 import InfoTip from '../components/ui/InfoTip'
 import { EXPLAIN } from '../copy/statExplainers'
 import useReveal from '../components/ui/useReveal'
@@ -15,6 +16,13 @@ interface SpendingSnapshot {
   // Same days of last month, for a like-for-like pace comparison.
   prevTotal: number | null
   topCategories: { category: string; total: number }[]
+}
+
+interface ForecastSnapshot {
+  points: SparkPoint[]
+  minBalance: number
+  minDate: string
+  breached: boolean
 }
 
 function localIso(d: Date) {
@@ -27,7 +35,7 @@ function localIso(d: Date) {
 /** One tab, summarised: a big figure, one line of context, and a few rows.
  *  The whole card is the link — tapping anywhere goes to that tab. */
 function SummaryCard({
-  to, icon: Icon, title, label, explain, figure, context, children,
+  to, icon: Icon, title, label, explain, figure, context, chart, chartCaption, children,
 }: {
   to: string
   icon: typeof Wallet
@@ -36,6 +44,9 @@ function SummaryCard({
   explain: string
   figure: number
   context: ReactNode
+  /** The tab's main chart in miniature, with a one-line caption. */
+  chart?: ReactNode
+  chartCaption?: ReactNode
   children?: ReactNode
 }) {
   return (
@@ -61,6 +72,12 @@ function SummaryCard({
         <AnimatedNumber value={figure} format={gbp} />
       </div>
       <div className="text-sm mt-1.5">{context}</div>
+      {chart && (
+        <div className="mt-4">
+          {chart}
+          {chartCaption && <div className="text-xs text-slate-500 mt-1.5">{chartCaption}</div>}
+        </div>
+      )}
       {children && <div className="mt-4 pt-4 border-t border-white/[0.06] text-sm space-y-2">{children}</div>}
     </Link>
   )
@@ -73,6 +90,9 @@ export default function OverviewPage() {
   const [planned, setPlanned] = useState<PlannedItem[]>([])
   const [spending, setSpending] = useState<SpendingSnapshot | null>(null)
   const [position, setPosition] = useState<NetWorthPosition | null>(null)
+  const [forecast, setForecast] = useState<ForecastSnapshot | null>(null)
+  const [trend, setTrend] = useState<SparkPoint[]>([])
+  const [history, setHistory] = useState<SparkPoint[]>([])
   const [loaded, setLoaded] = useState(false)
   const [connecting, setConnecting] = useState(false)
   const [message, setMessage] = useState('')
@@ -89,7 +109,7 @@ export default function OverviewPage() {
     const load = async () => {
       // Each source fails independently: a broken spending call shouldn't blank
       // the cash and wealth cards.
-      const [b, s, c, p, sp, prev, pos] = await Promise.allSettled([
+      const [b, s, c, p, sp, prev, pos, fc, tr, hist] = await Promise.allSettled([
         bankingAPI.getConnectionStatus(),
         analyticsAPI.getSummary(),
         analyticsAPI.getCommitments(),
@@ -97,6 +117,11 @@ export default function OverviewPage() {
         analyticsAPI.getSpending('custom', localIso(monthStart), localIso(now)),
         analyticsAPI.getSpending('custom', localIso(prevStart), localIso(prevEnd)),
         assetsAPI.netWorthPosition(),
+        // The three tab charts, in miniature: 30-day forecast, 6 months of
+        // spending, 12 months of net worth.
+        analyticsAPI.getForecast('30'),
+        analyticsAPI.getSpendingTrend(6),
+        assetsAPI.netWorthHistory(12),
       ])
       if (b.status === 'fulfilled') setBankStatus(b.value.data)
       if (s.status === 'fulfilled') setSummary(s.value.data)
@@ -114,6 +139,34 @@ export default function OverviewPage() {
         })
       }
       if (pos.status === 'fulfilled') setPosition(pos.value.data)
+      if (fc.status === 'fulfilled') {
+        const f = fc.value.data
+        setForecast({
+          points: (f.timeline as { date: string; balance: string }[]).map((pt) => ({
+            label: dateDayMonth(pt.date),
+            value: Number(pt.balance),
+          })),
+          minBalance: Number(f.min_balance),
+          minDate: f.min_date,
+          breached: (f.breaches as string[]).length > 0,
+        })
+      }
+      if (tr.status === 'fulfilled') {
+        setTrend(
+          (tr.value.data.months as { month: string; total: string }[]).map((m) => ({
+            label: monthLabel(m.month),
+            value: Number(m.total),
+          })),
+        )
+      }
+      if (hist.status === 'fulfilled') {
+        setHistory(
+          hist.value.data.map((pt) => ({
+            label: new Date(pt.date).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' }),
+            value: Number(pt.net_worth),
+          })),
+        )
+      }
       setLoaded(true)
     }
     load()
@@ -218,6 +271,14 @@ export default function OverviewPage() {
                 {summary.next_payday ? `payday on ${dateDayMonth(summary.next_payday)}` : 'next month'}
               </span>
             }
+            chart={forecast && <Sparkline data={forecast.points} format={gbp} zeroLine />}
+            chartCaption={
+              forecast && (
+                <span className={forecast.breached ? 'text-neg' : undefined}>
+                  Next 30 days · lowest {gbp(forecast.minBalance)} on {dateDayMonth(forecast.minDate)}
+                </span>
+              )
+            }
           >
             {upcoming.length > 0 ? (
               upcoming.map((u) => (
@@ -252,6 +313,8 @@ export default function OverviewPage() {
                 </span>
               )
             }
+            chart={trend.length > 0 && <Sparkline data={trend} kind="bars" format={gbp} highlightLast />}
+            chartCaption={trend.length > 0 && `Last ${trend.length} months · this month highlighted`}
           >
             {spending && spending.topCategories.length > 0 ? (
               spending.topCategories.map((c) => (
@@ -285,6 +348,8 @@ export default function OverviewPage() {
                 <span className="text-slate-400">tracking starts today — check back next month</span>
               )
             }
+            chart={history.length > 0 && <Sparkline data={history} color="#38BDF8" format={gbp} />}
+            chartCaption={history.length > 0 && 'Past 12 months'}
           >
             {[{ label: 'Past year', c: oneYear }, { label: 'All time', c: byKey['all'] }]
               .filter((x) => x.c)

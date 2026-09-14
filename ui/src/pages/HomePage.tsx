@@ -208,8 +208,8 @@ export default function HomePage() {
             </p>
             <div data-hero="cta" className="flex flex-wrap gap-3 justify-center lg:justify-start">
               {isAuthenticated ? (
-                <Link to="/dashboard" className="btn-primary !px-7 !py-3 !text-base">
-                  Go to dashboard
+                <Link to="/home" className="btn-primary !px-7 !py-3 !text-base">
+                  Go to your overview
                 </Link>
               ) : (
                 <>

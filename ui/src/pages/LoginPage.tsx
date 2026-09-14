@@ -27,7 +27,7 @@ export default function LoginPage() {
         setRecoveryCode(code)
         return
       }
-      navigate('/dashboard')
+      navigate('/home')
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
         const axiosError = err as { response?: { data?: { detail?: string } } }
@@ -49,7 +49,7 @@ export default function LoginPage() {
         <RecoveryCodeCard
           code={recoveryCode}
           continueLabel="I've saved it — go to my dashboard"
-          onContinue={() => navigate('/dashboard')}
+          onContinue={() => navigate('/home')}
         />
       </AuthShell>
     )

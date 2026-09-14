@@ -440,3 +440,78 @@ class TestNetWorthHistory:
         history = svc.net_worth_history(db_session, user, months=2)
         assert history[-1]["net_worth"] == Decimal("7100")
         assert history[0]["net_worth"] == Decimal("5100")
+
+
+class TestNetWorthPosition:
+    def _by_key(self, position):
+        return {c["key"]: c for c in position["changes"]}
+
+    def test_no_data_means_nothing_available(self, db_session):
+        user = _user(db_session)
+        position = svc.net_worth_position(db_session, user)
+        assert position["net_worth"] == Decimal("0")
+        assert position["since"] is None
+        assert [c["key"] for c in position["changes"]] == ["1m", "3m", "6m", "1y", "all"]
+        assert all(not c["available"] for c in position["changes"])
+
+    def test_change_over_a_month_from_transactions(self, db_session):
+        user = _user(db_session)
+        acc = _account(db_session, user, 1000)
+        today = svc._today()
+        # Data starts 45 days ago; 2 weeks ago £300 came in and £50 went out.
+        _tx(db_session, acc, 5, today - timedelta(days=45), ttype="debit")
+        _tx(db_session, acc, 300, today - timedelta(days=14), ttype="credit")
+        _tx(db_session, acc, 50, today - timedelta(days=13), ttype="debit")
+
+        position = svc.net_worth_position(db_session, user)
+        by = self._by_key(position)
+
+        assert position["net_worth"] == Decimal("1000")
+        assert position["since"] == today - timedelta(days=45)
+        # A month ago the balance was 1000 − (300 − 50) = 750: up £250 / 33.3%.
+        assert by["1m"]["available"] is True
+        assert by["1m"]["from_value"] == Decimal("750")
+        assert by["1m"]["change"] == Decimal("250")
+        assert by["1m"]["change_pct"] == Decimal("33.3")
+        # Three months back is before any data — not a change from "nothing".
+        assert by["3m"]["available"] is False
+        assert by["3m"]["change"] is None
+        assert by["1y"]["available"] is False
+        # All-time runs from the first transaction.
+        assert by["all"]["available"] is True
+        assert by["all"]["from_date"] == position["since"]
+        assert by["all"]["change"] == Decimal("250")
+
+    def test_decline_is_negative_and_uses_valuations(self, db_session):
+        user = _user(db_session)
+        _account(db_session, user, 100)
+        today = svc._today()
+        _asset(db_session, user, "Crypto", {
+            today - timedelta(days=400): "5000",
+            today - timedelta(days=100): "4000",
+            today: "3000",
+        })
+        position = svc.net_worth_position(db_session, user)
+        by = self._by_key(position)
+
+        assert position["net_worth"] == Decimal("3100")
+        assert position["since"] == today - timedelta(days=400)
+        assert by["1y"]["available"] is True
+        assert by["1y"]["from_value"] == Decimal("5100")
+        assert by["1y"]["change"] == Decimal("-2000")
+        assert by["1y"]["change_pct"] == Decimal("-39.2")
+        assert by["3m"]["from_value"] == Decimal("4100")
+        assert by["3m"]["change"] == Decimal("-1000")
+
+    def test_no_percentage_from_a_negative_start(self, db_session):
+        user = _user(db_session)
+        acc = _account(db_session, user, 100)
+        today = svc._today()
+        # Two months ago the account was £400 overdrawn (100 − 500 in = −400).
+        _tx(db_session, acc, 500, today - timedelta(days=20), ttype="credit")
+        _tx(db_session, acc, 1, today - timedelta(days=70), ttype="debit")
+        position = svc.net_worth_position(db_session, user)
+        by = self._by_key(position)
+        assert by["1m"]["from_value"] == Decimal("-400")
+        assert by["1m"]["change"] == Decimal("500")
+        assert by["1m"]["change_pct"] is None

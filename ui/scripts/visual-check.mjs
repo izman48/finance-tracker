@@ -132,6 +132,21 @@ const netWorthHistory = Array.from({ length: 12 }, (_, i) => {
   }
 })
 
+const position = {
+  as_of: iso(today),
+  net_worth: '12400',
+  bank: '8420',
+  assets: '3980',
+  since: iso(new Date(today.getFullYear() - 1, today.getMonth() - 2, 1)),
+  changes: [
+    { key: '1m', label: '1 month', from_date: iso(new Date(today.getFullYear(), today.getMonth() - 1, today.getDate())), available: true, from_value: '12000', change: '400', change_pct: '3.3' },
+    { key: '3m', label: '3 months', from_date: iso(new Date(today.getFullYear(), today.getMonth() - 3, today.getDate())), available: true, from_value: '11200', change: '1200', change_pct: '10.7' },
+    { key: '6m', label: '6 months', from_date: iso(new Date(today.getFullYear(), today.getMonth() - 6, today.getDate())), available: true, from_value: '12800', change: '-400', change_pct: '-3.1' },
+    { key: '1y', label: '1 year', from_date: iso(new Date(today.getFullYear() - 1, today.getMonth(), today.getDate())), available: true, from_value: '8000', change: '4400', change_pct: '55.0' },
+    { key: 'all', label: 'All time', from_date: iso(new Date(today.getFullYear() - 1, today.getMonth() - 2, 1)), available: true, from_value: '7600', change: '4800', change_pct: '63.2' },
+  ],
+}
+
 const assets = [
   { id: 'as1', name: 'Vanguard S&S ISA', asset_type: 'isa', valuations: [{ id: 'v1', value: '4200', valued_at: daysFromNow(-200) }, { id: 'v2', value: '4650', valued_at: daysFromNow(-10) }] },
   { id: 'as2', name: 'Workplace pension', asset_type: 'pension', valuations: [{ id: 'v3', value: '5400', valued_at: daysFromNow(-30) }] },
@@ -162,6 +177,9 @@ const routes = [
   ['**/api/v1/analytics/commitments', commitments],
   ['**/api/v1/analytics/planned-items', planned],
   ['**/api/v1/analytics/net-worth-history*', netWorthHistory],
+  ['**/api/v1/analytics/net-worth-position', position],
+  ['**/api/v1/analytics/net-worth-decomposition*', { start_date: iso(new Date(today.getFullYear() - 1, today.getMonth(), today.getDate())), end_date: iso(today), assets_start: '2000', assets_end: '3980', assets_delta: '1980', contributions: '1500', growth: '480', flows_recorded: 3 }],
+  ['**/api/v1/analytics/nudges', []],
   ['**/api/v1/assets', assets],
   ['**/api/v1/banking/accounts', accounts.map(({ id, display_name, provider_name, account_type }) => ({ id, display_name, provider_name, account_type }))],
   ['**/api/v1/banking/transactions*', { items: transactions, total: transactions.length, page: 1, page_size: 100 }],
@@ -179,6 +197,7 @@ const pages = [
   ['register', '/register', false],
   ['privacy', '/privacy', false],
   ['terms', '/terms', false],
+  ['overview', '/home', true],
   ['dashboard', '/dashboard', true],
   ['transactions', '/transactions', true],
   ['insights', '/insights', true],

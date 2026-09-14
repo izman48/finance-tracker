@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Outlet, Link, NavLink, useLocation } from 'react-router-dom'
 import {
+  LayoutGrid,
   Wallet,
   PieChart,
   TrendingUp,
@@ -18,10 +19,12 @@ import AnnouncementBanner from './AnnouncementBanner'
 import ChangePasswordModal from './ChangePasswordModal'
 import DeleteAccountModal from './DeleteAccountModal'
 
-// Three tabs, three questions: am I okay right now / where did it go /
-// am I getting richer. Commitments is a sub-page off Cashflow; Rules lives in
-// the user menu (it's configuration, not a daily destination).
+// Home is the one-glance summary; the other three tabs are the three
+// questions: am I okay right now / where did it go / am I getting richer.
+// Commitments is a sub-page off Cashflow; Rules lives in the user menu (it's
+// configuration, not a daily destination).
 const NAV_LINKS = [
+  { to: '/home', label: 'Home', icon: LayoutGrid },
   { to: '/dashboard', label: 'Cashflow', icon: Wallet },
   { to: '/insights', label: 'Spending', icon: PieChart },
   { to: '/networth', label: 'Wealth', icon: TrendingUp },
@@ -231,7 +234,7 @@ export default function Layout() {
           className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-ink-900/90 backdrop-blur-xl border-t border-white/[0.08] safe-bottom"
           aria-label="Primary"
         >
-          <div className="grid grid-cols-3">
+          <div className="grid grid-cols-4">
             {MOBILE_TABS.map(({ to, label, icon: Icon }) => (
               <NavLink
                 key={to}

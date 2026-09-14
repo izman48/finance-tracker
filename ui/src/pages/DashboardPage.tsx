@@ -19,16 +19,7 @@ import AnimatedNumber from '../components/ui/AnimatedNumber'
 import InfoTip from '../components/ui/InfoTip'
 import { EXPLAIN } from '../copy/statExplainers'
 import useReveal from '../components/ui/useReveal'
-import { nextPlannedDate, plannedPerPayment } from '../lib/planned'
-
-interface Upcoming {
-  key: string
-  label: string
-  amount: number
-  date: string
-  income: boolean
-  commitmentId?: string
-}
+import { buildUpcoming } from '../lib/upcoming'
 
 export default function DashboardPage() {
   const [bankStatus, setBankStatus] = useState<BankStatus | null>(null)
@@ -151,37 +142,7 @@ export default function DashboardPage() {
   // Keeping plans here avoids presenting a deceptively clear runway while a
   // user-entered one-off or installment is absent from the immediate view.
   const today = new Date().toISOString().slice(0, 10)
-  const upcoming: Upcoming[] = [
-    ...commitments
-      .filter((c) => c.status === 'confirmed' && c.next_date >= today)
-      .map((c) => ({
-        key: `c-${c.id}`,
-        label: c.label,
-        amount: Number(c.amount),
-        date: c.next_date,
-        income: c.direction === 'income',
-        commitmentId: c.id,
-      })),
-    ...(summary?.next_repayments ?? []).map((r) => ({
-      key: `r-${r.account_id}-${r.due_date}`,
-      label: r.label,
-      amount: Number(r.amount),
-      date: r.due_date,
-      income: false,
-    })),
-    ...planned.flatMap((p) => {
-      const date = nextPlannedDate(p, today)
-      return date ? [{
-        key: `p-${p.id}-${date}`,
-        label: p.name,
-        amount: plannedPerPayment(p),
-        date,
-        income: p.direction === 'income',
-      }] : []
-    }),
-  ]
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(0, 4)
+  const upcoming = buildUpcoming(commitments, summary?.next_repayments ?? [], planned, today)
 
   const providers = Array.from(new Set((bankStatus?.connections ?? []).map((c) => c.provider_name)))
 

@@ -34,7 +34,12 @@ from .common import (  # noqa: F401
     resolve_roles,
 )
 from .forecast import get_forecast  # noqa: F401
-from .net_worth import asset_decomposition, assets_total, net_worth_history  # noqa: F401
+from .net_worth import (  # noqa: F401
+    asset_decomposition,
+    assets_total,
+    net_worth_history,
+    net_worth_position,
+)
 from .nudges import get_nudges  # noqa: F401
 from .planned import installment_amount, planned_events  # noqa: F401
 from .projections import (  # noqa: F401
@@ -91,6 +96,7 @@ __all__ = [
     "get_nudges",
     "monthly_surplus_series",
     "net_worth_history",
+    "net_worth_position",
     "net_worth_projection",
     # planned
     "installment_amount",

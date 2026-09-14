@@ -9,6 +9,7 @@ import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import ForgotPasswordPage from './pages/ForgotPasswordPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
+import OverviewPage from './pages/OverviewPage'
 import DashboardPage from './pages/DashboardPage'
 import SpendingPage from './pages/SpendingPage'
 import CommitmentsPage from './pages/CommitmentsPage'
@@ -34,6 +35,14 @@ function App() {
           <Route path="reset-password" element={<ResetPasswordPage />} />
           <Route path="privacy" element={<PrivacyPage />} />
           <Route path="terms" element={<TermsPage />} />
+          <Route
+            path="home"
+            element={
+              <ProtectedRoute>
+                <OverviewPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="dashboard"
             element={

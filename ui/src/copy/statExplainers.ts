@@ -34,6 +34,8 @@ export const EXPLAIN = {
     'The next few dated movements the forecast applies: confirmed recurring bills, scheduled card repayments, and payment plans, one-offs and recurring items you’ve planned. Bills still awaiting your confirmation are not counted — review them so this stays complete.',
   netWorthChange:
     'The difference between your net worth at the start and end of the selected range, from the monthly history below.',
+  position:
+    'How your net worth today compares with the same day 1, 3, 6 and 12 months ago, and with the first day we hold data for. Past bank balances are rebuilt from your transaction history; past asset values use whatever you had recorded at the time. A horizon shows “no data yet” when it reaches back before your history starts — we won’t report a change from nothing.',
   savingsTotal:
     'The combined balance of accounts marked as “Savings”.',
   assetsTotal:

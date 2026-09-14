@@ -13,6 +13,20 @@ export const gbp = (n: number) => GBP.format(n)
 /** £1,235 — whole pounds (headlines, chart axes). */
 export const gbp0 = (n: number) => GBP0.format(n)
 
+/** "+£1,240" / "−£380" — signed, whole pounds, never "+£-380". */
+export const signedGbp = (n: number) => `${n < 0 ? '−' : '+'}${GBP0.format(Math.abs(n))}`
+
+/** "+3.2%" / "−1.0%" from a decimal-as-string percent; null passes through. */
+export function signedPct(pct: string | null) {
+  if (pct === null) return null
+  const n = Number(pct)
+  return `${n < 0 ? '−' : '+'}${Math.abs(n).toFixed(1)}%`
+}
+
+/** Colour class for a signed change: up mint, down rose, flat neutral. */
+export const changeTone = (change: number) =>
+  change > 0 ? 'text-pos' : change < 0 ? 'text-neg' : 'text-slate-300'
+
 /** Any-currency, null-tolerant variant for optional balances. */
 export function money(amount: number | null | undefined, currency = 'GBP') {
   if (amount === null || amount === undefined) return 'N/A'

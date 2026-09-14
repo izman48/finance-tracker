@@ -10,7 +10,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { assetsAPI, analyticsAPI, bankingAPI, Asset, AssetDecomposition, NetWorthPoint, Projection } from '../services/api'
+import { assetsAPI, analyticsAPI, bankingAPI, Asset, AssetDecomposition, NetWorthPoint, NetWorthPosition, Projection } from '../services/api'
 import { BankStatus, CashflowSummary, SummaryAccount } from '../types'
 import { ASSET_TYPE_LABEL, latestValue, isLiabilityType } from '../lib/assets'
 import { gbp0 as gbp, timeAgo } from '../lib/format'
@@ -18,6 +18,7 @@ import AddAssetModal from '../components/AddAssetModal'
 import UpdateAssetValueModal from '../components/UpdateAssetValueModal'
 import AccountSettingsModal from '../components/AccountSettingsModal'
 import AddToBalanceSheetChooser from '../components/AddToBalanceSheetChooser'
+import PositionStrip from '../components/PositionStrip'
 import AnimatedNumber from '../components/ui/AnimatedNumber'
 import InfoTip from '../components/ui/InfoTip'
 import { useConfirm } from '../components/ui/ConfirmDialog'
@@ -131,6 +132,7 @@ export default function NetWorthPage() {
   const [showTargetForm, setShowTargetForm] = useState(false)
   const [projection, setProjection] = useState<Projection | null>(null)
   const [decomp, setDecomp] = useState<AssetDecomposition | null>(null)
+  const [position, setPosition] = useState<NetWorthPosition | null>(null)
   const [updating, setUpdating] = useState<Asset | null>(null)
   const [settingsAccount, setSettingsAccount] = useState<SummaryAccount | null>(null)
   const confirm = useConfirm()
@@ -139,18 +141,20 @@ export default function NetWorthPage() {
 
   const load = async (m = months) => {
     try {
-      const [h, a, s, b, d] = await Promise.all([
+      const [h, a, s, b, d, pos] = await Promise.all([
         assetsAPI.netWorthHistory(m),
         assetsAPI.list(),
         analyticsAPI.getSummary(),
         bankingAPI.getConnectionStatus(),
         assetsAPI.decomposition(m),
+        assetsAPI.netWorthPosition(),
       ])
       setHistory(h.data)
       setAssets(a.data)
       setSummary(s.data)
       setBankStatus(b.data)
       setDecomp(d.data)
+      setPosition(pos.data)
     } catch (e) {
       console.error('Failed to load net worth', e)
     } finally {
@@ -398,6 +402,14 @@ export default function NetWorthPage() {
                   record deposits and withdrawals when you update a value to split saving from growth.
                 </>
               )}
+            </div>
+          )}
+
+          {/* Where you stand vs. 1m / 3m / 6m / 1y / all-time — the plain
+              "am I up or down?" answer, independent of the chart range. */}
+          {position && hasAnything && (
+            <div className="mt-6 pt-5 border-t border-white/[0.06]">
+              <PositionStrip position={position} />
             </div>
           )}
         </div>

@@ -429,6 +429,34 @@ function netWorthHistory(months: number) {
   return out
 }
 
+// Coherent with netWorthHistory: the sample climbs ~£520/mo, so each horizon
+// reads as "up" and the % is against the reconstructed starting point.
+function positionResponse() {
+  const now = new Date()
+  const horizons: [string, string, number | null][] = [
+    ['1m', '1 month', 1], ['3m', '3 months', 3], ['6m', '6 months', 6], ['1y', '1 year', 12], ['all', 'All time', 22],
+  ]
+  const since = new Date(now.getFullYear(), now.getMonth() - 22, now.getDate())
+  return {
+    as_of: isoDate(now),
+    net_worth: String(NET_WORTH),
+    bank: String(Math.round((NET_WORTH - ASSETS_TOTAL) * 100) / 100),
+    assets: String(ASSETS_TOTAL),
+    since: isoDate(since),
+    changes: horizons.map(([key, label, months]) => {
+      const m = months ?? 22
+      const from = new Date(now.getFullYear(), now.getMonth() - m, now.getDate())
+      const fromValue = Math.round((NET_WORTH - m * 520 - (m % 2) * 140) * 100) / 100
+      const change = Math.round((NET_WORTH - fromValue) * 100) / 100
+      return {
+        key, label, from_date: isoDate(from), available: true,
+        from_value: String(fromValue), change: String(change),
+        change_pct: fromValue > 0 ? (Math.round((change / fromValue) * 1000) / 10).toFixed(1) : null,
+      }
+    }),
+  }
+}
+
 function decompositionResponse(months: number) {
   // Coherent with netWorthHistory: assets climb ~£300/mo in the sample. Say
   // two-thirds of the move was contributions, the rest growth.
@@ -664,6 +692,7 @@ export function sampleResponse(url: string, params: unknown): unknown {
   if (path.includes('/analytics/net-worth-decomposition')) return decompositionResponse(Number(p.months) || 12)
   if (path.includes('/analytics/net-worth-projection')) return projectionResponse(p as Record<string, any>)
   if (path.includes('/analytics/net-worth-history')) return netWorthHistory(Number(p.months) || 12)
+  if (path.includes('/analytics/net-worth-position')) return positionResponse()
   if (is('/assets')) return assetsResponse()
   if (is('/rules')) return { packs: [], personal: [] }
   return {}

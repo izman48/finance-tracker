@@ -57,7 +57,7 @@ export default function RegisterPage() {
         <RecoveryCodeCard
           code={recoveryCode}
           continueLabel="I've saved it — go to my dashboard"
-          onContinue={() => navigate('/dashboard')}
+          onContinue={() => navigate('/home')}
         />
       </AuthShell>
     )

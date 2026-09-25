@@ -49,3 +49,53 @@ def test_registration_is_throttled(client):
         json={"email": "user99@example.com", "password": "a-secure-password"},
     )
     assert blocked.status_code == 429
+
+
+# Production: Caddy at a pinned address, uvicorn --forwarded-allow-ips=<it>
+# (docker-compose.prod.yml). Build the same stack in-process: uvicorn's proxy
+# middleware in front of the app, and TestClient's `client` as the TCP peer.
+PROXY_IP = "172.30.250.10"
+
+
+def _peer(app, host):
+    from fastapi.testclient import TestClient
+    from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+
+    return TestClient(ProxyHeadersMiddleware(app, trusted_hosts=PROXY_IP), client=(host, 40000))
+
+
+def _exhaust_login(http, email, headers=None):
+    attempt = {"username": email, "password": "wrong-password"}
+    for _ in range(10):
+        assert http.post("/api/v1/auth/login", data=attempt, headers=headers).status_code == 401
+    assert http.post("/api/v1/auth/login", data=attempt, headers=headers).status_code == 429
+
+
+def test_clients_behind_the_proxy_get_independent_budgets(client, test_user_data):
+    client.post("/api/v1/auth/register", json=test_user_data)
+    proxy = _peer(client.app, PROXY_IP)
+
+    _exhaust_login(proxy, test_user_data["email"], headers={"X-Forwarded-For": "203.0.113.7"})
+
+    # A different caller arriving through the same proxy is unaffected.
+    other = proxy.post(
+        "/api/v1/auth/login",
+        data={"username": test_user_data["email"], "password": test_user_data["password"]},
+        headers={"X-Forwarded-For": "198.51.100.23"},
+    )
+    assert other.status_code == 200
+
+
+def test_direct_callers_cannot_choose_their_identity(client, test_user_data):
+    client.post("/api/v1/auth/register", json=test_user_data)
+    attacker = _peer(client.app, "192.0.2.50")
+
+    _exhaust_login(attacker, test_user_data["email"], headers={"X-Forwarded-For": "203.0.113.1"})
+
+    # Not the trusted proxy, so a fresh forwarded address buys nothing.
+    retry = attacker.post(
+        "/api/v1/auth/login",
+        data={"username": test_user_data["email"], "password": "wrong-password"},
+        headers={"X-Forwarded-For": "203.0.113.2"},
+    )
+    assert retry.status_code == 429

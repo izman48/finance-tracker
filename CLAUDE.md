@@ -101,6 +101,12 @@ quick overflow check, navigate a page and compare `document.documentElement
   Always set an explicit base column — `grid grid-cols-1 md:grid-cols-2` — so the
   track is `minmax(0,1fr)`. For truncating flex children, add `min-w-0` to the
   growing item and `shrink-0` to siblings that must keep their width.
+- **Client IP behind Caddy**: the auth rate limits key on `request.client.host`,
+  which is only the real caller because prod uvicorn runs with
+  `--forwarded-allow-ips` set to Caddy's pinned address on the `edge` network
+  (`docker-compose.prod.yml`). Drop that flag, or move Caddy off its fixed IP,
+  and every user shares one login budget (a lockout DoS). Never set it to `*`,
+  and never read `X-Forwarded-For` in app code.
 
 ## Conventions
 

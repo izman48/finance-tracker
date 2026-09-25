@@ -44,6 +44,21 @@ services:
         condition: service_healthy
     command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"
 
+  # Remote MCP server at https://$DOMAIN/mcp. Holds no credentials of its own:
+  # every request carries the caller's OAuth token, which it verifies against
+  # the API and forwards (see api/mcp/auth.py).
+  mcp:
+    build:
+      context: ./api/mcp
+      dockerfile: Dockerfile
+      target: runtime
+    restart: unless-stopped
+    environment:
+      FINANCE_API_URL: http://api:8000/api/v1
+      MCP_PUBLIC_URL: https://${DOMAIN}
+    depends_on:
+      - api
+
   # No background sync worker: bank tokens are encrypted with per-user keys
   # the server only holds during an active session, so syncs happen at login
   # and on demand (see core/user_crypto.py).
@@ -69,6 +84,7 @@ services:
       - caddy_config:/config
     depends_on:
       - api
+      - mcp
 
 volumes:
   postgres_data:

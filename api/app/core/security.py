@@ -39,6 +39,9 @@ def get_password_hash(password: str) -> str:
 # purpose can't be replayed for another (e.g. a password-reset or OAuth-state
 # token presented as an API bearer token). Each verifier checks its own type.
 ACCESS_TOKEN_TYPE = "access"
+# Remote MCP clients' tokens (core/oauth_tokens.py). Defined here so the
+# app-wide DEK dependency below can recognise them without an import cycle.
+MCP_ACCESS_TOKEN_TYPE = "mcp_access"
 
 
 def create_access_token(
@@ -115,11 +118,18 @@ async def set_session_dek(request: Request) -> None:
     if not auth.lower().startswith("bearer "):
         return
     try:
+        # Audience is checked by hand: only MCP tokens carry one, and web
+        # tokens must keep decoding without it.
         payload = jwt.decode(
-            auth[7:], settings.secret_key, algorithms=[settings.algorithm]
+            auth[7:],
+            settings.secret_key,
+            algorithms=[settings.algorithm],
+            options={"verify_aud": False},
         )
         wrapped = payload.get("dk")
-        if payload.get("typ") == ACCESS_TOKEN_TYPE and wrapped:
+        typ = payload.get("typ")
+        is_mcp = typ == MCP_ACCESS_TOKEN_TYPE and payload.get("aud") == settings.mcp_resource_url
+        if wrapped and (typ == ACCESS_TOKEN_TYPE or is_mcp):
             current_dek.set(unwrap_session_dek(wrapped))
     except (JWTError, InvalidToken):
         pass  # bad/expired token: auth itself will reject where it matters

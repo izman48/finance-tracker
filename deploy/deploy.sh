@@ -24,7 +24,8 @@ rsync -az --delete \
 
 ssh "$HOST" "cd $REMOTE_DIR && \
   test -f .env.production || { echo 'ERROR: create .env.production on the server first (see .env.production.example)'; exit 1; } && \
-  docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build"
+  docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build && \
+  ./deploy/smoke.sh"
 
 echo "Deployed. Check status with:"
 echo "  ssh $HOST 'cd $REMOTE_DIR && docker compose -f docker-compose.prod.yml ps'"

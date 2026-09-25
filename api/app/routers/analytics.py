@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import CurrentUser
+from app.core.oauth_tokens import CurrentUserOrMcpRead
 from app.models import (
     Account,
     AccountSetting,
@@ -50,7 +51,7 @@ router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 @router.get("/summary", response_model=CashflowSummary)
 def get_summary(
-    current_user: CurrentUser,
+    current_user: CurrentUserOrMcpRead,
     db: Annotated[Session, Depends(get_db)],
 ) -> CashflowSummary:
     """Dashboard cashflow summary: safe-to-spend, available cash, owed, etc."""
@@ -132,7 +133,7 @@ def get_net_worth_projection(
 
 @router.get("/forecast", response_model=ForecastResponse)
 def get_forecast(
-    current_user: CurrentUser,
+    current_user: CurrentUserOrMcpRead,
     db: Annotated[Session, Depends(get_db)],
     horizon: str = "payday",
 ) -> ForecastResponse:
@@ -142,7 +143,7 @@ def get_forecast(
 
 @router.get("/spending", response_model=SpendingResponse)
 def get_spending(
-    current_user: CurrentUser,
+    current_user: CurrentUserOrMcpRead,
     db: Annotated[Session, Depends(get_db)],
     period: str = "since_payday",
     frm: date | None = None,
@@ -173,7 +174,7 @@ def get_spending(
 
 @router.get("/spending/trend", response_model=SpendingTrendResponse)
 def get_spending_trend(
-    current_user: CurrentUser,
+    current_user: CurrentUserOrMcpRead,
     db: Annotated[Session, Depends(get_db)],
     months: int = 6,
     exclude_commitments: bool = False,
@@ -208,7 +209,7 @@ def get_spending_transactions(
 
 @router.get("/commitments", response_model=list[CommitmentResponse])
 def list_commitments(
-    current_user: CurrentUser,
+    current_user: CurrentUserOrMcpRead,
     db: Annotated[Session, Depends(get_db)],
 ) -> list[CommitmentRule]:
     """Detected + user commitments to review. Refreshes suggestions first."""

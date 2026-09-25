@@ -1,0 +1,22 @@
+name: Test
+
+# Runs on every PR, and is called by deploy.yml so main is gated on the exact
+# same checks.
+on:
+  pull_request:
+  workflow_call:
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Run API tests
+        run: docker compose --profile test run --rm test
+
+  mcp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Run MCP server tests
+        run: docker compose --profile test run --rm --build mcp-test

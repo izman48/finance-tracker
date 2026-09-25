@@ -1,4 +1,4 @@
-import { Navigate } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { ReactNode } from 'react'
 
@@ -8,6 +8,7 @@ interface Props {
 
 export default function ProtectedRoute({ children }: Props) {
   const { isAuthenticated, isLoading } = useAuth()
+  const location = useLocation()
 
   if (isLoading) {
     return (
@@ -18,7 +19,8 @@ export default function ProtectedRoute({ children }: Props) {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />
+    // Remember where they were going so login can send them back (see safeReturnPath).
+    return <Navigate to="/login" replace state={{ from: location }} />
   }
 
   return <>{children}</>

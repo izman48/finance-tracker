@@ -43,6 +43,17 @@ class Settings(BaseSettings):
     smtp_from: str = ""
 
     @property
+    def oauth_issuer(self) -> str:
+        """This deployment's public origin, which is also the OAuth issuer for
+        remote MCP clients (Caddy serves UI, API and MCP from one origin)."""
+        return self.frontend_url.rstrip("/")
+
+    @property
+    def mcp_resource_url(self) -> str:
+        """The MCP server's resource identifier — the audience of MCP tokens."""
+        return f"{self.oauth_issuer}/mcp"
+
+    @property
     def truelayer_auth_url(self) -> str:
         base = (
             "https://auth.truelayer-sandbox.com"

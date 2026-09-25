@@ -35,6 +35,8 @@ api/app/
   models/ schemas/ core/   (core: security.py = JWT+hashing, encryption.py = Fernet)
   migrations/   Alembic
   tests/        unit/ + integration/ (pytest)
+api/mcp/        MCP server — its own image and deps; stdio locally, streamable
+                HTTP when deployed at /mcp (bearer tokens verified by the API)
 ui/src/
   pages/        the four tabs — OverviewPage (Home: one summary card per
                 tab, each a link into it), DashboardPage (Cashflow),
@@ -64,6 +66,11 @@ docker compose --profile test run --rm test #   the test image COPIES source (no
 ```
 Skipping the rebuild silently runs stale tests (the count won't change). CI
 always builds fresh, so this only bites locally.
+
+**MCP server tests** (own image, no db):
+```bash
+docker compose --profile test run --rm --build mcp-test
+```
 
 **Frontend**:
 ```bash
@@ -128,6 +135,15 @@ quick overflow check, navigate a page and compare `document.documentElement
   missing session key raises `DEKUnavailableError` → 401 (fail closed).
   Recovery codes are shown once; password reset without one purges bank data
   by design.
+- **Remote MCP / OAuth** (`services/oauth.py`, `core/oauth_tokens.py`): the API
+  is the OAuth 2.1 server for the MCP server at `/mcp`. MCP tokens are `typ:
+  mcp_access`, audience-bound, scoped (`finance:read`, `finance:rules.write`),
+  and checked against their grant on every use. **Routes are web-only by
+  default**: a route the MCP tools need opts in by typing its user as
+  `CurrentUserOrMcpRead` / `CurrentUserOrMcpRulesWrite` instead of
+  `CurrentUser`. Keep that allowlist minimal and never add auth, banking-
+  connection or account-management routes. The user's DEK is wrapped under the
+  auth code, then under each rotating refresh token (never stored usable).
 
 ## Workflow
 

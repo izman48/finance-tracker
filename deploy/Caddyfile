@@ -6,6 +6,15 @@
 		reverse_proxy api:8000
 	}
 
+	# Remote MCP server, and its OAuth protected-resource metadata (RFC 9728)
+	# that tells clients where to sign in.
+	handle /mcp {
+		reverse_proxy mcp:8001
+	}
+	handle /.well-known/oauth-protected-resource/mcp {
+		reverse_proxy mcp:8001
+	}
+
 	# Vite writes a content hash into every asset filename, so a given URL's
 	# bytes never change — cache them hard.
 	handle /assets/* {

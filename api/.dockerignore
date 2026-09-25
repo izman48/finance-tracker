@@ -4,3 +4,6 @@ __pycache__
 **/.pytest_cache
 .venv
 *.pyc
+# The MCP server is its own image (api/mcp/Dockerfile) with its own deps; keep
+# it out of the API image so the API's pytest run doesn't collect its tests.
+mcp

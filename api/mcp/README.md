@@ -8,6 +8,16 @@ can analyse it conversationally — "which month was worst?", "can I afford X?",
 It's a thin client over the running REST API, so it's **fully isolated** from the
 backend's dependencies.
 
+It runs two ways:
+
+- **Local (stdio)** — the default. Your MCP client spawns it and it logs in with
+  your email and password. Set up below.
+- **Remote (HTTP)** — deployed with the rest of the stack at `https://<DOMAIN>/mcp`
+  (`MCP_TRANSPORT=http`). It holds no credentials: every request carries the
+  caller's own OAuth token, which is verified against the API (active, and issued
+  for this server) and forwarded. Anything else is a 401, fail-closed. See
+  [Remote server](#remote-server).
+
 ## Tools
 
 | Tool | What it returns |
@@ -99,6 +109,34 @@ Add to `claude_desktop_config.json`:
     }
   }
 }
+```
+
+## Remote server
+
+Deployed automatically on push to `main` as the `mcp` service in
+`docker-compose.prod.yml`, behind Caddy at `/mcp`. `deploy/smoke.sh` checks it
+after every deploy.
+
+| Env var | |
+|---|---|
+| `MCP_TRANSPORT` | `http` (set in the image) |
+| `MCP_PUBLIC_URL` | `https://<DOMAIN>` — must be https outside localhost |
+| `FINANCE_API_URL` | the API, e.g. `http://api:8000/api/v1` |
+| `MCP_HOST` / `MCP_PORT` | bind address, default `0.0.0.0:8001` |
+
+Scopes: `finance:read` for every tool; `create_rule_pack` also needs
+`finance:rules.write`.
+
+**Status:** the transport, discovery metadata and token checks are live, but the
+API does not issue MCP tokens yet (`/oauth/token-info` and the sign-in flow land
+next), so today the remote server refuses every request. Use stdio until then.
+
+## Tests
+
+```bash
+docker compose --profile test run --rm --build mcp-test   # as CI does
+# or locally:
+pip install -r requirements-dev.txt && pytest
 ```
 
 ## Notes

@@ -85,5 +85,14 @@ services:
       - test
     command: pytest -v
 
+  mcp-test:
+    build:
+      context: ./api/mcp
+      dockerfile: Dockerfile
+      target: test
+    container_name: finance_mcp_test
+    profiles:
+      - test
+
 volumes:
   postgres_data:

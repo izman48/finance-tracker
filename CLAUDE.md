@@ -35,6 +35,8 @@ api/app/
   models/ schemas/ core/   (core: security.py = JWT+hashing, encryption.py = Fernet)
   migrations/   Alembic
   tests/        unit/ + integration/ (pytest)
+api/mcp/        MCP server — its own image and deps; stdio locally, streamable
+                HTTP when deployed at /mcp (bearer tokens verified by the API)
 ui/src/
   pages/        the four tabs — OverviewPage (Home: one summary card per
                 tab, each a link into it), DashboardPage (Cashflow),
@@ -64,6 +66,11 @@ docker compose --profile test run --rm test #   the test image COPIES source (no
 ```
 Skipping the rebuild silently runs stale tests (the count won't change). CI
 always builds fresh, so this only bites locally.
+
+**MCP server tests** (own image, no db):
+```bash
+docker compose --profile test run --rm --build mcp-test
+```
 
 **Frontend**:
 ```bash

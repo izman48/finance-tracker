@@ -24,6 +24,7 @@ expect() {
 
 expect 200 "API health"               "$BASE/api/v1/health"
 expect 200 "MCP resource metadata"    "$BASE/.well-known/oauth-protected-resource/mcp"
+expect 200 "OAuth server metadata"    "$BASE/.well-known/oauth-authorization-server"
 # Unauthenticated MCP calls must be refused (fail closed), not served.
 expect 401 "MCP refuses without token" -X POST -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \

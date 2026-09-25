@@ -5,6 +5,8 @@ from fastapi.responses import JSONResponse
 from app.core.config import get_settings
 from app.core.security import set_session_dek
 from app.core.user_crypto import DEKUnavailableError
+from app.routers.oauth import oauth_error_response
+from app.services.oauth import OAuthError
 from app.routers import (
     health_router,
     auth_router,
@@ -12,6 +14,8 @@ from app.routers import (
     analytics_router,
     rules_router,
     assets_router,
+    oauth_router,
+    well_known_router,
 )
 
 settings = get_settings()
@@ -38,6 +42,12 @@ async def dek_unavailable_handler(request: Request, exc: DEKUnavailableError):
         headers={"WWW-Authenticate": "Bearer"},
     )
 
+@app.exception_handler(OAuthError)
+async def oauth_error_handler(request: Request, exc: OAuthError):
+    """RFC 6749 error bodies ({error, error_description}) for the OAuth endpoints."""
+    return oauth_error_response(exc)
+
+
 # CORS middleware - restrict in production
 origins = (
     ["http://localhost:5173", "http://localhost:5174", "http://localhost:3000"]
@@ -60,6 +70,9 @@ app.include_router(banking_router, prefix="/api/v1")
 app.include_router(analytics_router, prefix="/api/v1")
 app.include_router(rules_router, prefix="/api/v1")
 app.include_router(assets_router, prefix="/api/v1")
+app.include_router(oauth_router, prefix="/api/v1")
+# Discovery lives at the origin root (RFC 8414), not under /api/v1.
+app.include_router(well_known_router)
 
 
 @app.get("/")

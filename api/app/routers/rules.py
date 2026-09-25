@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.security import CurrentUser
+from app.core.oauth_tokens import CurrentUserOrMcpRead, CurrentUserOrMcpRulesWrite
 from app.models import Account, CategoryRule, RulePack, Transaction
 from app.schemas import (
     RuleCreate,
@@ -71,7 +72,7 @@ def _own_pack(db: Session, user_id, pack_id: str) -> RulePack:
 # Rules
 # --------------------------------------------------------------------------- #
 @router.get("", response_model=dict)
-def list_rules(current_user: CurrentUser, db: Annotated[Session, Depends(get_db)]) -> dict:
+def list_rules(current_user: CurrentUserOrMcpRead, db: Annotated[Session, Depends(get_db)]) -> dict:
     """All packs (with their rules) plus pack-less personal rules."""
     packs = (
         db.query(RulePack)
@@ -162,7 +163,7 @@ def delete_rule(
 @router.post("/preview")
 def preview_rule(
     body: RulePreviewRequest,
-    current_user: CurrentUser,
+    current_user: CurrentUserOrMcpRead,
     db: Annotated[Session, Depends(get_db)],
 ) -> dict:
     """Dry-run: how many of my transactions would this rule match?"""
@@ -201,7 +202,7 @@ def preview_rule(
 
 @router.get("/impact")
 def rules_impact(
-    current_user: CurrentUser,
+    current_user: CurrentUserOrMcpRead,
     db: Annotated[Session, Depends(get_db)],
 ) -> dict:
     """What each existing rule actually does, and where the gaps are.
@@ -314,7 +315,7 @@ def create_pack(
 @router.post("/packs/bulk", status_code=status.HTTP_201_CREATED)
 def create_pack_bulk(
     body: RulePackBulkCreate,
-    current_user: CurrentUser,
+    current_user: CurrentUserOrMcpRulesWrite,
     db: Annotated[Session, Depends(get_db)],
 ) -> dict:
     """Create a pack and all its rules in one request, then backfill.

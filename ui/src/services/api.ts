@@ -98,6 +98,22 @@ export const authApi = {
     api.post('/auth/delete-account', { password }),
 }
 
+// OAuth consent for remote MCP clients. `params` is the authorization request
+// exactly as the client put it in the URL; the API validates it.
+export interface OAuthRequestDetails {
+  client_name: string
+  redirect_host: string
+  requested_scopes: string[]
+}
+
+export const oauthApi = {
+  details: (params: Record<string, string>) =>
+    api.get<OAuthRequestDetails>('/oauth/authorize/details', { params }),
+
+  decide: (params: Record<string, string>, approve: boolean, scopes: string[]) =>
+    api.post<{ redirect_to: string }>('/oauth/authorize', { ...params, approve, scopes }),
+}
+
 // Categorization rules & packs
 export interface Rule {
   id: string

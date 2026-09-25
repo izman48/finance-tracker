@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.security import CurrentUser, verify_oauth_state
+from app.core.oauth_tokens import CurrentUserOrMcpRead
 from app.core.user_crypto import current_dek, require_dek
 from app.schemas import (
     BankConnectionURL,
@@ -297,7 +298,7 @@ async def sync_transactions(
 
 @router.get("/accounts", response_model=list[AccountResponse])
 def get_accounts(
-    current_user: CurrentUser,
+    current_user: CurrentUserOrMcpRead,
     db: Annotated[Session, Depends(get_db)],
 ) -> list[AccountResponse]:
     """
@@ -336,7 +337,7 @@ def _user_transactions_query(db: Session, user, account_id, date_from, date_to):
 
 @router.get("/transactions", response_model=TransactionListResponse)
 def get_transactions(
-    current_user: CurrentUser,
+    current_user: CurrentUserOrMcpRead,
     db: Annotated[Session, Depends(get_db)],
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(50, ge=1, le=100, description="Items per page"),

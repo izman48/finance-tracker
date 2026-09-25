@@ -135,6 +135,15 @@ quick overflow check, navigate a page and compare `document.documentElement
   missing session key raises `DEKUnavailableError` → 401 (fail closed).
   Recovery codes are shown once; password reset without one purges bank data
   by design.
+- **Remote MCP / OAuth** (`services/oauth.py`, `core/oauth_tokens.py`): the API
+  is the OAuth 2.1 server for the MCP server at `/mcp`. MCP tokens are `typ:
+  mcp_access`, audience-bound, scoped (`finance:read`, `finance:rules.write`),
+  and checked against their grant on every use. **Routes are web-only by
+  default**: a route the MCP tools need opts in by typing its user as
+  `CurrentUserOrMcpRead` / `CurrentUserOrMcpRulesWrite` instead of
+  `CurrentUser`. Keep that allowlist minimal and never add auth, banking-
+  connection or account-management routes. The user's DEK is wrapped under the
+  auth code, then under each rotating refresh token (never stored usable).
 
 ## Workflow
 

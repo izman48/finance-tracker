@@ -13,7 +13,8 @@ It runs two ways:
 - **Local (stdio)** — the default. Your MCP client spawns it and it logs in with
   your email and password. Set up below.
 - **Remote (HTTP)** — deployed with the rest of the stack at `https://<DOMAIN>/mcp`
-  (`MCP_TRANSPORT=http`). It holds no credentials: every request carries the
+  (`MCP_TRANSPORT=http`). You sign in once in the browser, with no password in
+  any config. It holds no credentials: every request carries the
   caller's own OAuth token, which is verified against the API (active, and issued
   for this server) and forwarded. Anything else is a 401, fail-closed. See
   [Remote server](#remote-server).
@@ -127,9 +128,30 @@ after every deploy.
 Scopes: `finance:read` for every tool; `create_rule_pack` also needs
 `finance:rules.write`.
 
-**Status:** the transport, discovery metadata and token checks are live, but the
-API does not issue MCP tokens yet (`/oauth/token-info` and the sign-in flow land
-next), so today the remote server refuses every request. Use stdio until then.
+### Connect from Claude Code
+
+```bash
+claude mcp add --transport http nilu https://<DOMAIN>/mcp
+```
+
+The first time it's used, a browser opens on nilu.'s consent page. Log in,
+approve, and you're done: no token to copy. Claude Desktop connects the same
+way, using the URL as a custom connector.
+
+### How sign-in works
+
+The API is the OAuth 2.1 authorization server (`app/services/oauth.py`):
+discovery at `/.well-known/oauth-authorization-server`, dynamic client
+registration, PKCE S256 only, public clients only.
+
+| Token | Lifetime | Notes |
+|---|---|---|
+| Access | 1 hour | JWT, audience `https://<DOMAIN>/mcp`, scoped, carries the session DEK. |
+| Refresh | 30 days *idle* | Rotates on every use, so a connection in regular use never expires. Replaying an old one revokes the connection. |
+
+Changing or resetting your password disconnects every client. Refresh tokens
+and codes are stored only as hashes. The user's DEK is wrapped under the
+refresh token itself, so the database alone can't unlock anything.
 
 ## Tests
 

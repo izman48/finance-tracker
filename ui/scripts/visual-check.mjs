@@ -189,6 +189,7 @@ const routes = [
   ['**/api/v1/banking/sync/accounts', { synced: true, accounts: [] }],
   ['**/api/v1/banking/sync/transactions', { synced: true, count: 0 }],
   ['**/api/v1/rules', rules],
+  ['**/api/v1/oauth/authorize/details*', { client_name: 'Claude Code', redirect_host: 'localhost:33418', requested_scopes: ['finance:read'] }],
 ]
 
 const pages = [
@@ -204,6 +205,7 @@ const pages = [
   ['commitments', '/commitments', true],
   ['networth', '/networth', true],
   ['rules', '/rules', true],
+  ['oauth-consent', '/oauth/authorize?client_id=c&redirect_uri=http%3A%2F%2Flocalhost%3A33418%2Fcallback', true],
 ]
 
 const viewports = [

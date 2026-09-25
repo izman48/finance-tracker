@@ -15,11 +15,14 @@ placed in a request-scoped contextvar that the encrypted column types read.
 Losing both the password and the recovery code loses the data — by design.
 """
 import base64
+import hashlib
 import secrets
 from contextvars import ContextVar
 
 from argon2.low_level import Type, hash_secret_raw
 from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 from app.core.encryption import _get_fernet
 
@@ -114,3 +117,41 @@ def wrap_dek_for_session(dek: bytes) -> str:
 def unwrap_session_dek(token: str) -> bytes:
     """Recover the DEK from a JWT `dk` claim. Raises InvalidToken if invalid."""
     return _get_fernet().decrypt(token.encode())
+
+
+# --------------------------------------------------------------------------- #
+# OAuth secrets (MCP authorization codes and refresh tokens)
+# --------------------------------------------------------------------------- #
+# A remote MCP client needs the DEK long after the user's web session ends, so
+# the DEK is wrapped under the OAuth secret the client holds. The server keeps
+# only a hash of the secret (for lookup) and this wrapped copy — like the
+# password-wrapped DEK, a copy of the database alone unlocks nothing. The
+# secrets are 256-bit random, so a fast KDF (HKDF) is enough; Argon2 is for
+# low-entropy passwords.
+_OAUTH_SECRET_BYTES = 32
+_OAUTH_KEK_INFO = b"nilu oauth-secret kek v1"
+
+
+def generate_oauth_secret() -> str:
+    return secrets.token_urlsafe(_OAUTH_SECRET_BYTES)
+
+
+def hash_oauth_secret(secret: str) -> str:
+    """Lookup key for a stored secret. Unsalted is fine: the input is random."""
+    return hashlib.sha256(secret.encode()).hexdigest()
+
+
+def _oauth_kek(secret: str) -> Fernet:
+    raw = HKDF(algorithm=hashes.SHA256(), length=_KEY_LEN, salt=None, info=_OAUTH_KEK_INFO).derive(
+        secret.encode()
+    )
+    return Fernet(base64.urlsafe_b64encode(raw))
+
+
+def wrap_dek_with_secret(dek: bytes, secret: str) -> str:
+    return _oauth_kek(secret).encrypt(dek).decode()
+
+
+def unwrap_dek_with_secret(wrapped: str, secret: str) -> bytes:
+    """Raises InvalidToken if `secret` isn't the one the DEK was wrapped under."""
+    return _oauth_kek(secret).decrypt(wrapped.encode())

@@ -1,8 +1,9 @@
 import { useState, FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import AuthShell from '../components/ui/AuthShell'
 import RecoveryCodeCard from '../components/RecoveryCodeCard'
+import { safeReturnPath } from '../lib/returnPath'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -13,6 +14,8 @@ export default function LoginPage() {
 
   const { login } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const returnTo = safeReturnPath((location.state as { from?: { pathname?: string; search?: string } } | null)?.from)
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
@@ -27,7 +30,7 @@ export default function LoginPage() {
         setRecoveryCode(code)
         return
       }
-      navigate('/home')
+      navigate(returnTo)
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
         const axiosError = err as { response?: { data?: { detail?: string } } }
@@ -49,7 +52,7 @@ export default function LoginPage() {
         <RecoveryCodeCard
           code={recoveryCode}
           continueLabel="I've saved it — go to my dashboard"
-          onContinue={() => navigate('/home')}
+          onContinue={() => navigate(returnTo)}
         />
       </AuthShell>
     )

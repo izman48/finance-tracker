@@ -42,7 +42,13 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"
+    # Trust X-Forwarded-For from Caddy's pinned address only, so request.client
+    # is the real caller (the auth rate limits key on it). Never "*": any other
+    # peer's forwarded headers must be ignored, not believed.
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2 --forwarded-allow-ips=172.30.250.10"
+    networks:
+      - default
+      - edge
 
   # Remote MCP server at https://$DOMAIN/mcp. Holds no credentials of its own:
   # every request carries the caller's OAuth token, which it verifies against
@@ -58,6 +64,9 @@ services:
       MCP_PUBLIC_URL: https://${DOMAIN}
     depends_on:
       - api
+    networks:
+      - default
+      - edge
 
   # No background sync worker: bank tokens are encrypted with per-user keys
   # the server only holds during an active session, so syncs happen at login
@@ -85,6 +94,21 @@ services:
     depends_on:
       - api
       - mcp
+    # Only on the edge network, at a fixed address: every request Caddy proxies
+    # therefore reaches the API from 172.30.250.10, the one peer the API trusts
+    # for forwarded headers. Caddy has no route to the database.
+    networks:
+      edge:
+        ipv4_address: 172.30.250.10
+
+# The proxy-facing network. Its subnet is pinned so Caddy's address is stable;
+# if it collides with another network on the host, change the subnet, Caddy's
+# ipv4_address and the API's --forwarded-allow-ips together.
+networks:
+  edge:
+    ipam:
+      config:
+        - subnet: 172.30.250.0/24
 
 volumes:
   postgres_data:

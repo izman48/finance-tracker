@@ -1,8 +1,19 @@
 """Small in-process rate limiter for public authentication endpoints.
 
-This is deliberately a backstop, not a distributed abuse-control system: the
-beta runs as a single API process. A production multi-instance deployment
-must enforce the same limits at the edge/shared store as well.
+This is deliberately a backstop, not a distributed abuse-control system.
+
+Client identity is ``request.client.host``. Behind the production reverse
+proxy that is only the real caller because uvicorn is started with
+``--forwarded-allow-ips`` set to the proxy's pinned address (see
+docker-compose.prod.yml): uvicorn then rewrites the peer from the proxy's
+X-Forwarded-For, and ignores that header from anyone else. Without it every
+request appears to come from the proxy and each limit becomes one global
+budget shared by all users — a trivial lockout.
+
+Counters live in process memory. Production runs two uvicorn workers, each
+with its own counters, so a caller can get up to ``limit × workers`` attempts
+per window. That is an accepted trade for keeping Argon2-heavy logins off a
+single process; enforce limits in a shared store before scaling further.
 """
 from collections import defaultdict, deque
 from threading import Lock
@@ -17,9 +28,10 @@ class SlidingWindowRateLimiter:
         self._lock = Lock()
 
     def check(self, request: Request, scope: str, limit: int, window_seconds: int) -> None:
-        # Use the direct peer address. Deployment must only expose the API via
-        # its trusted reverse proxy; accepting arbitrary forwarded headers here
-        # would let an attacker choose a fresh identity on every request.
+        # Never read X-Forwarded-For here: uvicorn has already resolved the
+        # peer from it when (and only when) the request came via the trusted
+        # proxy. Reading it ourselves would let any caller pick a fresh
+        # identity per request.
         peer = request.client.host if request.client else "unknown"
         now = monotonic()
         key = f"{scope}:{peer}"

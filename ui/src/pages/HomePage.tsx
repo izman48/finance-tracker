@@ -16,8 +16,10 @@ import {
   Trash2,
   Building2,
   Sparkles,
+  Bot,
 } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
+import AiAssistantSection from '../components/AiAssistantSection'
 import { gbp0 as gbp } from '../lib/format'
 
 gsap.registerPlugin(ScrollTrigger)
@@ -129,6 +131,11 @@ const SECURITY = [
     body: 'Disconnect a bank in one click, or delete your account and every transaction permanently — no emails, no retention games.',
   },
   {
+    icon: Bot,
+    title: 'AI access only when you say so',
+    body: 'An assistant connects only after you approve it on a nilu. page, and only for what you ticked. It can’t move money, and the only change it can make is adding a rule pack, if you allow it. Its access token lasts an hour, and changing your password disconnects every assistant. What it reads goes to the AI you chose, so pick one you trust.',
+  },
+  {
     icon: ShieldCheck,
     title: 'Built to be audited',
     body: 'Scoped access tokens, least-privilege data access, and a security model we review on every change — built with future FCA-grade scrutiny in mind.',
@@ -167,6 +174,14 @@ export default function HomePage() {
         duration: 0.6,
         ease: 'power2.out',
         delay: 0.5,
+      })
+      gsap.from('[data-ai]', {
+        scrollTrigger: { trigger: '[data-ai]', start: 'top 85%' },
+        y: 24,
+        opacity: 0,
+        stagger: 0.08,
+        duration: 0.6,
+        ease: 'power2.out',
       })
       // Security section reveals on scroll into view.
       gsap.from('[data-sec]', {
@@ -252,6 +267,8 @@ export default function HomePage() {
           ))}
         </div>
       </div>
+
+      <AiAssistantSection />
 
       {/* Security */}
       <div className="relative border-t border-white/[0.06] bg-ink-950/40">

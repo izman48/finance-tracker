@@ -1,3 +1,33 @@
+# Shared hardening for the optional extra static sites (see DEPLOY.md "Extra
+# static sites"). A site file uses it as `import static_site <name>`, which
+# serves /sites/<name>/ from the sites folder mounted into this container.
+(static_site) {
+	root * /sites/{args[0]}
+	encode zstd gzip
+	file_server {
+		hide .*
+	}
+
+	# Pages revalidate on every load so edits show up at once; other files
+	# (no content hash in their names) may be cached for a day.
+	@page path / *.html */
+	@asset not path / *.html */
+	header @page Cache-Control "no-cache"
+	header @asset Cache-Control "public, max-age=86400"
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		# Kept out of search engines unless the site file overrides this
+		# after the import, e.g. header X-Robots-Tag "all".
+		X-Robots-Tag "noindex, nofollow"
+	}
+}
+
 {$DOMAIN} {
 	encode gzip
 
@@ -49,3 +79,8 @@
 		Referrer-Policy "strict-origin-when-cross-origin"
 	}
 }
+
+# Optional extra static sites: one <name>.caddy file per site in the host
+# folder mounted at /sites (docker-compose.prod.yml). An empty or missing
+# folder matches nothing, which Caddy treats as a warning, not an error.
+import /sites/*.caddy

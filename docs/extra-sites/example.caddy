@@ -1,0 +1,9 @@
+# Example extra static site. Copy to the server's sites folder (see DEPLOY.md
+# "Extra static sites") as <name>.caddy, next to a <name>/ folder holding the
+# site's files, and replace example.com with the site's real hostname.
+example.com {
+	import static_site example
+	# Search engines are told not to index by default. To allow indexing,
+	# override it after the import:
+	# header X-Robots-Tag "all"
+}

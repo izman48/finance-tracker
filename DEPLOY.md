@@ -39,6 +39,63 @@ From your machine:
 `<ssh-host>` is an `~/.ssh/config` alias or `user@ip`; you can set `DEPLOY_HOST`
 in your environment instead of passing it each time.
 
+## Extra static sites (optional)
+
+Caddy owns ports 80/443, so it can also serve small static sites on their own
+hostnames next to the app. Each site is two things in a host folder that is
+mounted read-only into the Caddy container at `/sites`:
+
+```
+~/sites/
+  mysite.caddy     # the site block: its hostname and `import static_site mysite`
+  mysite/          # the site's files (index.html, css, images, ...)
+```
+
+The folder is `~/sites` by default; set `SITES_DIR` in `.env.production` to use
+another path. **Keep it outside `~/finance-tracker`**: every deploy runs
+`rsync --delete` into that folder and removes anything that isn't in git. With
+the folder empty or missing, the app is served exactly as without it.
+
+`import static_site <name>` serves `<name>/` with automatic HTTPS, HSTS,
+`nosniff`, frame denial, a Referrer-Policy and Permissions-Policy, a strict
+Content-Security-Policy (same-origin only, plus Google Fonts), gzip/zstd,
+`no-cache` on pages and a one-day cache on other files, no directory listings
+and no dotfiles. It also sends `X-Robots-Tag: noindex, nofollow`; to let search
+engines index the site, override it *after* the import. A site that needs more
+(e.g. an embedded player) can override `Content-Security-Policy` the same way.
+Example (also in `docs/extra-sites/`):
+
+```caddy
+example.com {
+	import static_site example
+	# header X-Robots-Tag "all"
+}
+```
+
+To add or update a site, on the server:
+
+1. Point the hostname's DNS A record at the server (Caddy needs it to get the
+   certificate).
+2. `mkdir -p ~/sites` the first time (otherwise Docker creates it owned by
+   root), then copy in `mysite.caddy` and the `mysite/` folder. Only the server
+   owner should be able to write here: a site file is full Caddy config.
+3. Check, then reload with no downtime (from `~/finance-tracker`). A first-time
+   folder only appears in the container after the next deploy or
+   `docker compose ... up -d caddy`:
+
+   ```bash
+   docker compose -f docker-compose.prod.yml --env-file .env.production exec caddy caddy validate --config /etc/caddy/Caddyfile
+   docker compose -f docker-compose.prod.yml --env-file .env.production exec caddy caddy reload --config /etc/caddy/Caddyfile
+   ```
+
+   A rejected reload leaves the running config serving. But a broken site file
+   left in the folder stops Caddy from starting on the next deploy, taking the
+   app down with it, so remove it if validation fails.
+
+Content-only changes (files under `mysite/`) are live immediately; no reload.
+`./deploy/test-caddy.sh` (run in CI) checks the Caddyfile against the real Caddy
+image, with and without the example site.
+
 ## Moving to a new server
 
 Nothing in this repo is tied to a specific machine — the domain, secrets, and

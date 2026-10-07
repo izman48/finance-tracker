@@ -91,6 +91,9 @@ services:
     volumes:
       - caddy_data:/data
       - caddy_config:/config
+      # Optional extra static sites (DEPLOY.md "Extra static sites"). Lives
+      # outside ~/finance-tracker, which deploy.sh's rsync --delete would wipe.
+      - ${SITES_DIR:-${HOME}/sites}:/sites:ro
     depends_on:
       - api
       - mcp

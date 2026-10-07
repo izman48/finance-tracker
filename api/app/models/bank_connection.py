@@ -1,6 +1,6 @@
 """Bank connection model for storing multiple bank OAuth tokens per user."""
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -44,3 +44,13 @@ class BankConnection(Base):
     accounts: Mapped[list["Account"]] = relationship(
         "Account", back_populates="bank_connection", cascade="all, delete-orphan"
     )
+
+    @property
+    def access_token_expired(self) -> bool:
+        """Whether the short-lived access token needs refreshing before use."""
+        if self.token_expires_at is None:
+            return False
+        expires_at = self.token_expires_at
+        if expires_at.tzinfo is None:  # SQLite drops the zone; stored as UTC
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) >= expires_at

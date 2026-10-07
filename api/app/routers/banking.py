@@ -27,12 +27,30 @@ from app.schemas import (
     TransactionUpdate,
 )
 from app.services import analytics_service, categorization
-from app.services.truelayer import truelayer_service
+from app.services.truelayer import ReauthRequired, truelayer_service
 from app.models import Account, AccountRole, Transaction, User, BankConnection
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/banking", tags=["banking"])
+
+
+def _sync_error(provider_name: str, exc: Exception) -> str:
+    if isinstance(exc, ReauthRequired):
+        return f"{provider_name}: bank access has expired, reconnect it on the Wealth tab"
+    return f"{provider_name}: {exc}"
+
+
+def _all_failed(action: str, errors: list[str], needs_reauth: int) -> HTTPException:
+    """Every connection failed. Expired consent is the user's to fix (409);
+    anything else is ours or TrueLayer's (500)."""
+    return HTTPException(
+        status_code=(
+            status.HTTP_409_CONFLICT if needs_reauth == len(errors)
+            else status.HTTP_500_INTERNAL_SERVER_ERROR
+        ),
+        detail=f"Failed to sync {action}: {'; '.join(errors)}",
+    )
 
 
 @router.get("/connect", response_model=BankConnectionURL)
@@ -212,6 +230,7 @@ async def sync_accounts(
 
     all_accounts = []
     errors = []
+    needs_reauth = 0
 
     # Sync accounts for each bank connection
     for connection in bank_connections:
@@ -220,15 +239,12 @@ async def sync_accounts(
             all_accounts.extend(accounts)
             logger.info(f"Synced {len(accounts)} accounts from {connection.provider_name}")
         except Exception as e:
+            needs_reauth += isinstance(e, ReauthRequired)
             logger.error(f"Failed to sync accounts for {connection.provider_name}: {str(e)}")
-            errors.append(f"{connection.provider_name}: {str(e)}")
+            errors.append(_sync_error(connection.provider_name, e))
 
     if errors and not all_accounts:
-        # All syncs failed
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to sync accounts: {'; '.join(errors)}"
-        )
+        raise _all_failed("accounts", errors, needs_reauth)
 
     message = f"Successfully synced {len(all_accounts)} account(s) from {len(bank_connections)} bank(s)"
     if errors:
@@ -266,6 +282,7 @@ async def sync_transactions(
 
     total_count = 0
     errors = []
+    needs_reauth = 0
 
     # Sync transactions for each bank connection
     for connection in bank_connections:
@@ -276,15 +293,12 @@ async def sync_transactions(
             total_count += count
             logger.info(f"Synced {count} transactions from {connection.provider_name}")
         except Exception as e:
+            needs_reauth += isinstance(e, ReauthRequired)
             logger.error(f"Failed to sync transactions for {connection.provider_name}: {str(e)}")
-            errors.append(f"{connection.provider_name}: {str(e)}")
+            errors.append(_sync_error(connection.provider_name, e))
 
     if errors and total_count == 0:
-        # All syncs failed
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to sync transactions: {'; '.join(errors)}"
-        )
+        raise _all_failed("transactions", errors, needs_reauth)
 
     message = f"Successfully synced {total_count} new transaction(s) from {len(bank_connections)} bank(s) (last {request.days} days)"
     if errors:
@@ -566,12 +580,9 @@ def get_connection_status(
     for conn in bank_connections:
         # The short-lived access token auto-refreshes during syncs, so its
         # expiry is not user-relevant. Only flag connections that can no longer
-        # refresh (no refresh token) — those genuinely need re-authorization.
-        access_expired = bool(
-            conn.token_expires_at
-            and datetime.now(timezone.utc) >= conn.token_expires_at
-        )
-        is_expired = access_expired and not conn.refresh_token
+        # refresh (no refresh token, or TrueLayer rejected it and sync dropped
+        # it) — those genuinely need re-authorization.
+        is_expired = conn.access_token_expired and not conn.refresh_token
 
         connections_info.append({
             "id": str(conn.id),

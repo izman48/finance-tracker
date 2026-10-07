@@ -93,16 +93,28 @@ http://indexed.test:8081 {
 	import static_site example
 	header X-Robots-Tag "all"
 }
+http://apex.test:8081 {
+	import static_site example
+	header Strict-Transport-Security "max-age=31536000"
+}
 EOF
+# The CSP override documented (commented out) in the example, used verbatim.
+CSP_OVERRIDE="$(sed -n 's/^[[:space:]]*# *\(header Content-Security-Policy .*\)$/\1/p' "$EXAMPLE_DIR/example.caddy")"
+[ -n "$CSP_OVERRIDE" ] || fail "example.caddy documents no CSP override line"
+printf 'http://inline.test:8081 {\n\timport static_site example\n\t%s\n}\n' "$CSP_OVERRIDE" >> "$TMP/live/probe.caddy"
 
 docker run -d --name "$CONTAINER" -e DOMAIN=localhost \
   -v "$CADDYFILE:/etc/caddy/Caddyfile:ro" -v "$TMP/live:/sites:ro" "$IMAGE" >/dev/null
 
-# headers <host> <path> [extra wget args] — response status line and headers.
+# headers <host> <path> [extra header lines] — response status line and headers.
+# Raw HTTP over nc: busybox wget prints no headers for error responses, which
+# would make every assertion about a 404 vacuous.
 headers() {
   local host="$1" path="$2"; shift 2
-  docker exec "$CONTAINER" wget -S -O /dev/null --header "Host: $host" "$@" \
-    "http://127.0.0.1:8081$path" 2>&1 || true
+  local request="GET $path HTTP/1.1\r\nHost: $host\r\nConnection: close\r\n"
+  for extra in "$@"; do request="$request$extra\r\n"; done
+  docker exec "$CONTAINER" sh -c "printf '$request\r\n' | nc 127.0.0.1 8081" 2>&1 \
+    | LC_ALL=C sed '/^\r*$/q' | tr -d '\r' || true
 }
 for _ in $(seq 1 30); do headers probe.test / | grep -q 'HTTP/1.1 200' && break; sleep 0.5; done
 
@@ -118,6 +130,7 @@ expect_header "Referrer-Policy"                'Referrer-Policy: strict-origin-w
 expect_header "Permissions-Policy"             'Permissions-Policy: .*camera=\(\)'
 expect_header "CSP defaults to self"           "Content-Security-Policy: default-src 'self'"
 expect_header "CSP forbids framing"            "Content-Security-Policy: .*frame-ancestors 'none'"
+expect_header "CSP forbids form posts"         "Content-Security-Policy: .*form-action 'none'"
 expect_header "CSP allows Google Fonts CSS"    'Content-Security-Policy: .*style-src [^;]*https://fonts.googleapis.com'
 expect_header "CSP allows Google Fonts files"  'Content-Security-Policy: .*font-src [^;]*https://fonts.gstatic.com'
 expect_header "not indexed by default"         'X-Robots-Tag: noindex'
@@ -126,12 +139,33 @@ expect_header "HTML is revalidated"            'Cache-Control: no-cache'
 page="$(headers indexed.test /)"
 expect_header "X-Robots-Tag can be overridden" 'X-Robots-Tag: all'
 
+page="$(headers apex.test /)"
+if echo "$page" | grep -q 'Strict-Transport-Security: max-age=31536000$' \
+  && [ "$(echo "$page" | grep -ci 'Strict-Transport-Security:')" = 1 ]; then
+  pass "HSTS can drop includeSubDomains for an apex domain"
+else
+  fail "HSTS override (got: $(echo "$page" | grep -i 'Strict-Transport' | tr '\n' ' '))"
+fi
+
+page="$(headers inline.test /)"
+expect_header "CSP override allows inline"     "Content-Security-Policy: .*script-src 'self' 'unsafe-inline'"
+expect_header "CSP override keeps framing ban" "Content-Security-Policy: .*frame-ancestors 'none'"
+expect_header "CSP override keeps form ban"    "Content-Security-Policy: .*form-action 'none'"
+csp_count="$(echo "$page" | grep -ci 'Content-Security-Policy:' || true)"
+[ "$csp_count" = 1 ] && pass "CSP override sends one CSP header" || fail "CSP override sent $csp_count CSP headers"
+
 page="$(headers probe.test /style.css)"
 expect_header "assets are cached"              'Cache-Control: public, max-age=[1-9]'
+page="$(headers probe.test /not-uploaded-yet.css)"
+if echo "$page" | grep -q 'HTTP/1.1 404' && ! echo "$page" | grep -qi 'Cache-Control:.*max-age'; then
+  pass "404s are not cached"
+else
+  fail "404s are not cached (got: $(echo "$page" | tr '\n' ' '))"
+fi
 
-page="$(headers probe.test / --header 'Accept-Encoding: gzip')"
+page="$(headers probe.test / 'Accept-Encoding: gzip')"
 expect_header "gzip"                           'Content-Encoding: gzip'
-page="$(headers probe.test / --header 'Accept-Encoding: zstd')"
+page="$(headers probe.test / 'Accept-Encoding: zstd')"
 expect_header "zstd"                           'Content-Encoding: zstd'
 
 page="$(headers probe.test /no-index/)"
@@ -151,6 +185,50 @@ echo 'broken.test { not_a_directive }' > "$TMP/live/broken.caddy"
 reload && fail "reload accepted a broken site file" || pass "reload rejects a broken site file"
 page="$(headers probe.test /)"
 expect_header "running sites keep serving after a rejected reload" 'HTTP/1.1 200'
+
+# --- Pre-deploy check (deploy/preflight-sites.sh, run by deploy.sh before `up`) ---
+# Runs the real script from a copy of deploy/ next to a fake .env.production,
+# as on the server. HOME is redirected so the default ~/sites lands in $TMP.
+
+SERVER="$TMP/server" && mkdir -p "$SERVER/home"
+DOCKER_CLI_CONFIG="${DOCKER_CONFIG:-$HOME/.docker}"  # docker's context, before HOME moves
+cp -R "$REPO_ROOT/deploy" "$SERVER/deploy"
+# preflight [SITES_DIR] — runs the check quietly and returns its status.
+preflight() {
+  printf 'DOMAIN=nilu.test\n%s\n' "${1:+SITES_DIR=$1}" > "$SERVER/.env.production"
+  (cd "$SERVER" && HOME="$SERVER/home" DOCKER_CONFIG="$DOCKER_CLI_CONFIG" \
+    ./deploy/preflight-sites.sh >/dev/null 2>&1)
+}
+preflight && [ -d "$SERVER/home/sites" ] \
+  && pass "preflight creates a missing default ~/sites and passes empty" || fail "preflight with the default folder"
+preflight "$SERVER/custom" && [ -d "$SERVER/custom" ] \
+  && pass "preflight creates a missing SITES_DIR" || fail "preflight with SITES_DIR"
+cp -R "$EXAMPLE_DIR/." "$SERVER/custom/"
+preflight "$SERVER/custom" && pass "preflight passes the example site" || fail "preflight rejected the example site"
+echo 'broken.example.com { not_a_directive }' > "$SERVER/custom/broken.caddy"
+preflight "$SERVER/custom" && fail "preflight accepted a broken site file" || pass "preflight rejects a broken site file"
+rm "$SERVER/custom/broken.caddy"
+printf 'nilu.test {\n\timport static_site example\n}\n' > "$SERVER/custom/hijack.caddy"
+preflight "$SERVER/custom" && fail "preflight accepted a site redefining DOMAIN" \
+  || pass "preflight rejects a site redefining the app's domain"
+rm "$SERVER/custom/hijack.caddy"
+# Caddy follows symlinks, so a link in a site folder could serve anything in
+# the container, such as nilu.'s TLS keys under /data.
+ln -s /data "$SERVER/custom/example/keys"
+preflight "$SERVER/custom" && fail "preflight accepted a symlink in a site folder" \
+  || pass "preflight rejects a symlink in a site folder"
+rm "$SERVER/custom/example/keys"
+ln -s "$SERVER/custom/example.caddy" "$SERVER/custom/linked.caddy"
+preflight "$SERVER/custom" && fail "preflight accepted a symlinked site file" \
+  || pass "preflight rejects a symlinked site file"
+rm "$SERVER/custom/linked.caddy"
+preflight "$SERVER/custom" && pass "preflight passes again once the links are gone" \
+  || fail "preflight still fails after removing the links"
+
+# deploy.sh must run the check, and only bring the stack up if it passes.
+deploy_cmd="$(tr -d '\n\\' < "$REPO_ROOT/deploy/deploy.sh")"
+echo "$deploy_cmd" | grep -qE '\./deploy/preflight-sites\.sh &&[[:space:]]*docker compose [^&]* up ' \
+  && pass "deploy.sh validates sites before compose up" || fail "deploy.sh does not gate compose up on preflight-sites.sh"
 
 if [ "$failures" -gt 0 ]; then
   echo "$failures Caddy check(s) failed" >&2

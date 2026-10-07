@@ -9,9 +9,13 @@
 	}
 
 	# Pages revalidate on every load so edits show up at once; other files
-	# (no content hash in their names) may be cached for a day.
+	# (no content hash in their names) may be cached for a day. Only files that
+	# exist: a 404 for an asset not uploaded yet must not be cached.
 	@page path / *.html */
-	@asset not path / *.html */
+	@asset {
+		not path / *.html */
+		file
+	}
 	header @page Cache-Control "no-cache"
 	header @asset Cache-Control "public, max-age=86400"
 
@@ -21,7 +25,7 @@
 		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
 		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
-		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'"
 		# Kept out of search engines unless the site file overrides this
 		# after the import, e.g. header X-Robots-Tag "all".
 		X-Robots-Tag "noindex, nofollow"

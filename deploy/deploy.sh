@@ -22,11 +22,15 @@ rsync -az --delete \
   --exclude '.env.*' \
   "$REPO_ROOT/" "$HOST:$REMOTE_DIR/"
 
+# preflight-sites.sh: creates the extra sites folder (else Docker creates it
+# root-owned) and validates it, so a broken site file fails the deploy while
+# the running Caddy keeps serving, instead of stopping the new one starting.
 # --remove-orphans: a service dropped from the compose file must not keep
 # running on its last image (the retired background-sync worker did, for
 # months, after per-user encryption removed it).
 ssh "$HOST" "cd $REMOTE_DIR && \
   test -f .env.production || { echo 'ERROR: create .env.production on the server first (see .env.production.example)'; exit 1; } && \
+  ./deploy/preflight-sites.sh && \
   docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build --remove-orphans && \
   ./deploy/smoke.sh"
 

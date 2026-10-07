@@ -72,6 +72,13 @@ always builds fresh, so this only bites locally.
 docker compose --profile test run --rm --build mcp-test
 ```
 
+**Caddy config** (real Caddy image; validates `deploy/Caddyfile`, with and
+without an extra static site, checks the served headers, and tests
+`deploy/preflight-sites.sh`, which deploy.sh runs before `up`):
+```bash
+./deploy/test-caddy.sh
+```
+
 **Frontend**:
 ```bash
 cd ui

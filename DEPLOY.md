@@ -39,6 +39,96 @@ From your machine:
 `<ssh-host>` is an `~/.ssh/config` alias or `user@ip`; you can set `DEPLOY_HOST`
 in your environment instead of passing it each time.
 
+## Extra static sites (optional)
+
+Caddy owns ports 80/443, so it can also serve small static sites on their own
+hostnames next to the app. Each site is two things in a host folder that is
+mounted read-only into the Caddy container at `/sites`:
+
+```
+~/sites/
+  mysite.caddy     # the site block: its hostname and `import static_site mysite`
+  mysite/          # the site's files (index.html, css, images, ...)
+```
+
+The folder is `~/sites` by default; set `SITES_DIR` in `.env.production` to use
+another path. **Keep it outside `~/finance-tracker`**: every deploy runs
+`rsync --delete` into that folder and removes anything that isn't in git. With
+the folder empty or missing, the app is served exactly as without it.
+
+Before every deploy, `deploy/preflight-sites.sh` asks compose which folder it
+will mount, so `SITES_DIR` may use anything compose accepts (`${HOME}/x`,
+quotes, `export`, comments). It then:
+- creates that folder as the deploy user, so Docker doesn't create it owned by
+  root;
+- refuses a folder inside `~/finance-tracker`;
+- refuses any symlink in it, including `SITES_DIR` itself being a symlink;
+- validates the Caddyfile with the site files using the real Caddy image.
+
+If any of that fails, the deploy stops and the running Caddy keeps serving. It
+needs `python3` on the server, which Ubuntu and Debian include.
+
+`import static_site <name>` serves `<name>/` with automatic HTTPS, HSTS,
+`nosniff`, frame denial, a Referrer-Policy and Permissions-Policy, a strict
+Content-Security-Policy (same-origin only, plus Google Fonts, no form posts),
+gzip/zstd, `no-cache` on pages and a one-day cache on other files that exist,
+no directory listings and no dotfiles. It also sends
+`X-Robots-Tag: noindex, nofollow`.
+
+A `header` line *after* the import replaces that header's whole value. The
+example in `docs/extra-sites/example.caddy` has the exact lines for these
+overrides:
+- **Allow indexing:** `header X-Robots-Tag "all"`.
+- **Inline scripts and styles:** prefer moving them into `.js`/`.css` files.
+  Next best is allowing each inline block by its hash: add
+  `'sha256-<base64 hash>'` to `script-src` or `style-src` (the browser
+  console prints the hash it expected). Hashes don't cover `style=""`
+  attributes. Only if a page can't be changed, use the documented override:
+  the full default policy plus `'unsafe-inline'`. Whatever you change, copy
+  the whole policy: an override that leaves out `frame-ancestors`,
+  `object-src` or `base-uri` loses them.
+- **A client's own apex domain:** the default HSTS has `includeSubDomains`.
+  On an apex domain (`example.com`, not `site.example.com`) that forces HTTPS
+  on every subdomain the client has, including ones not served from here. Use
+  `header Strict-Transport-Security "max-age=31536000"` there.
+
+**Site content is trusted, like config.** A site file is full Caddy config, and
+Caddy follows symlinks, so a link in a site folder could serve any file in the
+container, including the app's TLS keys. Only the server owner may write to
+`~/sites`: keep it `chmod 755` and owned by the deploy user. The preflight
+refuses symlinks at deploy time, but a reload doesn't run the preflight, so
+copy content without them.
+
+To add or update a site:
+
+1. Point the hostname's DNS A record at the server (Caddy needs it to get the
+   certificate).
+2. Copy the site in without symlinks or dotfiles. From your machine:
+
+   ```bash
+   rsync -r --no-links --exclude='.*' mysite.caddy mysite <ssh-host>:sites/
+   ```
+
+3. On the server, from `~/finance-tracker`, validate. **If it fails, delete
+   the file you just added before doing anything else.** A broken file left in
+   the folder fails the next deploy. If the container restarts on its own (a
+   reboot), Caddy won't start and the app goes down.
+
+   ```bash
+   docker compose -f docker-compose.prod.yml --env-file .env.production exec caddy caddy validate --config /etc/caddy/Caddyfile
+   ```
+
+4. Reload with no downtime. A rejected reload leaves the running config
+   serving:
+
+   ```bash
+   docker compose -f docker-compose.prod.yml --env-file .env.production exec caddy caddy reload --config /etc/caddy/Caddyfile
+   ```
+
+Content-only changes (files under `mysite/`) are live immediately; no reload.
+`./deploy/test-caddy.sh` (run in CI) checks the Caddyfile against the real Caddy
+image, with and without the example site, and checks the preflight.
+
 ## Moving to a new server
 
 Nothing in this repo is tied to a specific machine — the domain, secrets, and

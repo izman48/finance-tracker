@@ -56,10 +56,17 @@ another path. **Keep it outside `~/finance-tracker`**: every deploy runs
 `rsync --delete` into that folder and removes anything that isn't in git. With
 the folder empty or missing, the app is served exactly as without it.
 
-Before every deploy, `deploy/preflight-sites.sh` creates the folder (as the
-deploy user, so Docker doesn't create it owned by root), refuses any symlink in
-it, and validates the Caddyfile with the site files using the real Caddy image.
-If any of that fails, the deploy stops and the running Caddy keeps serving.
+Before every deploy, `deploy/preflight-sites.sh` asks compose which folder it
+will mount, so `SITES_DIR` may use anything compose accepts (`${HOME}/x`,
+quotes, `export`, comments). It then:
+- creates that folder as the deploy user, so Docker doesn't create it owned by
+  root;
+- refuses a folder inside `~/finance-tracker`;
+- refuses any symlink in it, including `SITES_DIR` itself being a symlink;
+- validates the Caddyfile with the site files using the real Caddy image.
+
+If any of that fails, the deploy stops and the running Caddy keeps serving. It
+needs `python3` on the server, which Ubuntu and Debian include.
 
 `import static_site <name>` serves `<name>/` with automatic HTTPS, HSTS,
 `nosniff`, frame denial, a Referrer-Policy and Permissions-Policy, a strict
@@ -72,10 +79,14 @@ A `header` line *after* the import replaces that header's whole value. The
 example in `docs/extra-sites/example.caddy` has the exact lines for these
 overrides:
 - **Allow indexing:** `header X-Robots-Tag "all"`.
-- **Inline scripts and styles:** a single-file page with inline `<script>`,
-  `<style>` or `style=""` needs the documented CSP override. It is the full
-  default policy plus `'unsafe-inline'`. Copy it whole: a CSP override that
-  leaves out `frame-ancestors`, `object-src` or `base-uri` loses them.
+- **Inline scripts and styles:** prefer moving them into `.js`/`.css` files.
+  Next best is allowing each inline block by its hash: add
+  `'sha256-<base64 hash>'` to `script-src` or `style-src` (the browser
+  console prints the hash it expected). Hashes don't cover `style=""`
+  attributes. Only if a page can't be changed, use the documented override:
+  the full default policy plus `'unsafe-inline'`. Whatever you change, copy
+  the whole policy: an override that leaves out `frame-ancestors`,
+  `object-src` or `base-uri` loses them.
 - **A client's own apex domain:** the default HSTS has `includeSubDomains`.
   On an apex domain (`example.com`, not `site.example.com`) that forces HTTPS
   on every subdomain the client has, including ones not served from here. Use

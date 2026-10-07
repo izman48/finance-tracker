@@ -7,18 +7,35 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-env_value() { sed -n "s/^$1=//p" .env.production | tail -n 1 | tr -d "\"' "; }
 
-DOMAIN="$(env_value DOMAIN)"
-[ -n "$DOMAIN" ] || { echo "preflight-sites: DOMAIN missing from .env.production" >&2; exit 1; }
-# Same default as docker-compose.prod.yml's mount: ${SITES_DIR:-${HOME}/sites}.
-SITES_DIR="$(env_value SITES_DIR)"
-SITES_DIR="${SITES_DIR:-$HOME/sites}"
-case "$SITES_DIR" in "~/"*) SITES_DIR="$HOME/${SITES_DIR#\~/}" ;; esac
+# Ask compose what it will mount and which DOMAIN Caddy gets, rather than
+# parsing .env.production here: compose expands variables, quotes, `export`
+# and inline comments, and any disagreement would check the wrong folder.
+resolved="$(docker compose -f docker-compose.prod.yml --env-file .env.production config --format json \
+  | python3 -c '
+import json, sys
+caddy = json.load(sys.stdin)["services"]["caddy"]
+mounts = [v["source"] for v in caddy.get("volumes", []) if v.get("target") == "/sites"]
+print(mounts[0] if len(mounts) == 1 else "")
+print(caddy.get("environment", {}).get("DOMAIN") or "")
+')" || { echo "preflight-sites: could not read the compose config" >&2; exit 1; }
+SITES_DIR="$(echo "$resolved" | sed -n 1p)"
+DOMAIN="$(echo "$resolved" | sed -n 2p)"
+[ -n "$DOMAIN" ] || { echo "preflight-sites: caddy has no DOMAIN in the compose config" >&2; exit 1; }
+case "$SITES_DIR" in
+  /*) ;;
+  *) echo "preflight-sites: the /sites mount source must be an absolute path, got '$SITES_DIR'" >&2; exit 1 ;;
+esac
 
 # Created here as the deploy user: if Docker creates a missing bind source, it
 # is owned by root and the owner can't copy sites into it.
 mkdir -p "$SITES_DIR"
+
+# Inside the repo folder, every deploy's rsync --delete would wipe the sites.
+repo="$(pwd -P)"
+case "$(cd "$SITES_DIR" && pwd -P)/" in
+  "$repo/"*) echo "preflight-sites: $SITES_DIR is inside $repo, which each deploy wipes; set SITES_DIR outside it" >&2; exit 1 ;;
+esac
 
 # Caddy follows symlinks, so one in the sites folder could serve any file in
 # the container, e.g. the TLS keys under /data. Refuse them all.

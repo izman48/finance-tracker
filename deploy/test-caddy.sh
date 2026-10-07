@@ -187,19 +187,23 @@ page="$(headers probe.test /)"
 expect_header "running sites keep serving after a rejected reload" 'HTTP/1.1 200'
 
 # --- Pre-deploy check (deploy/preflight-sites.sh, run by deploy.sh before `up`) ---
-# Runs the real script from a copy of deploy/ next to a fake .env.production,
-# as on the server. HOME is redirected so the default ~/sites lands in $TMP.
+# Mirrors the server: HOME is $SERVER, the repo copy (deploy/, the prod compose
+# file and a fake .env.production) is ~/finance-tracker, the sites sit beside it.
 
-SERVER="$TMP/server" && mkdir -p "$SERVER/home"
+SERVER="$TMP/server" && DEPLOYED="$SERVER/finance-tracker" && mkdir -p "$DEPLOYED"
 DOCKER_CLI_CONFIG="${DOCKER_CONFIG:-$HOME/.docker}"  # docker's context, before HOME moves
-cp -R "$REPO_ROOT/deploy" "$SERVER/deploy"
-# preflight [SITES_DIR] — runs the check quietly and returns its status.
-preflight() {
-  printf 'DOMAIN=nilu.test\n%s\n' "${1:+SITES_DIR=$1}" > "$SERVER/.env.production"
-  (cd "$SERVER" && HOME="$SERVER/home" DOCKER_CONFIG="$DOCKER_CLI_CONFIG" \
+cp -R "$REPO_ROOT/deploy" "$DEPLOYED/deploy" && cp "$REPO_ROOT/docker-compose.prod.yml" "$DEPLOYED/"
+# preflight_env <SITES_DIR line exactly as written in .env.production> — runs
+# the check quietly and returns its status.
+preflight_env() {
+  printf 'DOMAIN=nilu.test\nPOSTGRES_USER=x\nPOSTGRES_PASSWORD=x\nSECRET_KEY=x\nENCRYPTION_KEY=x\n%s\n' "$1" \
+    > "$DEPLOYED/.env.production"
+  (cd "$DEPLOYED" && HOME="$SERVER" DOCKER_CONFIG="$DOCKER_CLI_CONFIG" \
     ./deploy/preflight-sites.sh >/dev/null 2>&1)
 }
-preflight && [ -d "$SERVER/home/sites" ] \
+# preflight [SITES_DIR value] — the same, with a plain SITES_DIR=<value> line.
+preflight() { preflight_env "${1:+SITES_DIR=$1}"; }
+preflight && [ -d "$SERVER/sites" ] \
   && pass "preflight creates a missing default ~/sites and passes empty" || fail "preflight with the default folder"
 preflight "$SERVER/custom" && [ -d "$SERVER/custom" ] \
   && pass "preflight creates a missing SITES_DIR" || fail "preflight with SITES_DIR"
@@ -224,6 +228,31 @@ preflight "$SERVER/custom" && fail "preflight accepted a symlinked site file" \
 rm "$SERVER/custom/linked.caddy"
 preflight "$SERVER/custom" && pass "preflight passes again once the links are gone" \
   || fail "preflight still fails after removing the links"
+
+# The preflight must check the folder compose actually mounts, which expands
+# variables and quotes in .env.production. A broken file there must be caught.
+preflight '${HOME}/fresh' && [ -d "$SERVER/fresh" ] \
+  && pass "preflight creates SITES_DIR=\${HOME}/fresh where compose will mount it" \
+  || fail "preflight with SITES_DIR=\${HOME}/fresh"
+mkdir -p "$SERVER/x" && echo 'broken.example.com { nope }' > "$SERVER/x/broken.caddy"
+preflight '${HOME}/x' && fail "preflight missed a broken file in SITES_DIR=\${HOME}/x" \
+  || pass "preflight checks SITES_DIR with variables expanded as compose does"
+mkdir -p "$SERVER/with space" && cp -R "$EXAMPLE_DIR/." "$SERVER/with space/"
+preflight "\"$SERVER/with space\"" && pass "preflight passes a SITES_DIR containing a space" \
+  || fail "preflight with a SITES_DIR containing a space"
+echo 'broken.example.com { nope }' > "$SERVER/with space/broken.caddy"
+preflight "\"$SERVER/with space\"" && fail "preflight missed a broken file in a SITES_DIR with a space" \
+  || pass "preflight checks a SITES_DIR containing a space"
+# Other .env syntax compose accepts: an export prefix, an inline comment.
+mkdir -p "$SERVER/linked" && ln -s /data "$SERVER/linked/keys"
+preflight_env "export SITES_DIR=$SERVER/linked" && fail "preflight missed a symlink under 'export SITES_DIR='" \
+  || pass "preflight checks an 'export SITES_DIR=' folder"
+preflight_env "SITES_DIR=$SERVER/linked # extra sites" && fail "preflight missed a symlink under an inline comment" \
+  || pass "preflight checks a SITES_DIR with an inline comment"
+preflight 'relative/sites' && fail "preflight accepted a relative SITES_DIR" \
+  || pass "preflight refuses a relative SITES_DIR"
+preflight './sites' && fail "preflight accepted a SITES_DIR inside the repo folder" \
+  || pass "preflight refuses a SITES_DIR inside the repo folder (rsync --delete wipes it)"
 
 # deploy.sh must run the check, and only bring the stack up if it passes.
 deploy_cmd="$(tr -d '\n\\' < "$REPO_ROOT/deploy/deploy.sh")"

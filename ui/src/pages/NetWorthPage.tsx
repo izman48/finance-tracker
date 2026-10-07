@@ -230,6 +230,20 @@ export default function NetWorthPage() {
     }
   }
 
+  // Renew an expired connection: TrueLayer opens straight at that bank, and the
+  // callback swaps fresh tokens into the existing connection.
+  const handleReconnect = async (connectionId: string) => {
+    setConnecting(true)
+    setMessage('')
+    try {
+      const response = await bankingAPI.getReconnectURL(connectionId)
+      window.location.href = response.data.auth_url
+    } catch (error: any) {
+      setMessage('Failed to start reconnecting: ' + (error.response?.data?.detail || error.message))
+      setConnecting(false)
+    }
+  }
+
   const handleSync = async () => {
     setSyncing(true)
     setMessage('')
@@ -240,6 +254,8 @@ export default function NetWorthPage() {
       setMessage('Accounts and transactions synced.')
     } catch (error: any) {
       setMessage('Failed to sync: ' + (error.response?.data?.detail || error.message))
+      // A failed sync can mark banks as needing reconnection; show that now.
+      await load()
     } finally {
       setSyncing(false)
     }
@@ -753,16 +769,28 @@ export default function NetWorthPage() {
         {bankStatus?.connections && bankStatus.connections.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {bankStatus.connections.map((conn) => (
-              <div key={conn.id} className="card p-5 flex items-center gap-3">
-                <span className="w-10 h-10 rounded-xl bg-white/[0.06] flex items-center justify-center">
-                  <Landmark className="w-5 h-5 text-slate-400" />
-                </span>
-                <div>
-                  <h3 className="font-semibold text-slate-100">{conn.provider_name}</h3>
-                  <p className={`text-sm ${conn.is_expired ? 'text-neg' : 'text-pos'}`}>
-                    {conn.is_expired ? 'Needs reconnection — connect it again above' : 'Active'}
-                  </p>
+              <div key={conn.id} className="card p-5 flex flex-col gap-4">
+                <div className="flex items-center gap-3">
+                  <span className="w-10 h-10 shrink-0 rounded-xl bg-white/[0.06] flex items-center justify-center">
+                    <Landmark className="w-5 h-5 text-slate-400" />
+                  </span>
+                  <div className="min-w-0">
+                    <h3 className="font-semibold text-slate-100 truncate">{conn.provider_name}</h3>
+                    <p className={`text-sm ${conn.is_expired ? 'text-neg' : 'text-pos'}`}>
+                      {conn.is_expired ? 'Bank access expired' : 'Active'}
+                    </p>
+                  </div>
                 </div>
+                {conn.is_expired && (
+                  <button
+                    className="btn-primary w-full justify-center"
+                    onClick={() => handleReconnect(conn.id)}
+                    disabled={connecting || syncing}
+                  >
+                    <Plug className="w-4 h-4" />
+                    Reconnect
+                  </button>
+                )}
               </div>
             ))}
           </div>

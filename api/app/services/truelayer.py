@@ -35,7 +35,7 @@ class TrueLayerService:
         self.auth_url = settings.truelayer_auth_url
         self.api_url = settings.truelayer_api_url
 
-    def get_auth_link(self, user_id: str, dek: bytes) -> str:
+    def get_auth_link(self, user_id: str, dek: bytes, provider_id: str | None = None) -> str:
         """
         Generate TrueLayer OAuth authorization URL.
 
@@ -43,6 +43,8 @@ class TrueLayerService:
             user_id: The user ID to include in state parameter
             dek: The session data-encryption key, carried (server-encrypted)
                  in the state token so the callback can encrypt what it stores
+            provider_id: Pre-select this bank, skipping TrueLayer's bank picker
+                 (used to reconnect an existing connection)
 
         Returns:
             Authorization URL for the user to visit
@@ -68,6 +70,8 @@ class TrueLayerService:
             "state": create_oauth_state(user_id, dek),
             "providers": "uk-ob-all uk-oauth-all",  # Live mode: removed uk-cs-mock
         }
+        if provider_id and provider_id != "unknown":
+            params["provider_id"] = provider_id
 
         query_string = urlencode(params)
         return f"{self.auth_url}?{query_string}"

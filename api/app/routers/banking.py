@@ -72,6 +72,37 @@ def initiate_bank_connection(current_user: CurrentUser) -> BankConnectionURL:
     )
 
 
+@router.get("/connections/{connection_id}/reconnect", response_model=BankConnectionURL)
+def reconnect_bank(
+    connection_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> BankConnectionURL:
+    """
+    Get a TrueLayer authorization URL that renews an existing connection.
+
+    The bank is pre-selected; the callback matches the connection on
+    provider_id and swaps in fresh tokens, keeping accounts and transactions.
+    """
+    connection = db.query(BankConnection).filter(
+        BankConnection.id == connection_id,
+        BankConnection.user_id == current_user.id,
+    ).first()
+    if not connection:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Bank connection not found",
+        )
+
+    auth_url = truelayer_service.get_auth_link(
+        str(current_user.id), require_dek(), provider_id=connection.provider_id
+    )
+    return BankConnectionURL(
+        auth_url=auth_url,
+        message=f"Visit this URL to reconnect {connection.provider_name}.",
+    )
+
+
 @router.get("/callback")
 async def oauth_callback(
     db: Annotated[Session, Depends(get_db)],

@@ -15,6 +15,16 @@ settings = get_settings()
 logger = logging.getLogger(__name__)
 
 
+class TrueLayerError(Exception):
+    """A TrueLayer call failed. The message names TrueLayer's error code only;
+    it never carries tokens, secrets, or response bodies."""
+
+
+class ReauthRequired(TrueLayerError):
+    """The connection's consent has lapsed or been revoked, so its refresh
+    token can never work again. Only the user reconnecting the bank fixes it."""
+
+
 class TrueLayerService:
     """Service for interacting with TrueLayer Open Banking API."""
 
@@ -72,22 +82,13 @@ class TrueLayerService:
         Returns:
             Token response with access_token, refresh_token, expires_in
         """
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{self.auth_url}/connect/token",
-                data={
-                    "grant_type": "authorization_code",
-                    "client_id": self.client_id,
-                    "client_secret": self.client_secret,
-                    "redirect_uri": self.redirect_uri,
-                    "code": code,
-                },
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-            )
-            response.raise_for_status()
-            return response.json()
+        return await self._token_request({
+            "grant_type": "authorization_code",
+            "redirect_uri": self.redirect_uri,
+            "code": code,
+        })
 
-    async def refresh_access_token(self, refresh_token: str) -> dict[str, Any]:
+    async def refresh_access_token(self, refresh_token: str | None) -> dict[str, Any]:
         """
         Refresh an expired access token.
 
@@ -96,20 +97,78 @@ class TrueLayerService:
 
         Returns:
             New token response
+
+        Raises:
+            ReauthRequired: there is no refresh token, or TrueLayer rejected it
+                (consent expired or revoked) — the user must reconnect.
+            TrueLayerError: any other token endpoint failure.
+        """
+        if not refresh_token:
+            raise ReauthRequired("No refresh token; the bank must be reconnected")
+        return await self._token_request({
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+        })
+
+    async def _token_request(self, grant: dict[str, str]) -> dict[str, Any]:
+        """POST a grant to the token endpoint, translating OAuth errors.
+
+        TrueLayer answers a refresh token it will never accept again (consent
+        lapsed after 90 days, or revoked at the bank) with 400 invalid_grant.
         """
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{self.auth_url}/connect/token",
                 data={
-                    "grant_type": "refresh_token",
                     "client_id": self.client_id,
                     "client_secret": self.client_secret,
-                    "refresh_token": refresh_token,
+                    **grant,
                 },
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
-            response.raise_for_status()
+        if response.is_success:
             return response.json()
+
+        try:
+            error_code = str(response.json().get("error", "unknown_error"))
+        except ValueError:
+            error_code = "unknown_error"
+        logger.warning(
+            f"TrueLayer token request ({grant['grant_type']}) failed: "
+            f"{response.status_code} {error_code}"
+        )
+        if error_code == "invalid_grant" and grant["grant_type"] == "refresh_token":
+            raise ReauthRequired("Bank consent has expired or was revoked")
+        raise TrueLayerError(
+            f"TrueLayer token request failed ({response.status_code} {error_code})"
+        )
+
+    async def _ensure_fresh_token(self, bank_connection: BankConnection, db: Session) -> None:
+        """Refresh the connection's access token if it has expired.
+
+        On ReauthRequired the dead refresh token is dropped (it can never work
+        again, so keeping it only risks a leak) and the error re-raised; the
+        connection then reports as needing reconnection and later syncs fail
+        fast without calling TrueLayer.
+        """
+        if not bank_connection.access_token_expired:
+            return
+
+        logger.info(f"Refreshing expired token for bank connection {bank_connection.id}")
+        try:
+            token_data = await self.refresh_access_token(bank_connection.refresh_token)
+        except ReauthRequired:
+            if bank_connection.refresh_token is not None:
+                bank_connection.refresh_token = None
+                db.commit()
+            raise
+
+        bank_connection.access_token = token_data["access_token"]
+        bank_connection.refresh_token = token_data.get("refresh_token")
+        bank_connection.token_expires_at = datetime.now(
+            timezone.utc
+        ) + timedelta(seconds=token_data["expires_in"])
+        db.commit()
 
     async def get_provider_info(self, access_token: str) -> dict[str, Any]:
         """
@@ -340,18 +399,8 @@ class TrueLayerService:
 
         # Check if token is expired and refresh if needed
         # IMPORTANT: Skip refresh during initial historical data sync (SCA requirement)
-        if not skip_token_refresh and bank_connection.token_expires_at:
-            if datetime.now(timezone.utc) >= bank_connection.token_expires_at:
-                logger.info(f"Refreshing expired token for bank connection {bank_connection.id}")
-                token_data = await self.refresh_access_token(
-                    bank_connection.refresh_token
-                )
-                bank_connection.access_token = token_data["access_token"]
-                bank_connection.refresh_token = token_data.get("refresh_token")
-                bank_connection.token_expires_at = datetime.now(
-                    timezone.utc
-                ) + timedelta(seconds=token_data["expires_in"])
-                db.commit()
+        if not skip_token_refresh:
+            await self._ensure_fresh_token(bank_connection, db)
 
         # Fetch accounts from TrueLayer (try both accounts and cards endpoints)
         tl_accounts = []
@@ -445,18 +494,8 @@ class TrueLayerService:
             raise ValueError("Bank connection has no access token")
 
         # IMPORTANT: Skip refresh during initial historical data sync (SCA requirement)
-        if not skip_token_refresh and bank_connection.token_expires_at:
-            if datetime.now(timezone.utc) >= bank_connection.token_expires_at:
-                logger.info(f"Refreshing expired token for bank connection {bank_connection.id}")
-                token_data = await self.refresh_access_token(
-                    bank_connection.refresh_token
-                )
-                bank_connection.access_token = token_data["access_token"]
-                bank_connection.refresh_token = token_data.get("refresh_token")
-                bank_connection.token_expires_at = datetime.now(
-                    timezone.utc
-                ) + timedelta(seconds=token_data["expires_in"])
-                db.commit()
+        if not skip_token_refresh:
+            await self._ensure_fresh_token(bank_connection, db)
 
         # Get all accounts for this bank connection
         accounts = db.query(Account).filter(Account.bank_connection_id == bank_connection.id).all()

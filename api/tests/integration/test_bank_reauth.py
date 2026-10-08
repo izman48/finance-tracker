@@ -10,6 +10,7 @@ TrueLayer is stubbed with httpx.MockTransport; requests go through the API so
 the DEK flows from the bearer token, as in production.
 """
 from datetime import datetime, timedelta, timezone
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 import pytest
@@ -179,3 +180,55 @@ class TestSyncWithExpiredConsent:
         assert response.status_code == 500
         assert "temporarily_unavailable" in response.json()["detail"]
         assert _load(db_session, conn_id, dek).refresh_token == "dead-refresh"
+
+
+class TestReconnectLink:
+    """GET /banking/connections/{id}/reconnect: a fresh TrueLayer auth link that
+    skips the bank picker. The callback then updates the existing connection
+    (matched on provider_id), keeping its accounts and transactions."""
+
+    def test_link_preselects_the_connections_bank(self, client, db_session):
+        conn_id, _ = _seed_expired_connection(client, db_session)
+
+        response = client.get(f"/api/v1/banking/connections/{conn_id}/reconnect")
+
+        assert response.status_code == 200
+        query = parse_qs(urlparse(response.json()["auth_url"]).query)
+        assert query["provider_id"] == ["ob-monzo"]
+        assert query["state"]  # signed state, as for a new connection
+
+    def test_unknown_provider_falls_back_to_the_bank_picker(self, client, db_session):
+        conn_id, dek = _seed_expired_connection(client, db_session)
+        ctx = user_crypto.current_dek.set(dek)
+        try:
+            db_session.get(BankConnection, conn_id).provider_id = "unknown"
+            db_session.commit()
+        finally:
+            user_crypto.current_dek.reset(ctx)
+
+        response = client.get(f"/api/v1/banking/connections/{conn_id}/reconnect")
+
+        assert response.status_code == 200
+        assert "provider_id" not in parse_qs(urlparse(response.json()["auth_url"]).query)
+
+    def test_another_users_connection_is_not_found(self, client, db_session):
+        conn_id, _ = _seed_expired_connection(client, db_session)
+        client.post("/api/v1/auth/register", json={"email": "other@example.com", "password": PASSWORD})
+        other = client.post(
+            "/api/v1/auth/login", data={"username": "other@example.com", "password": PASSWORD}
+        ).json()["access_token"]
+
+        response = client.get(
+            f"/api/v1/banking/connections/{conn_id}/reconnect",
+            headers={"Authorization": f"Bearer {other}"},
+        )
+
+        assert response.status_code == 404
+
+    def test_requires_authentication(self, client, db_session):
+        conn_id, _ = _seed_expired_connection(client, db_session)
+        client.headers.pop("Authorization")
+
+        response = client.get(f"/api/v1/banking/connections/{conn_id}/reconnect")
+
+        assert response.status_code == 401

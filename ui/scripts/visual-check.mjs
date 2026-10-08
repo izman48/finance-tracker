@@ -169,7 +169,7 @@ const rules = {
 
 const routes = [
   ['**/api/v1/auth/me', { id: 'u1', email: 'demo@example.com' }],
-  ['**/api/v1/banking/status', { is_connected: true, connections_count: 2, last_synced_at: new Date(Date.now() - 42 * 60000).toISOString(), connections: [ { id: 'b1', provider_name: 'Monzo', is_expired: false, expires_at: null }, { id: 'b2', provider_name: 'American Express', is_expired: false, expires_at: null } ], message: 'ok' }],
+  ['**/api/v1/banking/status', { is_connected: true, connections_count: 2, last_synced_at: new Date(Date.now() - 42 * 60000).toISOString(), connections: [ { id: 'b1', provider_name: 'Monzo', is_expired: false, expires_at: null }, { id: 'b2', provider_name: 'American Express', is_expired: true, expires_at: null } ], message: 'ok' }],
   ['**/api/v1/analytics/summary', summary],
   ['**/api/v1/analytics/forecast*', forecast],
   ['**/api/v1/analytics/spending/trend*', trend],

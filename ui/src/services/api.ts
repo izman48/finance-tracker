@@ -336,6 +336,8 @@ const listParams = (params: Record<string, unknown>) => {
 export const bankingAPI = {
   getConnectionStatus: () => api.get('/banking/status'),
   getBankConnectionURL: () => api.get('/banking/connect'),
+  getReconnectURL: (connectionId: string) =>
+    api.get(`/banking/connections/${connectionId}/reconnect`),
   // Note: the OAuth code exchange happens server-side in /banking/callback,
   // which TrueLayer redirects to directly and then forwards to /dashboard.
   syncAccounts: () => api.post('/banking/sync/accounts'),

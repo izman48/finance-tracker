@@ -13,6 +13,7 @@ import {
 import { bankingAPI, analyticsAPI, Nudge } from '../services/api'
 import { BankStatus, CashflowSummary, Commitment, PlannedItem } from '../types'
 import { money as formatCurrency, dateDayMonth as formatDate, timeAgo } from '../lib/format'
+import { cardsOwing, creditAmount } from '../lib/credit'
 import ForecastChart from '../components/ForecastChart'
 import NudgeFeed, { UiNudge } from '../components/NudgeFeed'
 import AnimatedNumber from '../components/ui/AnimatedNumber'
@@ -134,7 +135,9 @@ export default function DashboardPage() {
   // the cashflow picture, so they stay out of the total and the list.
   const listedAccounts = (summary?.accounts ?? []).filter((a) => a.role !== 'excluded')
   const cashAccounts = listedAccounts.filter((a) => a.role === 'spending' || a.role === 'savings')
-  const creditAccounts = listedAccounts.filter((a) => a.role === 'credit')
+  // Only cards that owe money count toward "owed on N cards"; an overpaid
+  // card shows as in credit in the list below.
+  const creditAccounts = cardsOwing(listedAccounts)
   const totalCash = cashAccounts.reduce((sum, a) => sum + Number(a.current_balance ?? 0), 0)
   const suggestedCount = commitments.filter((c) => c.status === 'suggested').length
 
@@ -279,10 +282,12 @@ export default function DashboardPage() {
                     </div>
                     <div
                       className={`font-semibold tnum shrink-0 ${
-                        a.role === 'credit' ? 'text-warn' : 'text-slate-100'
+                        a.role === 'credit' ? creditAmount(a.credit_owed).tone : 'text-slate-100'
                       }`}
                     >
-                      {formatCurrency(a.role === 'credit' ? Number(a.credit_owed ?? 0) : Number(a.current_balance ?? 0))}
+                      {a.role === 'credit'
+                        ? creditAmount(a.credit_owed).text
+                        : formatCurrency(Number(a.current_balance ?? 0))}
                     </div>
                   </div>
                 ))}

@@ -336,11 +336,12 @@ export default function NetWorthPage() {
   const rows: Row[] = []
   for (const account of summary?.accounts ?? []) {
     const balance = Number(account.current_balance ?? 0)
+    const inCredit = account.role === 'credit' && Number(account.credit_owed ?? 0) < 0
     rows.push({
       key: `acc-${account.id}`,
       group: ROLE_GROUP[account.role] ?? 'other',
       name: account.display_name,
-      sub: account.provider_name,
+      sub: inCredit ? `${account.provider_name} · In credit` : account.provider_name,
       value: account.role === 'credit' ? -Number(account.credit_owed ?? 0) : balance,
       live: true,
       onClick: () => setSettingsAccount(account),

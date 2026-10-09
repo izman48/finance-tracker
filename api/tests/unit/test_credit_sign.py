@@ -16,6 +16,7 @@ import pytest
 from app.models import Account, AccountSetting, User
 from app.services import analytics_service as svc
 from app.services.analytics.net_worth import net_worth_position
+from app.services import balance_sign
 from app.services.balance_sign import credit_owed
 
 
@@ -32,8 +33,6 @@ class TestCreditOwed:
         [
             ("AMEX", "600.00", "600.00"),
             ("American Express", "600.00", "600.00"),
-            ("BARCLAYCARD", "200.10", "200.10"),
-            ("BARCLAYS", "200.10", "200.10"),
             ("MONZO", "-400.00", "400.00"),
             ("Monzo", "-0.10", "0.10"),
         ],
@@ -52,16 +51,45 @@ class TestCreditOwed:
         owed = credit_owed(_acc("MONZO", "-0.30"))
         assert isinstance(owed, Decimal) and owed == Decimal("0.30")
 
-    def test_unknown_provider_is_not_flipped_and_logs_provider_only(self, caplog):
+
+class TestUnverifiedProviderFallsBackToAbs:
+    """A provider whose sign we have not observed keeps today's abs():
+    overstating a debt is safe, hiding one is not (sec, PR 85)."""
+
+    @pytest.fixture(autouse=True)
+    def _fresh_warnings(self, monkeypatch):
+        monkeypatch.setattr(balance_sign, "_warned", set())
+
+    @pytest.mark.parametrize("raw", ["-400.00", "400.00"])
+    def test_either_sign_counts_as_owed(self, raw):
+        assert credit_owed(_acc("NEWBANK", raw)) == Decimal("400.00")
+
+    @pytest.mark.parametrize("provider", ["BARCLAYCARD", "BARCLAYS"])
+    def test_barclays_is_not_assumed(self, provider):
+        assert credit_owed(_acc(provider, "-200.00")) == Decimal("200.00")
+
+    def test_warning_names_the_provider_only(self, caplog):
         caplog.set_level(logging.WARNING, logger="app.services.balance_sign")
-        acc = _acc("NEWBANK", "-123.45", name="Secret Card Name")
-        assert credit_owed(acc) == Decimal("-123.45")
+        credit_owed(_acc("NEWBANK", "-123.45", name="Secret Card Name"))
         assert "NEWBANK" in caplog.text
         assert "123.45" not in caplog.text
         assert "Secret Card Name" not in caplog.text
 
-    def test_unknown_provider_positive_raw_is_also_left_alone(self):
-        assert credit_owed(_acc("NEWBANK", "80.00")) == Decimal("80.00")
+    def test_warning_is_logged_once_per_provider(self, caplog):
+        caplog.set_level(logging.WARNING, logger="app.services.balance_sign")
+        for _ in range(3):
+            credit_owed(_acc("NEWBANK", "-1.00"))
+        credit_owed(_acc("OTHERBANK", "-1.00"))
+        assert [r.getMessage().split()[-1] for r in caplog.records] == ["NEWBANK", "OTHERBANK"]
+
+    def test_unknown_negative_debt_lowers_net_worth(self, db_session):
+        user = _user(db_session)
+        _account(db_session, user, "BARCLAYS", "1000.00", atype="TRANSACTION", name="Current")
+        _account(db_session, user, "NEWBANK", "-400.00")
+        s = svc.get_summary(db_session, user)
+        assert s["credit_owed"] == Decimal("400.00")
+        assert s["net_worth"] == Decimal("600.00")
+        assert [r["amount"] for r in _repayments(db_session, user)] == [Decimal("400.00")]
 
 
 # --- consumers: one fixture, every surface ---------------------------------- #
@@ -149,8 +177,12 @@ class TestCardInCredit:
     def test_amex_overpaid(self, db_session):
         user = _seed(db_session, amex="-50.00", monzo="-400.00", barclays="200.00")
         s = svc.get_summary(db_session, user)
-        assert s["credit_owed"] == Decimal("550.00")
+        # The headline total is what is owed; the credit is not netted off it...
+        assert s["credit_owed"] == Decimal("600.00")
+        # ...but net worth does net it: 1000 - 400 - 200 + 50.
         assert s["net_worth"] == Decimal("450.00")
+        rows = {a["provider_name"]: a for a in s["accounts"]}
+        assert rows["AMEX"]["credit_owed"] == Decimal("-50.00")
         assert net_worth_position(db_session, user)["bank"] == Decimal("450.00")
         labels = {r["label"] for r in _repayments(db_session, user)}
         assert labels == {"MONZO", "BARCLAYCARD"}
@@ -158,7 +190,7 @@ class TestCardInCredit:
     def test_monzo_overpaid(self, db_session):
         user = _seed(db_session, amex="600.00", monzo="50.00", barclays="200.00")
         s = svc.get_summary(db_session, user)
-        assert s["credit_owed"] == Decimal("750.00")
+        assert s["credit_owed"] == Decimal("800.00")
         assert s["net_worth"] == Decimal("250.00")
         labels = {r["label"] for r in _repayments(db_session, user)}
         assert labels == {"AMEX", "BARCLAYCARD"}

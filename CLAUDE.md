@@ -108,6 +108,11 @@ quick overflow check, navigate a page and compare `document.documentElement
   Always set an explicit base column — `grid grid-cols-1 md:grid-cols-2` — so the
   track is `minmax(0,1fr)`. For truncating flex children, add `min-w-0` to the
   growing item and `shrink-0` to siblings that must keep their width.
+- **Credit-card sign differs by provider** (Amex/Barclaycard owed = positive,
+  Monzo owed = negative). `Account.current_balance` stays raw (it is
+  encrypted, so it can't be migrated); read money owed only through
+  `app/services/balance_sign.credit_owed`, never `abs()`. Positive = owed,
+  negative = card in credit. A new provider must be added to its sign list.
 - **Client IP behind Caddy**: the auth rate limits key on `request.client.host`,
   which is only the real caller because prod uvicorn runs with
   `--forwarded-allow-ips` set to Caddy's pinned address on the `edge` network

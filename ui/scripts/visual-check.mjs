@@ -13,9 +13,9 @@ const iso = (d) => d.toISOString().slice(0, 10)
 const daysFromNow = (n) => iso(new Date(today.getTime() + n * 86400000))
 
 const accounts = [
-  { id: 'a1', display_name: 'Monzo Current', provider_name: 'Monzo', account_type: 'TRANSACTION', role: 'spending', current_balance: 2140.55, overdraft_limit: 500, repayment_cadence: null, repayment_day: null, repayment_interval_months: null, repayment_anchor_date: null, repayment_strategy: null, repayment_installments: null, pay_from_account_id: null },
-  { id: 'a2', display_name: 'Marcus Savings', provider_name: 'Goldman Sachs', account_type: 'SAVINGS', role: 'savings', current_balance: 8800, overdraft_limit: null, repayment_cadence: null, repayment_day: null, repayment_interval_months: null, repayment_anchor_date: null, repayment_strategy: null, repayment_installments: null, pay_from_account_id: null },
-  { id: 'a3', display_name: 'Amex Gold', provider_name: 'American Express', account_type: 'CREDIT_CARD', role: 'credit', current_balance: -642.31, overdraft_limit: null, repayment_cadence: 'end_of_month', repayment_day: null, repayment_interval_months: null, repayment_anchor_date: null, repayment_strategy: 'full_balance', repayment_installments: null, pay_from_account_id: 'a1' },
+  { id: 'a1', display_name: 'Monzo Current', provider_name: 'Monzo', account_type: 'TRANSACTION', role: 'spending', current_balance: 2140.55, credit_owed: null, overdraft_limit: 500, repayment_cadence: null, repayment_day: null, repayment_interval_months: null, repayment_anchor_date: null, repayment_strategy: null, repayment_installments: null, pay_from_account_id: null },
+  { id: 'a2', display_name: 'Marcus Savings', provider_name: 'Goldman Sachs', account_type: 'SAVINGS', role: 'savings', current_balance: 8800, credit_owed: null, overdraft_limit: null, repayment_cadence: null, repayment_day: null, repayment_interval_months: null, repayment_anchor_date: null, repayment_strategy: null, repayment_installments: null, pay_from_account_id: null },
+  { id: 'a3', display_name: 'Amex Gold', provider_name: 'American Express', account_type: 'CREDIT_CARD', role: 'credit', current_balance: -642.31, credit_owed: 642.31, overdraft_limit: null, repayment_cadence: 'end_of_month', repayment_day: null, repayment_interval_months: null, repayment_anchor_date: null, repayment_strategy: 'full_balance', repayment_installments: null, pay_from_account_id: 'a1' },
 ]
 
 const summary = {

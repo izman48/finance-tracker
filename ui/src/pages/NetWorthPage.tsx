@@ -341,7 +341,7 @@ export default function NetWorthPage() {
       group: ROLE_GROUP[account.role] ?? 'other',
       name: account.display_name,
       sub: account.provider_name,
-      value: account.role === 'credit' ? -Math.abs(balance) : balance,
+      value: account.role === 'credit' ? -Number(account.credit_owed ?? 0) : balance,
       live: true,
       onClick: () => setSettingsAccount(account),
     })

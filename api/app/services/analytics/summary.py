@@ -17,6 +17,8 @@ from app.models import (
 
 from .cadence import commitment_occurrences
 from .commitments import next_payday
+from app.services.balance_sign import credit_owed as credit_owed_for
+
 from .common import _d, _load, _today, resolve_roles
 from .net_worth import assets_total
 from .repayments import repayment_events
@@ -42,7 +44,7 @@ def get_summary(db: Session, user) -> dict:
         elif role == AccountRole.SAVINGS:
             savings_total += _d(acc.current_balance)
         elif role == AccountRole.CREDIT:
-            credit_owed += abs(_d(acc.current_balance))
+            credit_owed += credit_owed_for(acc)
 
     payday = next_payday(db, user, today)
     window_end = payday or (today + timedelta(days=30))
@@ -115,6 +117,7 @@ def _account_summary(acc: Account, role: AccountRole, s: AccountSetting | None) 
         "account_type": acc.account_type,
         "role": role.value,
         "current_balance": acc.current_balance,
+        "credit_owed": credit_owed_for(acc) if role == AccountRole.CREDIT else None,
         "overdraft_limit": s.overdraft_limit if s else None,
         "repayment_cadence": s.repayment_cadence if s else None,
         "repayment_day": s.repayment_day if s else None,

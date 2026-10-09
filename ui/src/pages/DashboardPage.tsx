@@ -282,7 +282,7 @@ export default function DashboardPage() {
                         a.role === 'credit' ? 'text-warn' : 'text-slate-100'
                       }`}
                     >
-                      {formatCurrency(Math.abs(Number(a.current_balance ?? 0)))}
+                      {formatCurrency(a.role === 'credit' ? Number(a.credit_owed ?? 0) : Number(a.current_balance ?? 0))}
                     </div>
                   </div>
                 ))}

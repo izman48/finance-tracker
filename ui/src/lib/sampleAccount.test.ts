@@ -60,6 +60,14 @@ describe('sample account — internal reconciliation', () => {
     const history: any = sampleResponse('/api/v1/analytics/net-worth-history', { months: '12' })
     expect(near(Number(history[history.length - 1].net_worth), Number(s.net_worth))).toBe(true)
   })
+
+  it('per-account credit_owed is positive and sums to the headline credit owed', () => {
+    const s: any = sampleResponse('/api/v1/analytics/summary', {})
+    const cards = s.accounts.filter((a: any) => a.role === 'credit')
+    expect(cards.every((a: any) => Number(a.credit_owed) > 0)).toBe(true)
+    const sum = cards.reduce((t: number, a: any) => t + Number(a.credit_owed), 0)
+    expect(near(sum, Number(s.credit_owed))).toBe(true)
+  })
 })
 
 describe('sample account — unrelated + interactive', () => {

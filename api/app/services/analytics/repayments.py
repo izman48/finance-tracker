@@ -60,8 +60,31 @@ def repayment_amount(setting: AccountSetting, balance: Decimal) -> Decimal:
 
 
 def _step_repayment(setting: AccountSetting, d: date) -> date | None:
-    """Next repayment date strictly after d, per the card's cadence."""
+    """Next repayment date strictly after d, per the card's cadence.
+
+    Weekly and every-N-months cadences count from their anchor date. With no
+    anchor (the "First payment" date is optional in settings) they count from
+    d itself; asking next_repayment_date would treat d + 1 day as the anchor
+    and put every payment on consecutive days.
+    """
+    if not setting.repayment_anchor_date:
+        if setting.repayment_cadence == "weekly":
+            return d + timedelta(days=7)
+        if setting.repayment_cadence == "every_n_months":
+            return _add_months(d, setting.repayment_interval_months or 3)
     return next_repayment_date(setting, d + timedelta(days=1))
+
+
+MAX_INSTALLMENTS = 120  # same bound the settings API enforces
+
+
+def _installment_count(setting: AccountSetting) -> int:
+    """N for the installments strategy. A count outside 1..MAX_INSTALLMENTS
+    (only reachable by bypassing the API) means one payment, not a split."""
+    n = setting.repayment_installments
+    if n is None or not 1 <= n <= MAX_INSTALLMENTS:
+        return 1
+    return n
 
 
 def _repayment_schedule(s: AccountSetting, balance: Decimal) -> list[Decimal]:
@@ -79,7 +102,7 @@ def _repayment_schedule(s: AccountSetting, balance: Decimal) -> list[Decimal]:
         return []
 
     if strategy == RepaymentStrategy.INSTALLMENTS.value:
-        n = max(1, s.repayment_installments or 1)
+        n = _installment_count(s)
         per = (balance / Decimal(n)).quantize(Decimal("0.01"))
     elif strategy == RepaymentStrategy.FIXED.value:
         amt = _d(s.repayment_fixed_amount)

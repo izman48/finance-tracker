@@ -17,6 +17,7 @@ from app.models import (
     AccountSetting,
     CommitmentRule,
     CommitmentStatus,
+    RepaymentScheduleItem,
     User,
 )
 from app.schemas import AccountSettingUpdate
@@ -125,6 +126,25 @@ class TestInstallmentAmounts:
     def test_zero_balance_makes_no_events(self, db_session):
         user = _flex(db_session, balance="0", anchor=None)
         f = svc.get_forecast(db_session, user, horizon="120")
+        assert _repays(f) == []
+
+
+class TestScheduledStrategy:
+    def test_card_with_nothing_owed_emits_no_listed_payments(self, db_session):
+        """User-listed payments on a card that owes nothing would take money
+        out of the forecast for a debt that no longer exists."""
+        user = _user(db_session)
+        _account(db_session, user, "TRANSACTION", "5000", "Current")
+        card = _account(db_session, user, "CREDIT_CARD", "0", "Amex")
+        db_session.add(AccountSetting(
+            user_id=user.id, account_id=card.id, role="credit", repayment_strategy="scheduled",
+        ))
+        db_session.add(RepaymentScheduleItem(
+            user_id=user.id, account_id=card.id,
+            due_date=svc._today() + timedelta(days=5), amount=Decimal("200"),
+        ))
+        db_session.commit()
+        f = svc.get_forecast(db_session, user, horizon="30")
         assert _repays(f) == []
 
 

@@ -38,12 +38,29 @@ def _spending_range(db, user, period: str, frm: date | None, to: date | None, to
     return (payday or today - timedelta(days=30)), today
 
 
+TRANSFER_CATEGORIES = frozenset({"transfer", "transfers"})
+
+
+def _is_transfer_category(tx: Transaction) -> bool:
+    """The provider (or a user/rule) filed this as a transfer, e.g. a Faster
+    Payment to Flywire, which has no visible incoming leg to pair with.
+
+    Exact match on purpose (case-insensitive, singular or plural): a
+    substring match would also catch real costs such as "Transfer fee"."""
+    return (tx.category or "").strip().lower() in TRANSFER_CATEGORIES
+
+
 def _effective_transfers(txns: list[Transaction]) -> set:
-    """Transfer IDs after user overrides: detection can't see transfers to
-    unconnected destinations (an ISA direct debit has no visible incoming
-    leg), so counts_as_override='transfer' adds a transaction, and any other
-    override removes it — the user's word beats the pairing heuristic."""
+    """Transfer IDs: paired legs plus TRANSFER-category transactions, then
+    user overrides. Detection can't see transfers to unconnected destinations
+    (an ISA direct debit has no visible incoming leg), so the category and
+    counts_as_override='transfer' add a transaction, and any other override
+    removes it — the user's word beats every automatic signal.
+
+    The single predicate behind the purchases lens, the drill-down, the trend
+    and the list's excluded_reason, so they can never disagree."""
     transfers = _detect_internal_transfers(txns)
+    transfers.update(tx.id for tx in txns if _is_transfer_category(tx))
     for tx in txns:
         if tx.counts_as_override == "transfer":
             transfers.add(tx.id)
@@ -373,23 +390,10 @@ def get_spending_trend(
         buckets[_month_key(m)] = {"total": Decimal(0), "credit": Decimal(0), "cash": Decimal(0)}
         m = _add_months(m, 1)
 
-    for tx in txns:
-        if tx.id in transfers or tx.transaction_type != "debit":
-            continue
-        if tx.id in financed:
-            continue  # moved to a payment plan — counted via its installments
-        if commitment_keys and transaction_match_key(tx) in commitment_keys:
-            continue
-        if _is_card_repayment(tx, roles):
-            continue  # override-aware
-        role = roles.get(tx.account_id)
+    # Same iterator as the purchases lens, so the trend can never apply a
+    # different set of exclusions.
+    for tx, kind in _iter_spending(txns, transfers, roles, financed, commitment_keys):
         amount = _d(tx.amount)
-        if role == AccountRole.CREDIT:
-            kind = "credit"
-        elif role == AccountRole.SPENDING:
-            kind = "cash"
-        else:
-            continue
         b = buckets.setdefault(_month_key(tx.transaction_date.date()), {"total": Decimal(0), "credit": Decimal(0), "cash": Decimal(0)})
         b["total"] += amount
         b[kind] += amount

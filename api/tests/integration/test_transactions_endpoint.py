@@ -141,6 +141,33 @@ class TestTransactionFilters:
         )
         assert [i["merchant_name"] for i in res.json()["items"]] == ["Deliveroo"]
 
+    def test_spend_list_reconciles_with_purchases_total_for_transfer_category(
+        self, client, db_session
+    ):
+        """A TRANSFER-category payment (no visible incoming leg) is out of the
+        purchases total and out of the kind=spend list: list sum == aggregate."""
+        user, ctx = _setup(client, db_session)
+        try:
+            a = _account(db_session, user.id, name="Current")
+            _tx(db_session, a, "4170.00", date(2026, 7, 1), merchant="Flywire", category="TRANSFER")
+            _tx(db_session, a, "54.20", date(2026, 7, 2), merchant="Tesco", category="PURCHASE")
+            _tx(db_session, a, "12.85", date(2026, 7, 3), merchant="Pret", category="Eating out")
+            spending = analytics_service.get_spending(
+                db_session, user, period="custom",
+                frm=date(2026, 7, 1), to=date(2026, 7, 31), lens="purchases",
+            )
+        finally:
+            user_crypto.current_dek.reset(ctx)
+
+        res = client.get(
+            "/api/v1/banking/transactions",
+            params={"kind": "spend", "date_from": "2026-07-01", "date_to": "2026-07-31"},
+        )
+        items = res.json()["items"]
+        assert sorted(i["merchant_name"] for i in items) == ["Pret", "Tesco"]
+        listed = sum(Decimal(str(i["amount"])) for i in items)
+        assert listed == spending["total_spent"] == Decimal("67.05")
+
     def test_nothing_hidden_by_default_and_granular_opt_in_hides(self, client, db_session):
         """The list shows everything by default; each exclusion is opt-in and
         independent (hiding transfers must not hide card payments)."""

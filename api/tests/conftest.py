@@ -17,7 +17,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.core import user_crypto
 from app.core.database import Base, get_db
-from app.core.rate_limit import auth_rate_limiter
+from app.core.rate_limit import auth_rate_limiter, user_rate_limiter
 from app.main import app
 
 
@@ -42,9 +42,11 @@ def _test_dek():
     """
     token = user_crypto.current_dek.set(user_crypto.generate_dek())
     auth_rate_limiter.reset()
+    user_rate_limiter.reset()
     yield
     user_crypto.current_dek.reset(token)
     auth_rate_limiter.reset()
+    user_rate_limiter.reset()
 
 
 @pytest.fixture(scope="function")

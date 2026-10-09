@@ -1,4 +1,5 @@
-"""Small in-process rate limiter for public authentication endpoints.
+"""Small in-process rate limiters: per client IP for public authentication
+endpoints, per user for expensive authenticated reads.
 
 This is deliberately a backstop, not a distributed abuse-control system.
 
@@ -33,8 +34,11 @@ class SlidingWindowRateLimiter:
         # proxy. Reading it ourselves would let any caller pick a fresh
         # identity per request.
         peer = request.client.host if request.client else "unknown"
+        self.check_key(f"{scope}:{peer}", limit, window_seconds)
+
+    def check_key(self, key: str, limit: int, window_seconds: int) -> None:
+        """Count one event against `key`; 429 with Retry-After past `limit`."""
         now = monotonic()
-        key = f"{scope}:{peer}"
         with self._lock:
             events = self._events[key]
             cutoff = now - window_seconds
@@ -56,3 +60,6 @@ class SlidingWindowRateLimiter:
 
 
 auth_rate_limiter = SlidingWindowRateLimiter()
+# Keyed by user id, never IP: remote MCP calls all reach the API from the MCP
+# container's address, so an IP key would throttle every user as one.
+user_rate_limiter = SlidingWindowRateLimiter()

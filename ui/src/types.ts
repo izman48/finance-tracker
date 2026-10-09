@@ -63,6 +63,9 @@ export interface SummaryAccount {
   account_type: string
   role: string
   current_balance: number | null
+  // Credit accounts only: money owed, positive on every provider (negative =
+  // in credit). current_balance is raw, and its sign differs by provider.
+  credit_owed: number | string | null
   overdraft_limit: number | null
   repayment_cadence: string | null
   repayment_day: number | null

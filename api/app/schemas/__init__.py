@@ -388,6 +388,9 @@ class AccountResponse(BaseModel):
     current_balance: float | None
     available_balance: float | None
     balance_updated_at: datetime | None
+    # Credit accounts only: money owed, positive across providers (negative =
+    # in credit). current_balance stays raw, as the provider reported it.
+    credit_owed: Decimal | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -558,7 +561,10 @@ class CashflowAccount(BaseModel):
     provider_name: str
     account_type: str
     role: str
-    current_balance: Decimal | None
+    current_balance: Decimal | None  # raw, as the provider reported it
+    # Credit accounts only: money owed, positive across providers (negative =
+    # in credit). None for other roles.
+    credit_owed: Decimal | None = None
     overdraft_limit: Decimal | None
     repayment_cadence: str | None = None
     repayment_day: int | None = None

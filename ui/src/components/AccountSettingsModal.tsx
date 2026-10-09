@@ -27,6 +27,8 @@ export default function AccountSettingsModal({
     pay_from_account_id: account.pay_from_account_id ?? undefined,
   })
   const [saving, setSaving] = useState(false)
+  // Money owed, positive on every provider (the server normalises the sign).
+  const owed = Number(account.credit_owed ?? 0)
 
   const set = (patch: Partial<AccountSettingUpdate>) => setForm((f) => ({ ...f, ...patch }))
 
@@ -104,10 +106,9 @@ export default function AccountSettingsModal({
                   className="input"
                   placeholder="e.g. 200"
                 />
-                {account.current_balance && form.repayment_fixed_amount ? (
+                {owed > 0 && form.repayment_fixed_amount ? (
                   <p className="text-xs text-slate-500 mt-1">
                     {(() => {
-                      const owed = Math.abs(account.current_balance)
                       const months = Math.ceil(owed / Math.max(form.repayment_fixed_amount, 1))
                       return `≈ ${months} month${months !== 1 ? 's' : ''} to clear the current ${gbp(owed)} balance`
                     })()}
@@ -164,9 +165,9 @@ export default function AccountSettingsModal({
                     className="input"
                   />
                 </div>
-                {account.current_balance ? (
+                {owed > 0 ? (
                   <p className="col-span-2 text-xs text-slate-500">
-                    {gbp(Math.abs(account.current_balance) / (form.repayment_installments || 1))}{' '}
+                    {gbp(owed / (form.repayment_installments || 1))}{' '}
                     per month × {form.repayment_installments || 1}
                   </p>
                 ) : null}

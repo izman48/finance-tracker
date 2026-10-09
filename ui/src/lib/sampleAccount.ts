@@ -341,6 +341,7 @@ function summaryResponse() {
     accounts: ACCOUNTS.map((a) => ({
       id: a.id, display_name: a.display_name, provider_name: a.provider_name,
       account_type: a.account_type, role: a.role, current_balance: a.current_balance,
+      credit_owed: a.role === 'credit' ? -a.current_balance : null,
       overdraft_limit: a.overdraft_limit, repayment_cadence: a.role === 'credit' ? 'end_of_month' : null,
       repayment_day: null, repayment_interval_months: null, repayment_anchor_date: null,
       repayment_strategy: a.role === 'credit' ? 'full_balance' : null,

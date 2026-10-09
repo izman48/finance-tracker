@@ -8,8 +8,6 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
-logger = logging.getLogger(__name__)
-
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.security import CurrentUser, verify_oauth_state
@@ -27,6 +25,7 @@ from app.schemas import (
     TransactionUpdate,
 )
 from app.services import analytics_service, categorization
+from app.services.balance_sign import credit_owed
 from app.services.truelayer import ReauthRequired, truelayer_service
 from app.models import Account, AccountRole, Transaction, User, BankConnection
 
@@ -283,7 +282,7 @@ async def sync_accounts(
 
     return SyncAccountsResponse(
         accounts_synced=len(all_accounts),
-        accounts=[AccountResponse.model_validate(acc) for acc in all_accounts],
+        accounts=_account_responses(db, current_user, all_accounts),
         message=message
     )
 
@@ -350,7 +349,21 @@ def get_accounts(
     Get all bank accounts for the current user.
     """
     accounts = db.query(Account).filter(Account.user_id == current_user.id).all()
-    return [AccountResponse.model_validate(acc) for acc in accounts]
+    return _account_responses(db, current_user, accounts)
+
+
+def _account_responses(db: Session, user, accounts: list[Account]) -> list[AccountResponse]:
+    """Accounts with `credit_owed` set on credit-role accounts (one sign across
+    providers); `current_balance` stays as the provider reported it."""
+    _, settings = analytics_service._load(db, user)
+    roles = analytics_service.resolve_roles(accounts, settings)
+    out = []
+    for acc in accounts:
+        resp = AccountResponse.model_validate(acc)
+        if roles[acc.id] == AccountRole.CREDIT:
+            resp.credit_owed = credit_owed(acc)
+        out.append(resp)
+    return out
 
 
 def _user_transactions_query(db: Session, user, account_id, date_from, date_to):

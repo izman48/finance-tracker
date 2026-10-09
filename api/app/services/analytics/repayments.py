@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.models import AccountRole, AccountSetting, RepaymentScheduleItem, RepaymentStrategy
 
+from app.services.balance_sign import credit_owed
+
 from .common import _add_months, _d, _load, resolve_roles
 
 
@@ -138,7 +140,7 @@ def repayment_events(db: Session, user, start: date, end: date) -> list[dict]:
 
         if not s.repayment_cadence:
             continue
-        balance = abs(_d(acc.current_balance))
+        balance = credit_owed(acc)
         amounts = _repayment_schedule(s, balance)
         if not amounts:
             continue

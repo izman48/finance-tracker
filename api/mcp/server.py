@@ -103,7 +103,9 @@ def create_server(settings: Settings, api_transport: httpx.AsyncBaseTransport | 
 
     @mcp.tool()
     async def accounts() -> list:
-        """Connected bank accounts with balances, types and provider names."""
+        """Connected bank accounts with balances, types and provider names.
+
+        `current_balance` is raw, as the bank reported it, and its sign differs by provider for credit cards. Use `credit_owed` for credit accounts: money owed, positive on every provider (negative = the card is in credit). It is null for non-credit accounts."""
         return await api.get("/banking/accounts")
 
     @mcp.tool()

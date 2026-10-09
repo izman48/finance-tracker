@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 
 from app.models import AccountRole, Asset, AssetFlow, AssetValuation, Transaction
 
+from app.services.balance_sign import credit_owed
+
 from .common import _add_months, _d, _load, _today, resolve_roles
 
 
@@ -121,8 +123,9 @@ def _net_worth_at(db: Session, user, points: list[date]) -> list[dict]:
             )
             if role == AccountRole.CREDIT:
                 # Owed grows with spending (debits): owed(p) = owed_now + delta_after.
-                owed_at = abs(_d(acc.current_balance)) + delta_after
-                bank_at[p] -= max(owed_at, Decimal(0))
+                # In credit (overpaid) is negative owed, so net worth goes up.
+                owed_at = credit_owed(acc) + delta_after
+                bank_at[p] -= owed_at
             else:
                 bank_at[p] += _d(acc.current_balance) - delta_after
 

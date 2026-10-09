@@ -17,6 +17,8 @@ from app.models import (
 
 from .cadence import commitment_occurrences
 from .commitments import next_payday
+from app.services.balance_sign import credit_owed as credit_owed_for
+
 from .common import _d, _load, _today, resolve_roles
 from .net_worth import assets_total
 from .repayments import repayment_events
@@ -30,7 +32,8 @@ def get_summary(db: Session, user) -> dict:
 
     available_cash = Decimal(0)
     overdraft_cushion = Decimal(0)
-    credit_owed = Decimal(0)
+    credit_owed = Decimal(0)  # what is owed: cards in credit don't offset it
+    credit_in_favour = Decimal(0)  # cards in credit (overpaid): money the user has
     savings_total = Decimal(0)
     for acc in accounts:
         role = roles[acc.id]
@@ -42,7 +45,11 @@ def get_summary(db: Session, user) -> dict:
         elif role == AccountRole.SAVINGS:
             savings_total += _d(acc.current_balance)
         elif role == AccountRole.CREDIT:
-            credit_owed += abs(_d(acc.current_balance))
+            owed = credit_owed_for(acc)
+            if owed > 0:
+                credit_owed += owed
+            else:
+                credit_in_favour -= owed
 
     payday = next_payday(db, user, today)
     window_end = payday or (today + timedelta(days=30))
@@ -95,7 +102,7 @@ def get_summary(db: Session, user) -> dict:
         "credit_owed": credit_owed,
         "savings_total": savings_total,
         "assets_total": manual_assets,
-        "net_worth": available_cash + savings_total + manual_assets - credit_owed,
+        "net_worth": available_cash + savings_total + manual_assets + credit_in_favour - credit_owed,
         "committed_before_payday": committed,
         "safe_to_spend": safe_to_spend,
         "savable": savable,
@@ -115,6 +122,7 @@ def _account_summary(acc: Account, role: AccountRole, s: AccountSetting | None) 
         "account_type": acc.account_type,
         "role": role.value,
         "current_balance": acc.current_balance,
+        "credit_owed": credit_owed_for(acc) if role == AccountRole.CREDIT else None,
         "overdraft_limit": s.overdraft_limit if s else None,
         "repayment_cadence": s.repayment_cadence if s else None,
         "repayment_day": s.repayment_day if s else None,

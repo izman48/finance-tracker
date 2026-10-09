@@ -8,7 +8,6 @@ from app.models import (
     Account,
     AccountSetting,
     CommitmentRule,
-    CommitmentDirection,
     CommitmentStatus,
     PlannedItem,
     RepaymentScheduleItem,
@@ -191,7 +190,7 @@ class TestDetection:
 class TestSummary:
     def test_safe_to_spend_excludes_credit_and_subtracts_commitments(self, db_session):
         user = _user(db_session)
-        spending = _account(db_session, user, "TRANSACTION", "4200", "Current")
+        _account(db_session, user, "TRANSACTION", "4200", "Current")
         _account(db_session, user, "CREDIT_CARD", "900", "Amex")
 
         today = svc._today()
@@ -899,7 +898,7 @@ class TestSkipCommitment:
 # --------------------------------------------------------------------------- #
 # Merchant normalisation: the reason regular loan/bill payments went undetected
 # --------------------------------------------------------------------------- #
-from app.models import AccountRole, AccountType, CommitmentSource  # noqa: E402
+from app.models import AccountRole, CommitmentSource  # noqa: E402
 from app.services.analytics.commitments import (  # noqa: E402
     _match_key,
     _normalise_merchant,

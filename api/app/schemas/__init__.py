@@ -657,6 +657,16 @@ class ForecastPoint(BaseModel):
     events: list[ForecastEvent]
 
 
+class AccountBreach(BaseModel):
+    """First day one spending account goes below its own line."""
+    account_id: str | None  # None = events with no spending account to land on
+    account_name: str | None
+    date: date
+    balance: Decimal
+    floor: Decimal  # -|overdraft limit|, or 0 when no limit is recorded
+    kind: str       # overdraft (below floor) | zero (below £0, inside limit)
+
+
 class ForecastResponse(BaseModel):
     horizon: str
     horizon_end: date
@@ -664,8 +674,13 @@ class ForecastResponse(BaseModel):
     end_balance: Decimal
     min_balance: Decimal
     min_date: date
-    overdraft_limit: Decimal
-    breaches: list[str]
+    overdraft_limit: Decimal  # pooled across spending accounts (chart line only)
+    breaches: list[str]       # pooled kinds plus every per-account kind
+    account_breaches: list[AccountBreach]
+    # Spending account that events with no account of their own were put on
+    # for the per-account check. A heuristic (highest balance); None = no
+    # spending account.
+    unassigned_attributed_to: str | None
     timeline: list[ForecastPoint]
 
 

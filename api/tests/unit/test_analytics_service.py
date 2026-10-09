@@ -299,6 +299,150 @@ class TestPaydaySelection:
         assert svc.next_payday(db_session, user, today) == today + timedelta(days=3)
 
 
+class TestPerAccountOverdraft:
+    """Each spending account is checked against its own floor (-|limit|, or £0
+    with no limit). Pooling limits hid one account going past its own line."""
+
+    def _spending(self, db, user, name, balance, limit=None):
+        acc = _account(db, user, "TRANSACTION", balance, name)
+        db.add(AccountSetting(
+            user_id=user.id, account_id=acc.id, role="spending", overdraft_limit=limit,
+        ))
+        db.commit()
+        return acc
+
+    def _expense(self, db, user, amount, in_days, account=None, label="Bill"):
+        db.add(CommitmentRule(
+            user_id=user.id, direction="expense", label=label, amount=Decimal(amount),
+            cadence="monthly", next_date=svc._today() + timedelta(days=in_days),
+            status=CommitmentStatus.CONFIRMED.value,
+            account_id=account.id if account else None,
+        ))
+        db.commit()
+
+    def _breached(self, f):
+        return {(b["account_id"], b["kind"]) for b in f["account_breaches"]}
+
+    def test_one_account_past_its_own_limit_breaches_inside_the_pool(self, db_session):
+        user = _user(db_session)
+        barclays = self._spending(db_session, user, "Barclays", "100", Decimal("1000"))
+        self._spending(db_session, user, "Monzo", "100", Decimal("1000"))
+        self._expense(db_session, user, "1500", 3, barclays)
+
+        f = svc.get_forecast(db_session, user, horizon="30")
+        # pool: 200 - 1500 = -1300, inside the pooled -2000 line
+        assert f["min_balance"] == Decimal("-1300")
+        # Barclays alone: 100 - 1500 = -1400, past its own -1000 line
+        assert "overdraft" in f["breaches"]
+        assert self._breached(f) == {(str(barclays.id), "overdraft")}
+        breach = f["account_breaches"][0]
+        assert breach["date"] == svc._today() + timedelta(days=3)
+        assert breach["balance"] == Decimal("-1400")
+        assert breach["floor"] == Decimal("-1000")
+
+    def test_no_limit_means_a_zero_floor_and_no_borrowed_headroom(self, db_session):
+        user = _user(db_session)
+        nolimit = self._spending(db_session, user, "Plain", "100", None)
+        self._spending(db_session, user, "Roomy", "5000", Decimal("3000"))
+        self._expense(db_session, user, "150", 2, nolimit)
+
+        f = svc.get_forecast(db_session, user, horizon="30")
+        # pool stays positive (5100 - 150), but Plain goes to -50 with no limit
+        assert f["min_balance"] > 0
+        assert self._breached(f) == {(str(nolimit.id), "overdraft")}
+        assert f["account_breaches"][0]["floor"] == Decimal("0")
+        assert "overdraft" in f["breaches"]
+
+    def test_zero_limit_is_a_zero_floor(self, db_session):
+        user = _user(db_session)
+        acc = self._spending(db_session, user, "Zero", "100", Decimal("0"))
+        self._expense(db_session, user, "150", 2, acc)
+        f = svc.get_forecast(db_session, user, horizon="30")
+        assert self._breached(f) == {(str(acc.id), "overdraft")}
+
+    @pytest.mark.parametrize("stored_limit", [Decimal("500"), Decimal("-500")])
+    def test_limit_sign_does_not_matter(self, db_session, stored_limit):
+        user = _user(db_session)
+        within = self._spending(db_session, user, "Within", "0", stored_limit)
+        past = self._spending(db_session, user, "Past", "0", stored_limit)
+        self._expense(db_session, user, "400", 2, within, "Small")
+        self._expense(db_session, user, "600", 2, past, "Large")
+
+        f = svc.get_forecast(db_session, user, horizon="30")
+        floors = {b["account_id"]: b["floor"] for b in f["account_breaches"]}
+        assert floors == {str(within.id): Decimal("-500"), str(past.id): Decimal("-500")}
+        # below £0 but inside its limit -> "zero"; past its limit -> "overdraft"
+        assert self._breached(f) == {(str(within.id), "zero"), (str(past.id), "overdraft")}
+
+    def test_two_accounts_breaching_the_same_day_are_both_reported(self, db_session):
+        user = _user(db_session)
+        a = self._spending(db_session, user, "A", "100", None)
+        b = self._spending(db_session, user, "B", "100", None)
+        self._expense(db_session, user, "200", 4, a, "A bill")
+        self._expense(db_session, user, "200", 4, b, "B bill")
+
+        f = svc.get_forecast(db_session, user, horizon="30")
+        assert len(f["account_breaches"]) == 2
+        assert self._breached(f) == {(str(a.id), "overdraft"), (str(b.id), "overdraft")}
+        assert {x["date"] for x in f["account_breaches"]} == {svc._today() + timedelta(days=4)}
+
+    def test_card_repayment_hits_its_pay_from_account(self, db_session):
+        user = _user(db_session)
+        rich = self._spending(db_session, user, "Rich", "5000", None)
+        payer = self._spending(db_session, user, "Payer", "100", None)
+        card = _account(db_session, user, "CREDIT_CARD", "400", "Amex")
+        db_session.add(AccountSetting(
+            user_id=user.id, account_id=card.id, role="credit",
+            repayment_cadence="end_of_month", repayment_strategy="full_balance",
+            pay_from_account_id=payer.id,
+        ))
+        db_session.commit()
+
+        f = svc.get_forecast(db_session, user, horizon="60")
+        assert self._breached(f) == {(str(payer.id), "overdraft")}
+        assert str(rich.id) not in {b["account_id"] for b in f["account_breaches"]}
+
+    def test_unassigned_events_go_to_the_highest_balance_account(self, db_session):
+        user = _user(db_session)
+        self._spending(db_session, user, "Low", "100", None)
+        high = self._spending(db_session, user, "High", "1000", None)
+        self._expense(db_session, user, "500", 2)  # no account_id
+
+        f = svc.get_forecast(db_session, user, horizon="30")
+        assert f["unassigned_attributed_to"] == str(high.id)
+        assert f["account_breaches"] == []  # High absorbs it: 1000 - 500
+
+    def test_unassigned_attribution_is_deterministic_on_tied_balances(self, db_session):
+        user = _user(db_session)
+        a = self._spending(db_session, user, "A", "100", None)
+        b = self._spending(db_session, user, "B", "100", None)
+        self._expense(db_session, user, "150", 2)
+
+        expected = str(min(a.id, b.id, key=str))
+        for _ in range(3):
+            f = svc.get_forecast(db_session, user, horizon="30")
+            assert f["unassigned_attributed_to"] == expected
+            assert self._breached(f) == {(expected, "overdraft")}
+
+    def test_pooled_breach_is_still_reported(self, db_session):
+        """Per-account kinds add to the pooled ones; none flagged today disappears."""
+        user = _user(db_session)
+        self._spending(db_session, user, "Only", "100", Decimal("300"))
+        self._expense(db_session, user, "200", 2)
+        f = svc.get_forecast(db_session, user, horizon="30")
+        assert f["breaches"] == ["zero"]
+        assert f["overdraft_limit"] == Decimal("300")
+
+    def test_no_spending_accounts_uses_a_zero_floor(self, db_session):
+        user = _user(db_session)
+        self._expense(db_session, user, "50", 2)
+        f = svc.get_forecast(db_session, user, horizon="30")
+        assert f["unassigned_attributed_to"] is None
+        # pooled: below £0; per account: the £0 floor of the fallback bucket
+        assert f["breaches"] == ["zero", "overdraft"]
+        assert [(b["account_id"], b["kind"]) for b in f["account_breaches"]] == [(None, "overdraft")]
+
+
 class TestCreditRepayments:
     def test_flex_installments_recur_monthly(self, db_session):
         user = _user(db_session)

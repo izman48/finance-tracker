@@ -72,7 +72,7 @@ def create_server(settings: Settings, api_transport: httpx.AsyncBaseTransport | 
 
     @mcp.tool()
     async def forecast(horizon: str = "90") -> dict:
-        """Balance projection over a horizon (payday | 30 | 90 | 180 | 365 days). Returns the daily running-balance timeline, the lowest point, end balance, any £0/overdraft breaches, and the dated income/expense/repayment/planned events."""
+        """Balance projection over a horizon (payday | 30 | 90 | 180 | 365 days). Returns the daily running-balance timeline (spending accounts pooled), the lowest point, end balance, any £0/overdraft breaches (pooled, plus `account_breaches`: each spending account checked against its own overdraft limit, £0 if none), and the dated income/expense/repayment/planned events."""
         return await api.get("/analytics/forecast", {"horizon": horizon})
 
     @mcp.tool()

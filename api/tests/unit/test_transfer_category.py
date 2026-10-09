@@ -49,6 +49,10 @@ def _tx(db, account, amount, when, merchant, category=None, counts_as=None):
     return t
 
 
+def _user_txns(db, user):
+    return db.query(Transaction).join(Account).filter(Account.user_id == user.id).all()
+
+
 def _purchases(db, user):
     today = svc._today()
     return svc.get_spending(
@@ -60,7 +64,9 @@ def _purchases(db, user):
 def _seed(db, flywire_counts_as=None):
     user = _user(db)
     acc = _account(db, user)
-    d = svc._today() - timedelta(days=2)
+    # Today: inside both the 10-day purchases window and the trend's current
+    # calendar month on any day (today - n days falls into last month on the 1st).
+    d = svc._today()
     _tx(db, acc, "54.20", d, "Tesco", category="PURCHASE")
     _tx(db, acc, "12.80", d, "Pret", category="Eating out")
     _tx(db, acc, "4170.00", d, "Flywire", category="TRANSFER", counts_as=flywire_counts_as)
@@ -89,6 +95,17 @@ class TestTransferCategoryLeavesPurchases:
         _tx(db_session, acc, "100", svc._today() - timedelta(days=1), "Wise", category="Transfer")
         assert _purchases(db_session, user)["total_spent"] == Decimal("0")
 
+    def test_plural_category_counts_but_a_longer_name_does_not(self, db_session):
+        """'Transfers' (a user/rule category) is a transfer; 'Transfer fee' is a
+        real cost and must stay spending, so this is an exact match, not a
+        substring."""
+        user = _user(db_session)
+        acc = _account(db_session, user)
+        d = svc._today()
+        _tx(db_session, acc, "100", d, "Wise", category="Transfers")
+        _tx(db_session, acc, "2.50", d, "Wise fee", category="Transfer fee")
+        assert _purchases(db_session, user)["total_spent"] == Decimal("2.50")
+
     def test_drill_down_excludes_it_too(self, db_session):
         user = _seed(db_session)
         today = svc._today()
@@ -107,7 +124,7 @@ class TestTransferCategoryLeavesPurchases:
         user = _seed(db_session)
         accounts, settings = svc._load(db_session, user)
         roles = svc.resolve_roles(accounts, settings)
-        txns = db_session.query(Transaction).all()
+        txns = _user_txns(db_session, user)
         reasons = svc.classify_noise(txns, roles)
         labelled = {t.merchant_name: reasons.get(t.id) for t in txns}
         assert labelled == {"Tesco": None, "Pret": None, "Flywire": "internal_transfer"}
@@ -125,6 +142,6 @@ class TestUserOverrideWins:
         user = _seed(db_session, flywire_counts_as="spending")
         accounts, settings = svc._load(db_session, user)
         roles = svc.resolve_roles(accounts, settings)
-        txns = db_session.query(Transaction).all()
+        txns = _user_txns(db_session, user)
         reasons = svc.classify_noise(txns, roles)
         assert all(reasons.get(t.id) is None for t in txns)

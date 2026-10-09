@@ -38,13 +38,16 @@ def _spending_range(db, user, period: str, frm: date | None, to: date | None, to
     return (payday or today - timedelta(days=30)), today
 
 
-TRANSFER_CATEGORY = "transfer"
+TRANSFER_CATEGORIES = frozenset({"transfer", "transfers"})
 
 
 def _is_transfer_category(tx: Transaction) -> bool:
-    """The provider (or a rule) filed this as a TRANSFER, e.g. a Faster
-    Payment to Flywire, which has no visible incoming leg to pair with."""
-    return (tx.category or "").strip().lower() == TRANSFER_CATEGORY
+    """The provider (or a user/rule) filed this as a transfer, e.g. a Faster
+    Payment to Flywire, which has no visible incoming leg to pair with.
+
+    Exact match on purpose (case-insensitive, singular or plural): a
+    substring match would also catch real costs such as "Transfer fee"."""
+    return (tx.category or "").strip().lower() in TRANSFER_CATEGORIES
 
 
 def _effective_transfers(txns: list[Transaction]) -> set:

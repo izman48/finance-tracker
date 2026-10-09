@@ -209,6 +209,15 @@ class TestCommitmentsEndpoint:
         assert loans_first[0]["id"] == loans_second[0]["id"]
 
 
+class TestForecastEndpoint:
+    def test_exposes_per_account_breach_fields(self, authenticated_client):
+        response = authenticated_client.get("/api/v1/analytics/forecast?horizon=30")
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert data["account_breaches"] == []
+        assert data["unassigned_attributed_to"] is None
+
+
 class TestNetWorthPositionEndpoint:
     def test_requires_auth(self, client):
         assert client.get("/api/v1/analytics/net-worth-position").status_code == 401

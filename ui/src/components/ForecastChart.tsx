@@ -12,6 +12,7 @@ import {
 import { analyticsAPI } from '../services/api'
 import { gbp0 as gbp, dateDayMonth as shortDate } from '../lib/format'
 import InfoTip from './ui/InfoTip'
+import ForecastSummary, { OVERDRAFT_LINE_LABEL, type AccountBreach } from './ForecastSummary'
 import { EXPLAIN } from '../copy/statExplainers'
 
 interface ForecastEvent {
@@ -33,6 +34,8 @@ interface Forecast {
   min_date: string
   overdraft_limit: number
   breaches: string[]
+  account_breaches: AccountBreach[]
+  unassigned_attributed_to: string | null
   timeline: ForecastPoint[]
 }
 
@@ -87,7 +90,6 @@ export default function ForecastChart({ refreshKey }: { refreshKey?: number }) {
   }, [horizon, refreshKey])
 
   const hasOverdraft = (data?.overdraft_limit ?? 0) > 0
-  const breached = (data?.breaches?.length ?? 0) > 0
 
   return (
     <div className="card-pad h-full">
@@ -113,15 +115,7 @@ export default function ForecastChart({ refreshKey }: { refreshKey?: number }) {
         <div className="h-64 flex items-center justify-center text-slate-600">Loading forecast…</div>
       ) : (
         <>
-          <div className={`mb-3 text-sm ${breached ? 'text-neg' : 'text-slate-400'}`}>
-            {breached && '⚠ '}Lowest point: <span className="font-semibold tnum">{gbp(data.min_balance)}</span> on{' '}
-            {shortDate(data.min_date)}
-            {data.breaches.includes('overdraft')
-              ? ' — exceeds your overdraft limit'
-              : data.breaches.includes('zero')
-              ? ' — dips into overdraft'
-              : ''}
-          </div>
+          <ForecastSummary data={data} />
           <ResponsiveContainer width="100%" height={260}>
             <AreaChart data={data.timeline} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
               <defs>
@@ -140,7 +134,7 @@ export default function ForecastChart({ refreshKey }: { refreshKey?: number }) {
                   y={-data.overdraft_limit}
                   stroke="#FB7185"
                   strokeDasharray="4 4"
-                  label={{ value: 'overdraft limit', position: 'insideBottomRight', fontSize: 11, fill: '#FB7185' }}
+                  label={{ value: OVERDRAFT_LINE_LABEL, position: 'insideBottomRight', fontSize: 11, fill: '#FB7185' }}
                 />
               )}
               <Area type="monotone" dataKey="balance" stroke="#2DD4A7" strokeWidth={2} fill="url(#balfill)" />

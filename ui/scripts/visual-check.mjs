@@ -47,7 +47,13 @@ const forecast = {
   min_balance: Math.min(...timeline.map((p) => p.balance)),
   min_date: daysFromNow(15),
   overdraft_limit: 500,
-  breaches: [],
+  // Pooled fine, one account past its own limit: the per-account lines,
+  // the pooled-ok note and the "estimated" footnote all render.
+  breaches: ['overdraft'],
+  account_breaches: [
+    { account_id: 'a1', account_name: 'Monzo Current', date: daysFromNow(9), balance: '-620.00', floor: '-500', kind: 'overdraft' },
+  ],
+  unassigned_attributed_to: 'a1',
   timeline,
 }
 

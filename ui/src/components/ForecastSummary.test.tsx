@@ -98,9 +98,28 @@ describe('ForecastSummary', () => {
     expect(el.textContent).toContain('Your accounts together stay above £0, but 3 accounts do not.')
   })
 
-  it('8: a breach with no account name', () => {
-    const el = render({ breaches: ['zero'], account_breaches: [{ ...barclays, account_id: null, account_name: null }] })
-    expect(items(el)[0]?.startsWith('Items with no account')).toBe(true)
+  it('8: a breach with no account name reads in the plural', () => {
+    const el = render({
+      min_balance: -45, overdraft_limit: 0, breaches: ['zero'],
+      account_breaches: [{ ...barclays, account_id: null, account_name: null }],
+    })
+    expect(items(el)).toEqual(['Items with no account go below £0 on 19 Oct (down to -£45.00).'])
+  })
+
+  it('7b: the accounts count leaves out the no-account entry', () => {
+    const el = render({
+      breaches: ['overdraft', 'zero'],
+      account_breaches: [monzo, halifax, { ...barclays, account_id: null, account_name: null }],
+    })
+    expect(el.textContent).toContain('Your accounts together stay above £0, but 2 accounts do not.')
+  })
+
+  it('spacing: list and notes are spaced for small screens', () => {
+    const el = render({
+      breaches: ['overdraft'], account_breaches: [monzo], unassigned_attributed_to: 'acc-monzo',
+    })
+    expect(el.html).toContain('<ul class="text-neg space-y-1')
+    expect(el.html.match(/<p class="text-slate-400 mt-1">/g) ?? []).toHaveLength(2)
   })
 
   it('9: discloses the heuristic on the account it was applied to', () => {

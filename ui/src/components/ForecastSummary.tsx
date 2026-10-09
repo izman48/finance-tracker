@@ -32,10 +32,14 @@ function pooledSuffix(minBalance: number, limit: number): string {
 
 /** One line per account. "Overdraft" never describes an account with no limit. */
 function breachLine(b: AccountBreach): string {
-  const name = b.account_name ?? 'Items with no account'
-  const floor = Number(b.floor)
   const when = shortDate(b.date)
   const bal = gbp(Number(b.balance))
+  if (b.account_name == null) {
+    // Events with no spending account to land on (floor is always £0).
+    return `Items with no account go below £0 on ${when} (down to ${bal}).`
+  }
+  const name = b.account_name
+  const floor = Number(b.floor)
   if (floor === 0) {
     return `${name} goes below £0 on ${when} (down to ${bal}). It has no overdraft limit set.`
   }
@@ -50,6 +54,7 @@ export default function ForecastSummary({ data }: { data: ForecastHeadline }) {
   const breached = data.breaches.length > 0
   const suffix = pooledSuffix(data.min_balance, data.overdraft_limit)
   const accounts = data.account_breaches ?? []
+  const namedCount = accounts.filter((b) => b.account_name != null).length
   // Only the account the forecast put unassigned items on can be uncertain.
   const estimated = accounts.find(
     (b) => data.unassigned_attributed_to != null && b.account_id === data.unassigned_attributed_to,
@@ -63,14 +68,14 @@ export default function ForecastSummary({ data }: { data: ForecastHeadline }) {
         <span className="font-semibold tnum">{gbp0(data.min_balance)}</span>
         <span> on {shortDate(data.min_date)}{suffix}</span>
       </p>
-      {accounts.length > 0 && !suffix && (
-        <p className="text-slate-400">
+      {namedCount > 0 && !suffix && (
+        <p className="text-slate-400 mt-1">
           Your accounts together stay above £0, but{' '}
-          {accounts.length === 1 ? 'one account does not.' : `${accounts.length} accounts do not.`}
+          {namedCount === 1 ? 'one account does not.' : `${namedCount} accounts do not.`}
         </p>
       )}
       {accounts.length > 0 && (
-        <ul className="text-neg">
+        <ul className="text-neg space-y-1 mt-1">
           {accounts.map((b) => (
             <li key={b.account_id ?? 'unassigned'}>
               {breachLine(b)}
@@ -80,7 +85,7 @@ export default function ForecastSummary({ data }: { data: ForecastHeadline }) {
         </ul>
       )}
       {estimated && (
-        <p className="text-slate-400">
+        <p className="text-slate-400 mt-1">
           * Estimated: items with no account set are counted against {estimated.account_name}, your
           highest-balance spending account. Set an account on them to make this exact.
         </p>

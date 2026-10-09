@@ -40,6 +40,9 @@ def _horizon_end(db: Session, user, horizon: str, today: date) -> date:
     return today + timedelta(days=30)
 
 
+SKIP = object()  # a movement that lands on no spending account
+
+
 def _floor(setting) -> Decimal:
     """Lowest balance an account may reach: -|overdraft limit|, or £0 with none.
 
@@ -65,8 +68,10 @@ def _unassigned_target(spending: list) -> uuid.UUID | None:
 def _account_breaches(
     spending: list, settings: dict, moves: list[tuple], today: date, end: date,
 ) -> list[dict]:
-    """First day each account goes below its own floor ("overdraft"), or below
-    £0 while still inside its limit ("zero"). One entry per breaching account."""
+    """One entry per breaching account: the first day it goes past its own
+    overdraft limit ("overdraft"), or, if it never does, the first day it goes
+    below £0 ("zero"). With no limit recorded the floor is £0, so going below
+    zero is a "zero" breach: still reported, never treated as unlimited."""
     names = {a.id: a.display_name for a in spending}
     balances = {a.id: _d(a.current_balance) for a in spending}
     floors = {a.id: _floor(settings.get(a.id)) for a in spending}
@@ -77,25 +82,32 @@ def _account_breaches(
     for day, acc, amount in moves:
         by_day[day].append((acc, amount))
 
-    first_below: dict[str, dict] = {"overdraft": {}, "zero": {}}
+    # First (day, balance) each account goes past its limit / below £0.
+    past_limit: dict = {}
+    below_zero: dict = {}
     running = dict(balances)
+
+    def check(day: date) -> None:
+        for acc, bal in running.items():
+            if bal < floors[acc] < 0:
+                past_limit.setdefault(acc, (day, bal))
+            if bal < 0:
+                below_zero.setdefault(acc, (day, bal))
+
+    check(today)  # an account can already be below its line today
     day = today
     while day < end:
         day += timedelta(days=1)
         for acc, amount in by_day.get(day, []):
             running[acc] += amount
-        for acc, bal in running.items():
-            if bal < floors[acc]:
-                first_below["overdraft"].setdefault(acc, (day, bal))
-            if bal < 0:
-                first_below["zero"].setdefault(acc, (day, bal))
+        check(day)
 
     out = []
     for acc in running:
-        kind = "overdraft" if acc in first_below["overdraft"] else "zero"
-        if acc not in first_below[kind]:
+        kind, first = ("overdraft", past_limit) if acc in past_limit else ("zero", below_zero)
+        if acc not in first:
             continue
-        when, bal = first_below[kind][acc]
+        when, bal = first[acc]
         out.append({
             "account_id": str(acc) if acc is not None else None,
             "account_name": names[acc],
@@ -118,7 +130,9 @@ def get_forecast(db: Session, user, horizon: str = "payday") -> dict:
     Breaches are checked both pooled (as before) and per account against each
     account's own floor. Each movement lands on its own spending account
     (commitment/planned `account_id`, card `pay_from_account_id`); one with no
-    spending account is attributed to `unassigned_attributed_to` (a heuristic).
+    account set is attributed to `unassigned_attributed_to` (a heuristic). One
+    set to a savings or excluded account stays in the pooled timeline (as
+    before) but is left out of the per-account check.
     """
     accounts, settings = _load(db, user)
     roles = resolve_roles(accounts, settings)
@@ -129,8 +143,16 @@ def get_forecast(db: Session, user, horizon: str = "payday") -> dict:
     spending_ids = {a.id for a in spending}
     fallback = _unassigned_target(spending)
 
+    other_ids = {a.id for a in accounts} - spending_ids
+
     def target(account_id):
-        return account_id if account_id in spending_ids else fallback
+        """Spending account a movement lands on; SKIP when it lands on one of
+        the user's savings/excluded accounts (not part of this forecast)."""
+        if account_id in spending_ids:
+            return account_id
+        if account_id in other_ids:
+            return SKIP
+        return fallback
 
     start_balance = sum((_d(a.current_balance) for a in spending), Decimal(0))
     overdraft_limit = sum((-_floor(settings.get(a.id)) for a in spending), Decimal(0))
@@ -141,7 +163,9 @@ def get_forecast(db: Session, user, horizon: str = "payday") -> dict:
 
     def add(day: date, account_id, event: dict) -> None:
         events_by_day[day].append(event)
-        moves.append((day, target(account_id), event["amount"]))
+        acc = target(account_id)
+        if acc is not SKIP:
+            moves.append((day, acc, event["amount"]))
 
     confirmed = (
         db.query(CommitmentRule)

@@ -346,18 +346,20 @@ class TestPerAccountOverdraft:
         self._expense(db_session, user, "150", 2, nolimit)
 
         f = svc.get_forecast(db_session, user, horizon="30")
-        # pool stays positive (5100 - 150), but Plain goes to -50 with no limit
+        # pool stays positive (5100 - 150), but Plain goes to -50 with no limit:
+        # reported against a £0 floor, as "zero" (it has no overdraft to exceed)
         assert f["min_balance"] > 0
-        assert self._breached(f) == {(str(nolimit.id), "overdraft")}
+        assert self._breached(f) == {(str(nolimit.id), "zero")}
         assert f["account_breaches"][0]["floor"] == Decimal("0")
-        assert "overdraft" in f["breaches"]
+        assert f["breaches"] == ["zero"]
 
     def test_zero_limit_is_a_zero_floor(self, db_session):
         user = _user(db_session)
         acc = self._spending(db_session, user, "Zero", "100", Decimal("0"))
         self._expense(db_session, user, "150", 2, acc)
         f = svc.get_forecast(db_session, user, horizon="30")
-        assert self._breached(f) == {(str(acc.id), "overdraft")}
+        assert self._breached(f) == {(str(acc.id), "zero")}
+        assert f["account_breaches"][0]["floor"] == Decimal("0")
 
     @pytest.mark.parametrize("stored_limit", [Decimal("500"), Decimal("-500")])
     def test_limit_sign_does_not_matter(self, db_session, stored_limit):
@@ -382,7 +384,7 @@ class TestPerAccountOverdraft:
 
         f = svc.get_forecast(db_session, user, horizon="30")
         assert len(f["account_breaches"]) == 2
-        assert self._breached(f) == {(str(a.id), "overdraft"), (str(b.id), "overdraft")}
+        assert self._breached(f) == {(str(a.id), "zero"), (str(b.id), "zero")}
         assert {x["date"] for x in f["account_breaches"]} == {svc._today() + timedelta(days=4)}
 
     def test_card_repayment_hits_its_pay_from_account(self, db_session):
@@ -398,7 +400,7 @@ class TestPerAccountOverdraft:
         db_session.commit()
 
         f = svc.get_forecast(db_session, user, horizon="60")
-        assert self._breached(f) == {(str(payer.id), "overdraft")}
+        assert self._breached(f) == {(str(payer.id), "zero")}
         assert str(rich.id) not in {b["account_id"] for b in f["account_breaches"]}
 
     def test_unassigned_events_go_to_the_highest_balance_account(self, db_session):
@@ -421,7 +423,7 @@ class TestPerAccountOverdraft:
         for _ in range(3):
             f = svc.get_forecast(db_session, user, horizon="30")
             assert f["unassigned_attributed_to"] == expected
-            assert self._breached(f) == {(expected, "overdraft")}
+            assert self._breached(f) == {(expected, "zero")}
 
     def test_pooled_breach_is_still_reported(self, db_session):
         """Per-account kinds add to the pooled ones; none flagged today disappears."""
@@ -437,9 +439,62 @@ class TestPerAccountOverdraft:
         self._expense(db_session, user, "50", 2)
         f = svc.get_forecast(db_session, user, horizon="30")
         assert f["unassigned_attributed_to"] is None
-        # pooled: below £0; per account: the £0 floor of the fallback bucket
-        assert f["breaches"] == ["zero", "overdraft"]
-        assert [(b["account_id"], b["kind"]) for b in f["account_breaches"]] == [(None, "overdraft")]
+        assert f["breaches"] == ["zero"]
+        assert [(b["account_id"], b["kind"], b["floor"]) for b in f["account_breaches"]] == [
+            (None, "zero", Decimal("0")),
+        ]
+
+    def test_account_already_past_its_limit_today_breaches_today(self, db_session):
+        user = _user(db_session)
+        acc = self._spending(db_session, user, "Red", "-600", Decimal("500"))
+        f = svc.get_forecast(db_session, user, horizon="30")
+        assert self._breached(f) == {(str(acc.id), "overdraft")}
+        assert f["account_breaches"][0]["date"] == svc._today()
+
+    def test_events_on_a_savings_account_stay_out_of_the_per_account_check(self, db_session):
+        user = _user(db_session)
+        cur = self._spending(db_session, user, "Current", "100", None)
+        savings = _account(db_session, user, "SAVINGS", "50", "Saver")
+        self._expense(db_session, user, "500", 2, savings, "Savings out")
+        f = svc.get_forecast(db_session, user, horizon="30")
+        assert f["account_breaches"] == []  # not moved onto Current
+        assert f["unassigned_attributed_to"] == str(cur.id)
+
+    def test_repayment_paid_from_a_savings_account_is_not_moved_onto_current(self, db_session):
+        user = _user(db_session)
+        self._spending(db_session, user, "Current", "100", None)
+        savings = _account(db_session, user, "SAVINGS", "5000", "Saver")
+        card = _account(db_session, user, "CREDIT_CARD", "400", "Amex")
+        db_session.add(AccountSetting(
+            user_id=user.id, account_id=card.id, role="credit",
+            repayment_cadence="end_of_month", repayment_strategy="full_balance",
+            pay_from_account_id=savings.id,
+        ))
+        db_session.commit()
+        f = svc.get_forecast(db_session, user, horizon="60")
+        assert f["account_breaches"] == []
+
+    def test_breaches_only_name_the_callers_own_accounts(self, db_session):
+        """A foreign account id on a commitment or a card's pay-from never
+        surfaces: the movement falls back to the caller's own account."""
+        other = _user(db_session)
+        foreign = self._spending(db_session, other, "Theirs", "0", None)
+        user = _user(db_session)
+        mine = self._spending(db_session, user, "Mine", "100", None)
+        self._expense(db_session, user, "150", 2, foreign)
+        card = _account(db_session, user, "CREDIT_CARD", "50", "Card")
+        db_session.add(AccountSetting(
+            user_id=user.id, account_id=card.id, role="credit",
+            repayment_cadence="end_of_month", repayment_strategy="full_balance",
+            pay_from_account_id=foreign.id,
+        ))
+        db_session.commit()
+
+        f = svc.get_forecast(db_session, user, horizon="60")
+        named = {b["account_id"] for b in f["account_breaches"]}
+        assert named == {str(mine.id)}
+        assert str(foreign.id) not in named
+        assert f["unassigned_attributed_to"] == str(mine.id)
 
 
 class TestCreditRepayments:

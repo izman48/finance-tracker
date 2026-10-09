@@ -33,11 +33,11 @@ def _user(db):
     return u
 
 
-def _account(db, user, atype, balance, name):
+def _account(db, user, atype, balance, name, provider="Test"):
     a = Account(
         user_id=user.id, bank_connection_id=user.id,
         external_id=f"ext-{name}-{datetime.now().timestamp()}",
-        provider_name="Test", account_type=atype, display_name=name,
+        provider_name=provider, account_type=atype, display_name=name,
         current_balance=Decimal(balance),
     )
     db.add(a)
@@ -146,6 +146,57 @@ class TestScheduledStrategy:
         db_session.commit()
         f = svc.get_forecast(db_session, user, horizon="30")
         assert _repays(f) == []
+
+
+# Raw balances for a card the bank owes £50 (overpaid or refunded): Amex
+# reports owed as positive, Monzo as negative (app/services/balance_sign.py).
+IN_CREDIT = [("Amex", "-50"), ("Monzo", "50")]
+
+
+class TestCardInCredit:
+    @pytest.mark.parametrize("provider,raw", IN_CREDIT)
+    def test_installments_card_in_credit_makes_no_events(self, db_session, provider, raw):
+        user = _user(db_session)
+        _account(db_session, user, "TRANSACTION", "5000", "Current")
+        card = _account(db_session, user, "CREDIT_CARD", raw, "Card", provider)
+        db_session.add(AccountSetting(
+            user_id=user.id, account_id=card.id, role="credit",
+            repayment_cadence="every_n_months", repayment_interval_months=1,
+            repayment_strategy="installments", repayment_installments=3,
+        ))
+        db_session.commit()
+        f = svc.get_forecast(db_session, user, horizon="120")
+        assert _repays(f) == []
+
+    @pytest.mark.parametrize("provider,raw", IN_CREDIT)
+    def test_scheduled_card_in_credit_makes_no_events(self, db_session, provider, raw):
+        user = _user(db_session)
+        _account(db_session, user, "TRANSACTION", "5000", "Current")
+        card = _account(db_session, user, "CREDIT_CARD", raw, "Card", provider)
+        db_session.add(AccountSetting(
+            user_id=user.id, account_id=card.id, role="credit", repayment_strategy="scheduled",
+        ))
+        db_session.add(RepaymentScheduleItem(
+            user_id=user.id, account_id=card.id,
+            due_date=svc._today() + timedelta(days=5), amount=Decimal("200"),
+        ))
+        db_session.commit()
+        f = svc.get_forecast(db_session, user, horizon="30")
+        assert _repays(f) == []
+
+    def test_monzo_card_owing_still_splits(self, db_session):
+        """The owed side of the same sign rule: Monzo -900 raw = £900 owed."""
+        user = _user(db_session)
+        _account(db_session, user, "TRANSACTION", "5000", "Current")
+        card = _account(db_session, user, "CREDIT_CARD", "-900", "Flex", "Monzo")
+        db_session.add(AccountSetting(
+            user_id=user.id, account_id=card.id, role="credit",
+            repayment_cadence="every_n_months", repayment_interval_months=1,
+            repayment_strategy="installments", repayment_installments=3,
+        ))
+        db_session.commit()
+        f = svc.get_forecast(db_session, user, horizon="120")
+        assert [amt for _, amt in _repays(f)] == [Decimal("-300.00")] * 3
 
 
 class TestHorizon:

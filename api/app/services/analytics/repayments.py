@@ -151,9 +151,9 @@ def repayment_events(db: Session, user, start: date, end: date) -> list[dict]:
             continue
 
         # Scheduled strategy: emit exactly what the user listed, ignoring
-        # cadence, but nothing for a card that owes nothing.
+        # cadence, but nothing for a card that owes nothing or is in credit.
         if s.repayment_strategy == RepaymentStrategy.SCHEDULED.value:
-            if _d(acc.current_balance) == 0:
+            if credit_owed(acc) <= 0:
                 continue
             for item in scheduled.get(acc.id, []):
                 amt = _d(item.amount)

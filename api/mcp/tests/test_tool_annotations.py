@@ -97,3 +97,10 @@ def test_classifier_self_test():
     assert is_write("add_planned_event") and is_write("remove_planned_event")
     assert is_write("update_commitment") and is_write("create_rule_pack")
     assert not is_write("list_planned_events") and not is_write("forecast")
+
+
+@pytest.mark.anyio
+async def test_read_tools_explain_late_income():
+    tools = {t.name: t for t in await _tools()}
+    assert "late_income" in tools["forecast"].description
+    assert "late" in tools["commitments"].description and "never counted" in tools["commitments"].description

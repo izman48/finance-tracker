@@ -4,7 +4,7 @@ import ChangesView from '../components/changes/ChangesView'
 import { UndoButton, UndoNotice, type UndoState } from '../components/changes/UndoControls'
 import { useToast } from '../components/ui/Toast'
 import { auditAPI, bankingAPI } from '../services/api'
-import { mergeFirstPage, undoFailure, undoToast, type AuditItem } from '../lib/changes'
+import { failureFromError, mergeFirstPage, undoToast, type AuditItem } from '../lib/changes'
 import { withTimeout } from '../lib/forecastLoad'
 
 /** A load that hasn't answered by then is shown as the error state (ux A6). */
@@ -106,16 +106,19 @@ export default function ChangesPage() {
       refetchFirst()
     } catch (err) {
       if (!mounted.current) return
-      const status = (err as { response?: { status?: number } })?.response?.status
-      const failure = undoFailure(status)
+      const failure = failureFromError(err)
       setUndo((s) => ({ ...s, [it.id]: { undoing: false, failure } }))
+      // Always show the server's real state: after a timeout the undo may
+      // have gone through, and the refetch then shows the row as Undone.
+      refetchFirst()
       if (failure === 'changed') {
         setFocusId(`change-${it.id}-alert`)
-        refetchFirst()
       } else {
         setFocusId(null)
         // The button was disabled while pending; give focus back to it.
-        requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(`[data-undo="${it.id}"]`)?.focus())
+        requestAnimationFrame(() =>
+          document.querySelector<HTMLButtonElement>(`[data-undo="${CSS.escape(it.id)}"]`)?.focus(),
+        )
       }
     }
   }

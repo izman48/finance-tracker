@@ -1,9 +1,11 @@
+import axios from 'axios'
 import { describe, expect, it } from 'vitest'
 import {
   changeLines,
   changeTitle,
   clientText,
   groupBatches,
+  failureFromError,
   mergeFirstPage,
   metaTime,
   undoFailure,
@@ -145,7 +147,18 @@ describe('undoFailure (C8, C9)', () => {
     expect(undoFailure(429)).toBe('rate')
     expect(undoFailure(500)).toBe('other')
     expect(undoFailure(404)).toBe('other')
-    expect(undoFailure(undefined)).toBe('other') // network error or timeout
+    expect(undoFailure(undefined)).toBe('unknown') // network error or timeout: no answer
+  })
+})
+
+describe('failureFromError', () => {
+  it('reads only the status: no response at all is uncertain, a blocked write is no failure', () => {
+    expect(failureFromError({ response: { status: 409, data: { detail: 'x' } } })).toBe('changed')
+    expect(failureFromError({ response: { status: 500 } })).toBe('other')
+    expect(failureFromError(new Error('timed out'))).toBe('unknown')
+    expect(failureFromError({ request: {}, message: 'Network Error' })).toBe('unknown')
+    // While anonymised the API client cancels writes and shows its own toast.
+    expect(failureFromError(new axios.Cancel('anonymized-write-blocked'))).toBeNull()
   })
 })
 

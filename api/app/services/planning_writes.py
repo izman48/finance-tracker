@@ -9,7 +9,12 @@ Every planning write route builds a `WriteRequest` and calls `run_write`:
   transaction, so a second worker waits and then replays), makes the change,
   and records an append-only, DEK-encrypted audit row whose grant and client
   come from the verified `Caller`.
-- the diff covers only each target's allow-listed fields.
+- the diff covers only each target's allow-listed fields, and a write that
+  changes any other column of an existing target is refused outright, so no
+  change escapes the audit trail and undo.
+- `dry_run` and the idempotency key are read from the route's validated
+  `PlanningWriteRequest` body and nowhere else, the same source
+  `PlanningWriter` charges the rate limit from.
 """
 import hashlib
 import hmac
@@ -22,6 +27,7 @@ from decimal import Decimal
 from typing import Any
 
 from fastapi import HTTPException, status
+from sqlalchemy import inspect
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -29,8 +35,16 @@ from app.core.config import get_settings
 from app.core.oauth_tokens import Caller
 from app.models import AuditEntry, CommitmentRule, PlannedItem, WriteIdempotency
 from app.models.audit import AUDIT_KIND_WRITE
+from app.schemas import PlanningWriteRequest
 
 IDEMPOTENCY_TTL = timedelta(hours=24)
+# Maintained by the database, not by a write.
+_BOOKKEEPING_COLUMNS = frozenset({"updated_at"})
+
+
+class DisallowedChange(RuntimeError):
+    """A write's apply changed a column outside its target's allow-list.
+    A bug in the tool, not user input: the whole write is rolled back."""
 
 
 @dataclass(frozen=True)
@@ -55,14 +69,14 @@ class WriteRequest:
     tool: str
     target_kind: str
     target_id: uuid.UUID | None  # None: the write creates its target
-    payload: dict  # the request minus dry_run/idempotency_key, for the key's hash
     apply: Callable[[Session, Any], Any]  # (db, loaded target or None) -> target; never commits
     batch_id: uuid.UUID | None = field(default=None)
 
 
-def run_write(db: Session, caller: Caller, req: WriteRequest, *, dry_run: bool, idempotency_key: str) -> dict:
+def run_write(db: Session, caller: Caller, req: WriteRequest, body: PlanningWriteRequest) -> dict:
     spec = TARGETS[req.target_kind]
-    if dry_run:
+    idempotency_key = body.idempotency_key
+    if body.dry_run:
         savepoint = db.begin_nested()
         try:
             target, label, changes = _change(db, caller, spec, req)
@@ -70,7 +84,7 @@ def run_write(db: Session, caller: Caller, req: WriteRequest, *, dry_run: bool, 
             savepoint.rollback()
         return _result(None, None, req.target_kind, label, changes, dry_run=True)
 
-    request_hash = _request_hash(req)
+    request_hash = _request_hash(req, body)
     replay = _claim_key(db, caller, idempotency_key, request_hash)
     if replay is not None:
         return replay
@@ -108,9 +122,17 @@ def _change(db: Session, caller: Caller, spec: TargetSpec, req: WriteRequest):
         if target is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
         before = _snapshot(target, spec)
+        columns_before = _all_columns(target)
     target = req.apply(db, target)
     db.flush()
     after = _snapshot(target, spec)
+    if req.target_id is not None:
+        moved = {
+            k for k, v in _all_columns(target).items()
+            if v != columns_before[k] and k not in spec.fields and k not in _BOOKKEEPING_COLUMNS
+        }
+        if moved:
+            raise DisallowedChange(f"{req.tool} changed columns outside its allow-list: {sorted(moved)}")
     changes = [
         {"field": f, "before": before[f], "after": after[f]} for f in spec.fields if before[f] != after[f]
     ]
@@ -150,14 +172,20 @@ def _claim_key(db: Session, caller: Caller, key: str, request_hash: str) -> dict
     return _entry_result(entry)
 
 
-def _request_hash(req: WriteRequest) -> str:
-    """Keyed, so the stored hash of a low-entropy payload (a name and an
-    amount) can't be brute-forced from a database copy."""
-    body = json.dumps(
-        {"tool": req.tool, "target": str(req.target_id), "payload": req.payload, "batch": str(req.batch_id)},
+def _request_hash(req: WriteRequest, body: PlanningWriteRequest) -> str:
+    """Of the whole validated request bar the two flags. Keyed, so the stored
+    hash of a low-entropy payload (a name and an amount) can't be
+    brute-forced from a database copy."""
+    payload = body.model_dump(mode="json", exclude={"dry_run", "idempotency_key"})
+    material = json.dumps(
+        {"tool": req.tool, "target": str(req.target_id), "payload": payload, "batch": str(req.batch_id)},
         sort_keys=True, default=str,
     )
-    return hmac.new(get_settings().secret_key.encode(), body.encode(), hashlib.sha256).hexdigest()
+    return hmac.new(get_settings().secret_key.encode(), material.encode(), hashlib.sha256).hexdigest()
+
+
+def _all_columns(target) -> dict:
+    return {attr.key: getattr(target, attr.key) for attr in inspect(target).mapper.column_attrs}
 
 
 def _snapshot(target, spec: TargetSpec) -> dict:

@@ -26,7 +26,7 @@ from app.core.database import Base
 from app.core.oauth_tokens import Caller
 from app.models import AuditEntry, CommitmentRule, PlannedItem, User, WriteIdempotency
 from app.schemas import PlanningWriteRequest
-from app.services.planning_writes import WriteRequest, run_write
+from app.services.planning_writes import DisallowedChange, WriteRequest, run_write
 
 KEY = "key-0001"
 
@@ -49,10 +49,8 @@ def _add_planned(user_id, name="Holiday deposit", amount="250.00", on=date(2026,
         db.add(item)
         return item
 
-    return WriteRequest(
-        tool="add_planned_event", target_kind="planned_event", target_id=None,
-        payload={"name": name, "amount": amount, "date": on.isoformat()}, apply=apply,
-    )
+    req = WriteRequest(tool="add_planned_event", target_kind="planned_event", target_id=None, apply=apply)
+    return req, {"name": name, "amount": amount, "date": on.isoformat()}
 
 
 def _set_amount(commitment_id, amount):
@@ -60,10 +58,8 @@ def _set_amount(commitment_id, amount):
         rule.amount = Decimal(amount)
         return rule
 
-    return WriteRequest(
-        tool="update_commitment", target_kind="commitment", target_id=commitment_id,
-        payload={"amount": amount}, apply=apply,
-    )
+    req = WriteRequest(tool="update_commitment", target_kind="commitment", target_id=commitment_id, apply=apply)
+    return req, {"amount": amount}
 
 
 def _commitment(db, user, label="Gym", amount="30.00") -> uuid.UUID:
@@ -87,6 +83,17 @@ def _caller(user, grant_id=None, client_id=None) -> Caller:
     return Caller(user=user, grant_id=grant_id, client_id=client_id)
 
 
+class _Body(PlanningWriteRequest):
+    """A write route's validated body: the flags plus the tool's own fields."""
+
+    fields: dict = {}
+
+
+def _write(db, caller, req_and_fields, dry_run, key=KEY):
+    req, fields = req_and_fields
+    return run_write(db, caller, req, _Body(dry_run=dry_run, idempotency_key=key, fields=fields))
+
+
 # --- dry run --------------------------------------------------------------------
 
 
@@ -94,7 +101,7 @@ def test_dry_run_returns_the_diff_and_writes_nothing(db_session):
     user = _user(db_session)
     before = _counts(db_session)
 
-    result = run_write(db_session, _caller(user), _add_planned(user.id), dry_run=True, idempotency_key=KEY)
+    result = _write(db_session, _caller(user), _add_planned(user.id), True)
 
     assert result["dry_run"] is True and result["audit_id"] is None
     assert {"field": "name", "before": None, "after": "Holiday deposit"} in result["changes"]
@@ -104,8 +111,8 @@ def test_dry_run_returns_the_diff_and_writes_nothing(db_session):
 
 def test_applying_after_a_dry_run_gives_the_previewed_diff(db_session):
     user = _user(db_session)
-    preview = run_write(db_session, _caller(user), _add_planned(user.id), dry_run=True, idempotency_key=KEY)
-    applied = run_write(db_session, _caller(user), _add_planned(user.id), dry_run=False, idempotency_key=KEY)
+    preview = _write(db_session, _caller(user), _add_planned(user.id), True)
+    applied = _write(db_session, _caller(user), _add_planned(user.id), False)
     assert applied["changes"] == preview["changes"]
     assert applied["target_label"] == preview["target_label"] == "Holiday deposit"
     assert applied["dry_run"] is False and applied["audit_id"]
@@ -114,7 +121,7 @@ def test_applying_after_a_dry_run_gives_the_previewed_diff(db_session):
 def test_dry_run_of_an_update_leaves_the_target_unchanged(db_session):
     user = _user(db_session)
     cid = _commitment(db_session, user)
-    result = run_write(db_session, _caller(user), _set_amount(cid, "45.00"), dry_run=True, idempotency_key=KEY)
+    result = _write(db_session, _caller(user), _set_amount(cid, "45.00"), True)
     assert result["changes"] == [{"field": "amount", "before": "30.00", "after": "45.00"}]
     db_session.expire_all()
     assert db_session.get(CommitmentRule, cid).amount == Decimal("30.00")
@@ -126,10 +133,7 @@ def test_dry_run_of_an_update_leaves_the_target_unchanged(db_session):
 def test_an_applied_write_stores_one_audit_row_from_the_callers_claims(db_session):
     user = _user(db_session)
     grant = uuid.uuid4()
-    result = run_write(
-        db_session, _caller(user, grant_id=grant, client_id="client-abc"),
-        _add_planned(user.id), dry_run=False, idempotency_key=KEY,
-    )
+    result = _write(db_session, _caller(user, grant_id=grant, client_id="client-abc"), _add_planned(user.id), False)
 
     entry = db_session.get(AuditEntry, uuid.UUID(result["audit_id"]))
     assert entry.user_id == user.id and entry.kind == "write"
@@ -142,8 +146,7 @@ def test_an_applied_write_stores_one_audit_row_from_the_callers_claims(db_sessio
 
 def test_the_raw_audit_row_holds_no_plaintext_label_or_amount(db_session):
     user = _user(db_session)
-    run_write(db_session, _caller(user), _add_planned(user.id, name="Secret Clinic", amount="987.65"),
-              dry_run=False, idempotency_key=KEY)
+    _write(db_session, _caller(user), _add_planned(user.id, name="Secret Clinic", amount="987.65"), False)
     raw = " ".join(str(v) for row in db_session.execute(text("SELECT * FROM audit_entries")) for v in row)
     assert "Secret Clinic" not in raw and "987.65" not in raw
     idem = " ".join(str(v) for row in db_session.execute(text("SELECT * FROM write_idempotency")) for v in row)
@@ -153,7 +156,7 @@ def test_the_raw_audit_row_holds_no_plaintext_label_or_amount(db_session):
 def test_an_update_audits_only_the_fields_that_changed(db_session):
     user = _user(db_session)
     cid = _commitment(db_session, user)
-    result = run_write(db_session, _caller(user), _set_amount(cid, "45.00"), dry_run=False, idempotency_key=KEY)
+    result = _write(db_session, _caller(user), _set_amount(cid, "45.00"), False)
     assert result["changes"] == [{"field": "amount", "before": "30.00", "after": "45.00"}]
     assert result["target_label"] == "Gym"
 
@@ -164,7 +167,7 @@ def test_another_users_target_is_404_and_nothing_is_audited(db_session):
     intruder = _user(db_session, "intruder@example.com")
     before = _counts(db_session)
     with pytest.raises(HTTPException) as exc:
-        run_write(db_session, _caller(intruder), _set_amount(cid, "1.00"), dry_run=False, idempotency_key=KEY)
+        _write(db_session, _caller(intruder), _set_amount(cid, "1.00"), False)
     assert exc.value.status_code == 404
     assert _counts(db_session) == before
     db_session.expire_all()
@@ -176,48 +179,46 @@ def test_another_users_target_is_404_and_nothing_is_audited(db_session):
 
 def test_a_repeated_key_returns_the_first_result_without_writing_again(db_session):
     user = _user(db_session)
-    first = run_write(db_session, _caller(user), _add_planned(user.id), dry_run=False, idempotency_key=KEY)
+    first = _write(db_session, _caller(user), _add_planned(user.id), False)
     counts = _counts(db_session)
-    again = run_write(db_session, _caller(user), _add_planned(user.id), dry_run=False, idempotency_key=KEY)
+    again = _write(db_session, _caller(user), _add_planned(user.id), False)
     assert again == first
     assert _counts(db_session) == counts
 
 
 def test_a_repeated_key_with_a_different_payload_is_refused(db_session):
     user = _user(db_session)
-    run_write(db_session, _caller(user), _add_planned(user.id), dry_run=False, idempotency_key=KEY)
+    _write(db_session, _caller(user), _add_planned(user.id), False)
     counts = _counts(db_session)
     with pytest.raises(HTTPException) as exc:
-        run_write(db_session, _caller(user), _add_planned(user.id, amount="999.00"),
-                  dry_run=False, idempotency_key=KEY)
+        _write(db_session, _caller(user), _add_planned(user.id, amount="999.00"), False)
     assert exc.value.status_code == 409
     assert _counts(db_session) == counts
 
 
 def test_keys_are_per_user(db_session):
     a, b = _user(db_session, "a@example.com"), _user(db_session, "b@example.com")
-    ra = run_write(db_session, _caller(a), _add_planned(a.id), dry_run=False, idempotency_key=KEY)
-    rb = run_write(db_session, _caller(b), _add_planned(b.id), dry_run=False, idempotency_key=KEY)
+    ra = _write(db_session, _caller(a), _add_planned(a.id), False)
+    rb = _write(db_session, _caller(b), _add_planned(b.id), False)
     assert ra["audit_id"] != rb["audit_id"]
 
 
 def test_a_key_older_than_24_hours_has_expired(db_session):
     user = _user(db_session)
-    first = run_write(db_session, _caller(user), _add_planned(user.id), dry_run=False, idempotency_key=KEY)
+    first = _write(db_session, _caller(user), _add_planned(user.id), False)
     db_session.execute(
         text("UPDATE write_idempotency SET created_at = :t"),
         {"t": datetime.now(timezone.utc) - timedelta(hours=25)},
     )
     db_session.commit()
-    second = run_write(db_session, _caller(user), _add_planned(user.id, amount="1.00"),
-                       dry_run=False, idempotency_key=KEY)
+    second = _write(db_session, _caller(user), _add_planned(user.id, amount="1.00"), False)
     assert second["audit_id"] != first["audit_id"]
     assert db_session.execute(text("SELECT count(*) FROM write_idempotency")).scalar() == 1
 
 
 def test_the_stored_response_holds_only_ids(db_session):
     user = _user(db_session)
-    result = run_write(db_session, _caller(user), _add_planned(user.id), dry_run=False, idempotency_key=KEY)
+    result = _write(db_session, _caller(user), _add_planned(user.id), False)
     record = db_session.query(WriteIdempotency).one()
     assert record.audit_id == uuid.UUID(result["audit_id"])
     assert set(WriteIdempotency.__table__.columns.keys()) == {
@@ -248,8 +249,7 @@ def test_two_sessions_racing_on_one_key_write_once(tmp_path):
         try:
             with Session() as s:
                 me = s.get(User, user_id)
-                results.append(run_write(s, _caller(me), _add_planned(user_id, delay=delay),
-                                         dry_run=False, idempotency_key=KEY))
+                results.append(_write(s, _caller(me), _add_planned(user_id, delay=delay), False))
         except Exception as exc:  # pragma: no cover - surfaced below
             errors.append(exc)
         finally:
@@ -274,29 +274,29 @@ def test_two_sessions_racing_on_one_key_write_once(tmp_path):
 # --- request schema -------------------------------------------------------------
 
 
-class _Body(PlanningWriteRequest):
+class _NamedBody(PlanningWriteRequest):
     name: str
 
 
 def test_requests_default_to_dry_run():
-    assert _Body(name="x", idempotency_key=KEY).dry_run is True
+    assert _NamedBody(name="x", idempotency_key=KEY).dry_run is True
 
 
 @pytest.mark.parametrize("key", ["short", "x" * 65, "has space1", "semi;colon", "ünïcode1"])
 def test_idempotency_key_format_is_enforced(key):
     with pytest.raises(ValidationError):
-        _Body(name="x", idempotency_key=key)
+        _NamedBody(name="x", idempotency_key=key)
 
 
 @pytest.mark.parametrize("extra", ["user_id", "source", "match_key", "client_id", "grant_id"])
 def test_unknown_fields_are_refused(extra):
     with pytest.raises(ValidationError):
-        _Body(name="x", idempotency_key=KEY, **{extra: "x"})
+        _NamedBody(name="x", idempotency_key=KEY, **{extra: "x"})
 
 
 def test_dry_run_must_be_a_real_boolean():
     with pytest.raises(ValidationError):
-        _Body(name="x", idempotency_key=KEY, dry_run="false")
+        _NamedBody(name="x", idempotency_key=KEY, dry_run="false")
 
 
 # --- the existing web write routes stay web-only ---------------------------------
@@ -320,3 +320,74 @@ def test_an_mcp_token_with_the_planning_scope_cannot_use_the_web_write_routes(cl
     if body is not None:
         kwargs["json"] = body
     assert getattr(client, method)(path, **kwargs).status_code == 401
+
+
+# --- every change is audited ----------------------------------------------------
+
+
+@pytest.mark.parametrize("column,value", [
+    ("match_key", "expense:something-else"),
+    ("is_payday", True),
+    ("direction", "income"),
+    ("source", "detected"),
+])
+@pytest.mark.parametrize("dry_run", [True, False])
+def test_an_apply_that_touches_a_column_outside_the_allow_list_is_refused(db_session, column, value, dry_run):
+    """The audit trail is the control against injected edits, so the
+    framework refuses a change it can't show, whatever the tool's apply does."""
+    user = _user(db_session)
+    cid = _commitment(db_session, user)
+    before = db_session.execute(text("SELECT * FROM commitment_rules")).fetchall()
+    counts = _counts(db_session)
+
+    def bad_apply(db, rule):
+        rule.label = "Gym renamed"  # allow-listed
+        setattr(rule, column, value)  # not allow-listed
+        return rule
+
+    req = WriteRequest(tool="update_commitment", target_kind="commitment", target_id=cid, apply=bad_apply)
+    with pytest.raises(DisallowedChange) as exc:
+        _write(db_session, _caller(user), (req, {"label": "Gym renamed"}), dry_run)
+    assert column in str(exc.value)
+    db_session.expire_all()
+    assert db_session.execute(text("SELECT * FROM commitment_rules")).fetchall() == before
+    assert _counts(db_session) == counts
+
+
+# --- one source for dry_run -----------------------------------------------------
+
+
+def test_dry_run_comes_only_from_the_validated_body(client, db_session):
+    """A route passes its validated body to run_write; a query parameter (or
+    anything else) can't turn a preview into a write."""
+    from fastapi import APIRouter
+
+    from app.core.planning_write import PlanningWriter
+    from app.main import app
+    from tests.integration.test_oauth import READ, _bearer, _connect
+
+    class ProbeBody(PlanningWriteRequest):
+        name: str
+
+    router = APIRouter()
+
+    @router.post("/api/v1/__test__/add-planned")
+    def probe(body: ProbeBody, caller: PlanningWriter) -> dict:
+        req, _ = _add_planned(caller.user.id, name=body.name)
+        return run_write(db_session, caller, req, body)
+
+    saved = list(app.router.routes)
+    app.include_router(router)
+    try:
+        _, _, tokens = _connect(client, scopes=(READ, "finance:planning.write"))
+        counts = _counts(db_session)
+        res = client.post(
+            "/api/v1/__test__/add-planned?dry_run=false",
+            json={"idempotency_key": KEY, "name": "Holiday"},
+            headers=_bearer(tokens["access_token"]),
+        )
+    finally:
+        app.router.routes[:] = saved
+    assert res.status_code == 200, res.text
+    assert res.json()["dry_run"] is True and res.json()["audit_id"] is None
+    assert _counts(db_session) == counts

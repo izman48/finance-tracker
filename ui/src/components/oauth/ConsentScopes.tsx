@@ -37,25 +37,26 @@ export default function ConsentScopes({ allowRules, allowPlanning, onRulesChange
           <span className="block text-xs text-slate-400">{RULES_DESCRIPTION}</span>
         </label>
       </li>
-      <li className="flex gap-3">
-        {/* Padding grows the tap target past 44px and negative margins keep the layout. It extends
-            only 10px up (less than the 12px gap), so it never reaches the rules row. */}
-        <label htmlFor="allow-planning" className="-mx-4 px-4 -mt-2.5 pt-2.5 -mb-6 pb-6 shrink-0 self-start cursor-pointer">
+      <li>
+        {/* The whole row is the label, so the tap target is the row itself and
+            never reaches the rules row above. The input is named by its title only. */}
+        <label htmlFor="allow-planning" className="flex gap-3 cursor-pointer">
           <input
             id="allow-planning"
             type="checkbox"
             checked={allowPlanning}
             onChange={(e) => onPlanningChange(e.target.checked)}
+            aria-labelledby="allow-planning-title"
             aria-describedby="allow-planning-desc"
-            className="mt-1 block accent-accent"
+            className="mt-1 shrink-0 accent-accent"
           />
+          <span className="min-w-0">
+            <span id="allow-planning-title" className="block text-sm text-slate-100">
+              Change your planned events and commitments
+            </span>
+            <span id="allow-planning-desc" className="block text-xs text-slate-400">{PLANNING_DESCRIPTION}</span>
+          </span>
         </label>
-        <div className="min-w-0">
-          <label htmlFor="allow-planning" className="block text-sm text-slate-100 cursor-pointer">
-            Change your planned events and commitments
-          </label>
-          <p id="allow-planning-desc" className="text-xs text-slate-400">{PLANNING_DESCRIPTION}</p>
-        </div>
       </li>
     </ul>
   )

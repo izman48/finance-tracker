@@ -48,6 +48,15 @@ describe('ConsentScopes', () => {
     expect(html).not.toContain('edit or delete anything')
   })
 
+  it('the planning tap target is its own row: the label wraps the box, with no negative margins', () => {
+    const html = render()
+    const row = html.slice(html.lastIndexOf('<li', html.indexOf('id="allow-planning"')))
+    const label = row.match(/<label[^>]*for="allow-planning"[^>]*>/)?.[0] ?? ''
+    expect(label).not.toBe('')
+    expect(row.indexOf(label)).toBeLessThan(row.indexOf('id="allow-planning"'))
+    expect(row.slice(0, row.indexOf('</li>'))).not.toMatch(/class="([^"]*\s)?-m[trblxy]?-/)
+  })
+
   it('K4: the planning label is a real <label for>', () => {
     expect(render()).toMatch(/<label[^>]*for="allow-planning"[^>]*>/)
   })

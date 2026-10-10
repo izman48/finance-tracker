@@ -53,7 +53,8 @@ class TransactionSearchRequest(BaseModel):
     @model_validator(mode="after")
     def _window(self) -> "TransactionSearchRequest":
         if self.to is None:
-            self.to = self.frm + timedelta(days=DEFAULT_WINDOW_DAYS) if self.frm else london_today()
+            today = london_today()
+            self.to = min(self.frm + timedelta(days=DEFAULT_WINDOW_DAYS), today) if self.frm else today
         if self.frm is None:
             self.frm = self.to - timedelta(days=DEFAULT_WINDOW_DAYS)
         if self.frm > self.to:

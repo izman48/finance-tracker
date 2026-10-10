@@ -6,6 +6,7 @@ DEK flows from the bearer token, as in production, and cover sec's criteria:
 authz on the API, literal input, London-day boundaries, paging, an exact
 Decimal total across pages, the item shape, and a per-user rate limit.
 """
+import threading
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -14,6 +15,7 @@ import pytest
 
 from app.core import user_crypto
 from app.models import Account, BankConnection, OAuthGrant, Transaction, User
+from app.services import transaction_search as search
 from tests.integration.test_oauth import READ, WRITE, _bearer, _connect, _refresh
 from tests.integration.test_transactions_endpoint import _dek_from_token
 
@@ -265,8 +267,8 @@ class TestAuthz:
 
 
 class TestRateLimit:
-    def test_31st_call_in_a_minute_is_429_with_retry_after(self, client, web):
-        for _ in range(30):
+    def test_11th_call_in_a_minute_is_429_with_retry_after(self, client, web):
+        for _ in range(10):
             assert _search(client, web, query="tesco").status_code == 200
         r = _search(client, web, query="tesco")
         assert r.status_code == 429
@@ -277,7 +279,62 @@ class TestRateLimit:
         the key must be the user, not the address."""
         a = _signup(client, "ra@example.com")
         b = _signup(client, "rb@example.com")
-        for _ in range(30):
+        for _ in range(10):
             _search(client, a, query="tesco")
         assert _search(client, a, query="tesco").status_code == 429
         assert _search(client, b, query="tesco").status_code == 200
+
+
+class TestOneSearchInFlightPerUser:
+    """A looping agent must not run several decrypt-everything scans at once
+    (sec): a second search from the same user while one runs is 429."""
+
+    def test_concurrent_search_from_the_same_user_is_429_but_others_proceed(self, client, monkeypatch):
+        a = _signup(client, "fa@example.com")
+        b = _signup(client, "fb@example.com")
+        entered, release = threading.Event(), threading.Event()
+        real_matcher = search.matcher
+
+        def blocking_matcher(query):
+            if query == "blocker":
+                entered.set()
+                release.wait(timeout=10)
+            return real_matcher(query)
+
+        monkeypatch.setattr(search, "matcher", blocking_matcher)
+        first: dict = {}
+        worker = threading.Thread(target=lambda: first.update(r=_search(client, a, query="blocker")))
+        worker.start()
+        try:
+            assert entered.wait(timeout=10)
+            busy = _search(client, a, query="tesco")
+            assert busy.status_code == 429
+            assert busy.headers["Retry-After"] == "2"
+            assert _search(client, b, query="tesco").status_code == 200
+        finally:
+            release.set()
+            worker.join(timeout=10)
+        assert first["r"].status_code == 200
+        assert _search(client, a, query="tesco").status_code == 200  # slot released
+
+    def test_a_failed_search_releases_the_slot(self, client, monkeypatch):
+        a = _signup(client, "fc@example.com")
+
+        def broken(query):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(search, "matcher", broken)
+        with pytest.raises(RuntimeError):
+            _search(client, a, query="tesco")
+        monkeypatch.undo()
+        assert _search(client, a, query="tesco").status_code == 200
+
+
+class TestPunctuationVariants:
+    def test_a_query_with_punctuation_also_matches_the_spaced_variant(self, client, db_session):
+        """Pinned on purpose: punctuation folds to spaces on both sides, so
+        "AB.*CD" finds the descriptor variant "AB CD", but never "ABXCD"."""
+        token = _signup(client, "pv@example.com")
+        _seed(db_session, token, "pv@example.com", [_row("AB CD"), _row("ABXCD")])
+        found = [i["description"] for i in _search(client, token, query="AB.*CD").json()["items"]]
+        assert found == ["AB CD"]

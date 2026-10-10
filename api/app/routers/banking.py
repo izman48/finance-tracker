@@ -25,7 +25,7 @@ from app.schemas import (
     TransactionListResponse,
     TransactionUpdate,
 )
-from app.core.rate_limit import user_rate_limiter
+from app.core.rate_limit import user_in_flight, user_rate_limiter
 from app.schemas.transaction_search import TransactionSearchRequest, TransactionSearchResponse
 from app.services import analytics_service, categorization
 from app.services import transaction_search as search
@@ -548,7 +548,16 @@ def search_transactions(
     Read-only. Decrypts the whole window, so it is rate limited per user and
     the window is capped. The term and the rows are never logged.
     """
-    user_rate_limiter.check_key(f"search:{current_user.id}", limit=30, window_seconds=60)
+    # Each search decrypts its whole window. Limits are per user (remote MCP
+    # calls share one IP) and per process: with N uvicorn workers a user gets
+    # up to 10 x N a minute and N concurrent searches.
+    key = f"search:{current_user.id}"
+    user_rate_limiter.check_key(key, limit=10, window_seconds=60)
+    with user_in_flight.hold(key):
+        return _search(db, current_user, body)
+
+
+def _search(db: Session, current_user, body: TransactionSearchRequest) -> TransactionSearchResponse:
     frm, to = body.window()
     start, end = search.utc_bounds(frm, to)
     txns = (

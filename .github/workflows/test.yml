@@ -38,19 +38,25 @@ jobs:
   # The UI's tests, types and lint gate merges and deploys too (T-08-16).
   # Same Node image as ui/Dockerfile and deploy/ui.Dockerfile, so CI tests
   # what ships; T-08-15 moves all three together.
+  # node:20 (Debian), not node:20-alpine like the Dockerfiles: JavaScript
+  # actions such as actions/checkout don't run in Alpine job containers.
   ui:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     container: node:20
     defaults:
       run:
         working-directory: ui
     steps:
       - uses: actions/checkout@v5
-      - name: Install (lockfile only)
-        run: npm ci --no-audit --no-fund
+      - name: Install (lockfile only, no install scripts)
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Unit tests
         run: npx vitest run
       - name: Type check
         run: npx tsc --noEmit
       - name: Lint
         run: npm run lint
+      - name: Production build (catches what tsc alone doesn't)
+        run: npm run build

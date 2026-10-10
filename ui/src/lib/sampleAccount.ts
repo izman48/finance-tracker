@@ -696,5 +696,6 @@ export function sampleResponse(url: string, params: unknown): unknown {
   if (path.includes('/analytics/net-worth-position')) return positionResponse()
   if (is('/assets')) return assetsResponse()
   if (is('/rules')) return { packs: [], personal: [] }
+  if (is('/audit')) return { items: [], next_cursor: null }
   return {}
 }

@@ -93,8 +93,9 @@ export default function ForecastChart({ refreshKey }: { refreshKey?: number }) {
       .catch(() => {
         // Only the spec's sentence is shown. The error object isn't logged
         // either: it can carry the request URL and the server's detail.
+        if (cancelled) return
         console.warn('Forecast failed to load')
-        if (!cancelled) dispatch({ type: 'failed' })
+        dispatch({ type: 'failed' })
       })
     return () => {
       cancelled = true

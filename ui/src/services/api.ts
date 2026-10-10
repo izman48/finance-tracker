@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { isAnonymized } from '../lib/anonymize'
 import { sampleResponse } from '../lib/sampleAccount'
+import type { AuditItem, AuditPage } from '../lib/changes'
 
 // Unset -> local dev default; empty string -> same-origin (production behind Caddy)
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
@@ -333,6 +334,12 @@ const listParams = (params: Record<string, unknown>) => {
 }
 
 // Banking endpoints
+// "Changes made by Claude" (T-08-5). Web session only on the API side.
+export const auditAPI = {
+  list: (cursor?: string) => api.get<AuditPage>('/audit', { params: cursor ? { cursor } : {} }),
+  undo: (id: string) => api.post<AuditItem>(`/audit/${id}/undo`),
+}
+
 export const bankingAPI = {
   getConnectionStatus: () => api.get('/banking/status'),
   getBankConnectionURL: () => api.get('/banking/connect'),

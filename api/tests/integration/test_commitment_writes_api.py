@@ -355,3 +355,27 @@ def test_undo_is_refused_when_the_label_was_changed_in_the_app_since(world):
     assert app_edit.status_code == 200, app_edit.text
     assert _undo(world, r.json()["audit_id"]).status_code == 409
     assert world.rule(rid).label == "My streaming"
+
+
+# --- "Changed by Claude" marker on the commitments list (ux A3, M1/M3) ------
+
+def _listed(world, rid):
+    r = world.client.get(f"{API}/analytics/commitments", headers=_bearer(world.web))
+    assert r.status_code == 200, r.text
+    return next(c for c in r.json() if c["id"] == str(rid))
+
+
+def test_the_commitments_list_marks_claudes_change_until_it_is_undone(world):
+    rid = world.commitment()
+    assert _listed(world, rid)["changed_by_claude"] is None
+    r = world.update(rid, amount="12.99", dry_run=False)
+    marker = _listed(world, rid)["changed_by_claude"]
+    assert marker["audit_id"] == r.json()["audit_id"]
+    assert _undo(world, r.json()["audit_id"]).status_code == 200
+    assert _listed(world, rid)["changed_by_claude"] is None
+
+
+def test_a_change_made_in_the_app_is_not_marked(world):
+    rid = world.commitment()
+    world.update(rid, token=world.web, amount="12.99", dry_run=False)  # a web session, no grant
+    assert _listed(world, rid)["changed_by_claude"] is None

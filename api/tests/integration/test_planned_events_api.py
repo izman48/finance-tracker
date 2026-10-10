@@ -361,3 +361,16 @@ def test_coming_up_sees_a_claude_added_item(client, db_session):
     w.add()
     names = [i["name"] for i in client.get(f"{API}/analytics/planned-items", headers=_bearer(w.web)).json()]
     assert names == ["Car insurance"]
+
+
+def test_a_same_key_retry_replays_the_first_result_not_a_duplicate(client, db_session):
+    """An idempotent retry (same key, same body) gets the first write's result
+    back, audit id included; the duplicate guard is for fresh keys only."""
+    w = World(client, db_session)
+    first = w.add(key="same-key-0001").json()
+    counts = _counts(db_session)
+    again = w.add(key="same-key-0001")
+    assert again.status_code == 200
+    assert again.json() == first
+    assert again.json()["duplicate"] is False and again.json()["audit_id"]
+    assert _counts(db_session) == counts

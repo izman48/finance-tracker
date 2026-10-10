@@ -18,7 +18,7 @@ from app.core.ownership import require_owned_account_ids
 from app.core.planning_write import PlanningWriter
 from app.models import PlannedItem, PlannedKind
 from app.schemas import AddPlannedEventRequest, PlannedEventItem, PlannedEventList, RemovePlannedEventRequest
-from app.services.planning_writes import WriteRequest, claude_markers, run_write
+from app.services.planning_writes import WriteRequest, claude_markers, key_in_use, run_write
 
 router = APIRouter(prefix="/planning", tags=["planning"])
 
@@ -34,7 +34,10 @@ def add_planned_event(
     db: Annotated[Session, Depends(get_db)],
 ) -> dict:
     require_owned_account_ids(db, caller.user, body)
-    existing = _recent_duplicate(db, caller, body)
+    # A retry with the same key replays its first result (run_write); the
+    # duplicate guard is for a *fresh* key describing the same event.
+    retry = not body.dry_run and key_in_use(db, caller.user.id, body.idempotency_key)
+    existing = None if retry else _recent_duplicate(db, caller, body)
     if existing is not None:
         # Claude may retry with a fresh key; a second copy would double the
         # money (for income, overstate what's coming in). Nothing is written.

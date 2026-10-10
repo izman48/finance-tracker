@@ -53,6 +53,7 @@ def _call(api, tool, args):
     return r.json()["result"]
 
 
+ITEM = "6f1c0c4e-0000-4000-8000-0000000000aa"
 ADD = {"name": "Car insurance", "amount": "200.00", "date": "2026-11-01", "direction": "expense",
        "idempotency_key": "add-car-insurance-1"}
 
@@ -75,9 +76,9 @@ def test_add_applies_only_when_asked_and_passes_an_account():
 
 def test_remove_previews_by_default_with_dry_run_in_the_body():
     api = FakeApi()
-    _call(api, "remove_planned_event", {"item_id": "abc", "idempotency_key": "remove-abc-0001"})
+    _call(api, "remove_planned_event", {"item_id": ITEM, "idempotency_key": "remove-abc-0001"})
     [sent] = api.calls()
-    assert (sent.method, sent.url.path) == ("POST", "/api/v1/planning/planned-events/abc/remove")
+    assert (sent.method, sent.url.path) == ("POST", f"/api/v1/planning/planned-events/{ITEM}/remove")
     assert json.loads(sent.content) == {"dry_run": True, "idempotency_key": "remove-abc-0001"}
 
 
@@ -88,7 +89,7 @@ def test_list_reads_the_planning_route():
     assert (sent.method, sent.url.path) == ("GET", "/api/v1/planning/planned-events")
 
 
-@pytest.mark.parametrize("tool,args", [("add_planned_event", ADD), ("remove_planned_event", {"item_id": "x", "idempotency_key": "remove-x-00001"})])
+@pytest.mark.parametrize("tool,args", [("add_planned_event", ADD), ("remove_planned_event", {"item_id": ITEM, "idempotency_key": "remove-x-00001"})])
 def test_writes_need_the_planning_scope_here_too(tool, args):
     api = FakeApi(scope="finance:read")
     result = _call(api, tool, args)
@@ -110,3 +111,11 @@ def test_api_errors_become_short_messages(status, body, headers, expected):
     text = result["content"][0]["text"]
     assert result["isError"] is True and expected in text
     assert "http" not in text and "Traceback" not in text
+
+
+@pytest.mark.parametrize("item_id", ["../../banking/disconnect", "abc", "1; drop", ""])
+def test_remove_refuses_an_item_id_that_is_not_a_uuid(item_id):
+    api = FakeApi()
+    result = _call(api, "remove_planned_event", {"item_id": item_id, "idempotency_key": "remove-bad-0001"})
+    assert result["isError"] is True and "list_planned_events" in result["content"][0]["text"]
+    assert api.calls() == []

@@ -296,3 +296,18 @@ def claude_markers(db: Session, user_id: uuid.UUID, target_kind: str, target_ids
         .all()
     )
     return {target_id: {"audit_id": audit_id, "at": at} for target_id, audit_id, at in rows}
+
+
+def key_in_use(db: Session, user_id: uuid.UUID, key: str) -> bool:
+    """Whether this idempotency key already has a live (unexpired) record:
+    the request is a retry, and run_write will replay its first result."""
+    cutoff = datetime.now(timezone.utc) - IDEMPOTENCY_TTL
+    record = (
+        db.query(WriteIdempotency.created_at)
+        .filter(WriteIdempotency.user_id == user_id, WriteIdempotency.key == key)
+        .first()
+    )
+    if record is None:
+        return False
+    created = record.created_at if record.created_at.tzinfo else record.created_at.replace(tzinfo=timezone.utc)
+    return created >= cutoff

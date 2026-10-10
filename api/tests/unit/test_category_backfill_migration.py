@@ -232,6 +232,20 @@ class TestBackfill:
         assert rows == ["Groceries"]
 
 
+    def test_downgrade_keeps_a_rule_category_set_after_the_upgrade(self, db_session):
+        """Only rows still holding the backfilled value are restored."""
+        user = _seed(db_session)
+        _upgrade(db_session)
+        rows = db_session.query(Transaction).join(Account).filter(Account.user_id == user.id).all()
+        for t in rows:
+            if t.description == "Tesco":
+                t.category = "Groceries"  # e.g. a rule pack added later; still unlocked
+        db_session.commit()
+        _downgrade(db_session)
+        tesco = {c for (d, _t, _l, c) in _categories(db_session, user) if d == "Tesco"}
+        assert tesco == {"Groceries"}
+
+
 class TestSameMappingAsSync:
     def test_the_raw_type_lists_agree(self):
         from app.services.categorization import PROVIDER_TRANSACTION_TYPES

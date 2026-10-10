@@ -391,8 +391,30 @@ class AccountResponse(BaseModel):
     # Credit accounts only: money owed, positive across providers (negative =
     # in credit). current_balance stays raw, as the provider reported it.
     credit_owed: Decimal | None = None
+    # Its connection's last successful sync, and whether that is stale
+    # (see services/sync_status.py).
+    last_synced_at: datetime | None = None
+    sync_stale: bool | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class SyncStatusAccount(BaseModel):
+    display_name: str
+    balance_updated_at: datetime | None
+
+
+class SyncStatusConnection(BaseModel):
+    connection_id: uuid.UUID
+    provider: str
+    last_synced_at: datetime | None
+    consent: str  # expired | unknown
+    stale: bool
+    accounts: list[SyncStatusAccount]
+
+
+class SyncStatusResponse(BaseModel):
+    connections: list[SyncStatusConnection]
 
 
 # --- Transaction Schemas ---

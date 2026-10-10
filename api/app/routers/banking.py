@@ -17,6 +17,7 @@ from app.core.user_crypto import current_dek, require_dek
 from app.schemas import (
     BankConnectionURL,
     SyncAccountsResponse,
+    SyncStatusResponse,
     SyncTransactionsRequest,
     SyncTransactionsResponse,
     AccountResponse,
@@ -30,6 +31,7 @@ from app.schemas.transaction_search import TransactionSearchRequest, Transaction
 from app.services import analytics_service, categorization
 from app.services import transaction_search as search
 from app.services.balance_sign import credit_owed
+from app.services.sync_status import freshness, sync_status
 from app.services.truelayer import ReauthRequired, truelayer_service
 from app.models import Account, AccountRole, Transaction, User, BankConnection
 
@@ -361,13 +363,27 @@ def _account_responses(db: Session, user, accounts: list[Account]) -> list[Accou
     providers); `current_balance` stays as the provider reported it."""
     _, settings = analytics_service._load(db, user)
     roles = analytics_service.resolve_roles(accounts, settings)
+    fresh = freshness(db, user.id)
     out = []
     for acc in accounts:
         resp = AccountResponse.model_validate(acc)
         if roles[acc.id] == AccountRole.CREDIT:
             resp.credit_owed = credit_owed(acc)
+        if acc.bank_connection_id in fresh:
+            resp.last_synced_at = fresh[acc.bank_connection_id].last_synced_at
+            resp.sync_stale = fresh[acc.bank_connection_id].stale
         out.append(resp)
     return out
+
+
+@router.get("/sync-status", response_model=SyncStatusResponse)
+def get_sync_status(
+    current_user: CurrentUserOrMcpRead,
+    db: Annotated[Session, Depends(get_db)],
+) -> SyncStatusResponse:
+    """How fresh each connection's data is. Read-only, from stored data: it
+    never calls TrueLayer and returns no tokens or provider ids."""
+    return SyncStatusResponse(connections=sync_status(db, current_user.id))
 
 
 def _user_transactions_query(db: Session, user, account_id, date_from, date_to):

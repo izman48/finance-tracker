@@ -121,8 +121,15 @@ def create_server(settings: Settings, api_transport: httpx.AsyncBaseTransport | 
     async def accounts() -> list:
         """Connected bank accounts with balances, types and provider names.
 
-        `current_balance` is raw, as the bank reported it, and its sign differs by provider for credit cards. Use `credit_owed` for credit accounts: money owed, positive on every provider (negative = the card is in credit). It is null for non-credit accounts."""
+        `current_balance` is raw, as the bank reported it, and its sign differs by provider for credit cards. Use `credit_owed` for credit accounts: money owed, positive on every provider (negative = the card is in credit). It is null for non-credit accounts. `sync_stale` is true when the account's bank connection hasn't synced in 48 hours or needs reconnecting (see sync_status)."""
         return await api.get("/banking/accounts")
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def sync_status() -> dict:
+        """How fresh each bank connection's data is, so you know whether to trust recent numbers.
+
+        Per connection: `provider`, `last_synced_at` (last successful sync), `consent`, `stale`, and each account's `display_name` and `balance_updated_at`. `stale` is true when the connection has never synced, last synced over 48 hours ago, or its consent has lapsed; figures from a stale connection may be out of date, so say so. `consent` is "expired" (the user must reconnect that bank in the app) or "unknown" (the consent expiry date isn't recorded; this is not a sign of a problem by itself). This reads stored data only: it never contacts the bank or TrueLayer and can't trigger a sync."""
+        return await api.get("/banking/sync-status")
 
     @mcp.tool(annotations=READ_ONLY)
     async def recent_transactions(page: int = 1, page_size: int = 100) -> dict:

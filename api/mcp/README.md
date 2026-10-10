@@ -28,7 +28,8 @@ It runs two ways:
 | `spending(period, frm, to, lens)` | credit-vs-cash breakdown by category & merchant; pass `frm`/`to` as `YYYY-MM-DD` for any date range; `lens='purchases'` to compare against `spending_trend` (see below) |
 | `spending_trend(months)` | real spending per month over the last N months (always 'purchases'-equivalent — see below) |
 | `commitments` | recurring income/expenses |
-| `accounts` | balances, types, providers |
+| `accounts` | balances, types, providers; `sync_stale` per account |
+| `sync_status` | per connection: last sync, consent (`expired`/`unknown`), `stale` (no sync for 48 h, never synced, or consent lapsed). Stored data only; never calls the bank |
 | `recent_transactions(page, page_size)` | a page of transactions |
 | `search_transactions(query, frm, to, include_transfers, page, page_size)` | every transaction matching a merchant/description (literal, case-insensitive), with an exact `total_amount` across all pages; UK days, last 90 days by default, max 731 |
 | `rules` | every rule pack and personal rule: pattern, match type/field, category, `counts_as` |

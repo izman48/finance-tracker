@@ -116,6 +116,8 @@ dump_files() { find "$BACKUP_DIR" -type f 2>/dev/null | wc -l | tr -d ' '; }
 
 if dumps "abc123 (head)" "$DUMP_OK"; then pass "at head: exits 0"; else fail "at head failed: $(cat "$TMP/out")"; fi
 [ "$(dump_files)" = 0 ] && pass "at head: no dump taken" || fail "at head: a dump was taken"
+grep -q 'up -d --no-recreate --wait db' "$CALLS" \
+  && pass "starts the db without recreating it" || fail "db start may recreate Postgres: $(grep ' up ' "$CALLS")"
 
 if dumps "abc122" "$DUMP_OK"; then pass "pending migration: exits 0"; else fail "pending migration failed: $(cat "$TMP/out")"; fi
 [ "$(dump_files)" = 1 ] && pass "pending migration: one dump taken" || fail "pending migration: $(dump_files) dumps"

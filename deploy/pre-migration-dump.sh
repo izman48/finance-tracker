@@ -16,7 +16,9 @@ BACKUP_DIR="${BACKUP_DIR:-$HOME/backups}"
 compose() { docker compose -f docker-compose.prod.yml --env-file .env.production "$@"; }
 
 compose build api
-compose up -d --wait db
+# --no-recreate: a changed db definition must not restart Postgres here, on a
+# deploy that may still stop before `up`.
+compose up -d --no-recreate --wait db
 if ! current="$(compose run --rm --no-deps -T api alembic current)"; then
   echo "pre-migration: the new code can't read the database's migration revision." >&2
   echo "pre-migration: if this deploy reverts a migration, downgrade first (DEPLOY.md, Rollback)." >&2

@@ -26,6 +26,7 @@ from cryptography.fernet import InvalidToken
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.display_text import has_hidden_characters
 from app.core.oauth_tokens import (
     MCP_ACCESS_TOKEN_TTL,
     SCOPE_READ,
@@ -141,6 +142,10 @@ def register_client(
     bad = [u for u in redirect_uris if not valid_redirect_uri(u)]
     if bad:
         raise OAuthError("invalid_redirect_uri", "redirect_uris must be https, or http on localhost")
+    if client_name and has_hidden_characters(client_name):
+        # The name is shown on the consent screen and next to every change
+        # the client makes; hidden characters could make it pass for another.
+        raise OAuthError("invalid_client_metadata", "client_name contains invisible or control characters")
 
     client = OAuthClient(
         client_id=secrets.token_urlsafe(24),

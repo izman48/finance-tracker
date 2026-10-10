@@ -30,7 +30,8 @@ settings = get_settings()
 
 SCOPE_READ = "finance:read"
 SCOPE_RULES_WRITE = "finance:rules.write"
-SUPPORTED_SCOPES = (SCOPE_READ, SCOPE_RULES_WRITE)
+SCOPE_PLANNING_WRITE = "finance:planning.write"
+SUPPORTED_SCOPES = (SCOPE_READ, SCOPE_RULES_WRITE, SCOPE_PLANNING_WRITE)
 
 MCP_ACCESS_TOKEN_TTL = timedelta(hours=1)
 
@@ -48,6 +49,16 @@ class McpTokenClaims:
     session_version: int
     resource: str
     expires_at: int
+
+
+@dataclass(frozen=True)
+class Caller:
+    """Who is calling a route: the user, plus the grant and client from the
+    verified MCP token (both None for a web session). Anything that records
+    who made a change takes them from here, never from the request."""
+    user: User
+    grant_id: uuid.UUID | None = None
+    client_id: str | None = None
 
 
 def create_mcp_access_token(grant: OAuthGrant, scopes: list[str], dek: bytes) -> str:
@@ -119,16 +130,16 @@ def _is_mcp_token(token: str) -> bool:
         return False
 
 
-def scoped_user(scope: str) -> Callable[..., User]:
+def scoped_caller(scope: str) -> Callable[..., Caller]:
     """Dependency for the routes the MCP server calls: a web session, or an
     MCP token holding `scope`. Every other route stays web-only by default."""
 
     def dependency(
         token: Annotated[str, Depends(oauth2_scheme)],
         db: Annotated[Session, Depends(get_db)],
-    ) -> User:
+    ) -> Caller:
         if not _is_mcp_token(token):
-            return get_current_user(token, db)
+            return Caller(user=get_current_user(token, db))
         try:
             user, claims = resolve_mcp_access(db, token)
         except InvalidMcpToken:
@@ -143,7 +154,17 @@ def scoped_user(scope: str) -> Callable[..., User]:
                 detail=f"This connection wasn't granted '{scope}'.",
                 headers={"WWW-Authenticate": f'Bearer error="insufficient_scope", scope="{scope}"'},
             )
-        return user
+        return Caller(user=user, grant_id=claims.grant_id, client_id=claims.client_id)
+
+    return dependency
+
+
+def scoped_user(scope: str) -> Callable[..., User]:
+    """`scoped_caller`, for routes that only need the user."""
+    caller_dependency = scoped_caller(scope)
+
+    def dependency(caller: Annotated[Caller, Depends(caller_dependency)]) -> User:
+        return caller.user
 
     return dependency
 

@@ -19,6 +19,7 @@ from app.core import user_crypto
 from app.core.oauth_tokens import Caller
 from app.main import app
 from app.models import AuditEntry, CommitmentRule, OAuthClient, OAuthGrant, PlannedItem, User
+from app.schemas import PlanningWriteRequest
 from app.services.planning_writes import WriteRequest, run_write
 from tests.integration.test_oauth import READ, _bearer, _connect
 from tests.integration.test_transactions_endpoint import _dek_from_token
@@ -50,7 +51,8 @@ class World:
     def write(self, req: WriteRequest, *, via_grant=True) -> dict:
         self.n += 1
         caller = Caller(self.user, self.grant.id, self.client_id) if via_grant else Caller(self.user)
-        return self._as_user(lambda: run_write(self.db, caller, req, dry_run=False, idempotency_key=f"key-{self.n:04d}"))
+        body = PlanningWriteRequest(dry_run=False, idempotency_key=f"key-{self.n:04d}")
+        return self._as_user(lambda: run_write(self.db, caller, req, body))
 
     def commitment(self, label="Gym", amount="30.00") -> uuid.UUID:
         def make():
@@ -67,7 +69,7 @@ class World:
         def apply(db, rule):
             rule.amount = Decimal(amount)
             return rule
-        return self.write(WriteRequest("update_commitment", "commitment", cid, {"amount": amount}, apply))
+        return self.write(WriteRequest("update_commitment", "commitment", cid, apply))
 
     def add_planned(self, name="Holiday", amount="250.00") -> dict:
         def apply(db, _):
@@ -75,13 +77,13 @@ class World:
                                start_date=date(2026, 12, 1), amount=Decimal(amount))
             db.add(item)
             return item
-        return self.write(WriteRequest("add_planned_event", "planned_event", None, {"name": name}, apply))
+        return self.write(WriteRequest("add_planned_event", "planned_event", None, apply))
 
     def remove_planned(self, item_id) -> dict:
         def apply(db, item):
             item.active = False
             return item
-        return self.write(WriteRequest("remove_planned_event", "planned_event", item_id, {}, apply))
+        return self.write(WriteRequest("remove_planned_event", "planned_event", item_id, apply))
 
     def get(self, model, id_):
         def load():
@@ -187,7 +189,7 @@ def test_a_web_write_has_no_client(client, db_session):
     def apply(db, rule):
         rule.amount = Decimal("1.00")
         return rule
-    w.write(WriteRequest("update_commitment", "commitment", cid, {}, apply), via_grant=False)
+    w.write(WriteRequest("update_commitment", "commitment", cid, apply), via_grant=False)
     row = w.list().json()["items"][0]
     assert row["client_name"] is None and row["connection_created_at"] is None
 
@@ -353,7 +355,7 @@ def test_undo_of_a_created_target_without_soft_delete_is_refused(client, db_sess
                               cadence="monthly", next_date=date(2026, 11, 1), source="manual", status="confirmed")
         db.add(rule)
         return rule
-    created = w.write(WriteRequest("add_commitment", "commitment", None, {}, apply))
+    created = w.write(WriteRequest("add_commitment", "commitment", None, apply))
     res = w.undo(created["audit_id"])
     assert res.status_code == 409
     assert w.get(CommitmentRule, uuid.UUID(created["target_id"])) is not None

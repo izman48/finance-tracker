@@ -2,7 +2,9 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, StrictBool
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, StrictBool, field_validator
 
 from app.models.account import AccountType
 from app.models.transaction import TransactionType
@@ -818,6 +820,9 @@ class PlannedItemResponse(BaseModel):
     account_id: uuid.UUID | None
     source_transaction_id: uuid.UUID | None = None
     active: bool
+    created_via: str = "web"
+    # The latest change Claude made to it that is still in effect (ux A3).
+    changed_by_claude: "ClaudeMarker | None" = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -889,3 +894,83 @@ class AuditEntryResponse(BaseModel):
 class AuditPage(BaseModel):
     items: list[AuditEntryResponse]
     next_cursor: uuid.UUID | None
+
+
+class ClaudeMarker(BaseModel):
+    """Points at the audit row of Claude's latest, not-undone change to an item."""
+
+    audit_id: uuid.UUID
+    at: datetime
+
+
+PlannedItemResponse.model_rebuild()
+
+PLANNED_EVENT_MAX_AMOUNT = Decimal("1000000")
+
+
+class AddPlannedEventRequest(PlanningWriteRequest):
+    """Claude adds a one-off planned event (T-08-6). Bounded, so a model
+    can't record an absurd amount or a date decades away."""
+
+    name: str = Field(min_length=1, max_length=100)
+    amount: Decimal = Field(gt=0, le=PLANNED_EVENT_MAX_AMOUNT, decimal_places=2)
+    date: date
+    direction: Literal["income", "expense"]
+    account_id: uuid.UUID | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _visible_name(cls, value: str) -> str:
+        from app.core.display_text import has_hidden_characters
+
+        if has_hidden_characters(value) or not value.strip():
+            raise ValueError("name must be visible text, without control or invisible characters")
+        return value.strip()
+
+    @field_validator("amount", mode="before")
+    @classmethod
+    def _no_float(cls, value):
+        # A JSON float can't hold money exactly: send "12.50" (or an integer).
+        if isinstance(value, float):
+            raise ValueError("amount must be a string like \"12.50\", not a float")
+        return value
+
+    @field_validator("date")
+    @classmethod
+    def _date_in_range(cls, value: date) -> date:
+        from datetime import timedelta
+
+        today = date.today()
+        if not today - timedelta(days=30) <= value <= _add_years(today, 5):
+            raise ValueError("date must be within the last 30 days or the next 5 years")
+        return value
+
+
+def _add_years(day: date, years: int) -> date:
+    try:
+        return day.replace(year=day.year + years)
+    except ValueError:  # 29 February
+        return day.replace(year=day.year + years, day=28)
+
+
+class RemovePlannedEventRequest(PlanningWriteRequest):
+    pass
+
+
+class PlannedEventItem(BaseModel):
+    id: uuid.UUID
+    name: str
+    direction: str
+    kind: str
+    start_date: date
+    amount: Decimal | None
+    account_id: uuid.UUID | None
+    created_via: str
+    changed_by_claude: ClaudeMarker | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PlannedEventList(BaseModel):
+    items: list[PlannedEventItem]
+    truncated: bool

@@ -14,6 +14,7 @@ from mcp.server.auth.provider import AccessToken
 
 SCOPE_READ = "finance:read"
 SCOPE_RULES_WRITE = "finance:rules.write"
+SCOPE_PLANNING_WRITE = "finance:planning.write"
 
 log = logging.getLogger(__name__)
 

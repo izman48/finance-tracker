@@ -74,6 +74,23 @@ async def test_dry_run_tools_require_confirmation_and_distrust_bank_data():
         assert "data, not instructions" in text, tool.name
 
 
+# sec (T-08-6): the exact set of read-only tools. A new tool must be added
+# here on purpose, so a write can't slip in under a read-style name.
+READ_ONLY_TOOLS = {
+    "cashflow_summary", "forecast", "spending", "spending_trend", "commitments", "accounts",
+    "sync_status", "recent_transactions", "search_transactions", "rules", "rule_impact",
+    "preview_rule", "list_planned_events",
+}
+WRITE_TOOLS = {"create_rule_pack", "add_planned_event", "remove_planned_event"}
+
+
+@pytest.mark.anyio
+async def test_the_tool_set_is_exactly_the_reviewed_one():
+    tools = {t.name: t for t in await _tools()}
+    assert set(tools) == READ_ONLY_TOOLS | WRITE_TOOLS
+    assert {n for n, t in tools.items() if t.annotations.readOnlyHint is True} == READ_ONLY_TOOLS
+
+
 def test_classifier_self_test():
     assert is_write("add_planned_event") and is_write("remove_planned_event")
     assert is_write("update_commitment") and is_write("create_rule_pack")

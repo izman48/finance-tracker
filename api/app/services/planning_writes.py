@@ -78,6 +78,9 @@ class WriteRequest:
     target_id: uuid.UUID | None  # None: the write creates its target
     apply: Callable[[Session, Any], Any]  # (db, loaded target or None) -> target; never commits
     batch_id: uuid.UUID | None = field(default=None)
+    # Allow-listed fields shown in the diff even when unchanged (before ==
+    # after), so the trail says what a removal removed. Undo also checks them.
+    context_fields: tuple[str, ...] = ()
 
 
 def run_write(db: Session, caller: Caller, req: WriteRequest, body: PlanningWriteRequest) -> dict:
@@ -137,7 +140,8 @@ def _change(db: Session, caller: Caller, spec: TargetSpec, req: WriteRequest):
         if moved:
             raise DisallowedChange(f"{req.tool} changed columns outside its allow-list: {sorted(moved)}")
     changes = [
-        {"field": f, "before": before[f], "after": after[f]} for f in spec.names if before[f] != after[f]
+        {"field": f, "before": before[f], "after": after[f]}
+        for f in spec.names if before[f] != after[f] or f in req.context_fields
     ]
     return target, getattr(target, spec.label_field), changes
 
@@ -273,3 +277,37 @@ def undo_write(db: Session, user, audit_id: uuid.UUID) -> AuditEntry:
     db.commit()
     db.refresh(entry)
     return entry
+
+
+def claude_markers(db: Session, user_id: uuid.UUID, target_kind: str, target_ids) -> dict:
+    """{target id: {audit_id, at}}: Claude's latest change to each item that
+    is still in effect (a write made through an MCP grant, not undone)."""
+    ids = list(target_ids)
+    if not ids:
+        return {}
+    rows = (
+        db.query(AuditEntry.target_id, AuditEntry.id, AuditEntry.created_at)
+        .filter(
+            AuditEntry.user_id == user_id, AuditEntry.kind == AUDIT_KIND_WRITE,
+            AuditEntry.target_kind == target_kind, AuditEntry.target_id.in_(ids),
+            AuditEntry.client_id.is_not(None), AuditEntry.undone_at.is_(None),
+        )
+        .order_by(AuditEntry.created_at)
+        .all()
+    )
+    return {target_id: {"audit_id": audit_id, "at": at} for target_id, audit_id, at in rows}
+
+
+def key_in_use(db: Session, user_id: uuid.UUID, key: str) -> bool:
+    """Whether this idempotency key already has a live (unexpired) record:
+    the request is a retry, and run_write will replay its first result."""
+    cutoff = datetime.now(timezone.utc) - IDEMPOTENCY_TTL
+    record = (
+        db.query(WriteIdempotency.created_at)
+        .filter(WriteIdempotency.user_id == user_id, WriteIdempotency.key == key)
+        .first()
+    )
+    if record is None:
+        return False
+    created = record.created_at if record.created_at.tzinfo else record.created_at.replace(tzinfo=timezone.utc)
+    return created >= cutoff

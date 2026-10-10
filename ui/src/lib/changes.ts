@@ -7,6 +7,7 @@
  * whoever registered the OAuth client. They are returned as plain strings and
  * rendered as text only.
  */
+import axios from 'axios'
 import { cadenceLabel } from './cadence'
 import { dateDayMonth, gbp } from './format'
 import { cleanDisplayName } from './oauthConsent'
@@ -121,13 +122,17 @@ function formatValue(
 export function changeLines(item: AuditItem, accountNames: Record<string, string>): ChangeLine[] {
   const fmt = (field: string, v: AuditValue) => formatValue(field, v, accountNames, item.tool)
 
-  if (item.tool === 'add_planned_event') {
+  if (item.tool === 'add_planned_event' || item.tool === 'remove_planned_event') {
+    // Adds and removes have no before/after: one value per line (a remove's
+    // audit records amount and date unchanged, next to active true -> false).
     const lines: ChangeLine[] = []
     for (const field of ['amount', 'start_date']) {
       const c = changeOf(item, field)
       if (c) lines.push({ label: FIELD_LABEL[field], after: fmt(field, c.after) })
     }
-    if (isIncome(item)) lines.push({ label: 'Counted in safe to spend', after: 'No, not until it arrives' })
+    if (item.tool === 'add_planned_event' && isIncome(item)) {
+      lines.push({ label: 'Counted in safe to spend', after: 'No, not until it arrives' })
+    }
     return lines
   }
 
@@ -171,4 +176,49 @@ export function groupBatches(items: AuditItem[]): { batch: boolean; items: Audit
     }
   }
   return groups
+}
+
+/** The toast after a successful undo (1.5). */
+export function undoToast(item: AuditItem): string {
+  const name = quoted(item.target_label)
+  switch (item.tool) {
+    case 'add_planned_event':
+      return `Removed ${name} from your planned events.`
+    case 'remove_planned_event':
+      return `Put ${name} back in your planned events.`
+    case 'dismiss_commitment':
+      return `${name} is back in your commitments.`
+    default:
+      return `Put ${name} back to how it was.`
+  }
+}
+
+/**
+ * 'changed': 409, the item moved on since. 'rate': 429. 'other': the server
+ * answered with an error, so nothing was undone. 'unknown': no answer (timeout
+ * or network error), so the undo may or may not have gone through.
+ */
+export type UndoFailure = 'changed' | 'rate' | 'other' | 'unknown'
+
+/** The row state for a failed undo, from the HTTP status only (never the server's text). */
+export function undoFailure(status: number | undefined): UndoFailure {
+  if (status === undefined) return 'unknown'
+  if (status === 409) return 'changed'
+  if (status === 429) return 'rate'
+  return 'other'
+}
+
+/**
+ * The row state for whatever an undo request threw. null for a write the API
+ * client blocked while anonymised: it shows its own toast, so the row stays as it was.
+ */
+export function failureFromError(err: unknown): UndoFailure | null {
+  if (axios.isCancel(err)) return null
+  return undoFailure((err as { response?: { status?: number } } | null)?.response?.status)
+}
+
+/** After an undo the first page is refetched: its rows replace ours, older loaded rows stay. */
+export function mergeFirstPage(loaded: AuditItem[], fresh: AuditItem[]): AuditItem[] {
+  const ids = new Set(fresh.map((it) => it.id))
+  return [...fresh, ...loaded.filter((it) => !ids.has(it.id))]
 }

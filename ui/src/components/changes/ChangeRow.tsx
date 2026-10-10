@@ -9,13 +9,15 @@ type Props = {
   action?: ReactNode
   /** An inline message under the change lines (an undo failure). */
   notice?: ReactNode
+  /** The row a marker linked to: ringed so it stands out (M2). */
+  highlighted?: boolean
 }
 
 /**
  * One change Claude made (ux spec 1.3). Every string from the API (labels,
  * names, the client name) is rendered as text: no HTML, no links built from it.
  */
-export default function ChangeRow({ item, accountNames, action, notice }: Props) {
+export default function ChangeRow({ item, accountNames, action, notice, highlighted = false }: Props) {
   const title = changeTitle(item)
   const lines = changeLines(item, accountNames)
   const client = clientText(item.client_name)
@@ -23,7 +25,8 @@ export default function ChangeRow({ item, accountNames, action, notice }: Props)
   const muted = undone ? 'text-slate-400' : ''
 
   return (
-    <li id={`change-${item.id}`} tabIndex={-1} className="py-4 first:pt-0 last:pb-0 outline-none">
+    <li id={`change-${item.id}`} tabIndex={-1} className={`py-4 first:pt-0 last:pb-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${highlighted ? 'ring-2 ring-accent/60 px-2 -mx-2' : ''}`}
+    >
       <div className="flex flex-col sm:flex-row sm:items-start gap-3">
         <div className="min-w-0 flex-1">
           <p className={`font-medium [overflow-wrap:anywhere] ${undone ? 'text-slate-400' : 'text-slate-200'}`}>

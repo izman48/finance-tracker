@@ -8,10 +8,11 @@ type Props = {
   /** Per-row control and inline message (the Undo flow), if any. */
   renderAction?: (item: AuditItem) => ReactNode
   renderNotice?: (item: AuditItem) => ReactNode
+  highlightedId?: string | null
 }
 
 /** The changes, newest first; steps of one change (same batch) grouped under a header (ux spec 1.3). */
-export default function ChangeList({ items, accountNames, renderAction, renderNotice }: Props) {
+export default function ChangeList({ items, accountNames, renderAction, renderNotice, highlightedId }: Props) {
   const row = (it: AuditItem) => (
     <ChangeRow
       key={it.id}
@@ -19,6 +20,7 @@ export default function ChangeList({ items, accountNames, renderAction, renderNo
       accountNames={accountNames}
       action={renderAction?.(it)}
       notice={renderNotice?.(it)}
+      highlighted={it.id === highlightedId}
     />
   )
   return (

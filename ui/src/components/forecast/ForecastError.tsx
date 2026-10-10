@@ -15,7 +15,7 @@ const ForecastError = forwardRef<HTMLButtonElement, Props>(function ForecastErro
       <p role="alert" className="text-sm text-slate-300 max-w-xs">
         {FORECAST_ERROR_TEXT}
       </p>
-      <button ref={ref} type="button" className="btn-ghost" onClick={onRetry} disabled={retrying} aria-busy={retrying}>
+      <button ref={ref} type="button" className="btn-ghost min-h-[44px]" onClick={onRetry} disabled={retrying} aria-busy={retrying}>
         {retrying ? 'Trying…' : 'Try again'}
       </button>
     </div>

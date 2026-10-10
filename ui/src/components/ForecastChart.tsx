@@ -91,7 +91,9 @@ export default function ForecastChart({ refreshKey }: { refreshKey?: number }) {
         dispatch({ type: 'loaded', data: f })
       })
       .catch(() => {
-        // Only the spec's sentence is shown; the error itself is not.
+        // Only the spec's sentence is shown. The error object isn't logged
+        // either: it can carry the request URL and the server's detail.
+        console.warn('Forecast failed to load')
         if (!cancelled) dispatch({ type: 'failed' })
       })
     return () => {
@@ -117,7 +119,11 @@ export default function ForecastChart({ refreshKey }: { refreshKey?: number }) {
   return (
     <div className="card-pad h-full">
       <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
-        <h2 ref={headingRef} tabIndex={-1} className="font-display font-semibold text-slate-100 flex items-center gap-1.5">
+        <h2
+          ref={headingRef}
+          tabIndex={-1}
+          className="font-display font-semibold text-slate-100 flex items-center gap-1.5 rounded focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent/60"
+        >
           Where it's going
           <InfoTip text={EXPLAIN.forecast} side="bottom" align="left" />
         </h2>

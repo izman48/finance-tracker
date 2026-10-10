@@ -34,4 +34,20 @@ describe('ForecastError (F1, F3)', () => {
     const html = renderToStaticMarkup(<ForecastError retrying={false} onRetry={() => {}} />)
     expect(html).not.toMatch(/text-slate-(500|600|700)/)
   })
+
+  it('ux: the Try again button is at least 44px tall', () => {
+    const html = renderToStaticMarkup(<ForecastError retrying={false} onRetry={() => {}} />)
+    expect(html).toMatch(/<button[^>]*class="[^"]*min-h-\[44px\]/)
+  })
+})
+
+describe('ForecastChart heading (F3 focus target)', () => {
+  it('is focusable by script and shows the app focus ring, not the browser outline', async () => {
+    const { default: ForecastChart } = await import('../ForecastChart')
+    const html = renderToStaticMarkup(<ForecastChart />)
+    const h2 = html.match(/<h2[^>]*>/)?.[0] ?? ''
+    expect(h2).toContain('tabindex="-1"')
+    expect(h2).toContain('focus:outline-none')
+    expect(h2).toContain('focus-visible:outline-accent/60')
+  })
 })

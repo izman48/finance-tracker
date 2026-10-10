@@ -34,7 +34,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.oauth_tokens import Caller
 from app.models import AuditEntry, CommitmentRule, PlannedItem, WriteIdempotency
-from app.models.audit import AUDIT_KIND_WRITE
+from app.models.audit import AUDIT_KIND_UNDO, AUDIT_KIND_WRITE
 from app.schemas import PlanningWriteRequest
 
 IDEMPOTENCY_TTL = timedelta(hours=24)
@@ -51,16 +51,23 @@ class DisallowedChange(RuntimeError):
 class TargetSpec:
     model: type
     label_field: str
-    fields: tuple[str, ...]  # what a write may change, and what the diff shows
+    # What a write may change and the diff shows, each with the parser that
+    # turns its audited (JSON) form back into a column value for undo.
+    fields: dict[str, Callable[[Any], Any]]
+
+    @property
+    def names(self) -> tuple[str, ...]:
+        return tuple(self.fields)
 
 
 TARGETS: dict[str, TargetSpec] = {
-    "planned_event": TargetSpec(
-        PlannedItem, "name", ("name", "direction", "amount", "start_date", "account_id", "active"),
-    ),
-    "commitment": TargetSpec(
-        CommitmentRule, "label", ("label", "amount", "cadence", "next_date", "status"),
-    ),
+    "planned_event": TargetSpec(PlannedItem, "name", {
+        "name": str, "direction": str, "amount": Decimal, "start_date": date.fromisoformat,
+        "account_id": uuid.UUID, "active": bool,
+    }),
+    "commitment": TargetSpec(CommitmentRule, "label", {
+        "label": str, "amount": Decimal, "cadence": str, "next_date": date.fromisoformat, "status": str,
+    }),
 }
 
 
@@ -112,13 +119,9 @@ def run_write(db: Session, caller: Caller, req: WriteRequest, body: PlanningWrit
 def _change(db: Session, caller: Caller, spec: TargetSpec, req: WriteRequest):
     """Apply the change (uncommitted); return (target, label, changes)."""
     target = None
-    before = dict.fromkeys(spec.fields)
+    before = dict.fromkeys(spec.names)
     if req.target_id is not None:
-        target = (
-            db.query(spec.model)
-            .filter(spec.model.id == req.target_id, spec.model.user_id == caller.user.id)
-            .first()
-        )
+        target = _load_target(db, spec, req.target_id, caller.user.id)
         if target is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
         before = _snapshot(target, spec)
@@ -134,7 +137,7 @@ def _change(db: Session, caller: Caller, spec: TargetSpec, req: WriteRequest):
         if moved:
             raise DisallowedChange(f"{req.tool} changed columns outside its allow-list: {sorted(moved)}")
     changes = [
-        {"field": f, "before": before[f], "after": after[f]} for f in spec.fields if before[f] != after[f]
+        {"field": f, "before": before[f], "after": after[f]} for f in spec.names if before[f] != after[f]
     ]
     return target, getattr(target, spec.label_field), changes
 
@@ -188,8 +191,12 @@ def _all_columns(target) -> dict:
     return {attr.key: getattr(target, attr.key) for attr in inspect(target).mapper.column_attrs}
 
 
+def _load_target(db: Session, spec: TargetSpec, target_id: uuid.UUID, user_id: uuid.UUID):
+    return db.query(spec.model).filter(spec.model.id == target_id, spec.model.user_id == user_id).first()
+
+
 def _snapshot(target, spec: TargetSpec) -> dict:
-    return {f: _plain(getattr(target, f)) for f in spec.fields}
+    return {f: _plain(getattr(target, f)) for f in spec.names}
 
 
 def _plain(value):
@@ -215,3 +222,50 @@ def _result(audit_id, target_id, target_kind, label, changes, *, dry_run: bool) 
         "target_label": label,
         "changes": changes,
     }
+
+
+def undo_write(db: Session, user, audit_id: uuid.UUID) -> AuditEntry:
+    """Restore the before-state of one of the user's writes.
+
+    Only the fields that write changed are compared and restored, so changes
+    made since to other fields (sync advancing `next_date`) don't block it.
+    409 if any of those fields changed since, or the target is gone. Undoing
+    an add soft-deletes (`active = False`); a remove was itself a soft delete,
+    so undoing it re-activates. Undoing twice is a no-op. The original row is
+    kept and marked; the undo is recorded as its own row.
+    """
+    entry = (
+        db.query(AuditEntry)
+        .filter(AuditEntry.id == audit_id, AuditEntry.user_id == user.id, AuditEntry.kind == AUDIT_KIND_WRITE)
+        .with_for_update()
+        .first()
+    )
+    if entry is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Change not found")
+    if entry.undone_at is not None:
+        return entry
+
+    spec = TARGETS[entry.target_kind]
+    target = _load_target(db, spec, entry.target_id, user.id)
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Can't undo: the item no longer exists.")
+    changes = json.loads(entry.changes)
+    current = _snapshot(target, spec)
+    if any(current[c["field"]] != c["after"] for c in changes):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Can't undo: it has changed since.")
+
+    restore = [{"field": "active", "before": True, "after": False}] if entry.created_target else [
+        {"field": c["field"], "before": c["after"], "after": c["before"]} for c in changes
+    ]
+    for c in restore:
+        parse = spec.fields[c["field"]]
+        setattr(target, c["field"], None if c["after"] is None else parse(c["after"]))
+    db.add(AuditEntry(
+        user_id=user.id, kind=AUDIT_KIND_UNDO, tool=entry.tool, target_kind=entry.target_kind,
+        target_id=entry.target_id, target_label=getattr(target, spec.label_field),
+        changes=json.dumps(restore), undoes_id=entry.id,
+    ))
+    entry.undone_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(entry)
+    return entry

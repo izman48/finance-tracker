@@ -16,6 +16,7 @@ from app.routers import (
     assets_router,
     oauth_router,
     well_known_router,
+    audit_router,
 )
 
 settings = get_settings()
@@ -71,6 +72,7 @@ app.include_router(analytics_router, prefix="/api/v1")
 app.include_router(rules_router, prefix="/api/v1")
 app.include_router(assets_router, prefix="/api/v1")
 app.include_router(oauth_router, prefix="/api/v1")
+app.include_router(audit_router, prefix="/api/v1")
 # Discovery lives at the origin root (RFC 8414), not under /api/v1.
 app.include_router(well_known_router)
 

@@ -14,8 +14,14 @@ _HIDDEN_CATEGORIES = frozenset({"Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp"})
 _BLANK_RENDERING = frozenset("\u034f\u115f\u1160\u17b4\u17b5\u3164\uffa0")
 
 
+def _is_hidden(ch: str) -> bool:
+    return unicodedata.category(ch) in _HIDDEN_CATEGORIES or ch in _BLANK_RENDERING
+
+
 def has_hidden_characters(text: str) -> bool:
-    return any(
-        unicodedata.category(ch) in _HIDDEN_CATEGORIES or ch in _BLANK_RENDERING
-        for ch in text
-    )
+    return any(_is_hidden(ch) for ch in text)
+
+
+def without_hidden_characters(text: str) -> str:
+    """For names stored before registration refused them."""
+    return "".join(ch for ch in text if not _is_hidden(ch))

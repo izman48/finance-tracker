@@ -179,6 +179,10 @@ quick overflow check, navigate a page and compare `document.documentElement
   `grant_id`/`client_id`; record those, never request values) and applies the
   per-user write and dry-run rate limits. `dry_run` must be a JSON body field
   (even on a DELETE): a request without a body counts against the write budget.
+  Such routes call `services/planning_writes.run_write` (dry_run in a
+  savepoint, DB idempotency, encrypted append-only `audit_entries` row); add a
+  target's allow-listed fields to `TARGETS` there. `GET /audit` and
+  `POST /audit/{id}/undo` are web-session only (`CurrentUser`) and must stay so.
   Keep that allowlist minimal and never add auth, banking-connection or
   account-management routes. The user's DEK is wrapped under the
   auth code, then under each rotating refresh token (never stored usable).

@@ -3,6 +3,7 @@ import { analyticsAPI } from '../services/api'
 import { PlannedItem } from '../types'
 import { gbp, dateLong as shortDate } from '../lib/format'
 import { perInstallment, stepPlannedDate } from '../lib/planned'
+import ClaudeMarker, { NOT_COUNTED_TEXT } from './changes/ClaudeMarker'
 
 function previewDate(iso: string) {
   return new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
@@ -56,10 +57,12 @@ export default function PlannedItems({
           {items.map((it) => (
             <div key={it.id} className="py-3 flex items-center justify-between">
               <div>
-                <div className="font-medium text-slate-200">
-                  {it.name}
-                  {it.direction === 'income' && <span className="ml-2 chip-pos">income</span>}
+                <div className="font-medium text-slate-200 flex flex-wrap items-center gap-x-2">
+                  <span>{it.name}</span>
+                  {it.direction === 'income' && <span className="chip-pos">income</span>}
+                  {it.changed_by_claude && <ClaudeMarker auditId={it.changed_by_claude.audit_id} />}
                 </div>
+                {it.direction === 'income' && <p className="text-xs text-slate-400">{NOT_COUNTED_TEXT}</p>}
                 <div className={`text-sm tnum ${it.direction === 'income' ? 'text-pos' : 'text-slate-500'}`}>
                   {it.direction === 'income' ? '+' : ''}{describe(it)}
                 </div>

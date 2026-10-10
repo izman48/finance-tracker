@@ -137,4 +137,6 @@ export interface PlannedItem {
   matched_transaction_id?: string | null
   // Expected income past its date + 7 days with no matching credit (T-08-7).
   late?: boolean
+  // An unpaid planned expense past its date; decided by the API, still counted.
+  overdue?: boolean
 }

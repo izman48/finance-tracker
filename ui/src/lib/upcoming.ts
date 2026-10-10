@@ -19,6 +19,8 @@ export interface Upcoming {
   plannedIncome?: boolean
   /** Income that hasn't arrived (T-08-10): `date` is when it was expected. */
   late?: { expected: string; days: number }
+  /** An unpaid planned expense past its date (API-decided): still counts. */
+  overdue?: { due: string; days: number }
 }
 
 /** How a row's amount reads: late income is not money you have, so no "+" and no green. */
@@ -39,7 +41,7 @@ export function buildUpcoming(
   limit = 4,
 ): Upcoming[] {
   // Late income first, most overdue first (ux spec 3): shown, never counted.
-  const late: Upcoming[] = [
+  const lateIncome: Upcoming[] = [
     ...commitments
       .filter((c) => c.status === 'confirmed' && c.late && c.expected_date)
       .map((c) => ({
@@ -54,7 +56,17 @@ export function buildUpcoming(
       })),
   ]
     .map((u) => ({ ...u, late: { expected: u.date, days: daysLate(u.date, today) } }))
-    .sort((a, b) => a.date.localeCompare(b.date))
+
+  // Unpaid planned expenses past their date (ux spec 3a): they still count.
+  const overdue: Upcoming[] = planned
+    .filter((p) => p.overdue && p.direction !== 'income' && !p.matched_transaction_id)
+    .map((p) => ({
+      key: `overdue-p-${p.id}`, label: p.name, amount: plannedPerPayment(p), date: p.start_date,
+      income: false, claudeAuditId: p.changed_by_claude?.audit_id,
+      overdue: { due: p.start_date, days: daysLate(p.start_date, today) },
+    }))
+
+  const pastDue = [...lateIncome, ...overdue].sort((a, b) => a.date.localeCompare(b.date))
 
   const future: Upcoming[] = [
     ...commitments
@@ -76,7 +88,7 @@ export function buildUpcoming(
       income: false,
     })),
     // A planned item its real transaction already paid is no longer coming (T-08-7).
-    ...planned.filter((p) => !p.matched_transaction_id && !p.late).flatMap((p) => {
+    ...planned.filter((p) => !p.matched_transaction_id && !p.late && !(p.overdue && p.direction !== 'income')).flatMap((p) => {
       const date = nextPlannedDate(p, today)
       return date
         ? [{
@@ -93,5 +105,5 @@ export function buildUpcoming(
   ]
     .sort((a, b) => a.date.localeCompare(b.date))
 
-  return [...late, ...future].slice(0, limit)
+  return [...pastDue, ...future].slice(0, limit)
 }

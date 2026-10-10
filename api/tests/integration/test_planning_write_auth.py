@@ -234,3 +234,14 @@ def test_user_lookup_is_by_token_not_db_order(client, db_session):
     _, _, tokens = _connect(client, scopes=(READ, PLANNING), email="second@example.com")
     second = db_session.query(User).filter(User.email == "second@example.com").one()
     assert _write(client, tokens["access_token"]).json()["user_id"] == str(second.id)
+
+
+def test_a_malformed_body_still_spends_the_write_budget(client):
+    """The limit runs before the body is validated, so a 422 counts. That is
+    deliberate (the stricter side): a caller can't probe for free with bad
+    requests. Only refused auth (401/403) is free, as above."""
+    _, _, a = _connect(client, scopes=(READ, PLANNING))
+    for _ in range(WRITE_LIMIT):
+        r = client.post(PROBE, json={"dry_run": [1]}, headers=_bearer(a["access_token"]))
+        assert r.status_code == 422
+    assert _write(client, a["access_token"]).status_code == 429

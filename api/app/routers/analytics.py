@@ -44,6 +44,7 @@ from datetime import date
 from decimal import Decimal
 
 from app.services import analytics_service
+from app.services.analytics import card_links
 
 logger = logging.getLogger(__name__)
 
@@ -292,6 +293,8 @@ def update_commitment(
         merchant = updates.pop("match_merchant")
         direction = updates.get("direction") or rule.direction
         rule.match_key = analytics_service.merchant_match_key(direction, merchant)
+    if "card_account_id" in updates:
+        rule.card_link_source = card_links.USER
     for field, value in updates.items():
         setattr(rule, field, value)
     db.commit()

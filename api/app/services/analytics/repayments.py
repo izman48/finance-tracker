@@ -16,9 +16,10 @@ from app.models import (
 )
 from app.schemas import MAX_REPAYMENT_INTERVAL_MONTHS
 
-from app.services.balance_sign import credit_owed, names_card
+from app.services.balance_sign import credit_owed
 
 from .cadence import commitment_occurrences
+from .card_links import credit_card_ids, link_card_commitments
 from .common import _add_months, _d, _load, resolve_roles
 
 
@@ -214,37 +215,41 @@ _SCHEDULE_REACH = timedelta(days=366 * 20)
 
 def _card_ties(db: Session, user, rules: list, start: date):
     """Which commitments are a credit card's repayment, by the one rule the
-    summary, forecast and projections share.
+    summary, forecast and projections share: the stored card link (T-08-8).
 
-    A confirmed expense commitment is tied to a card when its label is a
-    repayment descriptor for exactly one of ALL the user's credit cards (a
-    second, unconfigured card of the same provider could be the payee) and
-    that card has a repayment schedule from `start`.
+    Unlinked commitments are linked first where that is certain (see
+    card_links). A commitment is tied to a card only when it is an expense
+    whose `card_account_id` is one of the user's credit cards AND that card
+    has a repayment schedule from `start`. A link to anything else (not a
+    credit card, no repayment config, a deleted card) is not a tie, so both
+    are counted: overstating outgoings is the safe side.
 
     Returns (schedule, last_due, ties): the card repayment events from
     `start`, each card's last due date, and {rule id: card id}.
     """
-    accounts, settings = _load(db, user)
-    roles = resolve_roles(accounts, settings)
+    link_card_commitments(db, user)
     schedule = repayment_events(db, user, start, start + _SCHEDULE_REACH)
     last_due: dict[str, date] = {}
     for r in schedule:
         last_due[r["account_id"]] = max(r["due_date"], last_due.get(r["account_id"], r["due_date"]))
-    cards = [a for a in accounts if roles[a.id] == AccountRole.CREDIT]
+    cards = credit_card_ids(db, user)
 
     ties: dict = {}
     for rule in rules:
-        if rule.direction != CommitmentDirection.EXPENSE.value:
-            continue
-        named = [a for a in cards if names_card(rule.label, a)]
-        if len(named) == 1 and str(named[0].id) in last_due:
-            ties[rule.id] = str(named[0].id)
+        card = rule.card_account_id
+        if (
+            rule.direction == CommitmentDirection.EXPENSE.value
+            and card in cards
+            and str(card) in last_due
+        ):
+            ties[rule.id] = str(card)
     return schedule, last_due, ties
 
 
 def card_repayment_rule_ids(db: Session, user, rules: list, start: date) -> set:
     """Ids of the commitments that are a credit card's repayment (see _card_ties)."""
-    return set(_card_ties(db, user, rules, start)[2])
+    _schedule, _last_due, ties = _card_ties(db, user, rules, start)
+    return set(ties)
 
 
 def scheduled_outflows(db: Session, user, rules: list, start: date, end: date):

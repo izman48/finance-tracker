@@ -24,6 +24,7 @@ from app.models import (
 )
 
 from .cadence import _cadence_from_interval, _step, _step_back, commitment_occurrences
+from .card_links import link_card_commitments
 from .common import _d, _load, _today, detect_internal_transfers, is_card_settlement, resolve_roles
 
 # Detection thresholds (mirrors the frontend Bills heuristic).
@@ -408,6 +409,8 @@ def sync_suggestions(db: Session, user) -> None:
             )
         )
     db.commit()
+    # Same self-heal pattern as match_key above: card links need the user's key.
+    link_card_commitments(db, user)
 
 
 def skip_commitment(db: Session, user, commitment_id):

@@ -149,6 +149,10 @@ CASES: dict[tuple[str, str, str], Case] = {
         f"{API}/analytics/commitments/{w.commitment_id}",
         json={"label": "Renamed", "amount": "99", "account_id": acc},
     ),
+    ("PATCH", f"{API}/analytics/commitments/{{commitment_id}}", "card_account_id"): lambda w, acc: w.client.patch(
+        f"{API}/analytics/commitments/{w.commitment_id}",
+        json={"label": "Renamed", "amount": "99", "card_account_id": acc},
+    ),
     ("POST", f"{API}/analytics/planned-items", "account_id"): lambda w, acc: w.client.post(
         f"{API}/analytics/planned-items",
         json={"name": "Holiday", "kind": "one_off", "start_date": "2026-12-01",

@@ -39,6 +39,107 @@ From your machine:
 `<ssh-host>` is an `~/.ssh/config` alias or `user@ip`; you can set `DEPLOY_HOST`
 in your environment instead of passing it each time.
 
+Every merge to `main` runs this from GitHub Actions (`.github/workflows/deploy.yml`),
+so a merge is a production deploy. What it does:
+
+1. **Refuses a dirty working tree.** A modified, staged or untracked file stops
+   the deploy before anything is sent. It ships only `git archive HEAD`, so
+   ignored files (`.env`, `node_modules`) never reach the server either.
+2. Syncs that commit to `~/finance-tracker` (`rsync --delete`; `.env.production`
+   on the server is kept).
+3. On the server, runs `deploy/preflight-sites.sh`, then
+   `deploy/pre-migration-dump.sh` (see Rollback), then
+   `docker compose up -d --build`, then `deploy/smoke.sh`.
+
+The api container runs `alembic upgrade head` every time it starts, so a
+release that contains a migration applies it on deploy.
+
+## Migration policy
+
+- **Schema migrations are additive: expand first, contract later.** Add columns
+  and tables (nullable or with a server default) in one release; drop or rename
+  only in a later release, after no running code reads the old shape. That way
+  the previous release still runs on the new schema, and a code-only rollback
+  stays possible.
+- **Every migration has a working `downgrade()`.** A data migration that rewrites
+  rows first copies the old values into a backup table, and its `downgrade()`
+  restores from that table. Test up, down, up on a fixture.
+- **Merge a migration on its own.** Don't put two migrations in one deploy, so a
+  rollback is one `downgrade` step.
+
+## Rollback
+
+A **pre-migration dump** happens automatically. Before `up`,
+`deploy/pre-migration-dump.sh` builds the new api image and runs
+`alembic current` with it:
+- **at head:** nothing to migrate, so no dump.
+- **behind head (or a new database):** the database is dumped to
+  `~/backups/predeploy_<timestamp>.sql.gz` first. An empty or cut-short dump
+  stops the deploy, and the running stack keeps serving.
+- **unreadable revision:** if the new code doesn't know the database's
+  revision, the deploy stops before anything restarts. This is what happens
+  when a migration is reverted without being downgraded.
+
+Nightly `backup.sh` rotation also clears these dumps after `KEEP_DAYS`.
+
+### Roll back a release with no migration
+
+Revert the PR on GitHub (`gh pr revert <n>` or the "Revert" button) and merge
+the revert. The deploy redeploys the previous code.
+
+### Roll back a release that added a migration
+
+A plain revert does **not** work. The database stays at the new revision, which
+the old code doesn't have, so `alembic upgrade head` fails with "Can't locate
+revision" and the api won't start. (`pre-migration-dump.sh` now stops that
+deploy before the restart, but the release still isn't rolled back.) Do it in
+this order:
+
+1. Find the revision to go back to: the reverted migration's `down_revision`
+   (in its file under `api/migrations/versions/`).
+2. **On the server, while the new release is still running**, downgrade with
+   the new code (only it has the migration's `downgrade()`):
+
+   ```bash
+   cd ~/finance-tracker
+   docker compose -f docker-compose.prod.yml --env-file .env.production exec api alembic current
+   docker compose -f docker-compose.prod.yml --env-file .env.production exec api alembic downgrade <down_revision>
+   docker compose -f docker-compose.prod.yml --env-file .env.production exec api alembic current   # shows <down_revision>
+   ```
+
+   The running code may error on the old schema until step 3 lands. Do step 3
+   straight away.
+3. Merge the revert PR. Its deploy finds the database at the old code's head,
+   so no dump is needed and the api boots.
+4. Check the deploy run (`gh run list --workflow deploy.yml`) and the app.
+
+If a downgrade can't restore the data (it fails, or the migration was lossy),
+ship a forward fix instead, or restore the pre-migration dump:
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.production stop api
+gunzip -c ~/backups/predeploy_<timestamp>.sql.gz | \
+  docker compose -f docker-compose.prod.yml --env-file .env.production exec -T db \
+  sh -c 'dropdb -U "$POSTGRES_USER" --force "$POSTGRES_DB" && createdb -U "$POSTGRES_USER" "$POSTGRES_DB" && psql -q -U "$POSTGRES_USER" "$POSTGRES_DB"'
+```
+
+Then deploy the code that matches the dump (the revert). Anything written after
+the dump is lost, so this is the last resort.
+
+**Drill (2026-10-10, local Docker, Postgres 16):** release "new" = `main`
+(head `c1d2e3f4a5b6`, the OAuth tables), "old" = the commit before it (head
+`b0c1d2e3f4a5`). Results:
+1. The new code's `upgrade head` applied `c1d2e3f4a5b6`, and `alembic current`
+   showed `c1d2e3f4a5b6 (head)`.
+2. Naive revert: the old code's `upgrade head` failed with "Can't locate
+   revision identified by 'c1d2e3f4a5b6'".
+3. `alembic downgrade b0c1d2e3f4a5` with the new code worked, and the old code's
+   `alembic current` then showed `b0c1d2e3f4a5 (head)`.
+4. The old code booted (`upgrade head` was a no-op, then "Application startup
+   complete").
+
+Repeat the drill when the procedure changes.
+
 ## Extra static sites (optional)
 
 Caddy owns ports 80/443, so it can also serve small static sites on their own
@@ -146,8 +247,12 @@ TrueLayer credentials all live in `.env.production` on the server. To migrate:
 Bank data lives in the `postgres_data` volume. Nightly dump (server crontab, `crontab -e`):
 
 ```cron
-15 3 * * * cd $HOME/finance-tracker && docker compose -f docker-compose.prod.yml --env-file .env.production exec -T db pg_dump -U finance_user finance_db | gzip > $HOME/backups/finance_$(date +\%F).sql.gz
+15 3 * * * $HOME/finance-tracker/deploy/backup.sh >> $HOME/backups/backup.log 2>&1
 ```
+
+`backup.sh` and the pre-migration dump both use `deploy/pg-dump.sh`. It refuses
+a dump that doesn't end with pg_dump's "dump complete" line, so an empty or
+cut-short dump fails loudly and leaves no file behind.
 
 Create `~/backups` first; copy dumps off the server periodically (they contain
 financial data — treat them as sensitive).

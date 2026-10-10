@@ -21,7 +21,7 @@ from app.services.balance_sign import credit_owed as credit_owed_for
 
 from .common import _d, _load, _today, resolve_roles
 from .net_worth import assets_total
-from .repayments import card_repayment_cover, repayment_events, uncovered_occurrences
+from .repayments import repayment_events, scheduled_outflows
 
 
 def get_summary(db: Session, user) -> dict:
@@ -64,14 +64,7 @@ def get_summary(db: Session, user) -> dict:
         )
         .all()
     )
-    # A commitment that is a configured card's repayment is counted once, by
-    # the repayment events below.
-    cover = card_repayment_cover(db, user, expense_rules, today)
-    committed = Decimal(0)
-    for rule in expense_rules:
-        committed += _d(rule.amount) * len(uncovered_occurrences(rule, today, window_end, cover))
-    repayments = repayment_events(db, user, today, window_end)
-    committed += sum((r["amount"] for r in repayments), Decimal(0))
+    committed = _outflow(db, user, expense_rules, today, window_end)
 
     safe_to_spend = max(Decimal(0), available_cash - committed)
 
@@ -90,12 +83,8 @@ def get_summary(db: Session, user) -> dict:
         (_d(r.amount) * len(commitment_occurrences(r, today, horizon)) for r in income_rules),
         Decimal(0),
     )
-    expense_30 = sum(
-        (_d(r.amount) * len(uncovered_occurrences(r, today, horizon, cover)) for r in expense_rules),
-        Decimal(0),
-    )
-    repay_30 = sum((r["amount"] for r in repayment_events(db, user, today, horizon)), Decimal(0))
-    savable = max(Decimal(0), available_cash + income_30 - expense_30 - repay_30)
+    out_30 = _outflow(db, user, expense_rules, today, horizon)
+    savable = max(Decimal(0), available_cash + income_30 - out_30)
 
     manual_assets = assets_total(db, user)
 
@@ -115,6 +104,16 @@ def get_summary(db: Session, user) -> dict:
         "next_repayments": repayment_events(db, user, today, today + timedelta(days=92)),
         "accounts": [_account_summary(acc, roles[acc.id], settings.get(acc.id)) for acc in accounts],
     }
+
+
+def _outflow(db: Session, user, expense_rules: list, start, end) -> Decimal:
+    """Confirmed bills plus card repayments in [start, end], each card's
+    repayment counted once (see scheduled_outflows)."""
+    occurrences, repayments = scheduled_outflows(db, user, expense_rules, start, end)
+    return (
+        sum((_d(rule.amount) for rule, _ in occurrences), Decimal(0))
+        + sum((r["amount"] for r in repayments), Decimal(0))
+    )
 
 
 def _account_summary(acc: Account, role: AccountRole, s: AccountSetting | None) -> dict:

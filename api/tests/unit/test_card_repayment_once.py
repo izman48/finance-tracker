@@ -10,6 +10,8 @@ over-stating what goes out is safe, hiding it is not.
 from datetime import datetime, timedelta
 from decimal import Decimal
 
+import pytest
+
 from app.models import Account, AccountSetting, CommitmentRule, CommitmentStatus, User
 from app.services import analytics_service as svc
 
@@ -43,9 +45,9 @@ def _setup(db):
     return user
 
 
-def _monzo_flex(db, user, configured=True):
+def _monzo_flex(db, user, configured=True, raw="-900"):
     """Monzo reports owed as negative: -900 raw = £900 owed, 3 x £300."""
-    card = _account(db, user, "CREDIT_CARD", "-900", "Flex", "Monzo")
+    card = _account(db, user, "CREDIT_CARD", raw, "Flex", "Monzo")
     db.add(AccountSetting(
         user_id=user.id, account_id=card.id, role="credit",
         repayment_cadence="every_n_months" if configured else None,
@@ -57,8 +59,8 @@ def _monzo_flex(db, user, configured=True):
     return card
 
 
-def _amex(db, user, configured=True):
-    card = _account(db, user, "CREDIT_CARD", "400", "Gold", "American Express")
+def _amex(db, user, configured=True, balance="400", name="Gold"):
+    card = _account(db, user, "CREDIT_CARD", balance, name, "American Express")
     db.add(AccountSetting(
         user_id=user.id, account_id=card.id, role="credit",
         repayment_cadence="monthly" if configured else None,
@@ -169,3 +171,77 @@ class TestSurfacesAgree:
             Decimal(0),
         )
         assert s["committed_before_payday"] == outflow == Decimal("2050.00")  # 300+400+1200+150
+
+
+class TestTheLargerOfTheTwoIsKept:
+    """Per card, whichever is larger (the repayment of today's balance, or the
+    confirmed commitment) is counted, so the de-dupe can never under-state."""
+
+    def _both(self, db, user):
+        s = svc.get_summary(db, user)["committed_before_payday"]
+        f = svc.get_forecast(db, user, horizon="payday")
+        outflow = -sum((e["amount"] for p in f["timeline"] for e in p["events"] if e["amount"] < 0), Decimal(0))
+        return s, outflow, [e["kind"] for p in f["timeline"] for e in p["events"]]
+
+    def test_commitment_larger_than_a_just_paid_balance_wins(self, db_session):
+        user = _setup(db_session)
+        _amex(db_session, user, balance="20")
+        _commitment(db_session, user, "AMEX", "400", in_days=4)
+        summary, forecast, kinds = self._both(db_session, user)
+        assert summary == forecast == Decimal("400")
+        assert kinds == ["expense"]
+
+    def test_balance_larger_than_the_commitment_wins(self, db_session):
+        user = _setup(db_session)
+        _amex(db_session, user, balance="600")
+        _commitment(db_session, user, "AMEX", "400", in_days=4)
+        summary, forecast, kinds = self._both(db_session, user)
+        assert summary == forecast == Decimal("600")
+        assert kinds == ["repayment"]
+
+
+def _summary_and_forecast(db, user):
+    """committed_before_payday and the forecast's outflow over the same window
+    (no payday configured: both end at today + 30)."""
+    s = svc.get_summary(db, user)["committed_before_payday"]
+    f = svc.get_forecast(db, user, horizon="payday")
+    outflow = -sum((e["amount"] for p in f["timeline"] for e in p["events"] if e["amount"] < 0), Decimal(0))
+    return s, outflow
+
+
+class TestOnlyAClearRepaymentDescriptorIsCovered:
+    def test_a_bill_paid_by_card_is_not_the_card_repayment(self, db_session):
+        """'Gym (paid by Amex)' mentions the card but is not its repayment."""
+        user = _setup(db_session)
+        _amex(db_session, user, balance="600")
+        _commitment(db_session, user, "Gym (paid by Amex)", "30", in_days=4)
+        assert _summary_and_forecast(db_session, user) == (Decimal("630"), Decimal("630"))
+
+    @pytest.mark.parametrize("label", ["CAMEX LTD", "AMEXCO SERVICES"])
+    def test_descriptor_must_be_whole_words(self, db_session, label):
+        """These contain 'amex' but are different payees."""
+        user = _setup(db_session)
+        _amex(db_session, user)
+        _commitment(db_session, user, label, "250", in_days=4)
+        assert _summary_and_forecast(db_session, user) == (Decimal("650"), Decimal("650"))
+
+    def test_label_naming_two_cards_of_the_provider_is_not_covered(self, db_session):
+        """Two Amex cards, only one with a repayment set up: an 'AMEX'
+        commitment could be either, so it is still counted."""
+        user = _setup(db_session)
+        _amex(db_session, user)  # configured, £400 owed
+        _amex(db_session, user, configured=False, balance="1200", name="Platinum")
+        _commitment(db_session, user, "AMEX", "1200", in_days=4)
+        assert _summary_and_forecast(db_session, user) == (Decimal("1600"), Decimal("1600"))
+
+    def test_full_descriptor_and_untruncated_name_still_match(self, db_session):
+        user = _setup(db_session)
+        _amex(db_session, user)
+        _commitment(db_session, user, "American Express DD", "400", in_days=4)
+        assert _summary_and_forecast(db_session, user) == (Decimal("400"), Decimal("400"))
+
+    def test_small_flex_balance_keeps_the_larger_commitment(self, db_session):
+        user = _setup(db_session)
+        _monzo_flex(db_session, user, raw="-25")  # £25 owed: 3 x 8.33/8.34
+        _commitment(db_session, user, "MONZO FLEX", "300")
+        assert _summary_and_forecast(db_session, user) == (Decimal("300"), Decimal("300"))

@@ -212,36 +212,51 @@ def repayment_events(db: Session, user, start: date, end: date) -> list[dict]:
 _SCHEDULE_REACH = timedelta(days=366 * 20)
 
 
-def card_repayment_cover(db: Session, user, rules: list, today: date) -> dict:
-    """rule id -> last repayment date of the card that confirmed expense
-    commitment pays.
+def scheduled_outflows(db: Session, user, rules: list, start: date, end: date):
+    """Confirmed-commitment occurrences and card repayment events in
+    [start, end], with each card's repayment counted once.
 
-    A commitment named for a card ("AMEX", "MONZO FLEX") whose card has a
-    repayment set up is the same money as that card's repayment events, up to
-    the schedule's last date. Only a commitment that names exactly one such
-    card is covered; anything less certain is left out, so it is still counted
-    (over-stating what goes out is safe, hiding it is not).
+    Returns (occurrences, repayments): occurrences as (rule, date) pairs,
+    repayments as repayment_events dicts.
+
+    A confirmed expense commitment whose label is a repayment descriptor for
+    exactly one of the user's credit cards ("AMEX", "MONZO FLEX"), when that
+    card has a repayment schedule, is the same money as that card's repayment
+    events, up to the schedule's last due date. For each such card the larger of the two in the window is kept: the
+    events pay off today's balance, the commitment may reflect a bill already
+    building, and under-stating what goes out is the unsafe direction. Any
+    commitment less clearly tied to one card is always counted.
     """
     accounts, settings = _load(db, user)
     roles = resolve_roles(accounts, settings)
+    schedule = repayment_events(db, user, start, start + _SCHEDULE_REACH)
     last_due: dict[str, date] = {}
-    for r in repayment_events(db, user, today, today + _SCHEDULE_REACH):
+    for r in schedule:
         last_due[r["account_id"]] = max(r["due_date"], last_due.get(r["account_id"], r["due_date"]))
-    cards = [a for a in accounts if roles[a.id] == AccountRole.CREDIT and str(a.id) in last_due]
+    repayments = [r for r in schedule if r["due_date"] <= end]
+    cards = [a for a in accounts if roles[a.id] == AccountRole.CREDIT]
 
-    cover: dict = {}
+    occurrences: list[tuple] = []
+    overlap: dict[str, list[tuple]] = {}  # card id -> covered (rule, date)
     for rule in rules:
-        if rule.direction != CommitmentDirection.EXPENSE.value:
-            continue
-        named = [a for a in cards if names_card(rule.label, a)]
-        if len(named) == 1:
-            cover[rule.id] = last_due[str(named[0].id)]
-    return cover
+        named = (
+            [a for a in cards if names_card(rule.label, a)]
+            if rule.direction == CommitmentDirection.EXPENSE.value else []
+        )
+        # Exactly one of ALL credit cards, and that one has a schedule: a
+        # second, unconfigured card of the same provider could be the payee.
+        card_id = str(named[0].id) if len(named) == 1 and str(named[0].id) in last_due else None
+        for d in commitment_occurrences(rule, start, end):
+            if card_id and d <= last_due[card_id]:
+                overlap.setdefault(card_id, []).append((rule, d))
+            else:
+                occurrences.append((rule, d))
 
-
-def uncovered_occurrences(rule, start: date, end: date, cover: dict) -> list[date]:
-    """The rule's occurrences in [start, end] that a card's repayment events
-    do not already count (see card_repayment_cover)."""
-    until = cover.get(rule.id)
-    occurrences = commitment_occurrences(rule, start, end)
-    return occurrences if until is None else [d for d in occurrences if d > until]
+    for card_id, covered in overlap.items():
+        committed = sum((_d(rule.amount) for rule, _ in covered), Decimal(0))
+        repaying = sum((r["amount"] for r in repayments if r["account_id"] == card_id), Decimal(0))
+        if committed > repaying:
+            occurrences.extend(covered)
+            repayments = [r for r in repayments if r["account_id"] != card_id]
+    occurrences.sort(key=lambda o: o[1])
+    return occurrences, repayments

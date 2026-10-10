@@ -533,13 +533,17 @@ class SyncTransactionsResponse(BaseModel):
 # --- Analytics / Cashflow Schemas ---
 
 
+# Longest gap between card repayments the settings accept (every N months).
+MAX_REPAYMENT_INTERVAL_MONTHS = 24
+
+
 class AccountSettingUpdate(BaseModel):
     """Patch an account's cashflow settings (all optional)."""
 
     role: str | None = None  # spending | savings | credit | excluded
     overdraft_limit: Decimal | None = None
     repayment_cadence: str | None = None  # monthly | end_of_month | every_n_months | weekly
-    repayment_interval_months: int | None = None
+    repayment_interval_months: int | None = Field(default=None, ge=1, le=MAX_REPAYMENT_INTERVAL_MONTHS)
     repayment_day: int | None = Field(default=None, ge=1, le=31)
     repayment_anchor_date: date | None = None
     repayment_strategy: str | None = None  # full_balance | fixed | installments | scheduled

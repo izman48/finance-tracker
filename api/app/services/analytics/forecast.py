@@ -17,11 +17,10 @@ from app.models import (
     PlannedItem,
 )
 
-from .cadence import commitment_occurrences
 from .commitments import next_payday
 from .common import _d, _load, _today, resolve_roles
 from .planned import planned_events
-from .repayments import repayment_events
+from .repayments import card_repayment_cover, repayment_events, uncovered_occurrences
 
 
 def _horizon_end(db: Session, user, horizon: str, today: date) -> date:
@@ -175,9 +174,12 @@ def get_forecast(db: Session, user, horizon: str = "payday") -> dict:
         )
         .all()
     )
+    # A commitment that is a configured card's repayment is counted once, by
+    # the repayment events below.
+    cover = card_repayment_cover(db, user, confirmed, today)
     for rule in confirmed:
         sign = Decimal(1) if rule.direction == CommitmentDirection.INCOME.value else Decimal(-1)
-        for occ in commitment_occurrences(rule, today + timedelta(days=1), end):
+        for occ in uncovered_occurrences(rule, today + timedelta(days=1), end, cover):
             add(occ, rule.account_id, {
                 "label": rule.label,
                 "amount": sign * _d(rule.amount),

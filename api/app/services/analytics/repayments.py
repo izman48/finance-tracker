@@ -7,11 +7,18 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from app.models import AccountRole, AccountSetting, RepaymentScheduleItem, RepaymentStrategy
+from app.models import (
+    AccountRole,
+    AccountSetting,
+    CommitmentDirection,
+    RepaymentScheduleItem,
+    RepaymentStrategy,
+)
 from app.schemas import MAX_REPAYMENT_INTERVAL_MONTHS
 
-from app.services.balance_sign import credit_owed
+from app.services.balance_sign import credit_owed, names_card
 
+from .cadence import commitment_occurrences
 from .common import _add_months, _d, _load, resolve_roles
 
 
@@ -198,3 +205,43 @@ def repayment_events(db: Session, user, start: date, end: date) -> list[dict]:
             guard += 1
     out.sort(key=lambda r: r["due_date"])
     return out
+
+
+# Far enough to reach the end of any schedule (120 installments, or the
+# 200-step guard on weekly/fixed), so the last due date is the real last one.
+_SCHEDULE_REACH = timedelta(days=366 * 20)
+
+
+def card_repayment_cover(db: Session, user, rules: list, today: date) -> dict:
+    """rule id -> last repayment date of the card that confirmed expense
+    commitment pays.
+
+    A commitment named for a card ("AMEX", "MONZO FLEX") whose card has a
+    repayment set up is the same money as that card's repayment events, up to
+    the schedule's last date. Only a commitment that names exactly one such
+    card is covered; anything less certain is left out, so it is still counted
+    (over-stating what goes out is safe, hiding it is not).
+    """
+    accounts, settings = _load(db, user)
+    roles = resolve_roles(accounts, settings)
+    last_due: dict[str, date] = {}
+    for r in repayment_events(db, user, today, today + _SCHEDULE_REACH):
+        last_due[r["account_id"]] = max(r["due_date"], last_due.get(r["account_id"], r["due_date"]))
+    cards = [a for a in accounts if roles[a.id] == AccountRole.CREDIT and str(a.id) in last_due]
+
+    cover: dict = {}
+    for rule in rules:
+        if rule.direction != CommitmentDirection.EXPENSE.value:
+            continue
+        named = [a for a in cards if names_card(rule.label, a)]
+        if len(named) == 1:
+            cover[rule.id] = last_due[str(named[0].id)]
+    return cover
+
+
+def uncovered_occurrences(rule, start: date, end: date, cover: dict) -> list[date]:
+    """The rule's occurrences in [start, end] that a card's repayment events
+    do not already count (see card_repayment_cover)."""
+    until = cover.get(rule.id)
+    occurrences = commitment_occurrences(rule, start, end)
+    return occurrences if until is None else [d for d in occurrences if d > until]

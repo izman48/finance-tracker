@@ -21,7 +21,7 @@ from app.services.balance_sign import credit_owed as credit_owed_for
 
 from .common import _d, _load, _today, resolve_roles
 from .net_worth import assets_total
-from .repayments import repayment_events
+from .repayments import card_repayment_cover, repayment_events, uncovered_occurrences
 
 
 def get_summary(db: Session, user) -> dict:
@@ -64,9 +64,12 @@ def get_summary(db: Session, user) -> dict:
         )
         .all()
     )
+    # A commitment that is a configured card's repayment is counted once, by
+    # the repayment events below.
+    cover = card_repayment_cover(db, user, expense_rules, today)
     committed = Decimal(0)
     for rule in expense_rules:
-        committed += _d(rule.amount) * len(commitment_occurrences(rule, today, window_end))
+        committed += _d(rule.amount) * len(uncovered_occurrences(rule, today, window_end, cover))
     repayments = repayment_events(db, user, today, window_end)
     committed += sum((r["amount"] for r in repayments), Decimal(0))
 
@@ -88,7 +91,7 @@ def get_summary(db: Session, user) -> dict:
         Decimal(0),
     )
     expense_30 = sum(
-        (_d(r.amount) * len(commitment_occurrences(r, today, horizon)) for r in expense_rules),
+        (_d(r.amount) * len(uncovered_occurrences(r, today, horizon, cover)) for r in expense_rules),
         Decimal(0),
     )
     repay_30 = sum((r["amount"] for r in repayment_events(db, user, today, horizon)), Decimal(0))

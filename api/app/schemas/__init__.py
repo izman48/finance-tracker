@@ -631,6 +631,9 @@ class CommitmentResponse(BaseModel):
     account_id: uuid.UUID | None
     match_key: str | None = None
     is_payday: bool = False
+    # The credit card this commitment repays, and who linked it (auto | user).
+    card_account_id: uuid.UUID | None = None
+    card_link_source: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -675,6 +678,9 @@ class CommitmentUpdate(BaseModel):
     # "This is my payday" — only meaningful on income; the payday calc ignores
     # the flag on expenses.
     is_payday: bool | None = None
+    # The credit card this commitment repays; null = explicitly "no card".
+    # Either way the request-time linker leaves it alone from then on.
+    card_account_id: uuid.UUID | None = None
 
 
 class ForecastEvent(BaseModel):

@@ -23,6 +23,7 @@ from app.services.balance_sign import credit_owed as credit_owed_for
 from .common import _d, _load, _today, resolve_roles
 from .net_worth import assets_total
 from .planned import planned_events
+from .planned_matching import planned_states
 from .repayments import repayment_events, scheduled_outflows
 
 
@@ -71,7 +72,8 @@ def get_summary(db: Session, user) -> dict:
         .filter(PlannedItem.user_id == user.id, PlannedItem.active.is_(True))
         .all()
     )
-    committed = _outflow(db, user, expense_rules, today, window_end) + _planned_out(planned, today, window_end)
+    states = planned_states(db, user, planned, today)
+    committed = _outflow(db, user, expense_rules, today, window_end) + _planned_out(planned, states, today, window_end)
 
     safe_to_spend = max(Decimal(0), available_cash - committed)
 
@@ -93,7 +95,7 @@ def get_summary(db: Session, user) -> dict:
     # Planned income is left out on purpose: it never raises safe-to-spend or
     # savable until the credit lands (owner decision D1; an injected "refund
     # coming" must not unlock spending). It still shows in the forecast.
-    out_30 = _outflow(db, user, expense_rules, today, horizon) + _planned_out(planned, today, horizon)
+    out_30 = _outflow(db, user, expense_rules, today, horizon) + _planned_out(planned, states, today, horizon)
     savable = max(Decimal(0), available_cash + income_30 - out_30)
 
     manual_assets = assets_total(db, user)
@@ -126,13 +128,22 @@ def _outflow(db: Session, user, expense_rules: list, start, end) -> Decimal:
     )
 
 
-def _planned_out(planned: list, start, end) -> Decimal:
-    """Planned expenses dated in [start, end] (the third source of money out,
-    beside commitments and card repayments). Income is never counted here."""
-    return sum(
-        (-amount for item in planned for _, amount in planned_events(item, start, end) if amount < 0),
-        Decimal(0),
-    )
+def _planned_out(planned: list, states: dict, start, end) -> Decimal:
+    """Planned expenses due in [start, end] (the third source of money out,
+    beside commitments and card repayments). Income is never counted here.
+
+    A one-off expense already paid (matched to its transaction) is left out,
+    so it isn't counted twice; one that is overdue and unpaid is still due."""
+    total = Decimal(0)
+    for item in planned:
+        if item.direction == "income":
+            continue
+        state = states.get(item.id)
+        if state is None:  # recurring / payment plan: by schedule
+            total += sum((-a for _, a in planned_events(item, start, end) if a < 0), Decimal(0))
+        elif state.counted and max(item.start_date, start) <= end:
+            total += _d(item.amount)
+    return total
 
 
 def _account_summary(acc: Account, role: AccountRole, s: AccountSetting | None) -> dict:

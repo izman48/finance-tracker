@@ -11,8 +11,9 @@ already stored, with the same mapping:
 
 Only rows with category_locked = false are touched, so a category the user set
 by hand is never changed. Before changing anything, (id, old category) of every
-row it changes is copied into a backup table; downgrade() restores from it
-(again only on unlocked rows) and drops the table. Running the backfill again
+row it changes is copied into a backup table; downgrade() restores from it,
+only on unlocked rows that still hold the value the backfill wrote (so a
+later rule or hand-set category survives), and drops the table. Running the backfill again
 changes nothing, because no raw type is left to match.
 
 The mapping is copied here on purpose: a migration must keep doing what it did
@@ -56,12 +57,21 @@ _MAP = sa.text(
     f"WHERE {_MATCH}"
 ).bindparams(sa.bindparam("raw", expanding=True), sa.bindparam("income", expanding=True))
 
+# The value the backfill wrote for a backed-up row; a row that no longer holds
+# it was changed since (by a rule or the user) and is left alone.
+_BACKFILLED = (
+    "CASE WHEN b.old_category = 'TRANSFER' THEN 'Transfers' "
+    "WHEN transactions.transaction_type = 'credit' AND b.old_category IN :income THEN 'Income' "
+    "END"
+)
 _RESTORE = sa.text(
     "UPDATE transactions SET category = ("
     f"  SELECT b.old_category FROM {BACKUP_TABLE} b WHERE b.transaction_id = transactions.id"
     ") WHERE category_locked = :unlocked "
-    f"AND id IN (SELECT transaction_id FROM {BACKUP_TABLE})"
-)
+    f"AND EXISTS (SELECT 1 FROM {BACKUP_TABLE} b WHERE b.transaction_id = transactions.id "
+    f"AND (transactions.category = {_BACKFILLED} "
+    f"OR (transactions.category IS NULL AND {_BACKFILLED} IS NULL)))"
+).bindparams(sa.bindparam("income", expanding=True))
 
 
 def backfill(conn) -> int:
@@ -94,5 +104,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.get_bind().execute(_RESTORE, {"unlocked": False})
+    op.get_bind().execute(_RESTORE, {"unlocked": False, "income": sorted(_INCOME_TYPES)})
     op.drop_table(BACKUP_TABLE)

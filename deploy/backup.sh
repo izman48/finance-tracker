@@ -8,20 +8,10 @@ BACKUP_DIR="${BACKUP_DIR:-$HOME/backups}"
 KEEP_DAYS="${KEEP_DAYS:-14}"
 
 cd "$APP_DIR"
-set -a; . ./.env.production; set +a
+(umask 077; mkdir -p "$BACKUP_DIR")
 
-mkdir -p "$BACKUP_DIR"
-STAMP=$(date +%F)
-OUT="$BACKUP_DIR/finance_${STAMP}.sql.gz"
+# Refuses an empty or cut-short dump and leaves no file behind.
+./deploy/pg-dump.sh "$BACKUP_DIR/finance_$(date +%F).sql.gz"
 
-docker compose -f docker-compose.prod.yml --env-file .env.production \
-  exec -T db pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" | gzip > "$OUT"
-
-# Refuse to count an empty dump as success.
-[ -s "$OUT" ] || { echo "$(date -Is) backup EMPTY: $OUT"; exit 1; }
-gunzip -t "$OUT"
-
-# Rotate: drop dumps older than KEEP_DAYS.
-find "$BACKUP_DIR" -name 'finance_*.sql.gz' -mtime "+$KEEP_DAYS" -delete
-
-echo "$(date -Is) backup OK: $OUT ($(du -h "$OUT" | cut -f1))"
+# Rotate: drop dumps older than KEEP_DAYS (nightly and pre-migration ones).
+find "$BACKUP_DIR" \( -name 'finance_*.sql.gz' -o -name 'predeploy_*.sql.gz' \) -mtime "+$KEEP_DAYS" -delete

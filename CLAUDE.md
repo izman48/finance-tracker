@@ -101,6 +101,12 @@ quick overflow check, navigate a page and compare `document.documentElement
   command). Code hot-reloads from the mount, so the running code can get *ahead*
   of the schema after you pull new migrations → `UndefinedColumn` 500s. Fix:
   `docker compose restart api` (or `docker exec finance_api alembic upgrade head`).
+- **Migrations are additive** (expand first, contract in a later release), so
+  the previous release still runs on the new schema. Every migration has a
+  working `downgrade()`, and a data migration copies the old values into a
+  backup table first. Rolling back a release that added a migration means
+  `alembic downgrade` on the server *before* merging the revert; see
+  DEPLOY.md "Rollback".
 - **Decimal-as-string**: money fields arrive from the API as strings. Coerce with
   `Number(...)` before arithmetic in the UI.
 - **Mobile grid overflow**: a bare `grid md:grid-cols-2` gives mobile an *implicit
@@ -174,5 +180,8 @@ quick overflow check, navigate a page and compare `document.documentElement
 
 Branch → PR → squash-merge to `main`. **Pushing to `main` auto-deploys** via
 `.github/workflows/deploy.yml` (runs API tests, then `deploy/deploy.sh` over
-SSH). Don't run `deploy/deploy.sh` by hand. End commit messages and PR bodies
-with the standard Claude Code co-author / attribution lines.
+SSH). Don't run `deploy/deploy.sh` by hand. It refuses a dirty tree (untracked
+files included) and dumps the database before a migrating deploy; the deploy
+scripts are tested by `./deploy/test-deploy.sh` (no Docker needed, runs in
+CI). End commit messages and PR bodies with the standard Claude Code
+co-author / attribution lines.

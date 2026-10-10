@@ -13,7 +13,9 @@ would otherwise hide the miss. It stays flagged for one cadence window, until
 the next expected date takes over.
 
 Only a credit whose merchant key matches the commitment (its match_key, or
-its label's key) clears it. Internal transfer legs never do: money moved in
+its label's key) and whose amount is within max(GBP 1, 2%) of the expected
+amount clears it: a stray GBP 5 from the payer doesn't hide a missing
+GBP 1,000. Internal transfer legs never do: money moved in
 from your own savings isn't the income. Recomputed on every read, with the
 user's key.
 """
@@ -33,6 +35,8 @@ from .commitments import _match_key, transaction_match_key
 from .common import _d, _load, resolve_roles
 
 GRACE_DAYS = 3
+TOLERANCE_FLOOR = Decimal("1.00")
+TOLERANCE_SHARE = Decimal("0.02")
 EARLY_DAYS = 7  # a payment this many days early still counts
 
 
@@ -76,17 +80,23 @@ def late_incomes(db: Session, user, today: date) -> dict[uuid.UUID, LateIncome]:
             candidates.append((rule, expected))
     if not candidates:
         return {}
-    received = _received_keys(db, user, min(e for _, e in candidates) - timedelta(days=EARLY_DAYS))
+    credits = _real_credits(db, user, min(e for _, e in candidates) - timedelta(days=EARLY_DAYS))
     out = {}
     for rule, expected in candidates:
         keys = {k for k in (rule.match_key, _match_key(rule.direction, rule.label)) if k}
-        if not any(key in received and received[key] >= expected - timedelta(days=EARLY_DAYS) for key in keys):
-            out[rule.id] = LateIncome(rule.id, rule.label, _d(rule.amount), expected)
+        amount = _d(rule.amount)
+        allowed = max(TOLERANCE_FLOOR, (amount * TOLERANCE_SHARE).quantize(Decimal("0.01")))
+        arrived = any(
+            key in keys and day >= expected - timedelta(days=EARLY_DAYS) and abs(paid - amount) <= allowed
+            for key, day, paid in credits
+        )
+        if not arrived:
+            out[rule.id] = LateIncome(rule.id, rule.label, amount, expected)
     return out
 
 
-def _received_keys(db: Session, user, since: date) -> dict[str, date]:
-    """{merchant key: latest date} of real credits since `since` (internal
+def _real_credits(db: Session, user, since: date) -> list[tuple[str, date, Decimal]]:
+    """(merchant key, date, amount) of real credits since `since` (internal
     transfer legs and card settlements excluded)."""
     from .spending import classify_noise
 
@@ -101,11 +111,8 @@ def _received_keys(db: Session, user, since: date) -> dict[str, date]:
     )
     accounts, settings = _load(db, user)
     noise = classify_noise(txns, resolve_roles(accounts, settings))
-    latest: dict[str, date] = {}
-    for tx in txns:
-        if tx.transaction_type != "credit" or tx.id in noise:
-            continue
-        key, day = transaction_match_key(tx), tx.transaction_date.date()
-        if day >= since and day > latest.get(key, date.min):
-            latest[key] = day
-    return latest
+    return [
+        (transaction_match_key(tx), tx.transaction_date.date(), _d(tx.amount))
+        for tx in txns
+        if tx.transaction_type == "credit" and tx.id not in noise and tx.transaction_date.date() >= since
+    ]

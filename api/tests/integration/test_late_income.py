@@ -190,3 +190,16 @@ def test_the_mcp_read_outputs_carry_the_flag(client, db_session):
     w.income(TODAY - timedelta(days=10))
     assert w.commitments(token=w.mcp)["Income A"]["late"] is True
     assert len(w.forecast(token=w.mcp)["late_income"]) == 1
+
+
+@pytest.mark.parametrize("amount,clears", [
+    ("5.00", False),      # a stray small credit from the payer doesn't hide a missing GBP 1,000
+    ("979.99", False),    # just outside max(GBP 1, 2%) = GBP 20
+    ("980.00", True),
+    ("1020.00", True),
+])
+def test_only_a_credit_near_the_expected_amount_clears_it(client, db_session, amount, clears):
+    w = World(client, db_session)
+    w.income(TODAY - timedelta(days=10))
+    w.as_user(lambda: _tx(db_session, w.current, amount, TODAY - timedelta(days=1), ttype="credit", merchant="Income A"))
+    assert w.commitments()["Income A"]["late"] is (not clears)

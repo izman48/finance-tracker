@@ -21,6 +21,7 @@ from app.models import (
 from app.schemas import (
     AccountSettingUpdate,
     AssetDecomposition,
+    ClaudeMarker,
     CashflowSummary,
     CommitmentCreate,
     CommitmentFromTransaction,
@@ -329,7 +330,9 @@ def list_planned_items(
     )
     markers = claude_markers(db, current_user.id, "planned_event", [i.id for i in items])
     return [
-        PlannedItemResponse.model_validate(i).model_copy(update={"changed_by_claude": markers.get(i.id)})
+        PlannedItemResponse.model_validate(i).model_copy(
+            update={"changed_by_claude": ClaudeMarker(**markers[i.id]) if i.id in markers else None}
+        )
         for i in items
     ]
 

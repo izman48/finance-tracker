@@ -137,6 +137,12 @@ quick overflow check, navigate a page and compare `document.documentElement
   summarises — every figure it shows is owned by the tab its card links to.
   Rules and account management live in the user menu; commitments management
   is a sub-page off Cashflow.
+- **Account ids in requests**: any account id a route accepts (path or body,
+  e.g. `account_id`, `pay_from_account_id`) goes through `core/ownership.py`
+  (`owned_account` / `require_owned_account_ids`) before anything is written;
+  foreign and unknown ids both get 404. `tests/integration/test_account_ownership.py`
+  walks `app.routes` and fails on a write route with an `*account_id` input that
+  has no ownership case, so add one when you add such a route.
 - **Auth/security**: every API endpoint filters by `current_user` (no IDOR). JWTs
   carry a `typ` claim — `access`, `pwd_reset`, `oauth_state` — and
   `decode_access_token` rejects anything that isn't `access`, so reset/oauth

@@ -20,7 +20,7 @@ The mapping is copied here on purpose: a migration must keep doing what it did
 when it shipped, whatever later happens to the app code.
 
 Revision ID: d7e8f9a0b1c2
-Revises: c1d2e3f4a5b6
+Revises: b4a001e5358c
 Create Date: 2026-10-10
 """
 from typing import Sequence, Union
@@ -29,7 +29,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "d7e8f9a0b1c2"
-down_revision: Union[str, None] = "c1d2e3f4a5b6"
+down_revision: Union[str, None] = "b4a001e5358c"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

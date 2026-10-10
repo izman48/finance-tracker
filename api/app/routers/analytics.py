@@ -1,15 +1,16 @@
 """Cashflow analytics endpoints: summary, commitments review, account settings."""
 import logging
+import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.ownership import owned_account, require_owned_account_ids
 from app.core.security import CurrentUser
 from app.core.oauth_tokens import CurrentUserOrMcpRead
 from app.models import (
-    Account,
     AccountSetting,
     CommitmentRule,
     CommitmentSource,
@@ -247,6 +248,7 @@ def create_commitment(
     db: Annotated[Session, Depends(get_db)],
 ) -> CommitmentRule:
     """Manually add a commitment (confirmed immediately)."""
+    require_owned_account_ids(db, current_user, data)
     rule = CommitmentRule(
         user_id=current_user.id,
         direction=data.direction,
@@ -269,7 +271,7 @@ def create_commitment(
 
 @router.patch("/commitments/{commitment_id}", response_model=CommitmentResponse)
 def update_commitment(
-    commitment_id: str,
+    commitment_id: uuid.UUID,
     data: CommitmentUpdate,
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
@@ -282,6 +284,7 @@ def update_commitment(
     )
     if not rule:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Commitment not found")
+    require_owned_account_ids(db, current_user, data)
 
     updates = data.model_dump(exclude_unset=True)
     # match_merchant is a virtual field — translate it into the stored match_key.
@@ -328,6 +331,7 @@ def create_planned_item(
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> PlannedItem:
+    require_owned_account_ids(db, current_user, data)
     item = PlannedItem(user_id=current_user.id, **data.model_dump())
     db.add(item)
     db.commit()
@@ -373,25 +377,14 @@ def delete_planned_item(
     return {"success": True}
 
 
-def _owned_account(db: Session, user, account_id: str) -> Account:
-    account = (
-        db.query(Account)
-        .filter(Account.id == account_id, Account.user_id == user.id)
-        .first()
-    )
-    if not account:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
-    return account
-
-
 @router.get("/accounts/{account_id}/repayments", response_model=list[RepaymentScheduleItemResponse])
 def list_repayments(
-    account_id: str,
+    account_id: uuid.UUID,
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> list[RepaymentScheduleItem]:
     """Scheduled repayments for a credit account (for the `scheduled` strategy)."""
-    _owned_account(db, current_user, account_id)
+    owned_account(db, current_user, account_id)
     return (
         db.query(RepaymentScheduleItem)
         .filter(
@@ -409,12 +402,12 @@ def list_repayments(
     status_code=status.HTTP_201_CREATED,
 )
 def add_repayment(
-    account_id: str,
+    account_id: uuid.UUID,
     data: RepaymentScheduleItemCreate,
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> RepaymentScheduleItem:
-    account = _owned_account(db, current_user, account_id)
+    account = owned_account(db, current_user, account_id)
     item = RepaymentScheduleItem(
         user_id=current_user.id,
         account_id=account.id,
@@ -429,11 +422,12 @@ def add_repayment(
 
 @router.delete("/accounts/{account_id}/repayments/{item_id}")
 def delete_repayment(
-    account_id: str,
-    item_id: str,
+    account_id: uuid.UUID,
+    item_id: uuid.UUID,
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> dict:
+    owned_account(db, current_user, account_id)
     item = (
         db.query(RepaymentScheduleItem)
         .filter(
@@ -452,19 +446,14 @@ def delete_repayment(
 
 @router.patch("/accounts/{account_id}/settings")
 def update_account_settings(
-    account_id: str,
+    account_id: uuid.UUID,
     data: AccountSettingUpdate,
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> dict:
     """Upsert an account's cashflow settings (role, overdraft, repayment config)."""
-    account = (
-        db.query(Account)
-        .filter(Account.id == account_id, Account.user_id == current_user.id)
-        .first()
-    )
-    if not account:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
+    account = owned_account(db, current_user, account_id)
+    require_owned_account_ids(db, current_user, data)
 
     setting = (
         db.query(AccountSetting)

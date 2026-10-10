@@ -1,11 +1,11 @@
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
+from typing import Annotated, Literal
 
-from typing import Literal
+from pydantic import BaseModel, BeforeValidator, ConfigDict, EmailStr, Field, StrictBool, field_validator, model_validator
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, StrictBool, field_validator
-
+from app.core.display_text import has_hidden_characters
 from app.models.account import AccountType
 from app.models.transaction import TransactionType
 
@@ -908,12 +908,26 @@ PlannedItemResponse.model_rebuild()
 PLANNED_EVENT_MAX_AMOUNT = Decimal("1000000")
 
 
+def _refuse_float(value):
+    # A JSON float can't hold money exactly: send "12.50" (or an integer).
+    if isinstance(value, (float, bool)):
+        raise ValueError("amount must be a string like \"12.50\", not a float")
+    return value
+
+
+# The bounds every amount Claude writes shares (T-08-6, T-08-9): more than 0,
+# at most 1,000,000, at most 2 decimal places, never a JSON float.
+PlanningAmount = Annotated[
+    Decimal, BeforeValidator(_refuse_float), Field(gt=0, le=PLANNED_EVENT_MAX_AMOUNT, decimal_places=2)
+]
+
+
 class AddPlannedEventRequest(PlanningWriteRequest):
     """Claude adds a one-off planned event (T-08-6). Bounded, so a model
     can't record an absurd amount or a date decades away."""
 
     name: str = Field(min_length=1, max_length=100)
-    amount: Decimal = Field(gt=0, le=PLANNED_EVENT_MAX_AMOUNT, decimal_places=2)
+    amount: PlanningAmount
     date: date
     direction: Literal["income", "expense"]
     account_id: uuid.UUID | None = None
@@ -926,14 +940,6 @@ class AddPlannedEventRequest(PlanningWriteRequest):
         if has_hidden_characters(value) or not value.strip():
             raise ValueError("name must be visible text, without control or invisible characters")
         return value.strip()
-
-    @field_validator("amount", mode="before")
-    @classmethod
-    def _no_float(cls, value):
-        # A JSON float can't hold money exactly: send "12.50" (or an integer).
-        if isinstance(value, float):
-            raise ValueError("amount must be a string like \"12.50\", not a float")
-        return value
 
     @field_validator("date")
     @classmethod
@@ -974,3 +980,55 @@ class PlannedEventItem(BaseModel):
 class PlannedEventList(BaseModel):
     items: list[PlannedEventItem]
     truncated: bool
+# --- Commitment writes over MCP (T-08-9) ---
+
+CommitmentCadenceName = Literal["weekly", "monthly", "every_n_months", "custom_days"]
+
+class UpdateCommitmentRequest(PlanningWriteRequest):
+    """What Claude may change on a commitment. Anything not listed (direction,
+    match_key, source, is_payday, user_id…) is refused by `extra="forbid"`.
+    A field left out is left alone; `card_account_id: null` is an explicit
+    "no card"."""
+
+    label: str | None = Field(default=None, min_length=1, max_length=100)
+    amount: PlanningAmount | None = None
+    cadence: CommitmentCadenceName | None = None
+    interval_days: int | None = Field(default=None, ge=1, le=366)
+    interval_months: int | None = Field(default=None, ge=1, le=24)
+    next_date: date | None = None
+    # Only confirming: suggested is never set over MCP, and dismissing has its own tool.
+    status: Literal["confirmed"] | None = None
+    card_account_id: uuid.UUID | None = None
+    # Shared by the steps of one change (e.g. a merge: dismiss one, update the other).
+    batch_id: uuid.UUID | None = None
+
+    @field_validator("label")
+    @classmethod
+    def _visible_label(cls, v: str | None) -> str | None:
+        if v is not None and (not v.strip() or has_hidden_characters(v)):
+            raise ValueError("must be visible text without control or hidden characters")
+        return v
+
+    @field_validator("next_date")
+    @classmethod
+    def _date_window(cls, v: date | None) -> date | None:
+        if v is not None:
+            today = date.today()
+            if not today - timedelta(days=365) <= v <= _add_years(today, 5):
+                raise ValueError("must be within a year ago and five years ahead")
+        return v
+
+    @model_validator(mode="after")
+    def _something_and_complete(self) -> "UpdateCommitmentRequest":
+        changes = self.model_fields_set - {"dry_run", "idempotency_key", "batch_id"}
+        if not changes:
+            raise ValueError("nothing to change")
+        if self.cadence == "every_n_months" and self.interval_months is None:
+            raise ValueError("every_n_months needs interval_months")
+        if self.cadence == "custom_days" and self.interval_days is None:
+            raise ValueError("custom_days needs interval_days")
+        return self
+
+
+class DismissCommitmentRequest(PlanningWriteRequest):
+    batch_id: uuid.UUID | None = None

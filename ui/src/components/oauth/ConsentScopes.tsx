@@ -38,14 +38,17 @@ export default function ConsentScopes({ allowRules, allowPlanning, onRulesChange
         </label>
       </li>
       <li className="flex gap-3">
-        <input
-          id="allow-planning"
-          type="checkbox"
-          checked={allowPlanning}
-          onChange={(e) => onPlanningChange(e.target.checked)}
-          aria-describedby="allow-planning-desc"
-          className="mt-1 shrink-0 accent-accent"
-        />
+        {/* Padding grows the tap target past 44px; the negative margin keeps the layout. */}
+        <label htmlFor="allow-planning" className="-m-4 p-4 shrink-0 self-start cursor-pointer">
+          <input
+            id="allow-planning"
+            type="checkbox"
+            checked={allowPlanning}
+            onChange={(e) => onPlanningChange(e.target.checked)}
+            aria-describedby="allow-planning-desc"
+            className="mt-1 block accent-accent"
+          />
+        </label>
         <div className="min-w-0">
           <label htmlFor="allow-planning" className="block text-sm text-slate-100 cursor-pointer">
             Change your planned events and commitments

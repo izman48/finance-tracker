@@ -549,7 +549,8 @@ def search_transactions(
     the window is capped. The term and the rows are never logged.
     """
     user_rate_limiter.check_key(f"search:{current_user.id}", limit=30, window_seconds=60)
-    start, end = search.utc_bounds(body.frm, body.to)
+    frm, to = body.window()
+    start, end = search.utc_bounds(frm, to)
     txns = (
         db.query(Transaction)
         .join(Account)
@@ -584,8 +585,8 @@ def search_transactions(
         total_amount=total_amount,
         page=body.page,
         page_size=body.page_size,
-        frm=body.frm,
-        to=body.to,
+        frm=frm,
+        to=to,
     )
 
 

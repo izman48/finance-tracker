@@ -62,6 +62,12 @@ class TransactionSearchRequest(BaseModel):
             raise ValueError(f"the range can span at most {MAX_WINDOW_DAYS} days")
         return self
 
+    def window(self) -> tuple[date, date]:
+        """The resolved, validated (frm, to); defaults are filled in by _window."""
+        if self.frm is None or self.to is None:  # unreachable after validation
+            raise ValueError("search window not resolved")
+        return self.frm, self.to
+
 
 class TransactionSearchResponse(BaseModel):
     items: list[TransactionResponse]

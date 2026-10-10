@@ -106,6 +106,9 @@ export interface Commitment {
   is_payday?: boolean
   // Claude's latest change still in effect (links to /changes#change-{audit_id}).
   changed_by_claude?: ClaudeMarker | null
+  // Income whose latest payment hasn't arrived (T-08-10): shown, never counted.
+  late?: boolean
+  expected_date?: string | null
 }
 
 export interface ClaudeMarker {
@@ -132,4 +135,6 @@ export interface PlannedItem {
   changed_by_claude?: ClaudeMarker | null
   // Set once the real transaction that paid it has landed (T-08-7).
   matched_transaction_id?: string | null
+  // Expected income past its date + 7 days with no matching credit (T-08-7).
+  late?: boolean
 }

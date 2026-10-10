@@ -1,4 +1,5 @@
 import type { Upcoming } from '../lib/upcoming'
+import { lateLine } from '../lib/late'
 import ClaudeMarker, { ClaudeChip, NOT_COUNTED_TEXT } from './changes/ClaudeMarker'
 
 /**
@@ -10,9 +11,16 @@ import ClaudeMarker, { ClaudeChip, NOT_COUNTED_TEXT } from './changes/ClaudeMark
 export default function UpcomingLabel({ item, linkMarker }: { item: Upcoming; linkMarker: boolean }) {
   return (
     <span className="min-w-0 flex-1">
-      <span className="block text-slate-300 truncate">{item.label}</span>
+      <span className="flex items-center gap-2 min-w-0">
+        <span className="text-slate-300 truncate">{item.label}</span>
+        {item.late && <span className="chip-warn shrink-0">Late</span>}
+      </span>
       {item.claudeAuditId && (linkMarker ? <ClaudeMarker auditId={item.claudeAuditId} /> : <ClaudeChip />)}
-      {item.plannedIncome && <span className="block text-xs text-slate-400">{NOT_COUNTED_TEXT}</span>}
+      {item.late ? (
+        <span className="block text-xs text-slate-400">{lateLine(item.late.expected, item.late.days)}</span>
+      ) : (
+        item.plannedIncome && <span className="block text-xs text-slate-400">{NOT_COUNTED_TEXT}</span>
+      )}
     </span>
   )
 }

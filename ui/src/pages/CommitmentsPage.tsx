@@ -377,10 +377,11 @@ function renderCommitmentRow(
         <div className="font-medium text-slate-200 flex items-center gap-2">
           <span className="truncate">{c.label}</span>
           {c.is_payday && <span className="chip-pos shrink-0">Payday</span>}
+          {c.late && <span className="chip-warn shrink-0">Late</span>}
           {c.changed_by_claude && <ClaudeMarker auditId={c.changed_by_claude.audit_id} />}
         </div>
         <div className="text-sm text-slate-500">
-          {cadenceLabel(c)} · next {formatDate(c.next_date)}
+          {cadenceLabel(c)} · {c.late && c.expected_date ? `expected ${formatDate(c.expected_date)}` : `next ${formatDate(c.next_date)}`}
         </div>
       </div>
       {/* Wraps under the label on narrow phones instead of forcing

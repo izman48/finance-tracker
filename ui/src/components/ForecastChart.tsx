@@ -15,6 +15,7 @@ import InfoTip from './ui/InfoTip'
 import ForecastSummary, { OVERDRAFT_LINE_LABEL, type AccountBreach } from './ForecastSummary'
 import { EXPLAIN } from '../copy/statExplainers'
 import ForecastError from './forecast/ForecastError'
+import LateIncomeNote from './forecast/LateIncomeNote'
 import { FORECAST_TIMEOUT_MS, focusAfter, forecastReducer, withTimeout, type ForecastView } from '../lib/forecastLoad'
 
 interface ForecastEvent {
@@ -39,6 +40,9 @@ interface Forecast {
   account_breaches: AccountBreach[]
   unassigned_attributed_to: string | null
   timeline: ForecastPoint[]
+  // Expected income that hasn't arrived: shown, never in the line (T-08-7, T-08-10).
+  late_income?: { amount: number | string }[]
+  late_planned?: { amount: number | string }[]
 }
 
 const HORIZONS: { key: string; label: string }[] = [
@@ -148,6 +152,7 @@ export default function ForecastChart({ refreshKey }: { refreshKey?: number }) {
       ) : (
         <>
           <ForecastSummary data={data} />
+          <LateIncomeNote items={[...(data.late_income ?? []), ...(data.late_planned ?? [])]} />
           <ResponsiveContainer width="100%" height={260}>
             <AreaChart data={data.timeline} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
               <defs>

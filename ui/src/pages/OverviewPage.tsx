@@ -4,7 +4,7 @@ import { ChevronRight, PieChart, Plug, RefreshCw, Sparkles, TrendingUp, Wallet }
 import { analyticsAPI, bankingAPI, assetsAPI, NetWorthPosition } from '../services/api'
 import { BankStatus, CashflowSummary, Commitment, PlannedItem } from '../types'
 import { gbp0 as gbp, dateDayMonth, monthLabel, timeAgo, changeTone, signedGbp, signedPct } from '../lib/format'
-import { buildUpcoming } from '../lib/upcoming'
+import { buildUpcoming, upcomingAmount } from '../lib/upcoming'
 import UpcomingLabel from '../components/UpcomingLabel'
 import AnimatedNumber from '../components/ui/AnimatedNumber'
 import Sparkline, { SparkPoint } from '../components/ui/Sparkline'
@@ -285,8 +285,8 @@ export default function OverviewPage() {
               upcoming.map((u) => (
                 <div key={u.key} className="flex items-baseline justify-between gap-3">
                   <UpcomingLabel item={u} linkMarker={false} />
-                  <span className={`tnum shrink-0 ${u.income ? 'text-pos' : 'text-slate-100'}`}>
-                    {u.income ? '+' : ''}{gbp(u.amount)}{' '}
+                  <span className={`tnum shrink-0 ${upcomingAmount(u).tone}`}>
+                    {upcomingAmount(u).sign}{gbp(u.amount)}{' '}
                     <span className="text-slate-500">· {dateDayMonth(u.date)}</span>
                   </span>
                 </div>

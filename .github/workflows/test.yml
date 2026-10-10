@@ -10,28 +10,28 @@ jobs:
   api:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: Run API tests
         run: docker compose --profile test run --rm test
 
   mcp:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: Run MCP server tests
         run: docker compose --profile test run --rm --build mcp-test
 
   caddy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: Validate the production Caddyfile
         run: ./deploy/test-caddy.sh
 
   deploy-scripts:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: Test deploy.sh and the pre-migration dump
         run: ./deploy/test-deploy.sh
 
@@ -49,7 +49,7 @@ jobs:
       run:
         working-directory: ui
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: Install (lockfile only, no install scripts)
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Unit tests
@@ -60,3 +60,12 @@ jobs:
         run: npm run lint
       - name: Production build (catches what tsc alone doesn't)
         run: npm run build
+
+  workflows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - name: Self-test the workflow checks
+        run: python3 .github/scripts/test_check_workflows.py
+      - name: Actions pinned to SHAs; the audit can't fail silently
+        run: python3 .github/scripts/check_workflows.py .github/workflows

@@ -21,7 +21,7 @@ import AnimatedNumber from '../components/ui/AnimatedNumber'
 import InfoTip from '../components/ui/InfoTip'
 import { EXPLAIN } from '../copy/statExplainers'
 import useReveal from '../components/ui/useReveal'
-import { buildUpcoming } from '../lib/upcoming'
+import { buildUpcoming, upcomingAmount } from '../lib/upcoming'
 
 export default function DashboardPage() {
   const [bankStatus, setBankStatus] = useState<BankStatus | null>(null)
@@ -342,8 +342,8 @@ export default function DashboardPage() {
                           skip
                         </button>
                       )}
-                      <span className={`tnum ${u.income ? 'text-pos' : 'text-slate-100'}`}>
-                        {u.income ? '+' : ''}{formatCurrency(u.amount)}{' '}
+                      <span className={`tnum ${upcomingAmount(u).tone}`}>
+                        {upcomingAmount(u).sign}{formatCurrency(u.amount)}{' '}
                         <span className="text-slate-500">· {formatDate(u.date)}</span>
                       </span>
                     </span>

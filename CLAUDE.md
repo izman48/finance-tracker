@@ -148,7 +148,9 @@ quick overflow check, navigate a page and compare `document.documentElement
   (`owned_account` / `require_owned_account_ids`) before anything is written;
   foreign and unknown ids both get 404. `tests/integration/test_account_ownership.py`
   walks `app.routes` and fails on a write route with an `*account_id` input that
-  has no ownership case, so add one when you add such a route.
+  has no ownership case, so add one when you add such a route. Both match the
+  singular `*account_id` suffix only: name new fields that way (not
+  `account_ids` / `accountId`), or extend both.
 - **Auth/security**: every API endpoint filters by `current_user` (no IDOR). JWTs
   carry a `typ` claim — `access`, `pwd_reset`, `oauth_state` — and
   `decode_access_token` rejects anything that isn't `access`, so reset/oauth
@@ -168,11 +170,14 @@ quick overflow check, navigate a page and compare `document.documentElement
   by design.
 - **Remote MCP / OAuth** (`services/oauth.py`, `core/oauth_tokens.py`): the API
   is the OAuth 2.1 server for the MCP server at `/mcp`. MCP tokens are `typ:
-  mcp_access`, audience-bound, scoped (`finance:read`, `finance:rules.write`),
-  and checked against their grant on every use. **Routes are web-only by
-  default**: a route the MCP tools need opts in by typing its user as
-  `CurrentUserOrMcpRead` / `CurrentUserOrMcpRulesWrite` instead of
-  `CurrentUser`. Keep that allowlist minimal and never add auth, banking-
+  mcp_access`, audience-bound, scoped (`finance:read`, `finance:rules.write`,
+  `finance:planning.write`), and checked against their grant on every use.
+  **Routes are web-only by default**: a route the MCP tools need opts in by
+  typing its user as `CurrentUserOrMcpRead` / `CurrentUserOrMcpRulesWrite`
+  instead of `CurrentUser`. Planning write routes take `PlanningWriter`
+  (`core/planning_write.py`): it returns a `Caller` (user + verified
+  `grant_id`/`client_id`; record those, never request values) and applies the
+  per-user write and dry-run rate limits. Keep that allowlist minimal and never add auth, banking-
   connection or account-management routes. The user's DEK is wrapped under the
   auth code, then under each rotating refresh token (never stored usable).
 

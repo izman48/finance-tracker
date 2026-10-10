@@ -38,6 +38,18 @@ from auth import SCOPE_READ, SCOPE_RULES_WRITE, TokenInfoVerifier
 from config import ConfigError, Settings
 
 
+# Every tool declares these, so Claude clients know which ones change data and
+# ask the user first (tests/test_tool_annotations.py pins the rule). A dry_run
+# preview is not a control: an injected model can call apply directly.
+READ_ONLY = ToolAnnotations(readOnlyHint=True)
+
+
+def write_tool(*, destructive: bool) -> ToolAnnotations:
+    """Hints for a tool that changes data: never read-only or idempotent;
+    destructive when it edits or removes something that already exists."""
+    return ToolAnnotations(readOnlyHint=False, destructiveHint=destructive, idempotentHint=False)
+
+
 def create_server(settings: Settings, api_transport: httpx.AsyncBaseTransport | None = None) -> FastMCP:
     """Build the server for the configured transport. `api_transport` lets tests fake the API."""
     if settings.transport == "http":
@@ -67,19 +79,19 @@ def create_server(settings: Settings, api_transport: httpx.AsyncBaseTransport | 
 
     api = ApiClient(settings.api_url, credentials, api_transport)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def cashflow_summary() -> dict:
         """Current cashflow: safe-to-spend, available cash, overdraft cushion, credit owed, net worth, next card repayments, and per-account roles."""
         return await api.get("/analytics/summary")
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def forecast(horizon: str = "90") -> dict:
         """Balance projection over a horizon (payday | 30 | 90 | 180 | 365 days). Returns the daily running-balance timeline (spending accounts pooled), the lowest point, end balance, any £0/overdraft breaches (pooled, plus `account_breaches`: each spending account checked against its own overdraft limit, £0 if none), and the dated income/expense/repayment/planned events.
 
         An `account_breaches` entry with `floor` 0 means that account has no overdraft limit set: going below £0 there is unarranged borrowing, usually the costlier case (fees, returned payments). Report it as seriously as going past a limit; never describe it as a small dip."""
         return await api.get("/analytics/forecast", {"horizon": horizon})
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def spending(period: str = "since_payday", frm: str = "", to: str = "", lens: str = "money_out") -> dict:
         """Spending breakdown by category and merchant for a period (since_payday | this_month | last_30), or for ANY date range by passing frm and to as YYYY-MM-DD.
 
@@ -95,29 +107,29 @@ def create_server(settings: Settings, api_transport: httpx.AsyncBaseTransport | 
             params["period"] = period
         return await api.get("/analytics/spending", params)
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def spending_trend(months: int = 6) -> dict:
         """Real spending per calendar month over the last N months (1-24), with the same noise-filtering — use this to spot which month was especially heavy."""
         return await api.get("/analytics/spending/trend", {"months": months})
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def commitments() -> list:
         """Recurring income and expenses (detected suggestions + confirmed), with amount, cadence and next date."""
         return await api.get("/analytics/commitments")
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def accounts() -> list:
         """Connected bank accounts with balances, types and provider names.
 
         `current_balance` is raw, as the bank reported it, and its sign differs by provider for credit cards. Use `credit_owed` for credit accounts: money owed, positive on every provider (negative = the card is in credit). It is null for non-credit accounts."""
         return await api.get("/banking/accounts")
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def recent_transactions(page: int = 1, page_size: int = 100) -> dict:
         """A page of transactions (most recent first), for ad-hoc analysis. page_size up to 100."""
         return await api.get("/banking/transactions", {"page": page, "page_size": min(page_size, 100)})
 
-    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+    @mcp.tool(annotations=READ_ONLY)
     async def search_transactions(
         query: str,
         frm: str = "",
@@ -146,17 +158,17 @@ def create_server(settings: Settings, api_transport: httpx.AsyncBaseTransport | 
             # Connection errors and timeouts name the internal API URL.
             raise ToolError("Search is unavailable right now. Try again later.") from None
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def rules() -> dict:
         """Categorization rules: every rule pack with its rules, plus pack-less personal rules. Each rule has a pattern, match_type (exact|contains|regex), match_field (any|merchant|description), the category it assigns, and an optional counts_as (spending|transfer|card_payment) that reclassifies the transaction as noise."""
         return await api.get("/rules")
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def rule_impact() -> dict:
         """What the existing rules actually do, and where the gaps are. Per rule: `matched` (transactions it matches) vs `effective` (transactions whose category it actually decides) with amounts — a rule can match many and decide none because a higher-precedence rule wins first, flagged as `shadowed`; `dead` means it matches nothing. Also returns `gaps`: the merchants no rule categorizes, ranked by total value — the best candidates for a new rule."""
         return await api.get("/rules/impact")
 
-    @mcp.tool()
+    @mcp.tool(annotations=READ_ONLY)
     async def preview_rule(
         pattern: str,
         match_type: str = "contains",
@@ -168,7 +180,7 @@ def create_server(settings: Settings, api_transport: httpx.AsyncBaseTransport | 
             {"pattern": pattern, "match_type": match_type, "match_field": match_field},
         )
 
-    @mcp.tool()
+    @mcp.tool(annotations=write_tool(destructive=False))
     async def create_rule_pack(
         name: str,
         rules: list[dict],

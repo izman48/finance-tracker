@@ -127,7 +127,20 @@ after every deploy.
 | `MCP_HOST` / `MCP_PORT` | bind address, default `0.0.0.0:8001` |
 
 Scopes: `finance:read` for every tool; `create_rule_pack` also needs
-`finance:rules.write`.
+`finance:rules.write`. `finance:planning.write` (changing planned events and
+commitments) is a separate box on the consent screen, unticked by default, and
+is enforced by the API itself, so a token without it is refused even when it
+calls the API directly. An existing connection never gains it: connect again
+to grant it.
+
+**stdio mode holds every scope.** Locally the server logs in with your own
+email and password, which is a full web session: every tool can do anything
+the app can. Only the remote (http) mode is limited to what you approved on the
+consent screen.
+
+Every tool declares MCP tool annotations (`readOnlyHint`, and for writes
+`destructiveHint`/`idempotentHint`), so Claude clients ask before calling a
+tool that changes data. `tests/test_tool_annotations.py` pins the rule.
 
 ### Connect from Claude Code
 

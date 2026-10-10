@@ -860,8 +860,8 @@ class PlanningWriteRequest(BaseModel):
 
 class AuditChange(BaseModel):
     field: str
-    before: str | bool | None
-    after: str | bool | None
+    before: str | bool | int | None
+    after: str | bool | int | None
 
 
 class AuditEntryResponse(BaseModel):

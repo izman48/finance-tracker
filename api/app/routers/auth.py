@@ -20,7 +20,7 @@ from app.core.security import (
     CurrentUser,
 )
 from app.core import user_crypto
-from app.models import BankConnection, User
+from app.models import AuditEntry, BankConnection, User, WriteIdempotency
 from app.schemas import (
     ChangePasswordRequest,
     DeleteAccountRequest,
@@ -273,6 +273,12 @@ def reset_password(
         db.query(BankConnection).filter(BankConnection.user_id == user.id).delete(
             synchronize_session=False
         )
+        # Claude's change trail copies names and amounts under the same key,
+        # so it is unreadable now too (idempotency records point at it).
+        db.query(WriteIdempotency).filter(WriteIdempotency.user_id == user.id).delete(
+            synchronize_session=False
+        )
+        db.query(AuditEntry).filter(AuditEntry.user_id == user.id).delete(synchronize_session=False)
         new_recovery_code = _provision_dek(user, body.new_password)
         logger.info(f"Password reset without recovery code for user {user.id}: bank data purged, new DEK issued")
 

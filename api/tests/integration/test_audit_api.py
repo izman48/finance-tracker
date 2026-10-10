@@ -321,3 +321,40 @@ def test_the_undo_row_is_encrypted_too(client, db_session):
     w.undo(audit_id)
     raw = " ".join(str(v) for row in db_session.execute(text("SELECT * FROM audit_entries")) for v in row)
     assert "Secret Clinic" not in raw and "987.65" not in raw
+
+
+def test_a_reset_without_recovery_code_purges_the_trail(client, db_session):
+    """The old DEK is gone after such a reset, so rows encrypted under it
+    can never be read again: the audit trail (and the idempotency records
+    pointing at it) are purged with the bank data, not left to 500 the list."""
+    from app.core.security import create_password_reset_token
+
+    w = World(client, db_session)
+    w.add_planned()
+    reset = client.post(
+        f"{API}/auth/reset-password",
+        json={"token": create_password_reset_token(w.user), "new_password": "afterreset12345"},
+    )
+    assert reset.status_code == 200, reset.text
+    login = client.post(f"{API}/auth/login", data={"username": w.user.email, "password": "afterreset12345"})
+    res = client.get(f"{API}/audit", headers=_bearer(login.json()["access_token"]))
+    assert res.status_code == 200, res.text
+    assert res.json() == {"items": [], "next_cursor": None}
+    assert _raw_audit_count(db_session) == 0
+    assert db_session.execute(text("SELECT count(*) FROM write_idempotency")).scalar() == 0
+
+
+def test_undo_of_a_created_target_without_soft_delete_is_refused(client, db_session):
+    """Only planned events can be soft-deleted; an add of anything else is
+    refused (409), never hard-deleted and never a 500."""
+    w = World(client, db_session)
+    def apply(db, _):
+        rule = CommitmentRule(user_id=w.user.id, direction="expense", label="New", amount=Decimal("5"),
+                              cadence="monthly", next_date=date(2026, 11, 1), source="manual", status="confirmed")
+        db.add(rule)
+        return rule
+    created = w.write(WriteRequest("add_commitment", "commitment", None, {}, apply))
+    res = w.undo(created["audit_id"])
+    assert res.status_code == 409
+    assert w.get(CommitmentRule, uuid.UUID(created["target_id"])) is not None
+    assert _raw_audit_count(db_session) == 1

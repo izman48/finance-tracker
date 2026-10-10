@@ -191,8 +191,9 @@ def _all_columns(target) -> dict:
     return {attr.key: getattr(target, attr.key) for attr in inspect(target).mapper.column_attrs}
 
 
-def _load_target(db: Session, spec: TargetSpec, target_id: uuid.UUID, user_id: uuid.UUID):
-    return db.query(spec.model).filter(spec.model.id == target_id, spec.model.user_id == user_id).first()
+def _load_target(db: Session, spec: TargetSpec, target_id: uuid.UUID, user_id: uuid.UUID, *, lock=False):
+    query = db.query(spec.model).filter(spec.model.id == target_id, spec.model.user_id == user_id)
+    return (query.with_for_update() if lock else query).first()
 
 
 def _snapshot(target, spec: TargetSpec) -> dict:
@@ -246,7 +247,10 @@ def undo_write(db: Session, user, audit_id: uuid.UUID) -> AuditEntry:
         return entry
 
     spec = TARGETS[entry.target_kind]
-    target = _load_target(db, spec, entry.target_id, user.id)
+    if entry.created_target and "active" not in spec.fields:
+        # Nothing to soft-delete it with; refuse rather than hard-delete.
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Can't undo this kind of change.")
+    target = _load_target(db, spec, entry.target_id, user.id, lock=True)
     if target is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Can't undo: the item no longer exists.")
     changes = json.loads(entry.changes)

@@ -6,6 +6,7 @@ import {
   PieChart,
   TrendingUp,
   SlidersHorizontal,
+  History,
   LogOut,
   ChevronDown,
   EyeOff,
@@ -96,6 +97,13 @@ function UserMenu() {
             className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-300 hover:bg-white/[0.06]"
           >
             <SlidersHorizontal className="w-4 h-4" /> Rules
+          </NavLink>
+          <NavLink
+            to="/changes"
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-300 hover:bg-white/[0.06]"
+          >
+            <History className="w-4 h-4" /> Changes made by Claude
           </NavLink>
           <NavLink
             to="/privacy"

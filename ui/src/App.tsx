@@ -14,6 +14,7 @@ import DashboardPage from './pages/DashboardPage'
 import SpendingPage from './pages/SpendingPage'
 import CommitmentsPage from './pages/CommitmentsPage'
 import RulesPage from './pages/RulesPage'
+import ChangesPage from './pages/ChangesPage'
 import NetWorthPage from './pages/NetWorthPage'
 import ImportSharedPage from './pages/ImportSharedPage'
 import CallbackPage from './pages/CallbackPage'
@@ -83,6 +84,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <RulesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="changes"
+            element={
+              <ProtectedRoute>
+                <ChangesPage />
               </ProtectedRoute>
             }
           />

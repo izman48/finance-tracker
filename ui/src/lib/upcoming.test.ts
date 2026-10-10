@@ -112,6 +112,7 @@ describe('overdue planned expenses (O1-O5, P4)', () => {
   it('O2: an overdue expense still reads as money going out', () => {
     const [row] = buildUpcoming([], [], [overdue('a', '2026-10-05')], today)
     expect(upcomingAmount(row)).toEqual({ sign: '', tone: 'text-slate-100' })
+    expect(upcomingShowsDate(row)).toBe(false) // the date is in its 'Due …' line
     expect(row.plannedIncome).toBeFalsy()
   })
 

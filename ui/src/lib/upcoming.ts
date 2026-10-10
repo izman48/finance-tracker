@@ -28,9 +28,9 @@ export function upcomingAmount(u: Upcoming): { sign: string; tone: string } {
   return moneyStyle(u.income, Boolean(u.late))
 }
 
-/** A late row's date is in its "Expected {date}" line; don't repeat it beside the amount. */
+/** A late or overdue row's date is in its own line; don't repeat it beside the amount. */
 export function upcomingShowsDate(u: Upcoming): boolean {
-  return !u.late
+  return !u.late && !u.overdue
 }
 
 export function buildUpcoming(

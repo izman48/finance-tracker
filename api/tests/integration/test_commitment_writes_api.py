@@ -379,3 +379,9 @@ def test_a_change_made_in_the_app_is_not_marked(world):
     rid = world.commitment()
     world.update(rid, token=world.web, amount="12.99", dry_run=False)  # a web session, no grant
     assert _listed(world, rid)["changed_by_claude"] is None
+
+
+def test_sending_the_same_label_does_not_make_a_detected_commitment_manual(world):
+    rid = world.commitment(label="NETFLIX.COM", source="detected", match_key="expense:netflix")
+    assert world.update(rid, label="NETFLIX.COM", amount="12.99", dry_run=False).status_code == 200
+    assert world.rule(rid).source == "detected"

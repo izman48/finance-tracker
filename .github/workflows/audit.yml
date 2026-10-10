@@ -1,0 +1,40 @@
+name: Dependency audit
+
+# Weekly, and on demand: a full audit of the UI's npm tree (dev dependencies
+# included) and the API's and MCP server's Python requirements. Fails on any
+# high or critical advisory. Read-only token; no `if:` and no
+# continue-on-error, so a failure is never silent. Its wiring is pinned by
+# .github/scripts/check_workflows.py (run in test.yml).
+on:
+  schedule:
+    - cron: "17 6 * * 1" # Mondays 06:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  npm:
+    runs-on: ubuntu-latest
+    container: node:20
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - name: Install from the lockfile (no install scripts)
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Audit every dependency, dev included
+        run: npm audit --audit-level=high
+
+  python:
+    runs-on: ubuntu-latest
+    container: python:3.12-slim
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - name: Install pip-audit
+        run: pip install --no-cache-dir pip-audit==2.10.1
+      - name: Audit the API's requirements
+        run: pip-audit -r api/requirements.txt
+      - name: Audit the MCP server's requirements
+        run: pip-audit -r api/mcp/requirements.txt

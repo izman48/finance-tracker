@@ -84,7 +84,15 @@ without an extra static site, checks the served headers, and tests
 cd ui
 npm run build    # tsc && vite build — run before merging
 npm run lint     # eslint, --max-warnings 0
+npm run dev      # 127.0.0.1 only; VITE_DEV_LAN=1 npm run dev to test from a phone on your LAN
 ```
+The Docker dev stack publishes the UI on `127.0.0.1:5173` only, for the same reason.
+
+**CI wiring**: every GitHub Action is pinned to a commit SHA, and
+`.github/workflows/audit.yml` runs `npm audit --audit-level=high` (dev
+dependencies included) and `pip-audit` weekly and on demand. Both are
+enforced by `.github/scripts/check_workflows.py` (self-tested by
+`test_check_workflows.py`, run in `test.yml`). Pin new actions the same way.
 
 **Visual / mobile check** (dev server must be running):
 ```bash

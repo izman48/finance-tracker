@@ -104,6 +104,13 @@ export interface Commitment {
   account_id: string | null
   match_key: string | null
   is_payday?: boolean
+  // Claude's latest change still in effect (links to /changes#change-{audit_id}).
+  changed_by_claude?: ClaudeMarker | null
+}
+
+export interface ClaudeMarker {
+  audit_id: string
+  at: string
 }
 
 export interface PlannedItem {
@@ -122,4 +129,7 @@ export interface PlannedItem {
   apr: number | null
   fee_amount: number | null
   active: boolean
+  changed_by_claude?: ClaudeMarker | null
+  // Set once the real transaction that paid it has landed (T-08-7).
+  matched_transaction_id?: string | null
 }

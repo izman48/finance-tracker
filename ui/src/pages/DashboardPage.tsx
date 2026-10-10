@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import UpcomingLabel from '../components/UpcomingLabel'
 import { Link } from 'react-router-dom'
 import {
   Banknote,
@@ -330,7 +331,7 @@ export default function DashboardPage() {
               <ul className="space-y-2.5 mt-4">
                 {upcoming.map((u) => (
                   <li key={u.key} className="flex items-baseline justify-between gap-3 text-sm group/up">
-                    <span className="text-slate-300 min-w-0 truncate">{u.label}</span>
+                    <UpcomingLabel item={u} linkMarker />
                     <span className="shrink-0 flex items-baseline gap-2">
                       {u.commitmentId && (
                         <button

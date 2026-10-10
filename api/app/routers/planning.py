@@ -137,7 +137,7 @@ def _recent_duplicate(db: Session, caller: Caller, body: AddPlannedEventRequest)
 def _settlement(state) -> dict:
     if state is None:
         return {}
-    return {"matched_transaction_id": state.matched_transaction_id, "late": state.late}
+    return {"matched_transaction_id": state.matched_transaction_id, "late": state.late, "overdue": state.overdue}
 
 
 def _norm(name: str) -> str:

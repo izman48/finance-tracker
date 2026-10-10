@@ -11,9 +11,10 @@ an internal transfer leg, not a card repayment, not a purchase moved to a
 payment plan, and not already a confirmed commitment's payment. Each
 transaction settles at most one item (one-to-one), soonest item first.
 
-What an unsettled item means is fail safe (see `planned_state`): an expense
-stays due, even after its date; an income is expected only until its date +
-LATE_AFTER_DAYS, then it is late and no longer counted as money coming.
+What an unsettled item means is fail safe (see `planned_states`): an expense
+stays due, even long after its date, until it is paid or removed (past
+OVERDUE_AFTER_DAYS it is also flagged `overdue`); an income is expected only
+until its date + LATE_AFTER_DAYS, then it is late and no longer counted.
 """
 from __future__ import annotations
 
@@ -31,9 +32,15 @@ from .common import _d, _load, resolve_roles
 
 MATCH_DAYS = 7
 LATE_AFTER_DAYS = 7
-# How far back a one-off item is still looked at: an unpaid expense stays due
-# for this long after its date, then it is treated as stale and dropped.
-LOOKBACK_DAYS = 60
+# Income this far past its date is no longer listed as late (it's history).
+INCOME_LOOKBACK_DAYS = 60
+# An unpaid expense this far past its date is flagged "overdue, not seen
+# paid". It keeps counting either way: outgoings are never understated.
+OVERDUE_AFTER_DAYS = 60
+# Transactions are scanned back to the oldest item's date, but no further
+# than this. An expense older than that can't be seen paid, so it stays due
+# (the safe side) until the user removes it.
+SCAN_LIMIT_DAYS = 366
 TOLERANCE_FLOOR = Decimal("1.00")
 TOLERANCE_SHARE = Decimal("0.02")
 
@@ -43,6 +50,7 @@ class PlannedState:
     matched_transaction_id: uuid.UUID | None
     late: bool  # income only: unsettled past its date + LATE_AFTER_DAYS
     counted: bool  # whether it still counts as money in or out
+    overdue: bool = False  # expense only: unsettled past its date + OVERDUE_AFTER_DAYS
 
 
 def tolerance(amount: Decimal) -> Decimal:
@@ -51,27 +59,25 @@ def tolerance(amount: Decimal) -> Decimal:
 
 def planned_states(db: Session, user, items: list[PlannedItem], today: date) -> dict[uuid.UUID, PlannedState]:
     """{one-off item id: state}. Recurring and plan items aren't matched."""
-    one_offs = [
-        i for i in items
-        if i.kind == PlannedKind.ONE_OFF.value and i.start_date >= today - timedelta(days=LOOKBACK_DAYS)
-    ]
+    one_offs = [i for i in items if i.kind == PlannedKind.ONE_OFF.value]
     matches = _match(db, user, one_offs, today) if one_offs else {}
     states = {}
-    for item in items:
-        if item.kind != PlannedKind.ONE_OFF.value:
-            continue
+    for item in one_offs:
         matched = matches.get(item.id)
-        stale = item.start_date < today - timedelta(days=LOOKBACK_DAYS)
-        late = (
-            item.direction == "income" and matched is None
-            and today > item.start_date + timedelta(days=LATE_AFTER_DAYS)
-        )
-        states[item.id] = PlannedState(matched, late and not stale, matched is None and not late and not stale)
+        if item.direction == "income":
+            past_due = today > item.start_date + timedelta(days=LATE_AFTER_DAYS)
+            history = item.start_date < today - timedelta(days=INCOME_LOOKBACK_DAYS)
+            late = matched is None and past_due and not history
+            states[item.id] = PlannedState(matched, late, matched is None and not past_due)
+        else:
+            overdue = matched is None and today > item.start_date + timedelta(days=OVERDUE_AFTER_DAYS)
+            states[item.id] = PlannedState(matched, False, matched is None, overdue)
     return states
 
 
 def _match(db: Session, user, items: list[PlannedItem], today: date) -> dict[uuid.UUID, uuid.UUID]:
-    start = min(i.start_date for i in items) - timedelta(days=MATCH_DAYS + 2)  # +2: transfer pairing
+    oldest = max(min(i.start_date for i in items), today - timedelta(days=SCAN_LIMIT_DAYS))
+    start = oldest - timedelta(days=MATCH_DAYS + 2)  # +2: transfer pairing
     txns = (
         db.query(Transaction)
         .join(Account)

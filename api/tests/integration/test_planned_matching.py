@@ -228,3 +228,32 @@ def test_income_that_lands_clears_it(client, db_session):
     assert forecast["late_planned"] == []
     assert w.listed()[str(item)]["late"] is False
     assert w.listed()[str(item)]["matched_transaction_id"] is not None
+
+
+@pytest.mark.parametrize("days_ago", [61, 200])
+def test_an_unpaid_expense_is_never_dropped_however_overdue(client, db_session, days_ago):
+    """sec on #108: GBP 120 dated 61 days ago used to vanish (safe-to-spend
+    1000, should be 880). It stays due until paid or removed, flagged overdue."""
+    w = World(client, db_session)
+    item = w.planned("120.00", TODAY - timedelta(days=days_ago))
+    assert Decimal(w.summary()["safe_to_spend"]) == Decimal("880.00")
+    assert [e["amount"] for e in w.planned_events_in_forecast()] == ["-120.00"]
+    listed = w.listed()[str(item)]
+    assert listed["overdue"] is True and listed["matched_transaction_id"] is None
+
+
+def test_an_expense_paid_long_ago_stays_paid(client, db_session):
+    """Scanning back far enough that an old, paid item doesn't reappear as due."""
+    w = World(client, db_session)
+    on = TODAY - timedelta(days=90)
+    item = w.planned("120.00", on)
+    w.tx("120.00", on + timedelta(days=1))
+    assert Decimal(w.summary()["safe_to_spend"]) == Decimal("1000.00")
+    assert w.listed()[str(item)]["matched_transaction_id"] is not None
+    assert w.listed()[str(item)]["overdue"] is False
+
+
+def test_a_recently_overdue_expense_is_not_yet_flagged_overdue(client, db_session):
+    w = World(client, db_session)
+    item = w.planned("120.00", TODAY - timedelta(days=5))
+    assert w.listed()[str(item)]["overdue"] is False

@@ -344,6 +344,7 @@ def list_planned_items(
             "changed_by_claude": ClaudeMarker(**markers[i.id]) if i.id in markers else None,
             "matched_transaction_id": states[i.id].matched_transaction_id if i.id in states else None,
             "late": states[i.id].late if i.id in states else False,
+            "overdue": states[i.id].overdue if i.id in states else False,
         })
         for i in items
     ]

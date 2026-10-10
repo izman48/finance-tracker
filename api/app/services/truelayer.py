@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.security import create_oauth_state
 from app.models import User, Account, Transaction, BankConnection
+from app.services.categorization import category_from_provider
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -575,7 +576,7 @@ class TrueLayerService:
                     currency=tl_tx.get("currency", "GBP"),
                     description=tl_tx.get("description", ""),
                     merchant_name=tl_tx.get("merchant_name"),
-                    category=tl_tx.get("transaction_category"),
+                    category=category_from_provider(tl_tx.get("transaction_category"), tx_type),
                     transaction_date=datetime.fromisoformat(
                         tl_tx["timestamp"].replace("Z", "+00:00")
                     ),

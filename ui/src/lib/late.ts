@@ -24,3 +24,9 @@ export function lateIncomeNote(items: { amount: number | string }[]): string | n
     ? `${gbp(total)} of expected income is late and isn't counted in this forecast.`
     : `${gbp(total)} of expected income is late (${items.length} payments) and isn't counted in this forecast.`
 }
+
+/** How an amount reads: income not yet arrived is not money you have, so grey and no "+". */
+export function moneyStyle(income: boolean, notArrived: boolean): { sign: string; tone: string } {
+  if (income && notArrived) return { sign: '', tone: 'text-slate-400' }
+  return income ? { sign: '+', tone: 'text-pos' } : { sign: '', tone: 'text-slate-100' }
+}

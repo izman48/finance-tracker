@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { moneyStyle } from '../lib/late'
 import ClaudeMarker from '../components/changes/ClaudeMarker'
 import { Link } from 'react-router-dom'
 import { analyticsAPI } from '../services/api'
@@ -387,8 +388,8 @@ function renderCommitmentRow(
       {/* Wraps under the label on narrow phones instead of forcing
           the row (and the page) wider than the viewport. */}
       <div className="flex flex-wrap items-center gap-3">
-        <span className={`font-semibold tnum ${positive ? 'text-pos' : 'text-slate-100'}`}>
-          {positive ? '+' : ''}{formatCurrency(c.amount)}
+        <span className={`font-semibold tnum ${moneyStyle(Boolean(positive), Boolean(c.late)).tone}`}>
+          {moneyStyle(Boolean(positive), Boolean(c.late)).sign}{formatCurrency(c.amount)}
         </span>
         {onPayday && (
           <button

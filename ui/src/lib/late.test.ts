@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { daysLate, lateIncomeNote, lateLine } from './late'
+import { daysLate, lateIncomeNote, lateLine, moneyStyle } from './late'
 
 // ux spec section 3 (L1, L2). Late income is shown, never counted.
 describe('late income copy', () => {
@@ -17,5 +17,13 @@ describe('late income copy', () => {
       "£2,000.00 of expected income is late (2 payments) and isn't counted in this forecast.",
     )
     expect(lateIncomeNote([])).toBeNull()
+  })
+})
+
+describe('moneyStyle (L1, and a late commitment row per ux)', () => {
+  it('income not yet arrived is grey with no +; arrived income is green with +; outgoings plain', () => {
+    expect(moneyStyle(true, true)).toEqual({ sign: '', tone: 'text-slate-400' })
+    expect(moneyStyle(true, false)).toEqual({ sign: '+', tone: 'text-pos' })
+    expect(moneyStyle(false, false)).toEqual({ sign: '', tone: 'text-slate-100' })
   })
 })

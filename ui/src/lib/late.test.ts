@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { daysLate, lateIncomeNote, lateLine, moneyStyle } from './late'
+import { daysLate, lateIncomeNote, lateLine, moneyStyle, overdueLine } from './late'
 
 // ux spec section 3 (L1, L2). Late income is shown, never counted.
 describe('late income copy', () => {
@@ -25,5 +25,12 @@ describe('moneyStyle (L1, and a late commitment row per ux)', () => {
     expect(moneyStyle(true, true)).toEqual({ sign: '', tone: 'text-slate-400' })
     expect(moneyStyle(true, false)).toEqual({ sign: '+', tone: 'text-pos' })
     expect(moneyStyle(false, false)).toEqual({ sign: '', tone: 'text-slate-100' })
+  })
+})
+
+describe('overdue copy (O1)', () => {
+  it('counts days overdue, singular for one', () => {
+    expect(overdueLine('2026-10-05', 5)).toBe('Due 5 Oct · 5 days overdue')
+    expect(overdueLine('2026-10-09', 1)).toBe('Due 9 Oct · 1 day overdue')
   })
 })

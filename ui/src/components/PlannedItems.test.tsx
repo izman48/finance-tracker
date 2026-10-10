@@ -30,3 +30,25 @@ describe('PlannedItems markers (M1, M4)', () => {
     expect(render([item()])).not.toContain('Not counted in your safe to spend')
   })
 })
+
+describe('PlannedItems Paid (P1-P3, P5, P6)', () => {
+  it('P1/P3: a matched item, income or expense, shows Paid and a muted amount', () => {
+    for (const direction of ['income', 'expense']) {
+      const h = render([item({ direction, matched_transaction_id: 't9' })])
+      expect(h).toMatch(/class="chip-pos[^"]*"[^>]*>Paid</)
+      expect(h).toMatch(/<div class="text-sm tnum text-slate-400"/)
+    }
+  })
+
+  it('P2: no match, no Paid', () => {
+    expect(render([item({ matched_transaction_id: null })])).not.toContain('>Paid<')
+    expect(render([item()])).not.toContain('>Paid<')
+  })
+
+  it('P5/P6: no transaction detail or link; Remove stays', () => {
+    const h = render([item({ matched_transaction_id: 't9-secret-id' })])
+    expect(h).not.toContain('t9-secret-id')
+    expect(h).not.toMatch(/<a[^>]*>[^<]*Paid/)
+    expect(h).toContain('>Remove</button>')
+  })
+})

@@ -37,6 +37,7 @@ from .cadence import commitment_occurrences
 from .common import _add_months, _d, _today
 from .net_worth import net_worth_history
 from .planned import planned_events
+from .repayments import card_repayment_rule_ids
 from .spending import get_spending_trend
 
 # Search horizon for "when is the target hit" (50 years), and the cap on how
@@ -60,15 +61,16 @@ def _monthly_equivalent(rules: list[CommitmentRule], today: date) -> Decimal:
     return total / 12
 
 
-def derived_contribution(db: Session, user) -> dict:
-    """Expected monthly net-worth contribution from the user's own cashflow:
-    confirmed income − confirmed bills − average everyday spending.
+def _projected_commitments(db: Session, user, today: date) -> list[CommitmentRule]:
+    """Confirmed commitments the projection counts, each once.
 
-    The spending leg uses the noise-excluded trend with commitments excluded
-    (they're already counted as bills), averaged over complete months only.
-    Can be negative — that's an honest drift-down projection, not an error.
+    A commitment that is a credit card's repayment (by the same rule as the
+    summary and forecast, see repayments._card_ties) is left out: repaying a
+    card is net-worth-neutral, and the purchases that built the balance are
+    already in the average-spending leg. Counting it as a bill as well was the
+    PR 91 double count. A commitment less clearly tied to one card stays a
+    bill, so when we can't tell, the outgoing is kept.
     """
-    today = _today()
     rules = (
         db.query(CommitmentRule)
         .filter(
@@ -77,6 +79,21 @@ def derived_contribution(db: Session, user) -> dict:
         )
         .all()
     )
+    repayments = card_repayment_rule_ids(db, user, rules, today)
+    return [r for r in rules if r.id not in repayments]
+
+
+def derived_contribution(db: Session, user) -> dict:
+    """Expected monthly net-worth contribution from the user's own cashflow:
+    confirmed income − confirmed bills − average everyday spending. A card's
+    repayment commitment is not a bill here (see _projected_commitments).
+
+    The spending leg uses the noise-excluded trend with commitments excluded
+    (they're already counted as bills), averaged over complete months only.
+    Can be negative — that's an honest drift-down projection, not an error.
+    """
+    today = _today()
+    rules = _projected_commitments(db, user, today)
     income = _monthly_equivalent(
         [r for r in rules if r.direction == CommitmentDirection.INCOME.value], today
     )
@@ -132,15 +149,7 @@ def monthly_surplus_series(db: Session, user, months: int, avg_spending: Decimal
         m = diff if diff > 0 and occ <= _add_months(today, diff) else diff + 1
         return max(1, m)
 
-    confirmed = (
-        db.query(CommitmentRule)
-        .filter(
-            CommitmentRule.user_id == user.id,
-            CommitmentRule.status == CommitmentStatus.CONFIRMED.value,
-        )
-        .all()
-    )
-    for rule in confirmed:
+    for rule in _projected_commitments(db, user, today):
         sign = Decimal(1) if rule.direction == CommitmentDirection.INCOME.value else Decimal(-1)
         for occ in commitment_occurrences(rule, today + timedelta(days=1), end):
             m = bucket(occ)

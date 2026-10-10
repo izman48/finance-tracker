@@ -6,7 +6,13 @@ transaction, or mark it a transfer, and the planned item comes back.
 
 A transaction settles a one-off planned item when it goes the same way
 (expense <- debit, income <- credit), lands within MATCH_DAYS of the planned
-date, is within max(GBP 1, 2%) of the planned amount, and is real money: not
+date, has the right amount, and is real money. The amount must be exact,
+unless the planned name shares a word with the transaction's merchant or
+description ("Phone bill" / "VODAFONE PHONE DD"), and then max(GBP 1, 2%)
+either way is allowed. So a coincidental GBP 49.50 purchase can't settle a
+GBP 50 bill, while "Car insurance" paid to ADMIRAL at exactly the planned
+amount still does. Case is ignored, and so are stop-words, company suffixes
+and words under 3 letters. Real money means: not
 an internal transfer leg, not a card repayment, not a purchase moved to a
 payment plan, and not already a confirmed commitment's payment. Each
 transaction settles at most one item (one-to-one), soonest item first.
@@ -15,9 +21,16 @@ What an unsettled item means is fail safe (see `planned_states`): an expense
 stays due, even long after its date, until it is paid or removed (past
 OVERDUE_AFTER_DAYS it is also flagged `overdue`); an income is expected only
 until its date + LATE_AFTER_DAYS, then it is late and no longer counted.
+
+Cost (sec, #108): transactions are loaded and decrypted back to the oldest
+active one-off item's date, up to SCAN_LIMIT_DAYS. One old item kept in the
+app therefore makes every summary/forecast request decrypt up to a year of
+transactions. Fine at today's sizes; if it shows up, cache matches per
+request or cap the scan by item age.
 """
 from __future__ import annotations
 
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
@@ -41,6 +54,14 @@ OVERDUE_AFTER_DAYS = 60
 # than this. An expense older than that can't be seen paid, so it stays due
 # (the safe side) until the user removes it.
 SCAN_LIMIT_DAYS = 366
+# Words that say nothing about who was paid.
+_STOP_WORDS = frozenset({
+    "the", "and", "for", "with", "from", "to", "of", "a", "an", "my", "our", "your",
+    "ltd", "limited", "plc", "llp", "inc", "co", "uk", "gb", "com", "www",
+    "payment", "pay", "paid", "bill", "dd", "so", "direct", "debit", "standing", "order",
+    "ref", "card", "transfer", "fp", "bp", "bgc",
+})
+_MIN_WORD = 3
 TOLERANCE_FLOOR = Decimal("1.00")
 TOLERANCE_SHARE = Decimal("0.02")
 
@@ -93,13 +114,17 @@ def _match(db: Session, user, items: list[PlannedItem], today: date) -> dict[uui
     for item in sorted(items, key=lambda i: (i.start_date, str(i.id))):
         want = "credit" if item.direction == "income" else "debit"
         amount = _d(item.amount)
+        item_words = _words(item.name)
         best = None
         for tx in eligible:
             if tx.id in used or tx.transaction_type != want:
                 continue
             gap = abs((tx.transaction_date.date() - item.start_date).days)
-            if gap > MATCH_DAYS or abs(_d(tx.amount) - amount) > tolerance(amount):
+            diff = abs(_d(tx.amount) - amount)
+            if gap > MATCH_DAYS or diff > tolerance(amount):
                 continue
+            if diff and not item_words & _words(f"{tx.merchant_name or ''} {tx.description or ''}"):
+                continue  # near the amount but nothing ties it to this item
             key = (gap, abs(_d(tx.amount) - amount), str(tx.id))
             if best is None or key < best[0]:
                 best = (key, tx)
@@ -107,6 +132,13 @@ def _match(db: Session, user, items: list[PlannedItem], today: date) -> dict[uui
             used.add(best[1].id)
             out[item.id] = best[1].id
     return out
+
+
+def _words(text: str) -> set[str]:
+    return {
+        w for w in re.findall(r"[a-z0-9]+", text.casefold())
+        if len(w) >= _MIN_WORD and w not in _STOP_WORDS
+    }
 
 
 def _real_money(db: Session, user, txns: list[Transaction]) -> list[Transaction]:

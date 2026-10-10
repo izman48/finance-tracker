@@ -105,8 +105,9 @@ def test_a_landed_payment_drops_the_planned_expense_and_is_counted_once(client, 
     ("20.00", "21.01", False),
 ])
 def test_amount_tolerance_is_max_of_one_pound_and_two_percent(client, db_session, planned, paid, matches):
+    """With a shared word ("insurer"), so the tolerance applies (option A)."""
     w = World(client, db_session)
-    item = w.planned(planned, TODAY)
+    item = w.planned(planned, TODAY, name="Insurer premium")
     w.tx(paid, TODAY)
     assert (w.listed()[str(item)]["matched_transaction_id"] is not None) is matches
 
@@ -257,3 +258,42 @@ def test_a_recently_overdue_expense_is_not_yet_flagged_overdue(client, db_sessio
     w = World(client, db_session)
     item = w.planned("120.00", TODAY - timedelta(days=5))
     assert w.listed()[str(item)]["overdue"] is False
+
+
+# --- name overlap (lead's option A on #108) ------------------------------------------
+
+
+def test_a_coincidental_near_amount_without_a_shared_word_does_not_settle(client, db_session):
+    """A GBP 49.50 shop purchase must not 'pay' a GBP 50 planned bill."""
+    w = World(client, db_session)
+    item = w.planned("50.00", TODAY, name="Phone bill")
+    w.tx("49.50", TODAY, merchant="Corner Shop")
+    assert w.listed()[str(item)]["matched_transaction_id"] is None
+
+
+def test_an_exact_amount_settles_even_without_a_shared_word(client, db_session):
+    """Car insurance paid to the insurer at exactly the planned amount."""
+    w = World(client, db_session)
+    item = w.planned("312.40", TODAY, name="Car insurance")
+    w.tx("312.40", TODAY, merchant="ADMIRAL")
+    assert w.listed()[str(item)]["matched_transaction_id"] is not None
+
+
+def test_a_shared_word_allows_the_tolerance(client, db_session):
+    w = World(client, db_session)
+    item = w.planned("50.00", TODAY, name="Phone bill")
+    w.tx("49.50", TODAY, merchant="VODAFONE PHONE DD")
+    assert w.listed()[str(item)]["matched_transaction_id"] is not None
+
+
+@pytest.mark.parametrize("name,merchant", [
+    ("The bill", "THE CORNER SHOP"),     # stop-word
+    ("Gym and pool", "SHOP AND GO"),     # stop-word
+    ("Acme Ltd", "BOOTS LTD"),           # company suffix
+    ("TV licence", "TV SHOP"),           # too short to count
+])
+def test_stop_words_and_short_tokens_are_not_overlap(client, db_session, name, merchant):
+    w = World(client, db_session)
+    item = w.planned("50.00", TODAY, name=name)
+    w.tx("49.50", TODAY, merchant=merchant)
+    assert w.listed()[str(item)]["matched_transaction_id"] is None

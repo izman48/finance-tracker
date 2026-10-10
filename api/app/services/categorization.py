@@ -22,6 +22,34 @@ MAX_PATTERN_LENGTH = 200
 _MATCH_TYPE_RANK = {"exact": 0, "contains": 1, "regex": 2}
 
 
+# TrueLayer's `transaction_category` values. They are transaction *types*, not
+# spending categories, so none is ever stored as one (T-08-1).
+PROVIDER_TRANSACTION_TYPES = frozenset({
+    "ATM", "BILL_PAYMENT", "CASH", "CASHBACK", "CHEQUE", "CORRECTION", "CREDIT",
+    "DEBIT", "DIRECT_DEBIT", "DIVIDEND", "FEE", "FEE_CHARGE", "INTEREST", "OTHER",
+    "PURCHASE", "STANDING_ORDER", "TRANSFER", "UNKNOWN",
+})
+INCOME_CATEGORY = "Income"
+TRANSFERS_CATEGORY = "Transfers"
+
+
+def category_from_provider(raw: str | None, transaction_type) -> str | None:
+    """The category to store for a provider transaction type.
+
+    TRANSFER -> Transfers (still a transfer to the spending lenses); a credit of
+    a known type -> Income; anything else, including a type we have never seen,
+    -> None ("Uncategorized"). Income is decided by the transaction_type column,
+    never by the provider string, so a debit can never become Income.
+    """
+    kind = (raw or "").strip().upper()
+    if kind == "TRANSFER":
+        return TRANSFERS_CATEGORY
+    is_credit = getattr(transaction_type, "value", transaction_type) == "credit"
+    if is_credit and kind in PROVIDER_TRANSACTION_TYPES - {"UNKNOWN"}:
+        return INCOME_CATEGORY
+    return None
+
+
 def validate_pattern(pattern: str, match_type: str) -> str | None:
     """Return an error message if the pattern is unusable, else None."""
     if not pattern or not pattern.strip():

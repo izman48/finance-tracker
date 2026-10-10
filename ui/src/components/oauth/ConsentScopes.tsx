@@ -38,8 +38,9 @@ export default function ConsentScopes({ allowRules, allowPlanning, onRulesChange
         </label>
       </li>
       <li className="flex gap-3">
-        {/* Padding grows the tap target past 44px; the negative margin keeps the layout. */}
-        <label htmlFor="allow-planning" className="-m-4 p-4 shrink-0 self-start cursor-pointer">
+        {/* Padding grows the tap target past 44px and negative margins keep the layout. It extends
+            only 10px up (less than the 12px gap), so it never reaches the rules row. */}
+        <label htmlFor="allow-planning" className="-mx-4 px-4 -mt-2.5 pt-2.5 -mb-6 pb-6 shrink-0 self-start cursor-pointer">
           <input
             id="allow-planning"
             type="checkbox"

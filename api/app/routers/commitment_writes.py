@@ -35,11 +35,12 @@ def update_commitment(
     updates = {f: getattr(body, f) for f in body.model_fields_set - _FLAGS}
 
     def apply(db: Session, rule: CommitmentRule) -> CommitmentRule:
+        relabelled = "label" in updates and updates["label"] != rule.label
         for field, value in updates.items():
             setattr(rule, field, value)
         if "card_account_id" in updates:
             rule.card_link_source = CARD_LINK_USER
-        if "label" in updates and rule.source == CommitmentSource.DETECTED.value:
+        if relabelled and rule.source == CommitmentSource.DETECTED.value:
             # sync_suggestions re-derives a detected rule's match_key from its
             # label; a manual rule's key is left alone, so its payments keep
             # matching and the merchant isn't suggested again.

@@ -81,7 +81,9 @@ READ_ONLY_TOOLS = {
     "sync_status", "recent_transactions", "search_transactions", "rules", "rule_impact",
     "preview_rule", "list_planned_events",
 }
-WRITE_TOOLS = {"create_rule_pack", "add_planned_event", "remove_planned_event"}
+WRITE_TOOLS = {
+    "create_rule_pack", "add_planned_event", "remove_planned_event", "update_commitment", "dismiss_commitment",
+}
 
 
 @pytest.mark.anyio

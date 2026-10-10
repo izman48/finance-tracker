@@ -636,6 +636,8 @@ class CommitmentResponse(BaseModel):
     # The credit card this commitment repays, and who linked it (auto | user).
     card_account_id: uuid.UUID | None = None
     card_link_source: str | None = None
+    # Claude's latest change still in effect (links to /changes#change-{id}).
+    changed_by_claude: "ClaudeMarker | None" = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -904,6 +906,7 @@ class ClaudeMarker(BaseModel):
 
 
 PlannedItemResponse.model_rebuild()
+CommitmentResponse.model_rebuild()
 
 PLANNED_EVENT_MAX_AMOUNT = Decimal("1000000")
 

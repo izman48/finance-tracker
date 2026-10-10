@@ -215,10 +215,10 @@ def get_spending_transactions(
 def list_commitments(
     current_user: CurrentUserOrMcpRead,
     db: Annotated[Session, Depends(get_db)],
-) -> list[CommitmentRule]:
+) -> list[CommitmentResponse]:
     """Detected + user commitments to review. Refreshes suggestions first."""
     analytics_service.sync_suggestions(db, current_user)
-    return (
+    rules = (
         db.query(CommitmentRule)
         .filter(
             CommitmentRule.user_id == current_user.id,
@@ -227,6 +227,13 @@ def list_commitments(
         .order_by(CommitmentRule.direction, CommitmentRule.next_date)
         .all()
     )
+    markers = claude_markers(db, current_user.id, "commitment", [r.id for r in rules])
+    return [
+        CommitmentResponse.model_validate(r).model_copy(
+            update={"changed_by_claude": ClaudeMarker(**markers[r.id]) if r.id in markers else None}
+        )
+        for r in rules
+    ]
 
 
 @router.post("/commitments/from-transaction", response_model=CommitmentResponse, status_code=status.HTTP_201_CREATED)

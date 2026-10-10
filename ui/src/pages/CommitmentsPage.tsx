@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { moneyStyle } from '../lib/late'
 import ClaudeMarker from '../components/changes/ClaudeMarker'
 import { Link } from 'react-router-dom'
 import { analyticsAPI } from '../services/api'
@@ -377,17 +378,18 @@ function renderCommitmentRow(
         <div className="font-medium text-slate-200 flex items-center gap-2">
           <span className="truncate">{c.label}</span>
           {c.is_payday && <span className="chip-pos shrink-0">Payday</span>}
+          {c.late && <span className="chip-warn shrink-0">Late</span>}
           {c.changed_by_claude && <ClaudeMarker auditId={c.changed_by_claude.audit_id} />}
         </div>
         <div className="text-sm text-slate-500">
-          {cadenceLabel(c)} · next {formatDate(c.next_date)}
+          {cadenceLabel(c)} · {c.late && c.expected_date ? `expected ${formatDate(c.expected_date)}` : `next ${formatDate(c.next_date)}`}
         </div>
       </div>
       {/* Wraps under the label on narrow phones instead of forcing
           the row (and the page) wider than the viewport. */}
       <div className="flex flex-wrap items-center gap-3">
-        <span className={`font-semibold tnum ${positive ? 'text-pos' : 'text-slate-100'}`}>
-          {positive ? '+' : ''}{formatCurrency(c.amount)}
+        <span className={`font-semibold tnum ${moneyStyle(Boolean(positive), Boolean(c.late)).tone}`}>
+          {moneyStyle(Boolean(positive), Boolean(c.late)).sign}{formatCurrency(c.amount)}
         </span>
         {onPayday && (
           <button

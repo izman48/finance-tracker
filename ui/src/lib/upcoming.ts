@@ -3,6 +3,7 @@
  *  repayments, planned items) and sorted by date. Shared by Home and Cashflow
  *  so the two never disagree about what's next. */
 import { Commitment, NextRepayment, PlannedItem } from '../types'
+import { daysLate, moneyStyle } from './late'
 import { nextPlannedDate, plannedPerPayment } from './planned'
 
 export interface Upcoming {
@@ -16,6 +17,18 @@ export interface Upcoming {
   claudeAuditId?: string
   /** Planned income: shown, but not counted until it arrives (D1). */
   plannedIncome?: boolean
+  /** Income that hasn't arrived (T-08-10): `date` is when it was expected. */
+  late?: { expected: string; days: number }
+}
+
+/** How a row's amount reads: late income is not money you have, so no "+" and no green. */
+export function upcomingAmount(u: Upcoming): { sign: string; tone: string } {
+  return moneyStyle(u.income, Boolean(u.late))
+}
+
+/** A late row's date is in its "Expected {date}" line; don't repeat it beside the amount. */
+export function upcomingShowsDate(u: Upcoming): boolean {
+  return !u.late
 }
 
 export function buildUpcoming(
@@ -25,7 +38,25 @@ export function buildUpcoming(
   today: string,
   limit = 4,
 ): Upcoming[] {
-  return [
+  // Late income first, most overdue first (ux spec 3): shown, never counted.
+  const late: Upcoming[] = [
+    ...commitments
+      .filter((c) => c.status === 'confirmed' && c.late && c.expected_date)
+      .map((c) => ({
+        key: `late-c-${c.id}`, label: c.label, amount: Number(c.amount), date: c.expected_date!,
+        income: true, commitmentId: c.id, claudeAuditId: c.changed_by_claude?.audit_id,
+      })),
+    ...planned
+      .filter((p) => p.late)
+      .map((p) => ({
+        key: `late-p-${p.id}`, label: p.name, amount: plannedPerPayment(p), date: p.start_date,
+        income: true, plannedIncome: true, claudeAuditId: p.changed_by_claude?.audit_id,
+      })),
+  ]
+    .map((u) => ({ ...u, late: { expected: u.date, days: daysLate(u.date, today) } }))
+    .sort((a, b) => a.date.localeCompare(b.date))
+
+  const future: Upcoming[] = [
     ...commitments
       .filter((c) => c.status === 'confirmed' && c.next_date >= today)
       .map((c) => ({
@@ -45,7 +76,7 @@ export function buildUpcoming(
       income: false,
     })),
     // A planned item its real transaction already paid is no longer coming (T-08-7).
-    ...planned.filter((p) => !p.matched_transaction_id).flatMap((p) => {
+    ...planned.filter((p) => !p.matched_transaction_id && !p.late).flatMap((p) => {
       const date = nextPlannedDate(p, today)
       return date
         ? [{
@@ -61,5 +92,6 @@ export function buildUpcoming(
     }),
   ]
     .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(0, limit)
+
+  return [...late, ...future].slice(0, limit)
 }

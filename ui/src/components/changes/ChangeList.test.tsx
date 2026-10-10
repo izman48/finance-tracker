@@ -76,6 +76,16 @@ describe('ChangeList', () => {
     expect(html).not.toMatch(/<svg|chip-info|badge/)
   })
 
+  it('M2: the row a marker linked to carries the highlight ring', () => {
+    const h = renderToStaticMarkup(
+      <MemoryRouter>
+        <ChangeList items={[item({ id: 'm1' }), item({ id: 'm2' })]} accountNames={{}} highlightedId="m2" />
+      </MemoryRouter>,
+    )
+    expect(h).toMatch(/<li id="change-m2"[^>]*class="[^"]*ring-2 ring-accent\/60/)
+    expect(h).not.toMatch(/<li id="change-m1"[^>]*class="[^"]* ring-2 ring-accent/)
+  })
+
   it('uses no low-contrast slate shades', () => {
     expect(render([item(), addEvent('income', { id: 'z' })])).not.toMatch(/text-slate-(500|600|700)/)
   })

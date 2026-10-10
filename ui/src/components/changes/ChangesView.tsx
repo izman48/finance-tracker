@@ -13,6 +13,8 @@ export type ChangesViewProps = {
   onRetry: () => void
   onOlder: () => void
   headingRef?: Ref<HTMLHeadingElement>
+  /** The row a "Changed by Claude" marker linked to (#change-{id}). */
+  highlightedId?: string | null
   renderAction?: (item: AuditItem) => ReactNode
   renderNotice?: (item: AuditItem) => ReactNode
 }
@@ -76,6 +78,7 @@ export default function ChangesView(props: ChangesViewProps) {
               accountNames={props.accountNames}
               renderAction={props.renderAction}
               renderNotice={props.renderNotice}
+              highlightedId={props.highlightedId}
             />
           )}
         </div>

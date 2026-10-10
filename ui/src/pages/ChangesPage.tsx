@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import ChangesView from '../components/changes/ChangesView'
+import { UndoButton, UndoNotice, type UndoState } from '../components/changes/UndoControls'
+import { useToast } from '../components/ui/Toast'
 import { auditAPI, bankingAPI } from '../services/api'
-import type { AuditItem } from '../lib/changes'
+import { mergeFirstPage, undoFailure, undoToast, type AuditItem } from '../lib/changes'
 import { withTimeout } from '../lib/forecastLoad'
 
 /** A load that hasn't answered by then is shown as the error state (ux A6). */
@@ -16,8 +19,14 @@ export default function ChangesPage() {
   const [older, setOlder] = useState<'idle' | 'loading' | 'error'>('idle')
   const [accountNames, setAccountNames] = useState<Record<string, string>>({})
   const [focusFirst, setFocusFirst] = useState(false)
+  const [undo, setUndo] = useState<Record<string, UndoState>>({})
+  // An element to focus once the next render has it (after an undo or a retry).
+  const [focusId, setFocusId] = useState<string | null>(null)
   const headingRef = useRef<HTMLHeadingElement>(null)
   const mounted = useRef(true)
+  const toast = useToast()
+  const { hash } = useLocation()
+  const target = hash.startsWith('#change-') ? hash.slice('#change-'.length) : null
 
   const loadFirst = useCallback(async () => {
     try {
@@ -56,9 +65,62 @@ export default function ChangesPage() {
   useEffect(() => {
     if (!focusFirst || status !== 'ready') return
     setFocusFirst(false)
-    const target = items.length ? `change-${items[0].id}` : 'changes-empty'
-    document.getElementById(target)?.focus()
+    setFocusId(items.length ? `change-${items[0].id}` : 'changes-empty')
   }, [focusFirst, status, items])
+
+  // A "Changed by Claude" marker links to /changes#change-{id}: focus that row
+  // once, when it first appears (M2). Later refetches must not pull focus back.
+  const hashFocused = useRef(false)
+  useEffect(() => {
+    if (hashFocused.current || status !== 'ready' || !target) return
+    if (!items.some((it) => it.id === target)) return
+    hashFocused.current = true
+    setFocusId(`change-${target}`)
+  }, [status, target, items])
+
+  useEffect(() => {
+    if (!focusId) return
+    document.getElementById(focusId)?.focus()
+    setFocusId(null)
+  }, [focusId, undo, items])
+
+  const refetchFirst = async () => {
+    try {
+      const res = await withTimeout(auditAPI.list(), AUDIT_TIMEOUT_MS)
+      if (mounted.current) setItems((prev) => mergeFirstPage(prev, res.data.items))
+    } catch {
+      // The row already shows the server's answer; a failed refresh changes nothing.
+    }
+  }
+
+  const undoChange = async (it: AuditItem) => {
+    setUndo((s) => ({ ...s, [it.id]: { undoing: true, failure: null } }))
+    try {
+      const res = await withTimeout(auditAPI.undo(it.id), AUDIT_TIMEOUT_MS)
+      if (!mounted.current) return
+      // The server's updated row, never an optimistic one (C7).
+      setItems((prev) => prev.map((row) => (row.id === it.id ? res.data : row)))
+      setUndo((s) => ({ ...s, [it.id]: { undoing: false, failure: null } }))
+      toast(undoToast(it))
+      setFocusId(`change-${it.id}`)
+      refetchFirst()
+    } catch (err) {
+      if (!mounted.current) return
+      const status = (err as { response?: { status?: number } })?.response?.status
+      const failure = undoFailure(status)
+      setUndo((s) => ({ ...s, [it.id]: { undoing: false, failure } }))
+      if (failure === 'changed') {
+        setFocusId(`change-${it.id}-alert`)
+        refetchFirst()
+      } else {
+        setFocusId(null)
+        // The button was disabled while pending; give focus back to it.
+        requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(`[data-undo="${it.id}"]`)?.focus())
+      }
+    }
+  }
+
+  const stateOf = (it: AuditItem): UndoState => undo[it.id] ?? { undoing: false, failure: null }
 
   const retry = async () => {
     setRetrying(true)
@@ -96,6 +158,9 @@ export default function ChangesPage() {
       onRetry={retry}
       onOlder={loadOlder}
       headingRef={headingRef}
+      highlightedId={target}
+      renderAction={(it) => <UndoButton item={it} state={stateOf(it)} onUndo={undoChange} />}
+      renderNotice={(it) => <UndoNotice item={it} failure={stateOf(it).failure} />}
     />
   )
 }

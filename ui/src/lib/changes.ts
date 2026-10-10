@@ -121,13 +121,17 @@ function formatValue(
 export function changeLines(item: AuditItem, accountNames: Record<string, string>): ChangeLine[] {
   const fmt = (field: string, v: AuditValue) => formatValue(field, v, accountNames, item.tool)
 
-  if (item.tool === 'add_planned_event') {
+  if (item.tool === 'add_planned_event' || item.tool === 'remove_planned_event') {
+    // Adds and removes have no before/after: one value per line (a remove's
+    // audit records amount and date unchanged, next to active true -> false).
     const lines: ChangeLine[] = []
     for (const field of ['amount', 'start_date']) {
       const c = changeOf(item, field)
       if (c) lines.push({ label: FIELD_LABEL[field], after: fmt(field, c.after) })
     }
-    if (isIncome(item)) lines.push({ label: 'Counted in safe to spend', after: 'No, not until it arrives' })
+    if (item.tool === 'add_planned_event' && isIncome(item)) {
+      lines.push({ label: 'Counted in safe to spend', after: 'No, not until it arrives' })
+    }
     return lines
   }
 
@@ -171,4 +175,34 @@ export function groupBatches(items: AuditItem[]): { batch: boolean; items: Audit
     }
   }
   return groups
+}
+
+/** The toast after a successful undo (1.5). */
+export function undoToast(item: AuditItem): string {
+  const name = quoted(item.target_label)
+  switch (item.tool) {
+    case 'add_planned_event':
+      return `Removed ${name} from your planned events.`
+    case 'remove_planned_event':
+      return `Put ${name} back in your planned events.`
+    case 'dismiss_commitment':
+      return `${name} is back in your commitments.`
+    default:
+      return `Put ${name} back to how it was.`
+  }
+}
+
+export type UndoFailure = 'changed' | 'rate' | 'other'
+
+/** The row state for a failed undo, from the HTTP status only (never the server's text). */
+export function undoFailure(status: number | undefined): UndoFailure {
+  if (status === 409) return 'changed'
+  if (status === 429) return 'rate'
+  return 'other'
+}
+
+/** After an undo the first page is refetched: its rows replace ours, older loaded rows stay. */
+export function mergeFirstPage(loaded: AuditItem[], fresh: AuditItem[]): AuditItem[] {
+  const ids = new Set(fresh.map((it) => it.id))
+  return [...fresh, ...loaded.filter((it) => !ids.has(it.id))]
 }

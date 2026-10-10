@@ -30,6 +30,9 @@ It runs two ways:
 | `commitments` | recurring income/expenses |
 | `accounts` | balances, types, providers; `sync_stale` per account |
 | `sync_status` | per connection: last sync, consent (`expired`/`unknown`), `stale` (no sync for 48 h, never synced, or consent lapsed). Stored data only; never calls the bank |
+| `list_planned_events` | planned items (max 200) with who made each (`created_via`) |
+| `add_planned_event(name, amount, date, direction, idempotency_key, account_id?, dry_run=true)` | **writes** (`finance:planning.write`): a one-off planned income or expense; previews unless `dry_run=false`; planned income never raises safe-to-spend |
+| `remove_planned_event(item_id, idempotency_key, dry_run=true)` | **writes** (`finance:planning.write`): soft-removes a one-off item an assistant added |
 | `recent_transactions(page, page_size)` | a page of transactions |
 | `search_transactions(query, frm, to, include_transfers, page, page_size)` | every transaction matching a merchant/description (literal, case-insensitive), with an exact `total_amount` across all pages; UK days, last 90 days by default, max 731 |
 | `rules` | every rule pack and personal rule: pattern, match type/field, category, `counts_as` |
@@ -128,7 +131,8 @@ after every deploy.
 | `MCP_HOST` / `MCP_PORT` | bind address, default `0.0.0.0:8001` |
 
 Scopes: `finance:read` for every tool; `create_rule_pack` also needs
-`finance:rules.write`. `finance:planning.write` (changing planned events and
+`finance:rules.write`; `add_planned_event` and `remove_planned_event` need
+`finance:planning.write`. That scope (changing planned events and
 commitments) is a separate box on the consent screen, unticked by default, and
 is enforced by the API itself, so a token without it is refused even when it
 calls the API directly. An existing connection never gains it: connect again

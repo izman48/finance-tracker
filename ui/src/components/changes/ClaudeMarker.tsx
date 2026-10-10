@@ -19,10 +19,17 @@ export default function ClaudeMarker({ auditId }: { auditId: string }) {
       aria-label="Changed by Claude. See what changed."
       className="inline-flex items-center shrink-0 min-h-[44px] sm:min-h-[24px]"
     >
-      <span className="chip-info inline-flex items-center gap-1 px-2 py-1">
-        <Sparkles className="w-3 h-3" aria-hidden="true" />
-        Changed by Claude
-      </span>
+      <ClaudeChip />
     </Link>
+  )
+}
+
+/** The chip alone, for places that are already inside a link (Home's cards). */
+export function ClaudeChip() {
+  return (
+    <span className="chip-info inline-flex items-center gap-1 px-2 py-1 shrink-0">
+      <Sparkles className="w-3 h-3" aria-hidden="true" />
+      Changed by Claude
+    </span>
   )
 }

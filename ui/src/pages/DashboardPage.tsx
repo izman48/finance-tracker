@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import ClaudeMarker, { NOT_COUNTED_TEXT } from '../components/changes/ClaudeMarker'
+import UpcomingLabel from '../components/UpcomingLabel'
 import { Link } from 'react-router-dom'
 import {
   Banknote,
@@ -331,13 +331,7 @@ export default function DashboardPage() {
               <ul className="space-y-2.5 mt-4">
                 {upcoming.map((u) => (
                   <li key={u.key} className="flex items-baseline justify-between gap-3 text-sm group/up">
-                    {/* The marker and the D1 note sit under the label, so a
-                        narrow phone never squeezes the label to nothing. */}
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-slate-300 truncate">{u.label}</span>
-                      {u.claudeAuditId && <ClaudeMarker auditId={u.claudeAuditId} />}
-                      {u.plannedIncome && <span className="block text-xs text-slate-400">{NOT_COUNTED_TEXT}</span>}
-                    </span>
+                    <UpcomingLabel item={u} linkMarker />
                     <span className="shrink-0 flex items-baseline gap-2">
                       {u.commitmentId && (
                         <button

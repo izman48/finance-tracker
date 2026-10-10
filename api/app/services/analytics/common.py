@@ -79,8 +79,22 @@ CARD_PAYMENT_INDICATORS = (
     # "AMERICAN EXP 3773 PB945227708021965 FT" and the full word never matches.
     # The prefix still covers the untruncated form.
     "american exp", "amex", "monzo flex", "barclaycard",
-    "credit card", "cc payment", "card payment",
+    # No bare "card payment": UK banks describe every debit-card purchase as
+    # "CARD PAYMENT TO <MERCHANT> ON <DATE>", so it matched ordinary spending.
+    # A settlement names the card ("credit card payment" still matches).
+    "credit card", "cc payment",
 )
+
+
+def is_card_payment_descriptor(tx) -> bool:
+    """True if the description or merchant names a credit-card settlement.
+
+    Text only: callers decide whether the account role, direction and the
+    user's counts_as_override make it a settlement. The one place the
+    indicators are matched, so every consumer agrees.
+    """
+    text = f"{tx.description or ''} {tx.merchant_name or ''}".lower()
+    return any(ind in text for ind in CARD_PAYMENT_INDICATORS)
 
 
 def detect_internal_transfers(txns: list) -> set:
@@ -111,6 +125,5 @@ def is_card_settlement(tx, role: AccountRole | None) -> bool:
     if role == AccountRole.CREDIT and tx.transaction_type == "credit":
         return True  # money arriving to settle the card
     if role != AccountRole.CREDIT and tx.transaction_type == "debit":
-        desc = f"{tx.description or ''} {tx.merchant_name or ''}".lower()
-        return any(ind in desc for ind in CARD_PAYMENT_INDICATORS)
+        return is_card_payment_descriptor(tx)
     return False

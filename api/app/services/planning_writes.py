@@ -66,7 +66,14 @@ TARGETS: dict[str, TargetSpec] = {
         "account_id": uuid.UUID, "active": bool,
     }),
     "commitment": TargetSpec(CommitmentRule, "label", {
-        "label": str, "amount": Decimal, "cadence": str, "next_date": date.fromisoformat, "status": str,
+        "label": str, "amount": Decimal, "cadence": str, "interval_days": int, "interval_months": int,
+        "next_date": date.fromisoformat, "status": str,
+        # The card link (T-08-8): a link set here is the user's ("user"), which
+        # the request-time linker never changes.
+        "card_account_id": uuid.UUID, "card_link_source": str,
+        # A relabelled detected commitment becomes "manual", so sync_suggestions
+        # stops re-keying it from its label (T-08-9's match_key trap).
+        "source": str,
     }),
 }
 

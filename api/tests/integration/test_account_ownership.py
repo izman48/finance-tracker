@@ -153,6 +153,11 @@ CASES: dict[tuple[str, str, str], Case] = {
         f"{API}/analytics/commitments/{w.commitment_id}",
         json={"label": "Renamed", "amount": "99", "card_account_id": acc},
     ),
+    ("POST", f"{API}/planning/commitments/{{commitment_id}}/update", "card_account_id"): lambda w, acc: w.client.post(
+        f"{API}/planning/commitments/{w.commitment_id}/update",
+        json={"label": "Renamed", "amount": "99", "card_account_id": acc,
+              "idempotency_key": "own-check-1", "dry_run": False},
+    ),
     ("POST", f"{API}/analytics/planned-items", "account_id"): lambda w, acc: w.client.post(
         f"{API}/analytics/planned-items",
         json={"name": "Holiday", "kind": "one_off", "start_date": "2026-12-01",

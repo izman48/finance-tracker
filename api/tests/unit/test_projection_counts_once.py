@@ -101,8 +101,11 @@ class TestCardRepaymentCommitmentCountsOnce:
 
         assert _bills(db_session, user) == Decimal("0.00")
         assert set(_surplus(db_session, user)) == {Decimal("2000")}
-        # The card spend is still counted, once, through the purchases average.
-        assert svc.derived_contribution(db_session, user)["avg_spending_monthly"] > 0
+        # The card spend is still counted, once and in full, through the
+        # purchases average: £400 in each of two sampled complete months.
+        d = svc.derived_contribution(db_session, user)
+        assert sum(m["total"] for m in d["sampled_months"]) == Decimal("800.00")
+        assert d["avg_spending_monthly"] == (Decimal(800) / d["spending_months_sampled"]).quantize(Decimal("0.01"))
 
     def test_projection_contribution_counts_the_card_once(self, db_session):
         user = _setup(db_session)

@@ -244,7 +244,8 @@ def _card_ties(db: Session, user, rules: list, start: date):
 
 def card_repayment_rule_ids(db: Session, user, rules: list, start: date) -> set:
     """Ids of the commitments that are a credit card's repayment (see _card_ties)."""
-    return set(_card_ties(db, user, rules, start)[2])
+    _schedule, _last_due, ties = _card_ties(db, user, rules, start)
+    return set(ties)
 
 
 def scheduled_outflows(db: Session, user, rules: list, start: date, end: date):

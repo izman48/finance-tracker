@@ -177,8 +177,10 @@ quick overflow check, navigate a page and compare `document.documentElement
   instead of `CurrentUser`. Planning write routes take `PlanningWriter`
   (`core/planning_write.py`): it returns a `Caller` (user + verified
   `grant_id`/`client_id`; record those, never request values) and applies the
-  per-user write and dry-run rate limits. Keep that allowlist minimal and never add auth, banking-
-  connection or account-management routes. The user's DEK is wrapped under the
+  per-user write and dry-run rate limits. `dry_run` must be a JSON body field
+  (even on a DELETE): a request without a body counts against the write budget.
+  Keep that allowlist minimal and never add auth, banking-connection or
+  account-management routes. The user's DEK is wrapped under the
   auth code, then under each rotating refresh token (never stored usable).
 
 ## Workflow

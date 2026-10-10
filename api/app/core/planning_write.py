@@ -33,7 +33,9 @@ async def _is_dry_run(request: Request) -> bool:
     Only a JSON `true` (or no `dry_run` field, which the write routes default
     to true) is a dry run. Anything else counts against the write budget,
     including values the model would coerce to False ("false", 0) and
-    bodies that aren't JSON objects.
+    bodies that aren't JSON objects. So every planning write route, a remove
+    (DELETE) included, takes `dry_run` in its JSON body, never as a query
+    parameter: a request with no body is charged to the write budget.
     """
     try:
         body = await request.json()

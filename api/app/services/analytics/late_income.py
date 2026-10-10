@@ -33,10 +33,9 @@ from app.models import Account, CommitmentDirection, CommitmentRule, CommitmentS
 from .cadence import _step, _step_back
 from .commitments import _match_key, transaction_match_key
 from .common import _d, _load, resolve_roles
+from .planned_matching import tolerance
 
 GRACE_DAYS = 3
-TOLERANCE_FLOOR = Decimal("1.00")
-TOLERANCE_SHARE = Decimal("0.02")
 EARLY_DAYS = 7  # a payment this many days early still counts
 
 
@@ -85,7 +84,7 @@ def late_incomes(db: Session, user, today: date) -> dict[uuid.UUID, LateIncome]:
     for rule, expected in candidates:
         keys = {k for k in (rule.match_key, _match_key(rule.direction, rule.label)) if k}
         amount = _d(rule.amount)
-        allowed = max(TOLERANCE_FLOOR, (amount * TOLERANCE_SHARE).quantize(Decimal("0.01")))
+        allowed = tolerance(amount)  # the same rule as planned items (T-08-7)
         arrived = any(
             key in keys and day >= expected - timedelta(days=EARLY_DAYS) and abs(paid - amount) <= allowed
             for key, day, paid in credits

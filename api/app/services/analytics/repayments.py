@@ -212,6 +212,41 @@ def repayment_events(db: Session, user, start: date, end: date) -> list[dict]:
 _SCHEDULE_REACH = timedelta(days=366 * 20)
 
 
+def _card_ties(db: Session, user, rules: list, start: date):
+    """Which commitments are a credit card's repayment, by the one rule the
+    summary, forecast and projections share.
+
+    A confirmed expense commitment is tied to a card when its label is a
+    repayment descriptor for exactly one of ALL the user's credit cards (a
+    second, unconfigured card of the same provider could be the payee) and
+    that card has a repayment schedule from `start`.
+
+    Returns (schedule, last_due, ties): the card repayment events from
+    `start`, each card's last due date, and {rule id: card id}.
+    """
+    accounts, settings = _load(db, user)
+    roles = resolve_roles(accounts, settings)
+    schedule = repayment_events(db, user, start, start + _SCHEDULE_REACH)
+    last_due: dict[str, date] = {}
+    for r in schedule:
+        last_due[r["account_id"]] = max(r["due_date"], last_due.get(r["account_id"], r["due_date"]))
+    cards = [a for a in accounts if roles[a.id] == AccountRole.CREDIT]
+
+    ties: dict = {}
+    for rule in rules:
+        if rule.direction != CommitmentDirection.EXPENSE.value:
+            continue
+        named = [a for a in cards if names_card(rule.label, a)]
+        if len(named) == 1 and str(named[0].id) in last_due:
+            ties[rule.id] = str(named[0].id)
+    return schedule, last_due, ties
+
+
+def card_repayment_rule_ids(db: Session, user, rules: list, start: date) -> set:
+    """Ids of the commitments that are a credit card's repayment (see _card_ties)."""
+    return set(_card_ties(db, user, rules, start)[2])
+
+
 def scheduled_outflows(db: Session, user, rules: list, start: date, end: date):
     """Confirmed-commitment occurrences and card repayment events in
     [start, end], with each card's repayment counted once.
@@ -227,25 +262,13 @@ def scheduled_outflows(db: Session, user, rules: list, start: date, end: date):
     building, and under-stating what goes out is the unsafe direction. Any
     commitment less clearly tied to one card is always counted.
     """
-    accounts, settings = _load(db, user)
-    roles = resolve_roles(accounts, settings)
-    schedule = repayment_events(db, user, start, start + _SCHEDULE_REACH)
-    last_due: dict[str, date] = {}
-    for r in schedule:
-        last_due[r["account_id"]] = max(r["due_date"], last_due.get(r["account_id"], r["due_date"]))
+    schedule, last_due, ties = _card_ties(db, user, rules, start)
     repayments = [r for r in schedule if r["due_date"] <= end]
-    cards = [a for a in accounts if roles[a.id] == AccountRole.CREDIT]
 
     occurrences: list[tuple] = []
     overlap: dict[str, list[tuple]] = {}  # card id -> covered (rule, date)
     for rule in rules:
-        named = (
-            [a for a in cards if names_card(rule.label, a)]
-            if rule.direction == CommitmentDirection.EXPENSE.value else []
-        )
-        # Exactly one of ALL credit cards, and that one has a schedule: a
-        # second, unconfigured card of the same provider could be the payee.
-        card_id = str(named[0].id) if len(named) == 1 and str(named[0].id) in last_due else None
+        card_id = ties.get(rule.id)
         for d in commitment_occurrences(rule, start, end):
             if card_id and d <= last_due[card_id]:
                 overlap.setdefault(card_id, []).append((rule, d))

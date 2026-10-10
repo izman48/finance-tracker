@@ -8,10 +8,25 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.models import AccountRole, AccountSetting, RepaymentScheduleItem, RepaymentStrategy
+from app.schemas import MAX_REPAYMENT_INTERVAL_MONTHS
 
 from app.services.balance_sign import credit_owed
 
 from .common import _add_months, _d, _load, resolve_roles
+
+
+DEFAULT_INTERVAL_MONTHS = 3
+
+
+def _interval_months(setting: AccountSetting) -> int:
+    """Months between every-N-months repayments. A stored value outside the
+    API's 1..MAX_REPAYMENT_INTERVAL_MONTHS (only reachable by bypassing it)
+    falls back to the default, so a schedule never steps backwards and drops
+    payments out of the forecast."""
+    n = setting.repayment_interval_months
+    if n is None or not 1 <= n <= MAX_REPAYMENT_INTERVAL_MONTHS:
+        return DEFAULT_INTERVAL_MONTHS
+    return n
 
 
 def next_repayment_date(setting: AccountSetting, from_date: date) -> date | None:
@@ -39,7 +54,7 @@ def next_repayment_date(setting: AccountSetting, from_date: date) -> date | None
             d += timedelta(days=7)
         return d
     if cadence == "every_n_months":
-        n = setting.repayment_interval_months or 3
+        n = _interval_months(setting)
         d = setting.repayment_anchor_date or from_date
         guard = 0
         while d < from_date and guard < 200:
@@ -71,7 +86,7 @@ def _step_repayment(setting: AccountSetting, d: date) -> date | None:
         if setting.repayment_cadence == "weekly":
             return d + timedelta(days=7)
         if setting.repayment_cadence == "every_n_months":
-            return _add_months(d, setting.repayment_interval_months or 3)
+            return _add_months(d, _interval_months(setting))
     return next_repayment_date(setting, d + timedelta(days=1))
 
 

@@ -129,6 +129,39 @@ class TestInstallmentAmounts:
         assert _repays(f) == []
 
 
+class TestRepaymentInterval:
+    """The every-N-months interval is bounded 1-24 at the API, and a stored
+    value outside that (bypassing the API) falls back to the 3-month default,
+    so a schedule can never step backwards and drop installments."""
+
+    @pytest.mark.parametrize("bad", [0, -1, 25])
+    def test_settings_schema_rejects_out_of_range_interval(self, bad):
+        with pytest.raises(ValidationError):
+            AccountSettingUpdate(repayment_interval_months=bad)
+
+    @pytest.mark.parametrize("ok", [1, 24, None])
+    def test_settings_schema_accepts_in_range_interval(self, ok):
+        assert AccountSettingUpdate(repayment_interval_months=ok).repayment_interval_months == ok
+
+    @pytest.mark.parametrize("anchor_in_days", [None, 5])
+    @pytest.mark.parametrize("bad", [-2, 0, 10_000])
+    def test_stored_out_of_range_interval_still_gives_n_future_dates(
+        self, db_session, bad, anchor_in_days,
+    ):
+        anchor = svc._today() + timedelta(days=anchor_in_days) if anchor_in_days else None
+        user = _flex(db_session, anchor=anchor)
+        db_session.query(AccountSetting).filter(
+            AccountSetting.repayment_strategy == "installments",
+            AccountSetting.user_id == user.id,
+        ).update({"repayment_interval_months": bad})
+        db_session.commit()
+        f = svc.get_forecast(db_session, user, horizon="365")
+        dates = [d for d, _ in _repays(f)]
+        assert len(dates) == 3
+        assert dates == sorted(dates) and len(set(dates)) == 3
+        assert [_months_apart(dates[0], d) for d in dates] == [0, 3, 6]  # the default
+
+
 class TestScheduledStrategy:
     def test_card_with_nothing_owed_emits_no_listed_payments(self, db_session):
         """User-listed payments on a card that owes nothing would take money
@@ -225,3 +258,5 @@ class TestKnownDoubleCount:
         s = svc.get_summary(db_session, user)
         # No payday configured -> 30-day window: one installment + the commitment.
         assert s["committed_before_payday"] == Decimal("600.00")
+        # After the fix (T-07-7) this must read:
+        # assert s["committed_before_payday"] == Decimal("300.00")

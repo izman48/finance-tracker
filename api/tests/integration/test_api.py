@@ -1,4 +1,7 @@
 """Integration tests for API endpoints."""
+import uuid
+
+import pytest
 
 
 class TestHealthEndpoint:
@@ -216,6 +219,20 @@ class TestForecastEndpoint:
         data = response.json()
         assert data["account_breaches"] == []
         assert data["unassigned_attributed_to"] is None
+
+
+class TestAccountSettingsValidation:
+    @pytest.mark.parametrize("field,bad", [
+        ("repayment_interval_months", 0), ("repayment_interval_months", -1),
+        ("repayment_interval_months", 25), ("repayment_installments", 0),
+        ("repayment_installments", 121),
+    ])
+    def test_out_of_range_repayment_counts_are_422(self, authenticated_client, field, bad):
+        response = authenticated_client.patch(
+            f"/api/v1/analytics/accounts/{uuid.uuid4()}/settings", json={field: bad},
+        )
+        assert response.status_code == 422
+        assert field in response.text
 
 
 class TestNetWorthPositionEndpoint:

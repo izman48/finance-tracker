@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildUpcoming, upcomingAmount } from './upcoming'
+import { buildUpcoming, upcomingAmount, upcomingShowsDate } from './upcoming'
 import type { Commitment, PlannedItem } from '../types'
 
 const today = '2026-10-10'
@@ -74,5 +74,14 @@ describe('late income in coming-up (L1, L4)', () => {
   it('L4: once the API says it is no longer late, the row is gone', () => {
     const rows = buildUpcoming([commitment({ direction: 'income', late: false, expected_date: null, next_date: '2026-11-03' })], [], [], today)
     expect(rows.every((r) => !r.late)).toBe(true)
+  })
+})
+
+describe('late rows show their date once (ux nit)', () => {
+  it('a late row leaves the date to its "Expected" line', () => {
+    const [late] = buildUpcoming([commitment({ direction: 'income', late: true, expected_date: '2026-10-03' })], [], [], today)
+    expect(upcomingShowsDate(late)).toBe(false)
+    const [future] = buildUpcoming([commitment()], [], [], today)
+    expect(upcomingShowsDate(future)).toBe(true)
   })
 })

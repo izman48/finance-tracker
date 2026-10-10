@@ -3,7 +3,7 @@
  *  repayments, planned items) and sorted by date. Shared by Home and Cashflow
  *  so the two never disagree about what's next. */
 import { Commitment, NextRepayment, PlannedItem } from '../types'
-import { daysLate } from './late'
+import { daysLate, moneyStyle } from './late'
 import { nextPlannedDate, plannedPerPayment } from './planned'
 
 export interface Upcoming {
@@ -23,8 +23,12 @@ export interface Upcoming {
 
 /** How a row's amount reads: late income is not money you have, so no "+" and no green. */
 export function upcomingAmount(u: Upcoming): { sign: string; tone: string } {
-  if (u.late) return { sign: '', tone: 'text-slate-400' }
-  return u.income ? { sign: '+', tone: 'text-pos' } : { sign: '', tone: 'text-slate-100' }
+  return moneyStyle(u.income, Boolean(u.late))
+}
+
+/** A late row's date is in its "Expected {date}" line; don't repeat it beside the amount. */
+export function upcomingShowsDate(u: Upcoming): boolean {
+  return !u.late
 }
 
 export function buildUpcoming(

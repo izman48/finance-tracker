@@ -3,6 +3,7 @@ import logging
 import uuid
 from typing import Annotated
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import RedirectResponse
@@ -24,7 +25,10 @@ from app.schemas import (
     TransactionListResponse,
     TransactionUpdate,
 )
+from app.core.rate_limit import user_in_flight, user_rate_limiter
+from app.schemas.transaction_search import TransactionSearchRequest, TransactionSearchResponse
 from app.services import analytics_service, categorization
+from app.services import transaction_search as search
 from app.services.balance_sign import credit_owed
 from app.services.truelayer import ReauthRequired, truelayer_service
 from app.models import Account, AccountRole, Transaction, User, BankConnection
@@ -510,19 +514,88 @@ def get_transactions(
     offset = (page - 1) * page_size
     page_txns = filtered[offset : offset + page_size]
 
+    return TransactionListResponse(
+        items=_transaction_items(page_txns, commitment_keys, financed, noise),
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+def _transaction_items(txns, commitment_keys, financed, noise) -> list[TransactionResponse]:
+    """Response items with the computed fields, shared by the list and the
+    search so both return exactly the same shape."""
     items = []
-    for tx in page_txns:
+    for tx in txns:
         item = TransactionResponse.model_validate(tx)
         item.is_commitment = analytics_service.transaction_match_key(tx) in commitment_keys
         item.is_financed = tx.id in financed
         item.excluded_reason = noise.get(tx.id)
         items.append(item)
+    return items
 
-    return TransactionListResponse(
-        items=items,
-        total=total,
-        page=page,
-        page_size=page_size,
+
+@router.post("/transactions/search", response_model=TransactionSearchResponse)
+def search_transactions(
+    body: TransactionSearchRequest,
+    current_user: CurrentUserOrMcpRead,
+    db: Annotated[Session, Depends(get_db)],
+) -> TransactionSearchResponse:
+    """Every transaction whose description or merchant contains `query`
+    (literal, case-insensitive, descriptor variants folded), within London
+    days frm..to, with `total_amount` summed over all matches.
+
+    Read-only. Decrypts the whole window, so it is rate limited per user and
+    the window is capped. The term and the rows are never logged.
+    """
+    # Each search decrypts its whole window. Limits are per user (remote MCP
+    # calls share one IP) and per process: with N uvicorn workers a user gets
+    # up to 10 x N a minute and N concurrent searches.
+    key = f"search:{current_user.id}"
+    user_rate_limiter.check_key(key, limit=10, window_seconds=60)
+    with user_in_flight.hold(key):
+        return _search(db, current_user, body)
+
+
+def _search(db: Session, current_user, body: TransactionSearchRequest) -> TransactionSearchResponse:
+    frm, to = body.window()
+    start, end = search.utc_bounds(frm, to)
+    txns = (
+        db.query(Transaction)
+        .join(Account)
+        .filter(
+            Account.user_id == current_user.id,
+            Transaction.transaction_date >= start,
+            Transaction.transaction_date < end,
+        )
+        .order_by(Transaction.transaction_date.desc(), Transaction.id)
+        .all()
+    )
+    accounts, settings = analytics_service._load(db, current_user)
+    noise = analytics_service.classify_noise(txns, analytics_service.resolve_roles(accounts, settings))
+    matches = search.matcher(body.query)
+    found = [
+        tx for tx in txns
+        if matches(tx.description, tx.merchant_name) and (body.include_transfers or tx.id not in noise)
+    ]
+    total_amount = sum(
+        (tx.amount if tx.transaction_type == "debit" else -tx.amount for tx in found),
+        Decimal(0),
+    )
+    offset = (body.page - 1) * body.page_size
+    return TransactionSearchResponse(
+        items=_transaction_items(
+            found[offset: offset + body.page_size],
+            analytics_service.commitment_match_keys(db, current_user),
+            analytics_service.financed_transaction_ids(db, current_user),
+            noise,
+        ),
+        total=len(found),
+        total_amount=total_amount,
+        page=body.page,
+        page_size=body.page_size,
+        frm=frm,
+        to=to,
     )
 
 

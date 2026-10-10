@@ -709,6 +709,13 @@ class AccountBreach(BaseModel):
     kind: str       # overdraft (below floor) | zero (below £0, inside limit)
 
 
+class LatePlanned(BaseModel):
+    """Expected income that hasn't arrived a week after its date: listed, not counted."""
+    label: str
+    amount: Decimal
+    expected_date: date
+
+
 class ForecastResponse(BaseModel):
     horizon: str
     horizon_end: date
@@ -724,6 +731,7 @@ class ForecastResponse(BaseModel):
     # spending account.
     unassigned_attributed_to: str | None
     timeline: list[ForecastPoint]
+    late_planned: list[LatePlanned] = []
 
 
 class CategorySlice(BaseModel):
@@ -823,6 +831,11 @@ class PlannedItemResponse(BaseModel):
     source_transaction_id: uuid.UUID | None = None
     active: bool
     created_via: str = "web"
+    # One-off items: the transaction that paid it (it then drops out of the
+    # forecast and safe-to-spend), and whether expected income is late (T-08-7).
+    matched_transaction_id: uuid.UUID | None = None
+    late: bool = False
+    overdue: bool = False  # an expense long past its date and not seen paid (still counted)
     # The latest change Claude made to it that is still in effect (ux A3).
     changed_by_claude: "ClaudeMarker | None" = None
 
@@ -975,6 +988,9 @@ class PlannedEventItem(BaseModel):
     amount: Decimal | None
     account_id: uuid.UUID | None
     created_via: str
+    matched_transaction_id: uuid.UUID | None = None
+    late: bool = False
+    overdue: bool = False
     changed_by_claude: ClaudeMarker | None = None
 
     model_config = ConfigDict(from_attributes=True)

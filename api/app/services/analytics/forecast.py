@@ -20,6 +20,7 @@ from app.models import (
 from .commitments import next_payday
 from .common import _d, _load, _today, resolve_roles
 from .planned import planned_events
+from .planned_matching import planned_states
 from .repayments import scheduled_outflows
 
 
@@ -193,10 +194,27 @@ def get_forecast(db: Session, user, horizon: str = "payday") -> dict:
         .filter(PlannedItem.user_id == user.id, PlannedItem.active.is_(True))
         .all()
     )
+    # One-off items settle against the transactions that paid them (T-08-7).
+    states = planned_states(db, user, planned, today)
+    late_planned = []
     for item in planned:
-        for occ_date, amount in planned_events(item, today + timedelta(days=1), end):
-            add(occ_date, item.account_id,
-                {"label": item.name, "amount": amount, "kind": "planned"})
+        state = states.get(item.id)
+        if state is None:  # recurring / payment plan: by schedule
+            for occ_date, amount in planned_events(item, today + timedelta(days=1), end):
+                add(occ_date, item.account_id,
+                    {"label": item.name, "amount": amount, "kind": "planned"})
+            continue
+        if state.late:
+            # Expected income that hasn't arrived: shown, never counted as cash.
+            late_planned.append({"label": item.name, "amount": _d(item.amount), "expected_date": item.start_date})
+            continue
+        if not state.counted:
+            continue
+        # Not yet settled: still to come, so an overdue one lands tomorrow.
+        day = max(item.start_date, today + timedelta(days=1))
+        if day <= end:
+            sign = Decimal(1) if item.direction == "income" else Decimal(-1)
+            add(day, item.account_id, {"label": item.name, "amount": sign * _d(item.amount), "kind": "planned"})
 
     # Walk day by day, accumulating the pooled running balance.
     timeline: list[dict] = [{"date": today, "balance": start_balance, "events": []}]
@@ -234,4 +252,5 @@ def get_forecast(db: Session, user, horizon: str = "payday") -> dict:
         "account_breaches": account_breaches,
         "unassigned_attributed_to": str(fallback) if fallback is not None else None,
         "timeline": timeline,
+        "late_planned": late_planned,
     }

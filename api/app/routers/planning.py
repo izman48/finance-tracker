@@ -18,6 +18,8 @@ from app.core.ownership import require_owned_account_ids
 from app.core.planning_write import PlanningWriter
 from app.models import PlannedItem, PlannedKind
 from app.schemas import AddPlannedEventRequest, PlannedEventItem, PlannedEventList, RemovePlannedEventRequest
+from app.services.analytics.common import _today
+from app.services.analytics.planned_matching import planned_states
 from app.services.planning_writes import WriteRequest, claude_markers, key_in_use, run_write
 
 router = APIRouter(prefix="/planning", tags=["planning"])
@@ -106,8 +108,10 @@ def list_planned_events(
     )
     page = items[:LIST_LIMIT]
     markers = claude_markers(db, current_user.id, "planned_event", [i.id for i in page])
+    states = planned_states(db, current_user, page, _today())
     return PlannedEventList(
-        items=[{**PlannedEventItem.model_validate(i).model_dump(), "changed_by_claude": markers.get(i.id)}
+        items=[{**PlannedEventItem.model_validate(i).model_dump(), **_settlement(states.get(i.id)),
+                "changed_by_claude": markers.get(i.id)}
                for i in page],
         truncated=len(items) > LIST_LIMIT,
     )
@@ -128,6 +132,12 @@ def _recent_duplicate(db: Session, caller: Caller, body: AddPlannedEventRequest)
         if created >= cutoff and item.amount == body.amount and _norm(item.name) == _norm(body.name):
             return item
     return None
+
+
+def _settlement(state) -> dict:
+    if state is None:
+        return {}
+    return {"matched_transaction_id": state.matched_transaction_id, "late": state.late, "overdue": state.overdue}
 
 
 def _norm(name: str) -> str:

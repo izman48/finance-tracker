@@ -141,6 +141,23 @@ class TestTransactionFilters:
         )
         assert [i["merchant_name"] for i in res.json()["items"]] == ["Deliveroo"]
 
+    def test_debit_card_purchase_is_listed_as_spending(self, client, db_session):
+        """UK banks describe a debit-card purchase as "CARD PAYMENT TO
+        <MERCHANT> ON <DATE>". It is spending, not a card settlement: no noise
+        label, listed by default and under kind=spend."""
+        user, ctx = _setup(client, db_session)
+        try:
+            a = _account(db_session, user.id, name="Current")
+            _tx(db_session, a, "42.10", date(2026, 10, 1),
+                merchant="CARD PAYMENT TO TESCO STORES ON 01 OCT")
+        finally:
+            user_crypto.current_dek.reset(ctx)
+
+        for params in ({}, {"include_excluded": "false"}, {"kind": "spend"}):
+            items = client.get("/api/v1/banking/transactions", params=params).json()["items"]
+            assert len(items) == 1, params
+            assert items[0]["excluded_reason"] is None, params
+
     def test_spend_list_reconciles_with_purchases_total_for_transfer_category(
         self, client, db_session
     ):

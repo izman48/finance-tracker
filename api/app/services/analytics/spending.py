@@ -16,12 +16,12 @@ from app.models import Account, AccountRole, PlannedItem, Transaction
 
 from .commitments import commitment_match_keys, last_payday, transaction_match_key
 from .common import (
-    CARD_PAYMENT_INDICATORS as _CARD_PAYMENT_INDICATORS,
     _add_months,
     _d,
     _load,
     _today,
     detect_internal_transfers as _detect_internal_transfers,
+    is_card_payment_descriptor,
     resolve_roles,
 )
 
@@ -95,8 +95,7 @@ def classify_noise(txns: list[Transaction], roles: dict) -> dict:
             reasons[tx.id] = "card_payment"  # money arriving to settle the card
             continue
         if role != AccountRole.CREDIT and tx.transaction_type == "debit":
-            desc = f"{tx.description or ''} {tx.merchant_name or ''}".lower()
-            if any(ind in desc for ind in _CARD_PAYMENT_INDICATORS):
+            if is_card_payment_descriptor(tx):
                 reasons[tx.id] = "card_payment"  # the paying side
     return reasons
 
@@ -250,8 +249,7 @@ def _is_card_repayment(tx, roles) -> bool:
         return tx.counts_as_override == "card_payment"
     if roles.get(tx.account_id) != AccountRole.SPENDING or tx.transaction_type != "debit":
         return False
-    desc = f"{tx.description or ''} {tx.merchant_name or ''}".lower()
-    return any(ind in desc for ind in _CARD_PAYMENT_INDICATORS)
+    return is_card_payment_descriptor(tx)
 
 
 def _money_out_amount(tx, roles, transfers, exclude_commitments, hide_transfers, hide_card_payments, commitment_keys):

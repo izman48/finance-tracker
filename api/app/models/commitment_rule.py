@@ -84,6 +84,22 @@ class CommitmentRule(Base):
         ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True
     )
 
+    # The credit card this commitment repays, if it is a card repayment
+    # (T-08-8). The summary, forecast and projections tie a commitment to a
+    # card only through this link. `card_link_source`: "auto" = set by the
+    # request-time linker (analytics.card_links), which may redo it; "user" =
+    # set explicitly (web or MCP), never touched by the linker, and that
+    # includes an explicit "no card" (NULL link). NULL = never linked.
+    card_account_id: Mapped[uuid.UUID | None] = mapped_column(
+        # Named so the migration's downgrade can drop it on every database.
+        ForeignKey(
+            "accounts.id", ondelete="SET NULL",
+            name="fk_commitment_rules_card_account_id_accounts",
+        ),
+        nullable=True, index=True,
+    )
+    card_link_source: Mapped[str | None] = mapped_column(String(10), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

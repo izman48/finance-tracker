@@ -4,9 +4,8 @@ import axios from 'axios'
 import AuthShell from '../components/ui/AuthShell'
 import { useAuth } from '../hooks/useAuth'
 import { oauthApi, OAuthRequestDetails } from '../services/api'
-
-const READ = 'finance:read'
-const RULES_WRITE = 'finance:rules.write'
+import ConsentScopes from '../components/oauth/ConsentScopes'
+import { cleanDisplayName, consentScopes } from '../lib/oauthConsent'
 
 type ApiError = { error_description?: string; redirect_to?: string }
 
@@ -28,6 +27,8 @@ export default function OAuthConsentPage() {
   const [details, setDetails] = useState<OAuthRequestDetails | null>(null)
   const [error, setError] = useState('')
   const [allowRules, setAllowRules] = useState(true)
+  // Off by default and never remembered: each connection opts in.
+  const [allowPlanning, setAllowPlanning] = useState(false)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -47,7 +48,7 @@ export default function OAuthConsentPage() {
     setBusy(true)
     setError('')
     try {
-      const scopes = allowRules ? [READ, RULES_WRITE] : [READ]
+      const scopes = consentScopes({ rules: allowRules, planning: allowPlanning })
       const res = await oauthApi.decide(params, approve, scopes)
       window.location.assign(res.data.redirect_to)
     } catch (err) {
@@ -74,7 +75,7 @@ export default function OAuthConsentPage() {
 
   return (
     <AuthShell
-      title={`Connect ${details.client_name}`}
+      title={`Connect ${cleanDisplayName(details.client_name)}`}
       subtitle="An AI assistant is asking to use your nilu. data."
     >
       <div className="space-y-5">
@@ -86,32 +87,12 @@ export default function OAuthConsentPage() {
           </p>
         )}
 
-        <ul className="space-y-3">
-          <li className="flex gap-3">
-            <input type="checkbox" checked disabled className="mt-1 shrink-0 accent-accent" aria-label="Read your finances (required)" />
-            <div className="min-w-0">
-              <p className="text-sm text-slate-100">Read your finances</p>
-              <p className="text-xs text-slate-400">
-                Balances, transactions, spending, forecasts, commitments and rules. It can't move money.
-              </p>
-            </div>
-          </li>
-          <li className="flex gap-3">
-            <input
-              id="allow-rules"
-              type="checkbox"
-              checked={allowRules}
-              onChange={(e) => setAllowRules(e.target.checked)}
-              className="mt-1 shrink-0 accent-accent"
-            />
-            <label htmlFor="allow-rules" className="min-w-0 cursor-pointer">
-              <span className="block text-sm text-slate-100">Add rule packs</span>
-              <span className="block text-xs text-slate-400">
-                Create new categorisation rule packs. It can't edit or delete anything, and you can remove a pack in Rules.
-              </span>
-            </label>
-          </li>
-        </ul>
+        <ConsentScopes
+          allowRules={allowRules}
+          allowPlanning={allowPlanning}
+          onRulesChange={setAllowRules}
+          onPlanningChange={setAllowPlanning}
+        />
 
         <p className="text-xs text-slate-500">
           Whatever it reads is sent to the AI model you're using. You'll return to{' '}

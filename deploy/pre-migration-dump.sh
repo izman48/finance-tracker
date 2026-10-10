@@ -29,5 +29,5 @@ if grep -q '(head)' <<<"$current"; then
 fi
 
 echo "pre-migration: this deploy runs a migration, dumping the database first"
-mkdir -p "$BACKUP_DIR"
+(umask 077; mkdir -p "$BACKUP_DIR")
 ./deploy/pg-dump.sh "$BACKUP_DIR/predeploy_$(date +%Y%m%dT%H%M%S).sql.gz"

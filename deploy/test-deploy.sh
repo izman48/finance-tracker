@@ -120,6 +120,10 @@ if dumps "abc123 (head)" "$DUMP_OK"; then pass "at head: exits 0"; else fail "at
 if dumps "abc122" "$DUMP_OK"; then pass "pending migration: exits 0"; else fail "pending migration failed: $(cat "$TMP/out")"; fi
 [ "$(dump_files)" = 1 ] && pass "pending migration: one dump taken" || fail "pending migration: $(dump_files) dumps"
 dump="$(find "$BACKUP_DIR" -type f | head -1)"
+mode="$(stat -c '%a' "$dump" 2>/dev/null || stat -f '%Lp' "$dump")"
+[ "$mode" = 600 ] && pass "pending migration: dump is owner-only (600)" || fail "dump mode is $mode, not 600"
+dmode="$(stat -c '%a' "$BACKUP_DIR" 2>/dev/null || stat -f '%Lp' "$BACKUP_DIR")"
+[ "$dmode" = 700 ] && pass "pending migration: backup dir is owner-only (700)" || fail "backup dir mode is $dmode, not 700"
 gunzip -c "$dump" 2>/dev/null | grep -q "dump complete" \
   && pass "pending migration: dump holds pg_dump output" || fail "pending migration: dump content wrong"
 

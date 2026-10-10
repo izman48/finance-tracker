@@ -8,7 +8,7 @@ BACKUP_DIR="${BACKUP_DIR:-$HOME/backups}"
 KEEP_DAYS="${KEEP_DAYS:-14}"
 
 cd "$APP_DIR"
-mkdir -p "$BACKUP_DIR"
+(umask 077; mkdir -p "$BACKUP_DIR")
 
 # Refuses an empty or cut-short dump and leaves no file behind.
 ./deploy/pg-dump.sh "$BACKUP_DIR/finance_$(date +%F).sql.gz"

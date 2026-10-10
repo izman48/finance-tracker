@@ -5,6 +5,8 @@
 # dumps: a failed pg_dump, or output that doesn't end with pg_dump's
 # "dump complete" trailer (empty or cut short). On failure no file is left.
 set -euo pipefail
+# Dumps hold emails, password hashes and wrapped keys: owner-only files.
+umask 077
 
 OUT="${1:?usage: pg-dump.sh <out.sql.gz>}"
 cd "$(dirname "$0")/.."

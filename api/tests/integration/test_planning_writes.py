@@ -329,7 +329,9 @@ def test_an_mcp_token_with_the_planning_scope_cannot_use_the_web_write_routes(cl
     ("match_key", "expense:something-else"),
     ("is_payday", True),
     ("direction", "income"),
-    ("source", "detected"),
+    # `source` is allow-listed since T-08-9 (a relabel makes a detected rule
+    # manual, server side only); the commitment's spending account is not.
+    ("account_id", uuid.UUID("00000000-0000-0000-0000-0000000000aa")),
 ])
 @pytest.mark.parametrize("dry_run", [True, False])
 def test_an_apply_that_touches_a_column_outside_the_allow_list_is_refused(db_session, column, value, dry_run):

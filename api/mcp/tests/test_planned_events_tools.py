@@ -118,4 +118,6 @@ def test_remove_refuses_an_item_id_that_is_not_a_uuid(item_id):
     api = FakeApi()
     result = _call(api, "remove_planned_event", {"item_id": item_id, "idempotency_key": "remove-bad-0001"})
     assert result["isError"] is True and "list_planned_events" in result["content"][0]["text"]
-    assert api.calls() == []
+    # Nothing reaches the API at all: the only request is the bearer check
+    # every remote call makes before any tool runs.
+    assert [r.url.path for r in api.requests] == ["/api/v1/oauth/token-info"]

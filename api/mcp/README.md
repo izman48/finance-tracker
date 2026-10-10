@@ -30,6 +30,7 @@ It runs two ways:
 | `commitments` | recurring income/expenses |
 | `accounts` | balances, types, providers |
 | `recent_transactions(page, page_size)` | a page of transactions |
+| `search_transactions(query, frm, to, include_transfers, page, page_size)` | every transaction matching a merchant/description (literal, case-insensitive), with an exact `total_amount` across all pages; UK days, last 90 days by default, max 731 |
 | `rules` | every rule pack and personal rule: pattern, match type/field, category, `counts_as` |
 | `rule_impact` | per rule, `matched` vs `effective` (+ amounts), `shadowed`/`dead` flags, and `gaps` — uncategorized merchants ranked by value |
 | `preview_rule(pattern, match_type, match_field)` | dry-run a candidate rule: how many transactions it would match, with samples |
@@ -166,7 +167,8 @@ pip install -r requirements-dev.txt && pytest
 - **Read-only apart from `create_rule_pack`** — nothing here can move money. The one
   write is additive and reversible by deleting the pack. `preview_rule` is a POST
   only because its input is awkward as a query string; it is a dry run and writes
-  nothing. Keep new tools on the read side unless there's a reason as clear as
+  nothing. `search_transactions` is a POST so the search term stays out of access
+  logs; it is read-only too, and rate limited per user (30 a minute). Keep new tools on the read side unless there's a reason as clear as
   this one.
 - Your login credentials live in the MCP client config (kept locally).
 - Tool results are sent to the LLM you're using — only connect it to a model you're

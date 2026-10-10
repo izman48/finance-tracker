@@ -17,11 +17,10 @@ from app.models import (
     PlannedItem,
 )
 
-from .cadence import commitment_occurrences
 from .commitments import next_payday
 from .common import _d, _load, _today, resolve_roles
 from .planned import planned_events
-from .repayments import repayment_events
+from .repayments import scheduled_outflows
 
 
 def _horizon_end(db: Session, user, horizon: str, today: date) -> date:
@@ -175,15 +174,16 @@ def get_forecast(db: Session, user, horizon: str = "payday") -> dict:
         )
         .all()
     )
-    for rule in confirmed:
+    # Each card's repayment is counted once (see scheduled_outflows).
+    occurrences, repayments = scheduled_outflows(db, user, confirmed, today + timedelta(days=1), end)
+    for rule, occ in occurrences:
         sign = Decimal(1) if rule.direction == CommitmentDirection.INCOME.value else Decimal(-1)
-        for occ in commitment_occurrences(rule, today + timedelta(days=1), end):
-            add(occ, rule.account_id, {
-                "label": rule.label,
-                "amount": sign * _d(rule.amount),
-                "kind": rule.direction,
-            })
-    for r in repayment_events(db, user, today + timedelta(days=1), end):
+        add(occ, rule.account_id, {
+            "label": rule.label,
+            "amount": sign * _d(rule.amount),
+            "kind": rule.direction,
+        })
+    for r in repayments:
         card_setting = settings.get(uuid.UUID(r["account_id"]))
         pay_from = card_setting.pay_from_account_id if card_setting else None
         add(r["due_date"], pay_from,

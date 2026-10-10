@@ -7,11 +7,18 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from app.models import AccountRole, AccountSetting, RepaymentScheduleItem, RepaymentStrategy
+from app.models import (
+    AccountRole,
+    AccountSetting,
+    CommitmentDirection,
+    RepaymentScheduleItem,
+    RepaymentStrategy,
+)
 from app.schemas import MAX_REPAYMENT_INTERVAL_MONTHS
 
-from app.services.balance_sign import credit_owed
+from app.services.balance_sign import credit_owed, names_card
 
+from .cadence import commitment_occurrences
 from .common import _add_months, _d, _load, resolve_roles
 
 
@@ -198,3 +205,58 @@ def repayment_events(db: Session, user, start: date, end: date) -> list[dict]:
             guard += 1
     out.sort(key=lambda r: r["due_date"])
     return out
+
+
+# Far enough to reach the end of any schedule (120 installments, or the
+# 200-step guard on weekly/fixed), so the last due date is the real last one.
+_SCHEDULE_REACH = timedelta(days=366 * 20)
+
+
+def scheduled_outflows(db: Session, user, rules: list, start: date, end: date):
+    """Confirmed-commitment occurrences and card repayment events in
+    [start, end], with each card's repayment counted once.
+
+    Returns (occurrences, repayments): occurrences as (rule, date) pairs,
+    repayments as repayment_events dicts.
+
+    A confirmed expense commitment whose label is a repayment descriptor for
+    exactly one of the user's credit cards ("AMEX", "MONZO FLEX"), when that
+    card has a repayment schedule, is the same money as that card's repayment
+    events, up to the schedule's last due date. For each such card the larger of the two in the window is kept: the
+    events pay off today's balance, the commitment may reflect a bill already
+    building, and under-stating what goes out is the unsafe direction. Any
+    commitment less clearly tied to one card is always counted.
+    """
+    accounts, settings = _load(db, user)
+    roles = resolve_roles(accounts, settings)
+    schedule = repayment_events(db, user, start, start + _SCHEDULE_REACH)
+    last_due: dict[str, date] = {}
+    for r in schedule:
+        last_due[r["account_id"]] = max(r["due_date"], last_due.get(r["account_id"], r["due_date"]))
+    repayments = [r for r in schedule if r["due_date"] <= end]
+    cards = [a for a in accounts if roles[a.id] == AccountRole.CREDIT]
+
+    occurrences: list[tuple] = []
+    overlap: dict[str, list[tuple]] = {}  # card id -> covered (rule, date)
+    for rule in rules:
+        named = (
+            [a for a in cards if names_card(rule.label, a)]
+            if rule.direction == CommitmentDirection.EXPENSE.value else []
+        )
+        # Exactly one of ALL credit cards, and that one has a schedule: a
+        # second, unconfigured card of the same provider could be the payee.
+        card_id = str(named[0].id) if len(named) == 1 and str(named[0].id) in last_due else None
+        for d in commitment_occurrences(rule, start, end):
+            if card_id and d <= last_due[card_id]:
+                overlap.setdefault(card_id, []).append((rule, d))
+            else:
+                occurrences.append((rule, d))
+
+    for card_id, covered in overlap.items():
+        committed = sum((_d(rule.amount) for rule, _ in covered), Decimal(0))
+        repaying = sum((r["amount"] for r in repayments if r["account_id"] == card_id), Decimal(0))
+        if committed > repaying:
+            occurrences.extend(covered)
+            repayments = [r for r in repayments if r["account_id"] != card_id]
+    occurrences.sort(key=lambda o: o[1])
+    return occurrences, repayments

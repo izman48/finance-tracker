@@ -17,6 +17,7 @@ not, so an unverified provider's overpayment is counted as owed.
 from __future__ import annotations
 
 import logging
+import re
 from decimal import Decimal
 
 from app.models import Account
@@ -26,6 +27,21 @@ logger = logging.getLogger(__name__)
 # Observed 2026-10-10 on connected accounts (signs only):
 _OWED_IS_NEGATIVE = frozenset({"MONZO"})  # Monzo credit card: owed < 0
 _OWED_IS_POSITIVE = frozenset({"AMEX", "AMERICAN EXPRESS"})  # Amex card: owed > 0
+
+# How each provider's card repayment starts in a commitment's label (a bank
+# direct-debit descriptor or the user's own name for it), as whole words.
+# Specific to the card, so a commitment can be tied to one account; generic
+# phrases ("credit card") are deliberately absent. "american exp" because banks
+# truncate the descriptor.
+_AMEX = ("amex", "american exp", "american express")
+_REPAYMENT_DESCRIPTORS = {
+    "AMEX": _AMEX,
+    "AMERICAN EXPRESS": _AMEX,
+    "MONZO": ("monzo flex",),
+    "BARCLAYCARD": ("barclaycard",),
+    "BARCLAYS": ("barclaycard",),
+}
+_WORD = re.compile(r"[a-z0-9]+")
 
 # Providers already warned about in this process, so one unverified provider
 # doesn't log on every read (summary, repayments, each net-worth point).
@@ -48,3 +64,13 @@ def credit_owed(account: Account) -> Decimal:
         _warned.add(provider)
         logger.warning("Credit balance sign not verified, counting it as owed: %s", provider)
     return abs(raw)
+
+
+def names_card(text: str, account: Account) -> bool:
+    """True if `text` (a commitment label) is a repayment descriptor for this
+    credit account's card: its first words are one of the provider's phrases,
+    as a bank's direct-debit descriptor or "AMEX" is. A label that only
+    mentions the card ("Gym (paid by Amex)") or merely contains the letters
+    ("CAMEX LTD", "AMEXCO") is not its repayment."""
+    words = " ".join(_WORD.findall((text or "").lower())) + " "
+    return any(words.startswith(d + " ") for d in _REPAYMENT_DESCRIPTORS.get(_provider_key(account), ()))

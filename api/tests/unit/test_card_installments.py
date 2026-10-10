@@ -241,14 +241,21 @@ class TestHorizon:
         assert f["end_balance"] == Decimal("4700.00")  # 5000 - one installment
 
 
-class TestKnownDoubleCount:
-    def test_card_also_confirmed_as_a_commitment_counts_twice_in_summary(self, db_session):
-        """Pins a KNOWN BUG (knowledge/nilu-engineering-lessons.md, double-count
-        trap): summary adds confirmed commitments and repayment events with no
-        dedupe, so a card that is both configured and confirmed as a commitment
-        is committed twice. When this is fixed, this test must change to 300."""
+class TestDoubleCountFixed:
+    def test_card_also_confirmed_as_a_commitment_counts_once_in_summary(self, db_session):
+        """Was the pinned double-count trap (knowledge/nilu-engineering-lessons.md):
+        a configured card that is also a confirmed commitment counted twice.
+        Fixed in T-07-7; full coverage in test_card_repayment_once.py."""
         anchor = svc._today() + timedelta(days=3)
-        user = _flex(db_session, anchor=anchor)
+        user = _user(db_session)
+        _account(db_session, user, "TRANSACTION", "5000", "Current")
+        card = _account(db_session, user, "CREDIT_CARD", "-900", "Flex", "Monzo")
+        db_session.add(AccountSetting(
+            user_id=user.id, account_id=card.id, role="credit",
+            repayment_cadence="every_n_months", repayment_interval_months=1,
+            repayment_anchor_date=anchor, repayment_strategy="installments",
+            repayment_installments=3,
+        ))
         db_session.add(CommitmentRule(
             user_id=user.id, direction="expense", label="Monzo Flex", amount=Decimal("300"),
             cadence="monthly", next_date=anchor,
@@ -256,7 +263,5 @@ class TestKnownDoubleCount:
         ))
         db_session.commit()
         s = svc.get_summary(db_session, user)
-        # No payday configured -> 30-day window: one installment + the commitment.
-        assert s["committed_before_payday"] == Decimal("600.00")
-        # After the fix (T-07-7) this must read:
-        # assert s["committed_before_payday"] == Decimal("300.00")
+        # No payday configured -> 30-day window: one installment, counted once.
+        assert s["committed_before_payday"] == Decimal("300.00")

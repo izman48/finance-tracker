@@ -20,8 +20,11 @@ from app.models.repayment_schedule_item import RepaymentScheduleItem
 from app.models.category_rule import CategoryRule, RulePack, merchant_match_key
 from app.models.asset import Asset, AssetFlow, AssetValuation, ASSET_TYPES
 from app.models.oauth import OAuthAuthorizationCode, OAuthClient, OAuthGrant
+from app.models.audit import AuditEntry, WriteIdempotency
 
 __all__ = [
+    "AuditEntry",
+    "WriteIdempotency",
     "User",
     "BankConnection",
     "Account",

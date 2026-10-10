@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, StrictBool
 
 from app.models.account import AccountType
 from app.models.transaction import TransactionType
@@ -817,3 +817,20 @@ class RepaymentScheduleItemResponse(BaseModel):
     amount: Decimal
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# --- Planning writes (Claude over MCP) ---
+
+
+class PlanningWriteRequest(BaseModel):
+    """Base for every planning write route's body (T-08-3b).
+
+    Unknown keys are refused (no mass assignment: `user_id`, `source`,
+    `match_key`… can never be set this way). `dry_run` defaults to true and
+    must be a JSON boolean, so a "false" string can't slip through.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    dry_run: StrictBool = True
+    idempotency_key: str = Field(pattern=r"^[A-Za-z0-9_-]{8,64}$")

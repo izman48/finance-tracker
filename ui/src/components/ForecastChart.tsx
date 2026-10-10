@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useReducer, useRef, useState } from 'react'
 import {
   Area,
   AreaChart,
@@ -14,6 +14,8 @@ import { gbp0 as gbp, dateDayMonth as shortDate } from '../lib/format'
 import InfoTip from './ui/InfoTip'
 import ForecastSummary, { OVERDRAFT_LINE_LABEL, type AccountBreach } from './ForecastSummary'
 import { EXPLAIN } from '../copy/statExplainers'
+import ForecastError from './forecast/ForecastError'
+import { FORECAST_TIMEOUT_MS, focusAfter, forecastReducer, withTimeout, type ForecastView } from '../lib/forecastLoad'
 
 interface ForecastEvent {
   label: string
@@ -65,14 +67,20 @@ function ForecastTooltip({ active, payload }: any) {
 
 export default function ForecastChart({ refreshKey }: { refreshKey?: number }) {
   const [horizon, setHorizon] = useState('30')
-  const [data, setData] = useState<Forecast | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [attempt, setAttempt] = useState(0)
+  const [view, dispatch] = useReducer(
+    forecastReducer<Forecast>,
+    { status: 'loading' } as ForecastView<Forecast>,
+  )
+  const headingRef = useRef<HTMLHeadingElement>(null)
+  const retryRef = useRef<HTMLButtonElement>(null)
+  const prevView = useRef(view)
 
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
-    analyticsAPI
-      .getForecast(horizon)
+    dispatch({ type: 'start' })
+    // A request that never answers ends in the error state too (F2).
+    withTimeout(analyticsAPI.getForecast(horizon), FORECAST_TIMEOUT_MS)
       .then((res) => {
         if (cancelled) return
         // Decimal fields arrive as strings — coerce for the chart.
@@ -80,21 +88,42 @@ export default function ForecastChart({ refreshKey }: { refreshKey?: number }) {
         f.timeline = f.timeline.map((p) => ({ ...p, balance: Number(p.balance) }))
         f.min_balance = Number(f.min_balance)
         f.overdraft_limit = Number(f.overdraft_limit)
-        setData(f)
+        dispatch({ type: 'loaded', data: f })
       })
-      .catch((e) => console.error('Failed to load forecast', e))
-      .finally(() => !cancelled && setLoading(false))
+      .catch(() => {
+        // Only the spec's sentence is shown. The error object isn't logged
+        // either: it can carry the request URL and the server's detail.
+        console.warn('Forecast failed to load')
+        if (!cancelled) dispatch({ type: 'failed' })
+      })
     return () => {
       cancelled = true
     }
-  }, [horizon, refreshKey])
+  }, [horizon, refreshKey, attempt])
 
+  useEffect(() => {
+    const target = focusAfter(prevView.current, view)
+    if (target === 'heading') headingRef.current?.focus()
+    if (target === 'retry') retryRef.current?.focus()
+    prevView.current = view
+  }, [view])
+
+  const retry = () => {
+    dispatch({ type: 'retry' })
+    setAttempt((a) => a + 1)
+  }
+
+  const data = view.status === 'ready' ? view.data : null
   const hasOverdraft = (data?.overdraft_limit ?? 0) > 0
 
   return (
     <div className="card-pad h-full">
       <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
-        <h2 className="font-display font-semibold text-slate-100 flex items-center gap-1.5">
+        <h2
+          ref={headingRef}
+          tabIndex={-1}
+          className="font-display font-semibold text-slate-100 flex items-center gap-1.5 rounded focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent/60"
+        >
           Where it's going
           <InfoTip text={EXPLAIN.forecast} side="bottom" align="left" />
         </h2>
@@ -111,8 +140,10 @@ export default function ForecastChart({ refreshKey }: { refreshKey?: number }) {
         </div>
       </div>
 
-      {loading || !data ? (
-        <div className="h-64 flex items-center justify-center text-slate-600">Loading forecast…</div>
+      {view.status === 'error' ? (
+        <ForecastError ref={retryRef} retrying={view.retrying} onRetry={retry} />
+      ) : !data ? (
+        <div className="h-64 flex items-center justify-center text-slate-400">Loading forecast…</div>
       ) : (
         <>
           <ForecastSummary data={data} />

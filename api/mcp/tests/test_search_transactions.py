@@ -93,6 +93,20 @@ class TestHttp:
         assert result["isError"] is True
         assert "17" in result["content"][0]["text"]
 
+    @pytest.mark.parametrize("exc", [httpx.ConnectError("refused"), httpx.ReadTimeout("slow")])
+    def test_api_unreachable_is_short_and_has_no_url(self, exc):
+        class Down(FakeApi):
+            def __call__(self, request):
+                if request.url.path.endswith("/banking/transactions/search"):
+                    raise exc
+                return super().__call__(request)
+
+        result = _http_call(Down(), {"query": "tesco"})
+        assert result["isError"] is True
+        text = result["content"][0]["text"]
+        assert text.endswith("Search is unavailable right now. Try again later.")
+        assert "http" not in text and "refused" not in text and "slow" not in text
+
 
 class TestStdio:
     @pytest.mark.anyio

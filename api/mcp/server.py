@@ -142,6 +142,9 @@ def create_server(settings: Settings, api_transport: httpx.AsyncBaseTransport | 
             return await api.post("/banking/transactions/search", payload)
         except httpx.HTTPStatusError as e:
             raise ToolError(_short_error(e.response)) from None
+        except httpx.HTTPError:
+            # Connection errors and timeouts name the internal API URL.
+            raise ToolError("Search is unavailable right now. Try again later.") from None
 
     @mcp.tool()
     async def rules() -> dict:

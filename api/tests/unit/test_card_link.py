@@ -94,6 +94,31 @@ class TestLazyLinking:
         assert _reload(db_session, rule).card_account_id is None
 
 
+class TestAutoLinksFollowTheLabel:
+    """sec review on #98: an auto link must not outlive the label that made it."""
+
+    def test_relabelling_away_from_the_card_counts_both_again(self, db_session):
+        user = _setup(db_session)
+        _amex(db_session, user)
+        rule = _commitment(db_session, user, "AMEX")
+        assert _committed(db_session, user) == ONCE
+        rule = _reload(db_session, rule)
+        rule.label = "Gym"
+        db_session.commit()
+        assert _committed(db_session, user) == BOTH
+        rule = _reload(db_session, rule)
+        assert (rule.card_account_id, rule.card_link_source) == (None, None)
+
+    def test_a_second_card_of_the_provider_unlinks_the_auto_link(self, db_session):
+        user = _setup(db_session)
+        _amex(db_session, user, name="Gold")
+        rule = _commitment(db_session, user, "AMEX")
+        svc.sync_suggestions(db_session, user)
+        _amex(db_session, user, name="Platinum")
+        svc.sync_suggestions(db_session, user)
+        assert _reload(db_session, rule).card_account_id is None
+
+
 class TestCountingUsesOnlyTheStoredLink:
     def test_a_user_link_ties_a_commitment_whatever_its_label(self, db_session):
         user = _setup(db_session)

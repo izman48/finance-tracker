@@ -42,7 +42,8 @@ def add_planned_event(
         # Claude may retry with a fresh key; a second copy would double the
         # money (for income, overstate what's coming in). Nothing is written.
         return {
-            "dry_run": body.dry_run, "duplicate": True, "audit_id": None, "target_kind": "planned_event",
+            "dry_run": body.dry_run, "unchanged": False, "duplicate": True, "audit_id": None,
+            "target_kind": "planned_event",
             "target_id": str(existing.id), "target_label": existing.name, "changes": [],
         }
 

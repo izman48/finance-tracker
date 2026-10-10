@@ -393,3 +393,45 @@ def test_dry_run_comes_only_from_the_validated_body(client, db_session):
     assert res.status_code == 200, res.text
     assert res.json()["dry_run"] is True and res.json()["audit_id"] is None
     assert _counts(db_session) == counts
+
+
+# --- a write that changes nothing --------------------------------------------------
+
+
+def _set_status(commitment_id, status, tool):
+    def apply(db, rule):
+        rule.status = status
+        return rule
+
+    req = WriteRequest(tool=tool, target_kind="commitment", target_id=commitment_id, apply=apply)
+    return req, {"status": status}
+
+
+@pytest.mark.parametrize("status,tool", [
+    ("dismissed", "dismiss_commitment"),   # dismissing an already-dismissed commitment
+    ("confirmed", "update_commitment"),    # re-confirming a confirmed one
+])
+@pytest.mark.parametrize("dry_run", [True, False])
+def test_a_write_that_changes_nothing_records_nothing(db_session, status, tool, dry_run):
+    """No audit row, no idempotency record and nothing to undo; the result is
+    not an error, so the assistant doesn't retry."""
+    user = _user(db_session)
+    cid = _commitment(db_session, user)
+    db_session.execute(text("UPDATE commitment_rules SET status = :s"), {"s": status})
+    db_session.commit()
+    counts = _counts(db_session)
+
+    result = _write(db_session, _caller(user), _set_status(cid, status, tool), dry_run)
+
+    assert result["unchanged"] is True
+    assert result["changes"] == [] and result["audit_id"] is None
+    assert result["dry_run"] is dry_run
+    assert result["target_id"] == str(cid) and result["target_label"] == "Gym"
+    assert _counts(db_session) == counts
+
+
+def test_a_real_change_is_not_marked_unchanged(db_session):
+    user = _user(db_session)
+    cid = _commitment(db_session, user)
+    assert _write(db_session, _caller(user), _set_amount(cid, "45.00"), False)["unchanged"] is False
+    assert _write(db_session, _caller(user), _add_planned(user.id), False, key="key-0002")["unchanged"] is False

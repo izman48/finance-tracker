@@ -12,6 +12,9 @@ Every planning write route builds a `WriteRequest` and calls `run_write`:
 - the diff covers only each target's allow-listed fields, and a write that
   changes any other column of an existing target is refused outright, so no
   change escapes the audit trail and undo.
+- a write that would change nothing (re-confirming a confirmed commitment,
+  dismissing a dismissed one) returns `unchanged: true` and records nothing:
+  no audit row, no idempotency record, nothing to undo.
 - `dry_run` and the idempotency key are read from the route's validated
   `PlanningWriteRequest` body and nowhere else, the same source
   `PlanningWriter` charges the rate limit from.
@@ -99,6 +102,8 @@ def run_write(db: Session, caller: Caller, req: WriteRequest, body: PlanningWrit
             target, label, changes = _change(db, caller, spec, req)
         finally:
             savepoint.rollback()
+        if not _changes_anything(changes):
+            return _unchanged(req, label, dry_run=True)
         return _result(None, None, req.target_kind, label, changes, dry_run=True)
 
     request_hash = _request_hash(req, body)
@@ -107,6 +112,11 @@ def run_write(db: Session, caller: Caller, req: WriteRequest, body: PlanningWrit
         return replay
     try:
         target, label, changes = _change(db, caller, spec, req)
+        if not _changes_anything(changes):
+            # Nothing to record or undo; the key isn't kept either, so a later
+            # call with it that does change something is treated as new.
+            db.rollback()
+            return _unchanged(req, label, dry_run=False)
         entry = AuditEntry(
             user_id=caller.user.id, kind=AUDIT_KIND_WRITE, tool=req.tool, target_kind=req.target_kind,
             target_id=target.id, target_label=label, changes=json.dumps(changes),
@@ -225,9 +235,22 @@ def _entry_result(entry: AuditEntry) -> dict:
                    json.loads(entry.changes), dry_run=False)
 
 
-def _result(audit_id, target_id, target_kind, label, changes, *, dry_run: bool) -> dict:
+def _changes_anything(changes: list[dict]) -> bool:
+    """Context entries (before == after) alone don't make a change."""
+    return any(c["before"] != c["after"] for c in changes)
+
+
+def _unchanged(req: WriteRequest, label, *, dry_run: bool) -> dict:
+    """The answer to a write that would change nothing (e.g. dismissing an
+    already-dismissed commitment): not an error, so the assistant doesn't
+    retry, and no audit row, idempotency record or undo."""
+    return _result(None, req.target_id, req.target_kind, label, [], dry_run=dry_run, unchanged=True)
+
+
+def _result(audit_id, target_id, target_kind, label, changes, *, dry_run: bool, unchanged: bool = False) -> dict:
     return {
         "dry_run": dry_run,
+        "unchanged": unchanged,
         "audit_id": str(audit_id) if audit_id else None,
         "target_kind": target_kind,
         "target_id": str(target_id) if target_id else None,

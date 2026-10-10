@@ -60,10 +60,12 @@ export default function PlannedItems({
                 <div className="font-medium text-slate-200 flex flex-wrap items-center gap-x-2">
                   <span>{it.name}</span>
                   {it.direction === 'income' && <span className="chip-pos">income</span>}
+                  {/* Its real transaction has landed (T-08-7). No detail or link: a match can be wrong. */}
+                  {it.matched_transaction_id && <span className="chip-pos">Paid</span>}
                   {it.changed_by_claude && <ClaudeMarker auditId={it.changed_by_claude.audit_id} />}
                 </div>
                 {it.direction === 'income' && <p className="text-xs text-slate-400">{NOT_COUNTED_TEXT}</p>}
-                <div className={`text-sm tnum ${it.direction === 'income' ? 'text-pos' : 'text-slate-500'}`}>
+                <div className={`text-sm tnum ${it.matched_transaction_id ? 'text-slate-400' : it.direction === 'income' ? 'text-pos' : 'text-slate-500'}`}>
                   {it.direction === 'income' ? '+' : ''}{describe(it)}
                 </div>
               </div>

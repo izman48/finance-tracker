@@ -51,3 +51,20 @@ describe('UpcomingLabel late (L1)', () => {
     expect(h).not.toContain('text-neg')
   })
 })
+
+describe('UpcomingLabel overdue (O1, O2, O6)', () => {
+  const overdueRow = row({ income: false, plannedIncome: false, overdue: { due: '2026-10-05', days: 5 } })
+
+  it('shows the warn chip and the due line, and never "Not counted"', () => {
+    const h = html(overdueRow, true)
+    expect(h).toMatch(/class="chip-warn[^"]*"[^>]*>Overdue</)
+    expect(text(h)).toContain('Due 5 Oct · 5 days overdue')
+    expect(text(h)).not.toContain('Not counted')
+  })
+
+  it('O6: on Home it is plain text, no link', () => {
+    const h = html(overdueRow, false)
+    expect(h).not.toContain('<a')
+    expect(text(h)).toContain('Due 5 Oct · 5 days overdue')
+  })
+})

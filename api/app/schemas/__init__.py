@@ -856,3 +856,30 @@ class PlanningWriteRequest(BaseModel):
 
     dry_run: StrictBool = True
     idempotency_key: str = Field(pattern=r"^[A-Za-z0-9_-]{8,64}$")
+
+
+class AuditChange(BaseModel):
+    field: str
+    before: str | bool | int | None
+    after: str | bool | int | None
+
+
+class AuditEntryResponse(BaseModel):
+    """One write Claude made, for the "Changes made by Claude" screen."""
+
+    id: uuid.UUID
+    created_at: datetime
+    tool: str
+    batch_id: uuid.UUID | None
+    client_name: str | None  # from the grant stored on the row, cleaned
+    connection_created_at: datetime | None
+    target_kind: str
+    target_id: uuid.UUID
+    target_label: str
+    changes: list[AuditChange]
+    undone_at: datetime | None
+
+
+class AuditPage(BaseModel):
+    items: list[AuditEntryResponse]
+    next_cursor: uuid.UUID | None

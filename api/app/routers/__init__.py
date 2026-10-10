@@ -5,6 +5,7 @@ from app.routers.analytics import router as analytics_router
 from app.routers.rules import router as rules_router
 from app.routers.assets import router as assets_router
 from app.routers.oauth import router as oauth_router, well_known_router
+from app.routers.audit import router as audit_router
 
 __all__ = [
     "health_router",
@@ -15,4 +16,5 @@ __all__ = [
     "assets_router",
     "oauth_router",
     "well_known_router",
+    "audit_router",
 ]

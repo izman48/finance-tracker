@@ -12,7 +12,7 @@ transaction, so two workers can't both apply. It stores a keyed hash of the
 request and the audit id, never the payload.
 """
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, ForeignKey, Index, String, UniqueConstraint, false, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -46,7 +46,11 @@ class AuditEntry(Base):
     batch_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
     undoes_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("audit_entries.id"), nullable=True)
     undone_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Set in Python (microseconds) rather than by the database, so writes in
+    # one transaction or second still order newest first for the list.
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=func.now()
+    )
 
 
 class WriteIdempotency(Base):

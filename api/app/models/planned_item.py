@@ -63,6 +63,9 @@ class PlannedItem(Base):
         ForeignKey("transactions.id", ondelete="SET NULL"), nullable=True, index=True
     )
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Who made it: "web" (the app, including pay-on-finance plans) or "mcp"
+    # (Claude). Claude may only remove its own one-off items (T-08-6).
+    created_via: Mapped[str] = mapped_column(String(10), default="web", server_default="web")
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

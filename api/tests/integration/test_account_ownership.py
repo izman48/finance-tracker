@@ -127,7 +127,7 @@ class World:
         """Raw rows (ciphertext included) of every table these routes write."""
         tables = [
             "commitment_rules", "planned_items", "account_settings",
-            "repayment_schedule_items", "accounts",
+            "repayment_schedule_items", "accounts", "audit_entries", "write_idempotency",
         ]
         return {
             t: sorted(map(tuple, self.db.execute(text(f"SELECT * FROM {t}")).fetchall()), key=str)
@@ -171,6 +171,11 @@ CASES: dict[tuple[str, str, str], Case] = {
     ),
     ("DELETE", f"{API}/analytics/accounts/{{account_id}}/repayments/{{item_id}}", "account_id"): lambda w, acc: w.client.delete(
         f"{API}/analytics/accounts/{acc}/repayments/{uuid.uuid4()}",
+    ),
+    ("POST", f"{API}/planning/planned-events", "account_id"): lambda w, acc: w.client.post(
+        f"{API}/planning/planned-events",
+        json={"name": "Holiday", "amount": "500.00", "date": date.today().isoformat(), "direction": "expense",
+              "account_id": acc, "dry_run": False, "idempotency_key": "ownership-case-1"},
     ),
 }
 

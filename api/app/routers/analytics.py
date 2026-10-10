@@ -45,6 +45,7 @@ from decimal import Decimal
 
 from app.services import analytics_service
 from app.services.analytics import card_links
+from app.services.planning_writes import claude_markers
 
 logger = logging.getLogger(__name__)
 
@@ -319,13 +320,18 @@ def skip_commitment(
 def list_planned_items(
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
-) -> list[PlannedItem]:
-    return (
+) -> list[PlannedItemResponse]:
+    items = (
         db.query(PlannedItem)
         .filter(PlannedItem.user_id == current_user.id, PlannedItem.active.is_(True))
         .order_by(PlannedItem.start_date)
         .all()
     )
+    markers = claude_markers(db, current_user.id, "planned_event", [i.id for i in items])
+    return [
+        PlannedItemResponse.model_validate(i).model_copy(update={"changed_by_claude": markers.get(i.id)})
+        for i in items
+    ]
 
 
 @router.post("/planned-items", response_model=PlannedItemResponse, status_code=status.HTTP_201_CREATED)

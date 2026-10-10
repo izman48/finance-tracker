@@ -13,6 +13,7 @@ from app.models import (
     CommitmentDirection,
     CommitmentRule,
     CommitmentStatus,
+    PlannedItem,
 )
 
 from .cadence import commitment_occurrences
@@ -21,6 +22,7 @@ from app.services.balance_sign import credit_owed as credit_owed_for
 
 from .common import _d, _load, _today, resolve_roles
 from .net_worth import assets_total
+from .planned import planned_events
 from .repayments import repayment_events, scheduled_outflows
 
 
@@ -64,7 +66,12 @@ def get_summary(db: Session, user) -> dict:
         )
         .all()
     )
-    committed = _outflow(db, user, expense_rules, today, window_end)
+    planned = (
+        db.query(PlannedItem)
+        .filter(PlannedItem.user_id == user.id, PlannedItem.active.is_(True))
+        .all()
+    )
+    committed = _outflow(db, user, expense_rules, today, window_end) + _planned_out(planned, today, window_end)
 
     safe_to_spend = max(Decimal(0), available_cash - committed)
 
@@ -83,7 +90,10 @@ def get_summary(db: Session, user) -> dict:
         (_d(r.amount) * len(commitment_occurrences(r, today, horizon)) for r in income_rules),
         Decimal(0),
     )
-    out_30 = _outflow(db, user, expense_rules, today, horizon)
+    # Planned income is left out on purpose: it never raises safe-to-spend or
+    # savable until the credit lands (owner decision D1; an injected "refund
+    # coming" must not unlock spending). It still shows in the forecast.
+    out_30 = _outflow(db, user, expense_rules, today, horizon) + _planned_out(planned, today, horizon)
     savable = max(Decimal(0), available_cash + income_30 - out_30)
 
     manual_assets = assets_total(db, user)
@@ -113,6 +123,15 @@ def _outflow(db: Session, user, expense_rules: list, start, end) -> Decimal:
     return (
         sum((_d(rule.amount) for rule, _ in occurrences), Decimal(0))
         + sum((r["amount"] for r in repayments), Decimal(0))
+    )
+
+
+def _planned_out(planned: list, start, end) -> Decimal:
+    """Planned expenses dated in [start, end] (the third source of money out,
+    beside commitments and card repayments). Income is never counted here."""
+    return sum(
+        (-amount for item in planned for _, amount in planned_events(item, start, end) if amount < 0),
+        Decimal(0),
     )
 
 

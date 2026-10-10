@@ -99,7 +99,9 @@ def create_server(settings: Settings, api_transport: httpx.AsyncBaseTransport | 
 
         An `account_breaches` entry with `floor` 0 means that account has no overdraft limit set: going below £0 there is unarranged borrowing, usually the costlier case (fees, returned payments). Report it as seriously as going past a limit; never describe it as a small dip.
 
-        A one-off planned event drops out once the transaction that pays it lands (same direction, within 7 days and max(£1, 2%) of the amount; transfers between the user's own accounts and card repayments never count). An unpaid planned expense stays in the timeline, even long after its date, until it is paid or removed. Expected income that hasn't arrived 7 days after its date is listed in `late_planned` and is not in the balance: say it's late rather than counting on it."""
+        A one-off planned event drops out once the transaction that pays it lands (same direction, within 7 days and max(£1, 2%) of the amount; transfers between the user's own accounts and card repayments never count). An unpaid planned expense stays in the timeline, even long after its date, until it is paid or removed. Expected income that hasn't arrived 7 days after its date is listed in `late_planned` and is not in the balance: say it's late rather than counting on it.
+
+        `late_income` lists recurring income whose latest payment hasn't arrived (label, amount, expected_date, commitment_id). It is not in the timeline or balances: say it's late rather than counting on it."""
         return await api.get("/analytics/forecast", {"horizon": horizon})
 
     @mcp.tool(annotations=READ_ONLY)
@@ -125,7 +127,9 @@ def create_server(settings: Settings, api_transport: httpx.AsyncBaseTransport | 
 
     @mcp.tool(annotations=READ_ONLY)
     async def commitments() -> list:
-        """Recurring income and expenses (detected suggestions + confirmed), with amount, cadence and next date."""
+        """Recurring income and expenses (detected suggestions + confirmed), with amount, cadence and next date.
+
+        An income with `late: true` didn't arrive: its latest payment, due on `expected_date`, hasn't landed (more than 3 days past, and no matching credit; money moved in from the user's own accounts doesn't count). Late income is never counted in safe-to-spend, savable or the forecast balance: tell the user it's late rather than counting on it."""
         return await api.get("/analytics/commitments")
 
     @mcp.tool(annotations=READ_ONLY)

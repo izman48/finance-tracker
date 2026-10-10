@@ -48,6 +48,7 @@ from app.services import analytics_service
 from app.services.analytics import card_links
 from app.services.analytics.common import _today
 from app.services.analytics.planned_matching import planned_states
+from app.services.analytics.late_income import late_incomes
 from app.services.planning_writes import claude_markers
 
 logger = logging.getLogger(__name__)
@@ -218,7 +219,8 @@ def list_commitments(
     current_user: CurrentUserOrMcpRead,
     db: Annotated[Session, Depends(get_db)],
 ) -> list[CommitmentResponse]:
-    """Detected + user commitments to review. Refreshes suggestions first."""
+    """Detected + user commitments to review. Refreshes suggestions first.
+    Income whose latest payment hasn't arrived is flagged `late` (T-08-10)."""
     analytics_service.sync_suggestions(db, current_user)
     rules = (
         db.query(CommitmentRule)
@@ -230,10 +232,13 @@ def list_commitments(
         .all()
     )
     markers = claude_markers(db, current_user.id, "commitment", [r.id for r in rules])
+    late = late_incomes(db, current_user, _today())
     return [
-        CommitmentResponse.model_validate(r).model_copy(
-            update={"changed_by_claude": ClaudeMarker(**markers[r.id]) if r.id in markers else None}
-        )
+        CommitmentResponse.model_validate(r).model_copy(update={
+            "changed_by_claude": ClaudeMarker(**markers[r.id]) if r.id in markers else None,
+            "late": r.id in late,
+            "expected_date": late[r.id].expected_date if r.id in late else None,
+        })
         for r in rules
     ]
 

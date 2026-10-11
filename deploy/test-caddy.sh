@@ -210,7 +210,14 @@ UPSTREAM_PY='
 import http.server, sys
 class H(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
-        self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        if self.headers.get("Transfer-Encoding", "").lower() == "chunked":
+            while True:  # read every chunk, as uvicorn does
+                size = int(self.rfile.readline().split(b";")[0], 16)
+                self.rfile.read(size + 2)
+                if size == 0:
+                    break
+        else:
+            self.rfile.read(int(self.headers.get("Content-Length", 0)))
         self.send_response(200); self.send_header("Content-Length", "2"); self.end_headers(); self.wfile.write(b"ok")
 http.server.ThreadingHTTPServer(("", int(sys.argv[1])), H).serve_forever()'
 docker pull -q "$UPSTREAM_IMAGE" >/dev/null
@@ -232,12 +239,33 @@ post_status() {
 }
 for _ in $(seq 1 30); do post_status /api/v1/auth/login 10 | grep -q 'HTTP/1.1 200' && break; sleep 0.5; done
 
+# post_chunked_status <path> <chunks of 64 KiB> — the same, but with
+# Transfer-Encoding: chunked and no Content-Length (sec and eng-b on #118: the
+# cap must hold when the size isn't declared up front).
+post_chunked_status() {
+  docker exec "$APP" sh -c "
+    head -c 65536 /dev/zero | tr '\\0' a > /tmp/chunk
+    {
+      printf 'POST $1 HTTP/1.1\\r\\nHost: app.test\\r\\nContent-Type: application/x-www-form-urlencoded\\r\\nTransfer-Encoding: chunked\\r\\nConnection: close\\r\\n\\r\\n'
+      i=0; while [ \$i -lt $2 ]; do printf '10000\\r\\n'; cat /tmp/chunk; printf '\\r\\n'; i=\$((i + 1)); done
+      printf '0\\r\\n\\r\\n'; sleep 3
+    } | nc 127.0.0.1 8082 | head -n 1" 2>/dev/null | tr -d '\r'
+}
+
 MB=1048576
 for path in /api/v1/auth/login /api/v1/oauth/token /mcp; do
   got="$(post_status "$path" $((2 * MB)))"
   [ "$got" = "HTTP/1.1 413 Request Entity Too Large" ] \
     && pass "a 2 MB POST to $path is refused with 413" || fail "2 MB POST to $path (got: '$got')"
 done
+for path in /api/v1/auth/login /mcp; do
+  got="$(post_chunked_status "$path" 32)"
+  [ "$got" = "HTTP/1.1 413 Request Entity Too Large" ] \
+    && pass "a 2 MiB chunked POST to $path is refused with 413" || fail "2 MiB chunked POST to $path (got: '$got')"
+done
+got="$(post_chunked_status /api/v1/rules/packs/bulk 4)"
+[ "$got" = "HTTP/1.1 200 OK" ] \
+  && pass "a 256 KiB chunked body still reaches the API" || fail "256 KiB chunked body (got: '$got')"
 # The largest legitimate body (a 200-rule bulk pack, worst case escaping, see
 # the PR) is well under the cap; a body just under it still gets through.
 # (Caddy's "1MB" is 1,000,000 bytes.)

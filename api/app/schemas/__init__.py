@@ -958,7 +958,7 @@ def _refuse_float(value):
 # The bounds every amount Claude writes shares (T-08-6, T-08-9): more than 0,
 # at most 1,000,000, at most 2 decimal places, never a JSON float.
 PlanningAmount = Annotated[
-    Decimal, BeforeValidator(_refuse_float), Field(gt=0, le=PLANNED_EVENT_MAX_AMOUNT, decimal_places=2)
+    Decimal, Field(gt=0, le=PLANNED_EVENT_MAX_AMOUNT, decimal_places=2), BeforeValidator(_refuse_float)
 ]
 
 

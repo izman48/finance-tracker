@@ -40,7 +40,7 @@ from types import SimpleNamespace
 
 from sqlalchemy.orm import Session
 
-from app.models import AuditEntry, CommitmentDirection, CommitmentRule, CommitmentStatus
+from app.models import AuditEntry, CommitmentDirection, CommitmentRule, CommitmentStatus, PlannedItem
 from app.models.audit import AUDIT_KIND_WRITE
 from app.services.planning_writes import TARGETS
 
@@ -366,6 +366,44 @@ def before_claude(rule: CommitmentRule, rows: list[AuditEntry], applied: frozens
             if c["field"] in live[entry.id]:
                 setattr(view, c["field"], _value(c["field"], c["before"]))
     return view
+
+
+def planned_removal_states(db: Session, user_id: uuid.UUID) -> dict[uuid.UUID, tuple[str, PlannedItem]]:
+    """{audit id: (`pending` | `kept`, item)} for Claude's not-undone removals
+    of a planned *expense* (T-08-21b part 2, sec). Removing one would raise
+    safe-to-spend, so it keeps counting until kept. Planned income never
+    counts (D1), so removing it holds nothing."""
+    rows = (
+        db.query(AuditEntry)
+        .filter(
+            AuditEntry.user_id == user_id, AuditEntry.kind == AUDIT_KIND_WRITE,
+            AuditEntry.target_kind == "planned_event", AuditEntry.tool == "remove_planned_event",
+            AuditEntry.client_id.is_not(None), AuditEntry.undone_at.is_(None),
+        )
+        .all()
+    )
+    if not rows:
+        return {}
+    items = {
+        i.id: i for i in db.query(PlannedItem).filter(
+            PlannedItem.user_id == user_id, PlannedItem.id.in_({r.target_id for r in rows}),
+        )
+    }
+    out = {}
+    for row in rows:
+        item = items.get(row.target_id)
+        if item is None or item.direction != CommitmentDirection.EXPENSE.value:
+            continue
+        if row.kept_at is not None:
+            out[row.id] = (KEPT, item)
+        elif not item.active:
+            out[row.id] = (PENDING, item)
+    return out
+
+
+def held_removed_planned(db: Session, user_id: uuid.UUID) -> list[PlannedItem]:
+    """Planned expenses Claude removed that still count until kept."""
+    return [item for state, item in planned_removal_states(db, user_id).values() if state == PENDING]
 
 
 def record_user_edit(db: Session, user_id: uuid.UUID, commitment_id: uuid.UUID, fields) -> None:

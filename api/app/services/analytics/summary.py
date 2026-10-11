@@ -24,7 +24,7 @@ from .common import _d, _load, _today, resolve_roles
 from .net_worth import assets_total
 from .planned import planned_events
 from .planned_matching import planned_states
-from app.services.claude_keep import claude_rows, counted_commitments, held_back
+from app.services.claude_keep import claude_rows, counted_commitments, held_back, held_removed_planned
 from .repayments import repayment_events, scheduled_outflows
 
 
@@ -77,15 +77,18 @@ def get_summary(db: Session, user) -> dict:
     )
     expense = CommitmentDirection.EXPENSE.value
     expense_to_payday = counted_commitments(db, user.id, expense, money_in(today, window_end))
-    planned = (
+    active_planned = (
         db.query(PlannedItem)
         .filter(PlannedItem.user_id == user.id, PlannedItem.active.is_(True))
         .all()
     )
+    # A planned expense Claude removed still counts until kept (T-08-21b).
+    planned = active_planned + held_removed_planned(db, user.id)
     states = planned_states(db, user, planned, today)
-    planned_to_payday = _planned_out(planned, states, today, window_end)
-    committed = _outflow(db, user, expense_to_payday, today, window_end) + planned_to_payday
-    committed_as_is = _outflow(db, user, expense_now, today, window_end) + planned_to_payday
+    committed = _outflow(db, user, expense_to_payday, today, window_end) + _planned_out(planned, states, today, window_end)
+    committed_as_is = (
+        _outflow(db, user, expense_now, today, window_end) + _planned_out(active_planned, states, today, window_end)
+    )
     safe_pending_keep = max(Decimal(0), committed - committed_as_is)
 
     safe_to_spend = max(Decimal(0), available_cash - committed)

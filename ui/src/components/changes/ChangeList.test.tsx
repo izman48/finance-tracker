@@ -104,4 +104,10 @@ describe('ChangeList', () => {
     expect(text(render([item({ keep: 'pending', ...undone })]))).not.toContain('Not counted in savable')
     expect(text(render([item({ keep: 'kept', kept_at: '2026-10-11T10:00:00Z', ...undone })]))).not.toContain('Kept')
   })
+
+  it('9.3: a pending dismissal of an income has the dismissal line, not the savable one', () => {
+    const t = text(render([item({ tool: 'dismiss_commitment', keep: 'pending', changes: [{ field: 'status', before: 'confirmed', after: 'dismissed' }] })]))
+    expect(t).toContain('Claude dismissed this. It still counts in your safe to spend until you keep this change.')
+    expect(t).not.toContain('Not counted in savable')
+  })
 })

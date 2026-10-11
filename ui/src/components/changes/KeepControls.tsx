@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import type { UndoFailure } from '../../lib/changes'
-import { canKeep, KEEP_PENDING_TEXT, savableNote } from '../../lib/keep'
+import { canKeep, pendingText, savableNote } from '../../lib/keep'
 import type { Commitment } from '../../types'
 import { CHANGED_SINCE_TEXT, RATE_LIMIT_TEXT, UNDO_FAILED_TEXT, UNDO_UNCERTAIN_TEXT } from './UndoControls'
 
@@ -87,7 +87,8 @@ type Props = {
 export function CommitmentKeep({ c, keep, undo, onKeep, onUndo }: Props) {
   const pending = canKeep(c)
   if (!pending && keep.failure !== 'changed' && undo.failure !== 'changed') return null
-  const undoName = `Claude’s change to “${c.label}”`
+  // Undo takes back every pending change Claude made to it, newest first.
+  const undoName = `Claude’s changes to “${c.label}”`
   const undoText = undo.keeping
     ? { visible: 'Undoing…', name: 'Undoing: ' }
     : undo.failure
@@ -97,7 +98,7 @@ export function CommitmentKeep({ c, keep, undo, onKeep, onUndo }: Props) {
     <div className="basis-full min-w-0">
       {pending && (
         <>
-          <p className="text-xs text-slate-400">{KEEP_PENDING_TEXT}</p>
+          <p className="text-xs text-slate-400">{pendingText(c.status === 'dismissed')}</p>
           <div className="mt-2 flex flex-col sm:flex-row gap-2">
             <KeepButton actionKey={`keep-${c.id}`} label={c.label} state={keep} onKeep={() => onKeep(c)} />
             {undo.failure !== 'changed' && (

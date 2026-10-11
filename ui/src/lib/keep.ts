@@ -8,8 +8,13 @@ import type { Commitment } from '../types'
 import { gbp } from './format'
 
 export const KEEP_PENDING_TEXT = 'Not counted in savable until you keep it.'
+// A dismissed income is held in the safe-to-spend window instead (ux spec 9.3, T-08-21).
+const KEEP_DISMISSED_TEXT = 'Claude dismissed this. It still counts in your safe to spend until you keep this change.'
 
-export const keepToast = (label: string) => `Kept “${label}”. It now counts in your savable.`
+export const pendingText = (dismissed: boolean) => (dismissed ? KEEP_DISMISSED_TEXT : KEEP_PENDING_TEXT)
+
+export const keepToast = (label: string, dismissed = false) =>
+  dismissed ? `Kept “${label}”. Your safe to spend now reflects it.` : `Kept “${label}”. It now counts in your savable.`
 
 /** The line under savable (KP10), or null when nothing is held back. */
 export function savableNote(total: number | string | undefined): string | null {
@@ -24,17 +29,18 @@ export function canKeep(c: Commitment): boolean {
 }
 
 /**
- * Keep each row in turn. A refusal before anything was kept is passed on
- * as it came (so "nothing was changed" holds); after one was kept it is
- * re-thrown without a status, which the row shows as an unknown outcome.
+ * Keep (oldest first) or undo (newest first) each row in turn. A refusal
+ * before anything went through is passed on as it came (so "nothing was
+ * changed" holds); after one went through it is re-thrown without a
+ * status, which the row shows as an unknown outcome.
  */
-export async function keepAll(ids: string[], post: (id: string) => Promise<unknown>): Promise<void> {
+export async function postEach(ids: string[], post: (id: string) => Promise<unknown>): Promise<void> {
   for (const [i, id] of ids.entries()) {
     try {
       await post(id)
     } catch (err) {
       if (i === 0) throw err
-      throw new Error('partly kept')
+      throw new Error('partly done')
     }
   }
 }

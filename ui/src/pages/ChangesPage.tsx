@@ -133,7 +133,7 @@ export default function ChangesPage() {
   const keepState = (it: AuditItem) => rowActions.stateOf(`keep-${it.id}`)
   const keepChange = (it: AuditItem) =>
     rowActions.run(`keep-${it.id}`, () => withTimeout(auditAPI.keep(it.id), AUDIT_TIMEOUT_MS), {
-      toast: keepToast(it.target_label),
+      toast: keepToast(it.target_label, it.tool === 'dismiss_commitment'),
       focusId: `change-${it.id}`,
       alertId: `change-${it.id}-keep-alert`,
     })

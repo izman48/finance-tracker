@@ -112,8 +112,15 @@ describe('CommitmentKeep (the commitment row, 9.1)', () => {
   it('KP1: pending line, then Keep, then Undo, each named with the label', () => {
     const h = row(income())
     expect(text(h)).toContain(KEEP_PENDING_TEXT)
-    expect(names(h)).toEqual(['Keep this change: Salary', 'Undo: Claude’s change to “Salary”'])
+    expect(names(h)).toEqual(['Keep this change: Salary', 'Undo: Claude’s changes to “Salary”'])
     expect(h.indexOf('Keep this change')).toBeLessThan(h.indexOf('>Undo<'))
+  })
+
+  it('9.3: a dismissed income gets the dismissal line, Keep and Undo', () => {
+    const h = row(income({ status: 'dismissed' }))
+    expect(text(h)).toContain('Claude dismissed this. It still counts in your safe to spend until you keep this change.')
+    expect(text(h)).not.toContain(KEEP_PENDING_TEXT)
+    expect(names(h)).toEqual(['Keep this change: Salary', 'Undo: Claude’s changes to “Salary”'])
   })
 
   it('KP1/KP13: nothing once kept, when not held, or on an expense', () => {
@@ -134,10 +141,10 @@ describe('CommitmentKeep (the commitment row, 9.1)', () => {
 
   it('Undo on the row: Undoing… while pending; its failures use the undo copy', () => {
     const busy = row(income(), idle, { keeping: true, failure: null })
-    expect(names(busy)).toContain('Undoing: Claude’s change to “Salary”')
+    expect(names(busy)).toContain('Undoing: Claude’s changes to “Salary”')
     const failed = row(income(), idle, { keeping: false, failure: 'other' })
     expect(text(failed)).toContain("Couldn't undo this. Nothing was changed. Try again.")
-    expect(names(failed)).toContain('Try again: undo Claude’s change to “Salary”')
+    expect(names(failed)).toContain('Try again: undo Claude’s changes to “Salary”')
   })
 })
 

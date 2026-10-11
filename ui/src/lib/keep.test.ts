@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canKeep, keepAll, keepToast, savableNote, KEEP_PENDING_TEXT } from './keep'
+import { canKeep, postEach, keepToast, pendingText, savableNote, KEEP_PENDING_TEXT } from './keep'
 import { failureFromError } from './changes'
 import type { Commitment } from '../types'
 
@@ -28,6 +28,14 @@ describe('keep copy', () => {
     expect(keepToast('Salary')).toBe('Kept “Salary”. It now counts in your savable.')
   })
 
+  it('9.3: a dismissal has its own pending line and toast', () => {
+    expect(pendingText(false)).toBe(KEEP_PENDING_TEXT)
+    expect(pendingText(true)).toBe(
+      'Claude dismissed this. It still counts in your safe to spend until you keep this change.',
+    )
+    expect(keepToast('Salary', true)).toBe('Kept “Salary”. Your safe to spend now reflects it.')
+  })
+
   it('KP10: the savable note shows the total as money, and only above zero', () => {
     expect(savableNote('500.00')).toBe("£500.00 of income Claude added isn't counted in savable until you keep it.")
     expect(savableNote('0')).toBeNull()
@@ -38,6 +46,10 @@ describe('keep copy', () => {
 describe('canKeep (KP1, KP13)', () => {
   it('a pending income with rows to keep', () => {
     expect(canKeep(commitment())).toBe(true)
+  })
+
+  it('9.3: a dismissed income still pending keep', () => {
+    expect(canKeep(commitment({ status: 'dismissed' }))).toBe(true)
   })
 
   it('not once kept, when nothing is held, or with nothing to post', () => {
@@ -51,13 +63,13 @@ describe('canKeep (KP1, KP13)', () => {
   })
 })
 
-describe('keepAll', () => {
+describe('postEach (keep oldest first, undo newest first)', () => {
   const ok = () => Promise.resolve()
   const status = (s: number) => Promise.reject({ response: { status: s } })
 
   it('keeps every row, oldest first', async () => {
     const posted: string[] = []
-    await keepAll(['a1', 'a2'], (id) => {
+    await postEach(['a1', 'a2'], (id) => {
       posted.push(id)
       return ok()
     })
@@ -65,12 +77,12 @@ describe('keepAll', () => {
   })
 
   it('KP5/KP7: a refused first row passes its status through (nothing was kept)', async () => {
-    const err = await keepAll(['a1', 'a2'], () => status(409)).catch((e) => e)
+    const err = await postEach(['a1', 'a2'], () => status(409)).catch((e) => e)
     expect(failureFromError(err)).toBe('changed')
   })
 
-  it('KP6: a refusal after a row was kept is an unknown outcome, never "nothing was changed"', async () => {
-    const err = await keepAll(['a1', 'a2'], (id) => (id === 'a1' ? ok() : status(500))).catch((e) => e)
+  it('KP6: a refusal after a row went through is an unknown outcome, never "nothing was changed"', async () => {
+    const err = await postEach(['a1', 'a2'], (id) => (id === 'a1' ? ok() : status(500))).catch((e) => e)
     expect(failureFromError(err)).toBe('unknown')
   })
 })

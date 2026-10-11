@@ -47,7 +47,7 @@ from decimal import Decimal
 from app.services import analytics_service
 from app.services.analytics import card_links
 from app.services.claude_keep import (
-    PENDING, applied_dismissals, claude_rows, commitment_keep, pending_ids, record_user_edit,
+    PENDING, applied_dismissals, claude_rows, commitment_keep, held_values, keep_kind, pending_ids, record_user_edit,
 )
 from app.services.analytics.common import _today
 from app.services.analytics.planned_matching import planned_states
@@ -248,7 +248,9 @@ def list_commitments(
             "changed_by_claude": ClaudeMarker(**markers[r.id]) if r.id in markers else None,
             "late": r.id in late,
             **dict(zip(("keep", "kept_at"), keeps[r.id])),
+            "keep_kind": keep_kind(r) if keeps[r.id][0] else None,
             "keep_audit_ids": pending_ids(r, claude.get(r.id, []), applied),
+            **(held_values(r, claude[r.id], applied) if keeps[r.id][0] == PENDING else {}),
             "expected_date": late[r.id].expected_date if r.id in late else None,
         })
         for r in rules

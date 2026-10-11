@@ -28,12 +28,11 @@ from app.models import (
     Asset,
     CommitmentDirection,
     CommitmentRule,
-    CommitmentStatus,
     PlannedItem,
 )
 from app.models.asset import LIABILITY_TYPES
 
-from app.services.claude_keep import claude_rows, held_back
+from app.services.claude_keep import counted_commitments
 from .cadence import commitment_occurrences
 from .common import _add_months, _d, _today
 from .net_worth import net_worth_history
@@ -72,34 +71,22 @@ def _projected_commitments(db: Session, user, today: date) -> list[CommitmentRul
     PR 91 double count. A commitment less clearly tied to one card stays a
     bill, so when we can't tell, the outgoing is kept.
     """
-    rules = (
-        db.query(CommitmentRule)
-        .filter(
-            CommitmentRule.user_id == user.id,
-            CommitmentRule.status == CommitmentStatus.CONFIRMED.value,
-        )
-        .all()
-    )
-    repayments = card_repayment_rule_ids(db, user, rules, today)
-    rules = [r for r in rules if r.id not in repayments]
-    # Strict parity (D4, T-08-20): an income Claude raised or confirmed is
-    # projected as it was before Claude until the user keeps the change (a
-    # Claude-confirmed suggestion is left out), or as it is if that's lower.
-    income_ids = [r.id for r in rules if r.direction == CommitmentDirection.INCOME.value]
-    claude = claude_rows(db, user.id, income_ids)
-    if not claude:
-        return rules
+    # No Claude change may make the projection look better until the user
+    # keeps it (T-08-20, T-08-21b): an income counts the lower of now and
+    # before-Claude (a Claude-confirmed suggestion is left out), an expense
+    # the higher (a Claude dismissal or cut waits), over the next 12 months.
     year_out = _add_months(today, 12)
 
     def worth(version) -> Decimal:
         return _d(version.amount) * len(commitment_occurrences(version, today, year_out))
 
-    out = []
-    for r in rules:
-        counted = held_back(r, claude[r.id], worth) if r.id in claude else r
-        if counted is not None:
-            out.append(counted)
-    return out
+    rules = [
+        version
+        for direction in (CommitmentDirection.INCOME.value, CommitmentDirection.EXPENSE.value)
+        for version in counted_commitments(db, user.id, direction, worth)
+    ]
+    repayments = card_repayment_rule_ids(db, user, rules, today)
+    return [r for r in rules if r.id not in repayments]
 
 
 def derived_contribution(db: Session, user) -> dict:

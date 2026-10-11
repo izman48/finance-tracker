@@ -251,7 +251,7 @@ def create_server(settings: Settings, api_transport: httpx.AsyncBaseTransport | 
 
     @mcp.tool(annotations=write_tool(destructive=True))
     async def remove_planned_event(item_id: str, idempotency_key: str, dry_run: bool = True) -> dict:
-        """Remove a one-off planned event that an assistant added (created_via `mcp` in list_planned_events). Items made in the app can't be removed here. It's a soft removal: the user can undo it in the app under "Changes made by Claude".
+        """Remove a one-off planned event that an assistant added (created_via `mcp` in list_planned_events). Items made in the app can't be removed here. It's a soft removal: the user can undo it in the app under "Changes made by Claude". A removed planned expense still counts in their safe to spend until they keep the change in the app: tell them so.
 
         With dry_run=true (the default) nothing changes: you get a preview. Show it to the user and get their explicit confirmation before calling again with dry_run=false. `idempotency_key` is 8-64 characters of letters, digits, - or _, new for each change you intend.
 
@@ -279,7 +279,7 @@ def create_server(settings: Settings, api_transport: httpx.AsyncBaseTransport | 
         batch_id: str = "",
         dry_run: bool = True,
     ) -> dict:
-        """Fix a commitment (an id from the commitments tool): its name, amount, how often, next date, the credit card it repays, or confirm a suggestion. Only the fields you pass change; the direction (income/expense) can't be changed. If you raise an income, confirm a suggested one, or bring one forward or make it more frequent, it doesn't count in the user's safe-to-spend window or savable until they keep the change in the app ("Keep this change"): tell them so. `next_date` can't be in the past.
+        """Fix a commitment (an id from the commitments tool): its name, amount, how often, next date, the credit card it repays, or confirm a suggestion. Only the fields you pass change; the direction (income/expense) can't be changed. Nothing you change raises the user's safe to spend or savable until they keep it in the app ("Keep this change"): raising, confirming or rescheduling an income, or lowering a bill, moving it later, making it less frequent or linking it to a card, keeps counting as before until then. Tell them so. `next_date` can't be in the past.
 
         `amount` is a positive string with up to 2 decimals ("12.99"), at most 1,000,000. `cadence` is weekly|monthly|every_n_months|custom_days; every_n_months needs `interval_months` (1-24) and custom_days needs `interval_days` (1-366). `next_date` is YYYY-MM-DD, from today to 5 years ahead. `status` can only be "confirmed" (to confirm a suggested commitment, e.g. rent paid by transfer); use dismiss_commitment to dismiss one. `card_account_id` is a credit card from the accounts tool that this commitment repays; `clear_card=true` says it repays no card. `idempotency_key` is 8-64 characters of letters, digits, - or _: new for each change you intend, reused only to retry that same change.
 
@@ -311,7 +311,7 @@ def create_server(settings: Settings, api_transport: httpx.AsyncBaseTransport | 
     async def dismiss_commitment(
         commitment_id: str, idempotency_key: str, batch_id: str = "", dry_run: bool = True,
     ) -> dict:
-        """Dismiss a commitment (an id from the commitments tool) that is wrong or a duplicate, so it stops counting. Dismissing the income that sets payday doesn't shorten the user's safe-to-spend window until they keep the change in the app. The user can undo it in the app under "Changes made by Claude". To merge duplicates, see update_commitment's `batch_id`.
+        """Dismiss a commitment (an id from the commitments tool) that is wrong or a duplicate, so it stops counting once the user keeps the change in the app: a dismissed bill still counts in their safe to spend until then, and dismissing the income that sets payday doesn't shorten the safe-to-spend window until then. The user can undo it in the app under "Changes made by Claude". To merge duplicates, see update_commitment's `batch_id`.
 
         With dry_run=true (the default) nothing changes: you get a preview. Show it to the user and get their explicit confirmation before calling again with dry_run=false. `idempotency_key` is 8-64 characters of letters, digits, - or _, new for each change you intend.
 

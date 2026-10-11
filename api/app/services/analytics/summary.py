@@ -24,7 +24,7 @@ from .common import _d, _load, _today, resolve_roles
 from .net_worth import assets_total
 from .planned import planned_events
 from .planned_matching import planned_states
-from app.services.claude_keep import claude_rows, held_back
+from app.services.claude_keep import claude_rows, counted_commitments, held_back, held_removed_planned
 from .repayments import repayment_events, scheduled_outflows
 
 
@@ -58,23 +58,38 @@ def get_summary(db: Session, user) -> dict:
     payday = next_payday(db, user, today)
     window_end = committed_window_end(db, user, today)
 
-    # Confirmed expense commitments due before the next payday.
-    expense_rules = (
+    # Confirmed expense commitments due before the next payday. No Claude
+    # change may raise safe-to-spend until the user keeps it (T-08-21b, D5):
+    # a bill Claude dismissed, lowered or moved later counts the higher of
+    # now and before-Claude; what that holds back is reported for the UI.
+    def money_in(start, end):
+        return lambda r: _d(r.amount) * len(commitment_occurrences(r, start, end))
+
+    confirmed = CommitmentStatus.CONFIRMED.value
+    expense_now = (
         db.query(CommitmentRule)
         .filter(
             CommitmentRule.user_id == user.id,
             CommitmentRule.direction == CommitmentDirection.EXPENSE.value,
-            CommitmentRule.status == CommitmentStatus.CONFIRMED.value,
+            CommitmentRule.status == confirmed,
         )
         .all()
     )
-    planned = (
+    expense = CommitmentDirection.EXPENSE.value
+    expense_to_payday = counted_commitments(db, user.id, expense, money_in(today, window_end))
+    active_planned = (
         db.query(PlannedItem)
         .filter(PlannedItem.user_id == user.id, PlannedItem.active.is_(True))
         .all()
     )
+    # A planned expense Claude removed still counts until kept (T-08-21b).
+    planned = active_planned + held_removed_planned(db, user.id)
     states = planned_states(db, user, planned, today)
-    committed = _outflow(db, user, expense_rules, today, window_end) + _planned_out(planned, states, today, window_end)
+    committed = _outflow(db, user, expense_to_payday, today, window_end) + _planned_out(planned, states, today, window_end)
+    committed_as_is = (
+        _outflow(db, user, expense_now, today, window_end) + _planned_out(active_planned, states, today, window_end)
+    )
+    safe_pending_keep = max(Decimal(0), committed - committed_as_is)
 
     safe_to_spend = max(Decimal(0), available_cash - committed)
 
@@ -85,7 +100,7 @@ def get_summary(db: Session, user) -> dict:
         .filter(
             CommitmentRule.user_id == user.id,
             CommitmentRule.direction == CommitmentDirection.INCOME.value,
-            CommitmentRule.status == CommitmentStatus.CONFIRMED.value,
+            CommitmentRule.status == confirmed,
         )
         .all()
     )
@@ -95,7 +110,7 @@ def get_summary(db: Session, user) -> dict:
     claude = claude_rows(db, user.id, [r.id for r in income_rules])
 
     def in_window(r) -> Decimal:
-        if r.status != CommitmentStatus.CONFIRMED.value:
+        if r.status != confirmed:
             return Decimal(0)
         return _d(r.amount) * len(commitment_occurrences(r, today, horizon))
 
@@ -110,7 +125,8 @@ def get_summary(db: Session, user) -> dict:
     # Planned income is left out on purpose: it never raises safe-to-spend or
     # savable until the credit lands (owner decision D1; an injected "refund
     # coming" must not unlock spending). It still shows in the forecast.
-    out_30 = _outflow(db, user, expense_rules, today, horizon) + _planned_out(planned, states, today, horizon)
+    expense_30 = counted_commitments(db, user.id, expense, money_in(today, horizon))
+    out_30 = _outflow(db, user, expense_30, today, horizon) + _planned_out(planned, states, today, horizon)
     savable = max(Decimal(0), available_cash + income_30 - out_30)
 
     manual_assets = assets_total(db, user)
@@ -126,6 +142,7 @@ def get_summary(db: Session, user) -> dict:
         "safe_to_spend": safe_to_spend,
         "savable": savable,
         "savable_pending_keep_total": pending_keep,
+        "safe_to_spend_pending_keep_total": safe_pending_keep,
         "next_payday": payday,
         # Show upcoming card repayments over a display horizon, independent of the
         # payday window — so a bill due just after payday is still visible.

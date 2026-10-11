@@ -156,7 +156,7 @@ def test_the_list_shows_the_callers_writes_newest_first_decrypted(client, db_ses
     assert row["undone_at"] is None and row["batch_id"] is None
     assert set(row) == {
         "id", "created_at", "tool", "batch_id", "client_name", "connection_created_at",
-        "target_kind", "target_id", "target_label", "changes", "undone_at", "keep", "kept_at",
+        "target_kind", "target_id", "target_label", "changes", "undone_at", "keep", "keep_kind", "kept_at",
     }
 
 

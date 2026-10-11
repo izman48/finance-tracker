@@ -18,7 +18,7 @@ permissions:
 jobs:
   npm:
     runs-on: ubuntu-latest
-    container: node:20
+    container: node:24
     defaults:
       run:
         working-directory: ui

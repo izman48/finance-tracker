@@ -37,3 +37,6 @@ ui/dist/
 .coverage
 htmlcov/
 coverage.xml
+
+# TypeScript incremental build caches
+*.tsbuildinfo

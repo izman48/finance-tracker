@@ -42,3 +42,12 @@ describe('UpcomingLabel', () => {
     expect(text(html(row(), false))).not.toContain('Changed by Claude')
   })
 })
+
+describe('UpcomingLabel late (L1)', () => {
+  it('shows the warn chip and the expected/late line, no alarm red', () => {
+    const h = html(row({ late: { expected: '2026-10-05', days: 5 }, income: true, plannedIncome: false }), true)
+    expect(h).toMatch(/class="chip-warn[^"]*"[^>]*>Late</)
+    expect(text(h)).toContain('Expected 5 Oct · 5 days late · Not counted until it arrives.')
+    expect(h).not.toContain('text-neg')
+  })
+})

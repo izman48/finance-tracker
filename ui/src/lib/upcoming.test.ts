@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildUpcoming } from './upcoming'
+import { buildUpcoming, upcomingAmount, upcomingShowsDate } from './upcoming'
 import type { Commitment, PlannedItem } from '../types'
 
 const today = '2026-10-10'
@@ -40,5 +40,48 @@ describe('buildUpcoming', () => {
     const rows = buildUpcoming([], [], [planned({ direction: 'income', name: 'Refund' })], today)
     expect(rows[0]).toMatchObject({ income: true, plannedIncome: true })
     expect(buildUpcoming([commitment({ direction: 'income' })], [], [], today)[0].plannedIncome).toBeFalsy()
+  })
+})
+
+describe('late income in coming-up (L1, L4)', () => {
+  it('lists late income above every future row, most overdue first, with its expected date', () => {
+    const rows = buildUpcoming(
+      [
+        commitment({ id: 'gym', label: 'Gym', next_date: '2026-10-11' }),
+        commitment({ id: 'sal', label: 'Income A', direction: 'income', next_date: '2026-11-03', late: true, expected_date: '2026-10-03' }),
+      ],
+      [],
+      [planned({ id: 'ref', name: 'Refund', direction: 'income', start_date: '2026-10-01', late: true })],
+      today,
+      10,
+    )
+    expect(rows.map((r) => [r.label, r.date, r.late?.days])).toEqual([
+      ['Refund', '2026-10-01', 9],
+      ['Income A', '2026-10-03', 7],
+      ['Gym', '2026-10-11', undefined],
+      ['Income A', '2026-11-03', undefined],
+    ])
+  })
+
+  it('L1: a late row has no + and is not shown as money you have', () => {
+    const [late] = buildUpcoming([commitment({ direction: 'income', late: true, expected_date: '2026-10-03' })], [], [], today)
+    expect(upcomingAmount(late)).toEqual({ sign: '', tone: 'text-slate-400' })
+    const [future] = buildUpcoming([commitment({ direction: 'income' })], [], [], today)
+    expect(upcomingAmount(future)).toEqual({ sign: '+', tone: 'text-pos' })
+    expect(upcomingAmount({ ...future, income: false })).toEqual({ sign: '', tone: 'text-slate-100' })
+  })
+
+  it('L4: once the API says it is no longer late, the row is gone', () => {
+    const rows = buildUpcoming([commitment({ direction: 'income', late: false, expected_date: null, next_date: '2026-11-03' })], [], [], today)
+    expect(rows.every((r) => !r.late)).toBe(true)
+  })
+})
+
+describe('late rows show their date once (ux nit)', () => {
+  it('a late row leaves the date to its "Expected" line', () => {
+    const [late] = buildUpcoming([commitment({ direction: 'income', late: true, expected_date: '2026-10-03' })], [], [], today)
+    expect(upcomingShowsDate(late)).toBe(false)
+    const [future] = buildUpcoming([commitment()], [], [], today)
+    expect(upcomingShowsDate(future)).toBe(true)
   })
 })

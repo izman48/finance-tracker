@@ -254,10 +254,28 @@ def test_an_expense_paid_long_ago_stays_paid(client, db_session):
     assert w.listed()[str(item)]["overdue"] is False
 
 
-def test_a_recently_overdue_expense_is_not_yet_flagged_overdue(client, db_session):
+@pytest.mark.parametrize("days_ago,overdue", [(3, False), (4, True)])
+def test_overdue_after_a_three_day_grace(client, db_session, days_ago, overdue):
+    """Lead decision: the same 3-day grace as late income (bank posting lag)."""
     w = World(client, db_session)
-    item = w.planned("120.00", TODAY - timedelta(days=5))
-    assert w.listed()[str(item)]["overdue"] is False
+    item = w.planned("120.00", TODAY - timedelta(days=days_ago))
+    assert w.listed()[str(item)]["overdue"] is overdue
+
+
+def test_a_recurring_planned_item_is_never_flagged_overdue_by_its_start_date(client, db_session):
+    """ux on #114: `overdue` belongs to an occurrence actually past due. A
+    recurring item started 40 days ago has its next payment ahead, so it
+    isn't overdue (recurring and plan items aren't matched per occurrence)."""
+    w = World(client, db_session)
+    def make():
+        item = PlannedItem(user_id=w.user.id, name="Gym", direction="expense", kind="recurring",
+                           cadence="monthly", start_date=TODAY - timedelta(days=40), amount=Decimal("30"))
+        db_session.add(item)
+        db_session.commit()
+        return item.id
+    item = w.as_user(make)
+    listed = w.listed()[str(item)]
+    assert listed["overdue"] is False and listed["late"] is False
 
 
 # --- name overlap (lead's option A on #108) ------------------------------------------

@@ -48,8 +48,9 @@ LATE_AFTER_DAYS = 7
 # Income this far past its date is no longer listed as late (it's history).
 INCOME_LOOKBACK_DAYS = 60
 # An unpaid expense this far past its date is flagged "overdue, not seen
-# paid". It keeps counting either way: outgoings are never understated.
-OVERDUE_AFTER_DAYS = 60
+# paid": the same grace as late income, for bank posting lag (lead,
+# 2026-10-11). Display only: it keeps counting either way.
+OVERDUE_AFTER_DAYS = 3
 # Transactions are scanned back to the oldest item's date, but no further
 # than this. An expense older than that can't be seen paid, so it stays due
 # (the safe side) until the user removes it.

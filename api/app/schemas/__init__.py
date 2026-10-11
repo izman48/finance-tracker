@@ -848,7 +848,7 @@ class PlannedItemResponse(BaseModel):
     # forecast and safe-to-spend), and whether expected income is late (T-08-7).
     matched_transaction_id: uuid.UUID | None = None
     late: bool = False
-    overdue: bool = False  # an expense long past its date and not seen paid (still counted)
+    overdue: bool = False  # a one-off expense >3 days past its date, not seen paid (still counted)
     # The latest change Claude made to it that is still in effect (ux A3).
     changed_by_claude: "ClaudeMarker | None" = None
 

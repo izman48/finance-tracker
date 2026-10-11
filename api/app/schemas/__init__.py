@@ -553,6 +553,9 @@ class BankSyncConnectionResult(BaseModel):
     status: Literal["synced", "reconnect", "failed", "not_attempted"]
     accounts_synced: int
     transactions_synced: int
+    # Accounts whose transactions couldn't be fetched (a card the bank
+    # refuses or doesn't offer, a timeout); the others still synced (T-08-24).
+    accounts_skipped: int = 0
 
 
 class BankSyncResponse(BaseModel):

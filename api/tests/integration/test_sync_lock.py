@@ -118,7 +118,7 @@ def test_a_sync_error_is_fixed_words_never_the_exception(client, db_session, tru
 
     monkeypatch.setattr(truelayer_service, "sync_accounts", boom)
     response = client.post("/api/v1/banking/sync/accounts")
-    assert response.status_code == 500
+    assert response.status_code == 502  # never a 500 (T-08-24)
     detail = response.json()["detail"]
     assert "PLANTED" not in detail and "truelayer.com" not in detail
     assert "MONZO: couldn't sync right now" in detail

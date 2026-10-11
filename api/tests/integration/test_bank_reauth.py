@@ -177,7 +177,8 @@ class TestSyncWithExpiredConsent:
 
         response = client.post("/api/v1/banking/sync/accounts")
 
-        assert response.status_code == 500
+        # Never a 500 (T-08-24): an upstream failure is a 502.
+        assert response.status_code == 502
         # Fixed words, not TrueLayer's error (T-08-22): details go to the logs.
         assert "temporarily_unavailable" not in response.json()["detail"]
         assert "couldn't sync right now" in response.json()["detail"]

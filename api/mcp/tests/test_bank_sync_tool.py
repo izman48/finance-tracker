@@ -129,6 +129,7 @@ async def test_is_a_non_destructive_write_and_explains_itself():
     assert hints.openWorldHint is True
     text = tool.description
     assert "not_attempted" in text
+    assert "accounts_skipped" in text  # T-08-24
     assert "if this times out, check sync_status before refreshing again" in text.lower()
     assert "10 minutes" in text and "24 hours" not in text
     assert "sync_status" in text

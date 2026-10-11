@@ -8,8 +8,10 @@ audit trail: Claude's writes are the rows made through an MCP grant
 (`client_id` set) that are not undone; keeping stamps `kept_at`.
 
 A hand edit is not keeping (owner, Q-D4). But a field the user has since set
-by hand is the user's value, not Claude's: a change is only "in effect" for
-a field while the commitment still holds the value Claude wrote (ux KP14).
+by hand in the app is the user's value, not Claude's (ux KP14). That is
+*recorded*: the web edit stamps the field on Claude's pending rows
+(`user_set_fields`). It is never inferred from the stored value, because
+sync rolls a past next_date forward on its own (sec on #121).
 
 Savable counts the *smaller* of the commitment as it is and as it was before
 Claude's pending changes, so a change that brings in less counts at once.
@@ -77,24 +79,48 @@ def _raising(entry: AuditEntry) -> list[dict]:
     return out
 
 
-def keep_state(rule: CommitmentRule, entry: AuditEntry) -> str | None:
-    """`pending`, `kept`, or None when D4 doesn't apply to this write."""
-    if rule is None or rule.direction != CommitmentDirection.INCOME.value or entry.client_id is None:
-        return None
-    if entry.undone_at is not None:
-        return None
-    raising = _raising(entry)
-    if not raising:
-        return None
-    if entry.kept_at is not None:
-        return KEPT
-    in_effect = any(getattr(rule, c["field"]) == _value(c["field"], c["after"]) for c in raising)
-    return PENDING if in_effect else None
+def _live_fields(rows: list[AuditEntry]) -> dict[uuid.UUID, set[str]]:
+    """{row id: the money fields of that Claude write still in effect}.
+
+    Walking newest first, a field stops being Claude's once the user set it
+    by hand afterwards, or a newer Claude change to it was kept (the user
+    accepted that value instead). A newer *pending* change doesn't settle an
+    older one: both revert, newest first."""
+    settled: set[str] = set()
+    out = {}
+    for row in reversed(rows):
+        fields = {c["field"] for c in json.loads(row.changes) if c["field"] in MONEY_FIELDS}
+        user_set = set(row.user_set_fields or [])
+        out[row.id] = fields - user_set - settled
+        settled |= user_set
+        if row.kept_at is not None:
+            settled |= fields
+    return out
+
+
+def keep_states(rule: CommitmentRule | None, rows: list[AuditEntry]) -> dict[uuid.UUID, str | None]:
+    """{row id: `pending`, `kept`, or None (D4 doesn't apply)} for Claude's
+    not-undone writes to one income commitment, oldest first."""
+    live = _live_fields(rows)
+    out = {}
+    for row in rows:
+        out[row.id] = None
+        if rule is None or rule.direction != CommitmentDirection.INCOME.value or row.client_id is None:
+            continue
+        raising = _raising(row)
+        if not raising:
+            continue
+        if row.kept_at is not None:
+            out[row.id] = KEPT
+        elif any(c["field"] in live[row.id] for c in raising):
+            out[row.id] = PENDING
+    return out
 
 
 def commitment_keep(rule: CommitmentRule, rows: list[AuditEntry]) -> tuple[str | None, object]:
     """(keep, kept_at) for a commitment: pending if any of Claude's writes is."""
-    states = [(keep_state(rule, r), r.kept_at) for r in rows]
+    by_id = keep_states(rule, rows)
+    states = [(by_id[r.id], r.kept_at) for r in rows]
     if any(s == PENDING for s, _ in states):
         return PENDING, None
     kept = [at for s, at in states if s == KEPT]
@@ -121,14 +147,34 @@ def held_back(rule: CommitmentRule, rows: list[AuditEntry], value) -> object | N
 
 def before_claude(rule: CommitmentRule, rows: list[AuditEntry]) -> SimpleNamespace:
     """The commitment's money fields as they were before Claude's pending
-    (not kept) writes, walking newest first and reverting a field only while
-    it still holds the value that write set."""
+    (not kept) writes, walking newest first and reverting each field that is
+    still Claude's (`_live_fields`)."""
+    live = _live_fields(rows)
     view = SimpleNamespace(**{f: getattr(rule, f) for f in MONEY_FIELDS})
     for entry in reversed(rows):
         if entry.kept_at is not None:
             continue
         for c in json.loads(entry.changes):
-            field = c["field"]
-            if field in MONEY_FIELDS and getattr(view, field) == _value(field, c["after"]):
-                setattr(view, field, _value(field, c["before"]))
+            if c["field"] in live[entry.id]:
+                setattr(view, c["field"], _value(c["field"], c["before"]))
     return view
+
+
+def record_user_edit(db: Session, user_id: uuid.UUID, commitment_id: uuid.UUID, fields) -> None:
+    """A web edit set these fields by hand: from now on they are the user's,
+    not Claude's, on every pending Claude change to this commitment. Not
+    keeping (Q-D4): the other fields stay pending. Caller commits."""
+    touched = set(fields) & set(MONEY_FIELDS)
+    if not touched:
+        return
+    rows = (
+        db.query(AuditEntry)
+        .filter(
+            AuditEntry.user_id == user_id, AuditEntry.kind == AUDIT_KIND_WRITE,
+            AuditEntry.target_kind == "commitment", AuditEntry.target_id == commitment_id,
+            AuditEntry.client_id.is_not(None), AuditEntry.undone_at.is_(None), AuditEntry.kept_at.is_(None),
+        )
+        .all()
+    )
+    for row in rows:
+        row.user_set_fields = sorted(set(row.user_set_fields or []) | touched)

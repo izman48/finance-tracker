@@ -1057,8 +1057,10 @@ class UpdateCommitmentRequest(PlanningWriteRequest):
     def _date_window(cls, v: date | None) -> date | None:
         if v is not None:
             today = date.today()
-            if not today - timedelta(days=365) <= v <= _add_years(today, 5):
-                raise ValueError("must be within a year ago and five years ahead")
+            # Never in the past (sec on #121): a past date would be rolled on
+            # by sync, and there's no legitimate reason for Claude to set one.
+            if not today <= v <= _add_years(today, 5):
+                raise ValueError("must be from today to five years ahead")
         return v
 
     @model_validator(mode="after")

@@ -2,8 +2,8 @@
 
 `AuditEntry` is append-only: rows are inserted and never deleted, and the
 only later changes are `undone_at` on a write when an undo row (kind `undo`)
-is added for it, and `kept_at` when the user keeps a Claude change in
-the app (T-08-20). The label and the before/after values copy names and
+is added for it, `kept_at` when the user keeps a Claude change in
+the app, and `user_set_fields` when they edit a field it changed (T-08-20). The label and the before/after values copy names and
 amounts from DEK-encrypted columns, so they are DEK-encrypted too. Who made
 the change (`grant_id`, `client_id`) comes from the verified token.
 
@@ -15,7 +15,7 @@ request and the audit id, never the payload.
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, UniqueConstraint, false, func
+from sqlalchemy import JSON, DateTime, ForeignKey, Index, String, UniqueConstraint, false, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -50,6 +50,10 @@ class AuditEntry(Base):
     # When the user kept this Claude change in the app (T-08-20, D4).
     # Until then an income it raised doesn't raise savable.
     kept_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Fields of this Claude change the user has since set by hand in the app
+    # (a web edit stamps them). Recorded, never inferred from values: sync
+    # rolling a date forward is not the user's choice (sec on #121).
+    user_set_fields: Mapped[list | None] = mapped_column(JSON, nullable=True)
     # Set in Python (microseconds) rather than by the database, so writes in
     # one transaction or second still order newest first for the list.
     created_at: Mapped[datetime] = mapped_column(

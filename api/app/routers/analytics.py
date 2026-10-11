@@ -46,7 +46,7 @@ from decimal import Decimal
 
 from app.services import analytics_service
 from app.services.analytics import card_links
-from app.services.claude_keep import claude_rows, commitment_keep
+from app.services.claude_keep import claude_rows, commitment_keep, record_user_edit
 from app.services.analytics.common import _today
 from app.services.analytics.planned_matching import planned_states
 from app.services.analytics.late_income import late_incomes
@@ -316,6 +316,9 @@ def update_commitment(
         rule.card_link_source = card_links.USER
     for field, value in updates.items():
         setattr(rule, field, value)
+    # The fields set here are now the user's, not Claude's (T-08-20). This
+    # is not keeping Claude's other changes (owner, Q-D4).
+    record_user_edit(db, current_user.id, rule.id, updates.keys())
     db.commit()
     db.refresh(rule)
     return rule

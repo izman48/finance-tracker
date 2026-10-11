@@ -20,7 +20,7 @@ from app.core.security import CurrentUser
 from app.models import AuditEntry, CommitmentRule, OAuthClient, OAuthGrant
 from app.models.audit import AUDIT_KIND_WRITE
 from app.schemas import AuditEntryResponse, AuditPage
-from app.services.claude_keep import KEPT, PENDING, keep_state
+from app.services.claude_keep import KEPT, PENDING, claude_rows, keep_states
 from app.services.planning_writes import undo_write
 
 router = APIRouter(prefix="/audit", tags=["audit"])
@@ -99,14 +99,19 @@ def _response(row: AuditEntry, client_name: str | None, connected_at, keep: str 
 
 
 def _keep_states(db: Session, user_id, rows: list[AuditEntry]) -> dict:
-    """{audit id: keep state} for Claude's writes to commitments (T-08-20)."""
+    """{audit id: keep state} for Claude's writes to commitments (T-08-20).
+    A row's state depends on its siblings (later kept changes, hand edits),
+    so each commitment's whole Claude history is read."""
     ids = {r.target_id for r in rows if r.target_kind == "commitment"}
     if not ids:
         return {}
     commitments = {
         c.id: c for c in db.query(CommitmentRule).filter(CommitmentRule.user_id == user_id, CommitmentRule.id.in_(ids))
     }
-    return {r.id: keep_state(commitments.get(r.target_id), r) for r in rows if r.target_kind == "commitment"}
+    out = {}
+    for target_id, history in claude_rows(db, user_id, ids).items():
+        out.update(keep_states(commitments.get(target_id), history))
+    return out
 
 
 @router.post("/{audit_id}/keep", response_model=AuditEntryResponse)
@@ -127,14 +132,7 @@ def keep_change(
     )
     if entry is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Change not found")
-    rule = None
-    if entry.target_kind == "commitment":
-        rule = (
-            db.query(CommitmentRule)
-            .filter(CommitmentRule.id == entry.target_id, CommitmentRule.user_id == current_user.id)
-            .first()
-        )
-    state = keep_state(rule, entry)
+    state = _keep_states(db, current_user.id, [entry]).get(entry.id)
     if state is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="There is nothing to keep for this change.")
     if state == PENDING:

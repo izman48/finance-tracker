@@ -1,6 +1,6 @@
-"""When the user kept a Claude change in the app (T-08-20).
+"""When the user kept a Claude change, and what they set by hand since (T-08-20).
 
-Additive: one nullable column; the previous release ignores it.
+Additive: two nullable columns; the previous release ignores them.
 
 Revision ID: 5f7b38f4dc78
 Revises: 004fdf1183b6
@@ -19,7 +19,9 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     op.add_column("audit_entries", sa.Column("kept_at", sa.DateTime(timezone=True), nullable=True))
+    op.add_column("audit_entries", sa.Column("user_set_fields", sa.JSON(), nullable=True))
 
 
 def downgrade() -> None:
+    op.drop_column("audit_entries", "user_set_fields")
     op.drop_column("audit_entries", "kept_at")

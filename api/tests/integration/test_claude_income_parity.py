@@ -265,3 +265,75 @@ def test_a_claude_cut_shows_in_the_projections_at_once(client, db_session):
     before = _projection(w)
     w.claude_update(cid, amount="600.00")
     assert _projection(w)[0] < before[0]
+
+
+# --- hand edits are recorded, not inferred (sec on #121) --------------------------
+
+
+def test_a_change_to_the_date_that_is_not_a_web_edit_keeps_it_pending(client, db_session):
+    """sec on #121: sync advances a past next_date on every commitments load,
+    so a stored date that no longer equals Claude's value is not proof the
+    user overrode it. Only a recorded web edit is."""
+    w = World(client, db_session)
+    def make():
+        rule = CommitmentRule(
+            user_id=w.user.id, direction="income", label="Income A", amount=Decimal("1000.00"),
+            cadence="monthly", next_date=TODAY + timedelta(days=40), source="manual", status="confirmed",
+        )
+        db_session.add(rule)
+        db_session.commit()
+        return rule.id
+    cid = w.as_user(make)
+    assert w.savable() == Decimal("500.00")  # nothing due within 30 days
+    w.claude_update(cid, next_date=(TODAY + timedelta(days=2)).isoformat())
+    assert w.savable() == Decimal("500.00")
+    # The stored date moves on without a web edit (as sync does once a date passes).
+    def move():
+        db_session.get(CommitmentRule, cid).next_date = TODAY + timedelta(days=3)
+        db_session.commit()
+    w.as_user(move)
+    assert w.savable() == Decimal("500.00")
+    assert w.commitment(cid)["keep"] == "pending"
+
+
+def test_a_web_edit_is_recorded_on_the_pending_change(client, db_session):
+    from app.models import AuditEntry
+
+    w = World(client, db_session)
+    cid = w.income("1000.00")
+    audit_id = w.claude_update(cid, amount="1500.00")
+    client.patch(f"{API}/analytics/commitments/{cid}", json={"amount": "1800.00"}, headers=_bearer(w.web))
+    row = w.as_user(lambda: db_session.get(AuditEntry, uuid.UUID(audit_id)))
+    assert row.user_set_fields == ["amount"]
+
+
+def test_a_web_edit_back_to_claudes_value_still_counts_as_the_users(client, db_session):
+    """Recorded, not inferred: the user typing Claude's number is the user's choice."""
+    w = World(client, db_session)
+    cid = w.income("1000.00")
+    w.claude_update(cid, amount="1500.00")
+    client.patch(f"{API}/analytics/commitments/{cid}", json={"amount": "1500.00"}, headers=_bearer(w.web))
+    assert w.savable() == Decimal("2000.00")
+    assert w.commitment(cid)["keep"] is None
+
+
+def test_a_kept_newer_change_settles_an_older_pending_one_on_the_same_field(client, db_session):
+    w = World(client, db_session)
+    cid = w.income("1000.00")
+    w.claude_update(cid, amount="1500.00")
+    w.keep(w.claude_update(cid, amount="2500.00"))
+    assert w.savable() == Decimal("3000.00")
+    assert w.commitment(cid)["keep"] == "kept"
+
+
+def test_mcp_refuses_a_next_date_in_the_past(client, db_session):
+    w = World(client, db_session)
+    cid = w.income("1000.00")
+    w.n += 1
+    res = client.post(
+        f"{API}/planning/commitments/{cid}/update",
+        json={"next_date": (TODAY - timedelta(days=1)).isoformat(), "dry_run": False,
+              "idempotency_key": "past-date-0001"},
+        headers=_bearer(w.mcp),
+    )
+    assert res.status_code == 422

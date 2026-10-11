@@ -101,6 +101,24 @@ def commitment_keep(rule: CommitmentRule, rows: list[AuditEntry]) -> tuple[str |
     return (KEPT, max(kept)) if kept else (None, None)
 
 
+def held_back(rule: CommitmentRule, rows: list[AuditEntry], value) -> object | None:
+    """The version of an income to count while Claude's changes to it are
+    pending: whichever of now and before-Claude `value(version)` rates lower,
+    or None if that is "not a confirmed commitment" (it counts nothing)."""
+    before = before_claude(rule, rows)
+    confirmed = CommitmentStatus.CONFIRMED.value
+    now_worth = value(rule) if rule.status == confirmed else Decimal(0)
+    before_worth = value(before) if before.status == confirmed else Decimal(0)
+    if before_worth >= now_worth:
+        return rule if rule.status == confirmed else None
+    if before.status != confirmed:
+        return None
+    return SimpleNamespace(
+        id=rule.id, direction=rule.direction, label=rule.label, account_id=rule.account_id,
+        **{f: getattr(before, f) for f in MONEY_FIELDS},
+    )
+
+
 def before_claude(rule: CommitmentRule, rows: list[AuditEntry]) -> SimpleNamespace:
     """The commitment's money fields as they were before Claude's pending
     (not kept) writes, walking newest first and reverting a field only while

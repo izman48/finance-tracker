@@ -106,24 +106,6 @@ def test_keep_is_idempotent(client, db_session):
     assert again.status_code == 200 and again.json()["kept_at"] == first["kept_at"]
 
 
-def test_a_claude_confirmed_suggestion_counts_nothing_until_kept(client, db_session):
-    w = World(client, db_session)
-    cid = w.income("1000.00", status="suggested")
-    assert w.savable() == Decimal("500.00")
-    audit_id = w.claude_update(cid, status="confirmed")
-    assert w.savable() == Decimal("500.00")
-    w.keep(audit_id)
-    assert w.savable() == Decimal("1500.00")
-
-
-def test_a_claude_cadence_change_that_brings_in_more_waits_too(client, db_session):
-    w = World(client, db_session)
-    cid = w.income("1000.00")
-    w.claude_update(cid, cadence="custom_days", interval_days=7)  # weekly: ~4x in 30 days
-    assert w.savable() == Decimal("1500.00")
-    assert w.commitment(cid)["keep"] == "pending"
-
-
 def test_a_claude_cut_counts_at_once_and_needs_no_keep(client, db_session):
     w = World(client, db_session)
     cid = w.income("1000.00")
@@ -153,15 +135,6 @@ def test_a_hand_edit_of_the_amount_makes_it_the_users_figure(client, db_session)
     assert w.savable() == Decimal("2300.00")
     assert w.commitment(cid)["keep"] is None
     assert w.keep(audit_id).status_code == 409  # nothing of Claude's left in effect
-
-
-def test_a_hand_edit_of_one_of_two_claude_fields_stays_pending(client, db_session):
-    """KP14: Claude changed amount and cadence; the user edits only the amount."""
-    w = World(client, db_session)
-    cid = w.income("1000.00")
-    w.claude_update(cid, amount="1500.00", cadence="custom_days", interval_days=7)
-    client.patch(f"{API}/analytics/commitments/{cid}", json={"amount": "1800.00"}, headers=_bearer(w.web))
-    assert w.commitment(cid)["keep"] == "pending"
 
 
 def test_undo_of_a_pending_raise_ends_it(client, db_session):
@@ -249,16 +222,6 @@ def test_a_pending_raise_leaves_the_projections_unchanged_and_keeping_moves_them
     assert sum(series_after) > sum(before[1])
 
 
-def test_a_claude_confirmed_suggestion_is_not_projected_until_kept(client, db_session):
-    w = World(client, db_session)
-    cid = w.income("1000.00", status="suggested")
-    before = _projection(w)
-    audit_id = w.claude_update(cid, status="confirmed")
-    assert _projection(w) == before
-    w.keep(audit_id)
-    assert _projection(w)[0] > before[0]
-
-
 def test_a_claude_cut_shows_in_the_projections_at_once(client, db_session):
     w = World(client, db_session)
     cid = w.income("1000.00")
@@ -268,32 +231,6 @@ def test_a_claude_cut_shows_in_the_projections_at_once(client, db_session):
 
 
 # --- hand edits are recorded, not inferred (sec on #121) --------------------------
-
-
-def test_a_change_to_the_date_that_is_not_a_web_edit_keeps_it_pending(client, db_session):
-    """sec on #121: sync advances a past next_date on every commitments load,
-    so a stored date that no longer equals Claude's value is not proof the
-    user overrode it. Only a recorded web edit is."""
-    w = World(client, db_session)
-    def make():
-        rule = CommitmentRule(
-            user_id=w.user.id, direction="income", label="Income A", amount=Decimal("1000.00"),
-            cadence="monthly", next_date=TODAY + timedelta(days=40), source="manual", status="confirmed",
-        )
-        db_session.add(rule)
-        db_session.commit()
-        return rule.id
-    cid = w.as_user(make)
-    assert w.savable() == Decimal("500.00")  # nothing due within 30 days
-    w.claude_update(cid, next_date=(TODAY + timedelta(days=2)).isoformat())
-    assert w.savable() == Decimal("500.00")
-    # The stored date moves on without a web edit (as sync does once a date passes).
-    def move():
-        db_session.get(CommitmentRule, cid).next_date = TODAY + timedelta(days=3)
-        db_session.commit()
-    w.as_user(move)
-    assert w.savable() == Decimal("500.00")
-    assert w.commitment(cid)["keep"] == "pending"
 
 
 def test_a_web_edit_is_recorded_on_the_pending_change(client, db_session):

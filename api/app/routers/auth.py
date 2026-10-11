@@ -20,7 +20,7 @@ from app.core.security import (
     CurrentUser,
 )
 from app.core import user_crypto
-from app.models import AuditEntry, BankConnection, User, WriteIdempotency
+from app.models import BankConnection, User
 from app.schemas import (
     ChangePasswordRequest,
     DeleteAccountRequest,
@@ -32,11 +32,17 @@ from app.schemas import (
     UserResponse,
 )
 from app.services.email_service import send_email
+from app.services.key_loss_purge import purge_data_under_lost_key
 from app.services.truelayer import truelayer_service
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+RESET_WITHOUT_RECOVERY_CODE_MESSAGE = (
+    "Password updated. We cleared your bank data, commitments, planned events, rules, "
+    "assets and the history of changes made by Claude. Reconnect your bank to start again."
+)
 
 
 def _provision_dek(user: User, password: str) -> str:
@@ -241,8 +247,11 @@ def reset_password(
 
     With the recovery code, the data-encryption key is rewrapped and all data
     survives. Without it the key is unrecoverable by design: a fresh DEK (and
-    recovery code) is issued and the now-unreadable bank data is purged — the
-    user rebuilds it by reconnecting/re-syncing their banks.
+    recovery code) is issued and everything encrypted under the old key is
+    purged (see services/key_loss_purge.py): bank data, commitments, planned
+    events, rules and rule packs, assets, and the history of changes made by
+    Claude. The user's MCP grants are revoked. The purge, the new key and the
+    new password commit together or not at all.
     """
     auth_rate_limiter.check(request, "reset-password", limit=10, window_seconds=15 * 60)
     try:
@@ -267,20 +276,11 @@ def reset_password(
         user.dek_salt = user_crypto.generate_salt()
         user.wrapped_dek = user_crypto.wrap_dek(dek, body.new_password, user.dek_salt)
     else:
-        # No recovery code: the old DEK is gone. Purge the encrypted bank data
-        # (bulk deletes — DB-level cascades remove accounts and transactions
-        # without loading the undecryptable rows) and start a fresh key.
-        db.query(BankConnection).filter(BankConnection.user_id == user.id).delete(
-            synchronize_session=False
-        )
-        # Claude's change trail copies names and amounts under the same key,
-        # so it is unreadable now too (idempotency records point at it).
-        db.query(WriteIdempotency).filter(WriteIdempotency.user_id == user.id).delete(
-            synchronize_session=False
-        )
-        db.query(AuditEntry).filter(AuditEntry.user_id == user.id).delete(synchronize_session=False)
+        # No recovery code: the old DEK is gone, and so is everything
+        # encrypted under it. Start a fresh key.
+        purge_data_under_lost_key(db, user.id)
         new_recovery_code = _provision_dek(user, body.new_password)
-        logger.info(f"Password reset without recovery code for user {user.id}: bank data purged, new DEK issued")
+        logger.info(f"Password reset without recovery code for user {user.id}: encrypted data purged, new DEK issued")
 
     user.hashed_password = get_password_hash(body.new_password)
     user.session_version += 1
@@ -288,7 +288,7 @@ def reset_password(
     logger.info(f"Password reset completed for user {user.id}")
     if new_recovery_code:
         return {
-            "message": "Password updated. Your bank data was cleared — reconnect your bank to rebuild it.",
+            "message": RESET_WITHOUT_RECOVERY_CODE_MESSAGE,
             "recovery_code": new_recovery_code,
         }
     return {"message": "Password updated. You can now log in."}

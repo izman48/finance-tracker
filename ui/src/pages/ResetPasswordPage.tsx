@@ -15,7 +15,8 @@ export default function ResetPasswordPage() {
   const [done, setDone] = useState(false)
   // Set when resetting without the recovery code reissued the encryption key.
   const [newRecoveryCode, setNewRecoveryCode] = useState<string | null>(null)
-  const [dataCleared, setDataCleared] = useState(false)
+  // The server's message, which lists exactly what was cleared.
+  const [clearedMessage, setClearedMessage] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
   const handleSubmit = async (e: FormEvent) => {
@@ -31,9 +32,10 @@ export default function ResetPasswordPage() {
       return
     }
     if (!recoveryCode.trim() && !window.confirm(
-      'Reset without your recovery code?\n\nYour encrypted bank data cannot be ' +
-      'unlocked without it, so it will be cleared. You can rebuild it by ' +
-      'reconnecting your bank afterwards.'
+      'Reset without your recovery code?\n\nYour encrypted data cannot be ' +
+      'unlocked without it, so it will be cleared: bank data, commitments, ' +
+      'planned events, rules, assets and the history of changes made by Claude. ' +
+      'You can reconnect your bank afterwards.'
     )) {
       return
     }
@@ -43,7 +45,7 @@ export default function ResetPasswordPage() {
       const res = await authApi.resetPassword(token, password, recoveryCode.trim() || undefined)
       if (res.data.recovery_code) {
         setNewRecoveryCode(res.data.recovery_code)
-        setDataCleared(true)
+        setClearedMessage(res.data.message)
       }
       setDone(true)
     } catch (err: unknown) {
@@ -76,9 +78,7 @@ export default function ResetPasswordPage() {
         title="Save your new recovery code"
         subtitle="A new encryption key was issued — the old code no longer works."
       >
-        <div className="banner-ok mb-4">
-          Password updated. Your bank data was cleared — reconnect your bank to rebuild it.
-        </div>
+        <div className="banner-ok mb-4">{clearedMessage}</div>
         <RecoveryCodeCard
           code={newRecoveryCode}
           continueLabel="I've saved it — log in"
@@ -93,9 +93,7 @@ export default function ResetPasswordPage() {
       {done ? (
         <div className="text-center">
           <div className="banner-ok mb-4">
-            {dataCleared
-              ? 'Password updated. Your bank data was cleared — reconnect your bank to rebuild it.'
-              : 'Password updated.'}
+            {clearedMessage ?? 'Password updated.'}
           </div>
           <Link to="/login" className="btn-link">
             Log in with your new password
@@ -141,8 +139,8 @@ export default function ResetPasswordPage() {
             />
             <p className="text-xs text-slate-500 mt-1.5">
               The code you saved at signup. It unlocks your encrypted data so
-              nothing is lost. Without it, your synced bank data is cleared and
-              rebuilt by reconnecting your bank.
+              nothing is lost. Without it, your bank data, commitments, planned
+              events, rules, assets and Claude's change history are cleared.
             </p>
           </div>
 

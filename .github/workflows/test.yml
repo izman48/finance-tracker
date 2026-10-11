@@ -67,5 +67,7 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: Self-test the workflow checks
         run: python3 .github/scripts/test_check_workflows.py
+      - name: Audit ignore list and npm gate
+        run: python3 .github/scripts/test_audit_gate.py
       - name: Actions pinned to SHAs; the audit can't fail silently
         run: python3 .github/scripts/check_workflows.py .github/workflows

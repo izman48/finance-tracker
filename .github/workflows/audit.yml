@@ -2,7 +2,9 @@ name: Dependency audit
 
 # Weekly, and on demand: a full audit of the UI's npm tree (dev dependencies
 # included) and the API's and MCP server's Python requirements. Fails on any
-# high or critical advisory. Read-only token; no `if:` and no
+# high or critical npm advisory and any known Python vulnerability, except
+# those documented in .github/audit-ignore.txt (sec adds them, each with a
+# reason and a review-by date). Read-only token; no `if:` and no
 # continue-on-error, so a failure is never silent. Its wiring is pinned by
 # .github/scripts/check_workflows.py (run in test.yml).
 on:
@@ -24,8 +26,13 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: Install from the lockfile (no install scripts)
         run: npm ci --ignore-scripts --no-audit --no-fund
+      # npm audit has no ignore option: save its report and let the gate fail
+      # on any high/critical advisory not in .github/audit-ignore.txt (an npm
+      # error fails it too). Dev dependencies included (no --omit).
       - name: Audit every dependency, dev included
-        run: npm audit --audit-level=high
+        run: |
+          npm audit --json > /tmp/npm-audit.json || true
+          python3 ../.github/scripts/npm_audit_gate.py /tmp/npm-audit.json ../.github/audit-ignore.txt
 
   python:
     runs-on: ubuntu-latest
@@ -39,7 +46,8 @@ jobs:
       # a finding.
       - name: Audit the API's and the MCP server's requirements
         run: |
+          ignore=$(python3 .github/scripts/audit_ignores.py --pip-args .github/audit-ignore.txt)
           status=0
-          pip-audit -r api/requirements.txt || status=1
-          pip-audit -r api/mcp/requirements.txt || status=1
+          pip-audit $ignore -r api/requirements.txt || status=1
+          pip-audit $ignore -r api/mcp/requirements.txt || status=1
           exit $status

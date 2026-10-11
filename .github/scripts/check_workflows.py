@@ -4,8 +4,9 @@
   can't change what runs with our secrets.
 - audit.yml is the weekly dependency audit and must fail loudly: it runs on
   a schedule and by hand, with a read-only token, never skips (`if:`) or
-  shrugs off a failure (`continue-on-error`), and runs both `npm audit
-  --audit-level=high` and `pip-audit`.
+  shrugs off a failure (`continue-on-error`), runs npm audit (dev included)
+  through npm_audit_gate.py and pip-audit, and both read the documented
+  ignores in .github/audit-ignore.txt.
 Line-based on purpose (no YAML library to install); tested by
 test_check_workflows.py, which plants each mistake and expects it caught.
 """
@@ -45,8 +46,12 @@ def check(directory: pathlib.Path) -> list[str]:
             problems.append(f"audit.yml:{n}: continue-on-error would hide a failing audit")
         if re.match(r"^\s*(?:-\s*)?if:", line):
             problems.append(f"audit.yml:{n}: if: could silently skip the audit")
-    if "npm audit --audit-level=high" not in text:
-        problems.append("audit.yml: must run npm audit --audit-level=high")
+    if "npm audit --json" not in text or "npm_audit_gate.py" not in text:
+        problems.append("audit.yml: must run npm audit --json through npm_audit_gate.py (fails on high/critical)")
+    if re.search(r"npm audit[^\n]*(--omit|--production|--only)", text):
+        problems.append("audit.yml: npm audit must include dev dependencies")
+    if text.count("audit-ignore.txt") < 2:
+        problems.append("audit.yml: both audits must read .github/audit-ignore.txt")
     if "pip-audit" not in text:
         problems.append("audit.yml: must run pip-audit")
     return problems

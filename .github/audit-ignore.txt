@@ -1,0 +1,3 @@
+# Documented exceptions to the weekly dependency audit (.github/workflows/audit.yml).
+# One per line: <ID> review-by:<YYYY-MM-DD> <why it is safe to ignore, and who decided>
+# Only sec adds entries. An entry past its review-by date fails the audit.

@@ -21,11 +21,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-      - run: npm audit --audit-level=high
+      - run: |
+          npm audit --json > /tmp/a.json || true
+          python3 ../.github/scripts/npm_audit_gate.py /tmp/a.json ../.github/audit-ignore.txt
   python:
     runs-on: ubuntu-latest
     steps:
-      - run: pip-audit -r api/requirements.txt
+      - run: |
+          ignore=$(python3 .github/scripts/audit_ignores.py --pip-args .github/audit-ignore.txt)
+          pip-audit $ignore -r api/requirements.txt
 """
 
 
@@ -49,9 +53,11 @@ def main():
     expect_fail({"audit.yml": GOOD_AUDIT.replace('  schedule:\n    - cron: "17 6 * * 1"\n', "")}, "schedule")
     expect_fail({"audit.yml": GOOD_AUDIT.replace("  workflow_dispatch:\n", "")}, "workflow_dispatch")
     expect_fail({"audit.yml": GOOD_AUDIT.replace("  contents: read\n", "  contents: write\n")}, "contents: read")
-    expect_fail({"audit.yml": GOOD_AUDIT.replace("      - run: npm audit", "      - continue-on-error: true\n        run: npm audit")}, "continue-on-error")
-    expect_fail({"audit.yml": GOOD_AUDIT.replace("    runs-on: ubuntu-latest\n    steps:\n      - run: pip", "    if: github.event_name == 'schedule'\n    runs-on: ubuntu-latest\n    steps:\n      - run: pip")}, "if:")
-    expect_fail({"audit.yml": GOOD_AUDIT.replace("--audit-level=high", "--audit-level=critical")}, "npm audit --audit-level=high")
+    expect_fail({"audit.yml": GOOD_AUDIT.replace("      - run: |\n          npm audit", "      - continue-on-error: true\n        run: |\n          npm audit")}, "continue-on-error")
+    expect_fail({"audit.yml": GOOD_AUDIT.replace("  python:\n    runs-on", "  python:\n    if: github.event_name == 'schedule'\n    runs-on")}, "if:")
+    expect_fail({"audit.yml": GOOD_AUDIT.replace("npm_audit_gate.py", "true.py")}, "npm_audit_gate.py")
+    expect_fail({"audit.yml": GOOD_AUDIT.replace("npm audit --json", "npm audit --omit=dev --json")}, "dev dependencies")
+    expect_fail({"audit.yml": GOOD_AUDIT.replace("--pip-args .github/audit-ignore.txt", "--pip-args x")}, "audit-ignore.txt")
     expect_fail({"audit.yml": GOOD_AUDIT.replace("pip-audit", "echo")}, "pip-audit")
     expect_fail({}, "audit.yml")
     # A comment mentioning a banned word is fine; the same word as YAML is not.

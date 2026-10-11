@@ -32,7 +32,7 @@ from app.models import (
 )
 from app.models.asset import LIABILITY_TYPES
 
-from app.services.claude_keep import counted_commitments
+from app.services.claude_keep import counted_commitments, held_removed_planned
 from .cadence import commitment_occurrences
 from .common import _add_months, _d, _today
 from .net_worth import net_worth_history
@@ -167,7 +167,8 @@ def monthly_surplus_series(db: Session, user, months: int, avg_spending: Decimal
         .filter(PlannedItem.user_id == user.id, PlannedItem.active.is_(True))
         .all()
     )
-    for item in planned:
+    # A planned expense Claude removed still counts until kept (T-08-21b).
+    for item in planned + held_removed_planned(db, user.id):
         for occ_date, amount in planned_events(item, today + timedelta(days=1), end):
             m = bucket(occ_date)
             if m <= months:

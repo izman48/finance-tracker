@@ -368,7 +368,8 @@ def before_claude(rule: CommitmentRule, rows: list[AuditEntry], applied: frozens
     return view
 
 
-def planned_removal_states(db: Session, user_id: uuid.UUID) -> dict[uuid.UUID, tuple[str, PlannedItem]]:
+def planned_removal_states(db: Session, user_id: uuid.UUID,
+                           pending_only: bool = False) -> dict[uuid.UUID, tuple[str, PlannedItem]]:
     """{audit id: (`pending` | `kept`, item)} for Claude's not-undone removals
     of a planned *expense* (T-08-21b part 2, sec). Removing one would raise
     safe-to-spend, so it keeps counting until kept. Planned income never
@@ -379,6 +380,7 @@ def planned_removal_states(db: Session, user_id: uuid.UUID) -> dict[uuid.UUID, t
             AuditEntry.user_id == user_id, AuditEntry.kind == AUDIT_KIND_WRITE,
             AuditEntry.target_kind == "planned_event", AuditEntry.tool == "remove_planned_event",
             AuditEntry.client_id.is_not(None), AuditEntry.undone_at.is_(None),
+            *([AuditEntry.kept_at.is_(None)] if pending_only else []),
         )
         .all()
     )
@@ -403,7 +405,7 @@ def planned_removal_states(db: Session, user_id: uuid.UUID) -> dict[uuid.UUID, t
 
 def held_removed_planned(db: Session, user_id: uuid.UUID) -> list[PlannedItem]:
     """Planned expenses Claude removed that still count until kept."""
-    return [item for state, item in planned_removal_states(db, user_id).values() if state == PENDING]
+    return [item for state, item in planned_removal_states(db, user_id, pending_only=True).values() if state == PENDING]
 
 
 def record_user_edit(db: Session, user_id: uuid.UUID, commitment_id: uuid.UUID, fields) -> None:

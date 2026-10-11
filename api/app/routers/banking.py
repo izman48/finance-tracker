@@ -1,5 +1,4 @@
 """Banking endpoints for Open Banking integration."""
-import asyncio
 import logging
 import time
 import uuid
@@ -387,10 +386,13 @@ async def _sync_all_transactions(request: SyncTransactionsRequest, current_user,
 # cannot call it in a loop. Banks may cap unattended reads (PSD2 allows them
 # 4 a day); a refused read only marks that connection `failed`.
 SYNC_COOLDOWN_SECONDS = 10 * 60
-# The whole of POST /banking/sync, well under the MCP client's 60 s wait and
-# the 5-minute sync lease (T-08-22, sec). Banks not reached by then are
-# reported not_attempted.
+# POST /banking/sync starts a bank only while this much of its budget is
+# left, and a started bank runs to the end: cancelling one mid-sync could
+# lose a refresh token TrueLayer had just rotated (sec, eng-a on #138). The
+# 10 s per-call timeouts bound a started bank, so the whole sync stays well
+# under the MCP client's 60 s wait and the 5-minute sync lease (T-08-22).
 SYNC_BUDGET_SECONDS = 45
+SYNC_START_MARGIN_SECONDS = 25
 # Same window as the web sync; stored transactions are de-duplicated.
 SYNC_DAYS = 90
 
@@ -439,22 +441,16 @@ async def sync_banks(
 
 
 async def _sync_within_budget(connections: list[BankConnection], db: Session) -> list[BankSyncConnectionResult]:
-    """Each connection in turn until SYNC_BUDGET_SECONDS run out. One cut
-    off mid-sync is `failed` (its uncommitted work is rolled back); the rest
-    are `not_attempted`. Never a success it didn't have."""
+    """Each connection in turn, starting one only while at least
+    SYNC_START_MARGIN_SECONDS of the budget are left. A started one is never
+    cancelled; the rest are `not_attempted`, never a success they didn't have."""
     deadline = time.monotonic() + SYNC_BUDGET_SECONDS
     results = []
     for connection in connections:
-        left = deadline - time.monotonic()
-        if left <= 0:
+        if deadline - time.monotonic() < SYNC_START_MARGIN_SECONDS:
             results.append(_result(connection, "not_attempted"))
-            continue
-        try:
-            results.append(await asyncio.wait_for(_sync_connection(connection, db), timeout=left))
-        except asyncio.TimeoutError:
-            logger.error("Bank sync for %s ran out of time", connection.provider_name)
-            db.rollback()
-            results.append(_result(connection, "failed"))
+        else:
+            results.append(await _sync_connection(connection, db))
     return results
 
 

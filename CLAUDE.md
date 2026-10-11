@@ -66,6 +66,11 @@ docker compose --profile test run --rm test #   the test image COPIES source (no
 ```
 Skipping the rebuild silently runs stale tests (the count won't change). CI
 always builds fresh, so this only bites locally.
+The suite runs in parallel (`pytest -n auto`, pytest-xdist) on in-memory
+SQLite, one database per worker process, so it needs no Postgres container.
+Test ids must be the same in every worker: no `uuid4()` or set iteration in
+`parametrize` arguments. conftest lowers bcrypt/Argon2id cost for speed;
+`tests/unit/test_kdf_cost.py` pins the production parameters.
 
 **MCP server tests** (own image, no db):
 ```bash
@@ -98,6 +103,11 @@ sec has documented (`<ID> review-by:<date> <reason>`; an expired entry fails
 the audit). `.github/scripts/check_workflows.py` enforces all of this
 (self-tested by `test_check_workflows.py`; `test_audit_gate.py` covers the
 gate and the ignore list; both run in `test.yml`). Pin new actions the same way.
+On a PR, `test.yml` skips jobs whose files didn't change (a path filter);
+called from `deploy.yml`, every job runs. Its `required` job is the one
+check to require: it passes only if every job passed or, on a PR, was
+skipped as unaffected. A new job must be added to its `needs`
+(check_workflows.py enforces this).
 
 **Visual / mobile check** (dev server must be running):
 ```bash

@@ -123,7 +123,8 @@ def test_a_read_only_token_cannot_add_or_remove(client, db_session):
     ("date", (TODAY + timedelta(days=5 * 366 + 2)).isoformat()),
     ("date", "not-a-date"),
     ("direction", "transfer"),
-    ("user_id", str(uuid.uuid4())),
+    # A fixed id: pytest-xdist needs the same test ids in every worker (T-08-26).
+    ("user_id", "00000000-0000-4000-8000-000000000001"),
     ("created_via", "web"),
     ("kind", "recurring"),
     ("dry_run", "false"),

@@ -62,6 +62,20 @@ def main():
     expect_fail({}, "audit.yml")
     # A comment mentioning a banned word is fine; the same word as YAML is not.
     assert run({"audit.yml": "# never continue-on-error\n" + GOOD_AUDIT}).returncode == 0
+    # test.yml (T-08-26): a PR may skip jobs, a deploy never does.
+    good_test = (REPO_WORKFLOWS / "test.yml").read_text()
+    both = lambda t: {"audit.yml": GOOD_AUDIT, "test.yml": t}  # noqa: E731
+    assert run(both(good_test)).returncode == 0, "the repo's test.yml must pass"
+    expect_fail(both(good_test.replace("  workflow_call:\n", "")), "workflow_call")
+    expect_fail(both(good_test.replace(
+        "        id: filter\n        if: github.event_name == 'pull_request'\n", "        id: filter\n")),
+        "only on pull_request")
+    expect_fail(both(good_test.replace(
+        "api: ${{ github.event_name != 'pull_request' || steps.filter.outputs.api == 'true' }}",
+        "api: ${{ steps.filter.outputs.api == 'true' }}")), "true off a PR")
+    expect_fail(both(good_test.replace("  required:\n    if: always()\n", "  required:\n")), "always()")
+    expect_fail(both(good_test.replace(", ui-image, workflows]", ", workflows]")), "`ui-image`")
+    expect_fail(both(good_test.replace("  required:", "  summary:")), "no `required` job")
     real = subprocess.run([sys.executable, str(CHECK), str(REPO_WORKFLOWS)], capture_output=True, text=True)
     assert real.returncode == 0, real.stdout + real.stderr
     print("check_workflows self-test: all rules fire; the repo's workflows pass")

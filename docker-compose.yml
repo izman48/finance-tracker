@@ -68,22 +68,22 @@ services:
       - build
     command: npm run build
 
+  # The API suite runs on in-memory SQLite (tests/conftest.py), one database
+  # per pytest-xdist worker process, so it needs no Postgres container
+  # (T-08-26). -n auto: one worker per CPU.
   test:
     build:
       context: ./api
       dockerfile: Dockerfile
     container_name: finance_test
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-finance_user}:${POSTGRES_PASSWORD:-finance_pass}@db:5432/${POSTGRES_DB:-finance_db}_test
+      DATABASE_URL: "sqlite:///:memory:"
       SECRET_KEY: test-secret-key
       ENCRYPTION_KEY: oGRxJNK_WkqVxoVJyfsMqY9qSjZQMZd_xJ706DSh62o=
       ENVIRONMENT: test
-    depends_on:
-      db:
-        condition: service_healthy
     profiles:
       - test
-    command: pytest -v
+    command: pytest -n auto
 
   mcp-test:
     build:

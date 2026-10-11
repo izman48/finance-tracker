@@ -55,3 +55,12 @@ def test_a_stored_key_is_left_alone(world):
     rid = world.commitment(label="Netflix", source="detected", match_key="expense:netflix.com")
     assert world.update(rid, label="Streaming", dry_run=False).status_code == 200
     assert world.rule(rid).match_key == "expense:netflix.com"
+
+
+def test_claudes_rename_of_a_keyless_manual_commitment_keeps_what_it_matched(world):
+    """sec on #127: a manual rule with no key matches by its label, so Claude
+    renaming "Gym" to "Amazon" would quietly start matching Amazon payments."""
+    rid = world.commitment(label="Gym", source="manual", match_key=None)
+    assert world.update(rid, label="Amazon", dry_run=False).status_code == 200
+    rule = world.rule(rid)
+    assert (rule.source, rule.match_key) == ("manual", "expense:gym")

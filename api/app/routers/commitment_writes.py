@@ -67,13 +67,15 @@ def update_commitment(
             setattr(rule, field, value)
         if "card_account_id" in updates:
             rule.card_link_source = CARD_LINK_USER
+        if relabelled:
+            # A rule with no key matches payments by its label, so a rename
+            # would quietly change what it matches (sec on #127): keep the
+            # old label's key, detected or manual.
+            rule.match_key = old_key
         if relabelled and rule.source == CommitmentSource.DETECTED.value:
             # sync_suggestions re-derives a detected rule's match_key from its
             # label; a manual rule's key is left alone, so its payments keep
             # matching and the merchant isn't suggested again.
-            # A manual rule without a key falls back to its (new) label's, so
-            # keep the old label's key (older detected rows have none).
-            rule.match_key = old_key
             rule.source = CommitmentSource.MANUAL.value
         return rule
 

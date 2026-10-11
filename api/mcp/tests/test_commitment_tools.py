@@ -96,3 +96,15 @@ def test_not_found_names_commitments_not_planned_events():
     api = FakeApi(status=404, body={"detail": "Not found"})
     text = _call(api, "dismiss_commitment", {"commitment_id": RULE, **KEY})["content"][0]["text"]
     assert "commitment" in text and "planned" not in text
+
+
+def test_a_refused_income_change_reaches_claude_word_for_word():
+    """T-08-21a: the API's fixed 422 sentence must reach the model, so it tells
+    the user to make the change in the app (not a bare 'Invalid input')."""
+    text_from_api = (
+        "Claude can't change when or how often income arrives, or confirm or dismiss an income. "
+        "Ask the user to make this change in the nilu. app."
+    )
+    api = FakeApi(status=422, body={"detail": text_from_api})
+    result = _call(api, "update_commitment", {"commitment_id": RULE, "next_date": "2026-11-01", **KEY})
+    assert result["isError"] is True and result["content"][0]["text"].endswith(text_from_api)

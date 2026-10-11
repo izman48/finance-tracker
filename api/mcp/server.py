@@ -279,7 +279,7 @@ def create_server(settings: Settings, api_transport: httpx.AsyncBaseTransport | 
         batch_id: str = "",
         dry_run: bool = True,
     ) -> dict:
-        """Fix a commitment (an id from the commitments tool): its name, amount, how often, next date, the credit card it repays, or confirm a suggestion. Only the fields you pass change; the direction (income/expense) can't be changed.
+        """Fix a commitment (an id from the commitments tool): its name, amount, how often, next date, the credit card it repays, or confirm a suggestion. Only the fields you pass change; the direction (income/expense) can't be changed. For an income, only the name, amount and card can be changed here: its date, how often it comes and its status are changed by the user in the app (the tool refuses and says so).
 
         `amount` is a positive string with up to 2 decimals ("12.99"), at most 1,000,000. `cadence` is weekly|monthly|every_n_months|custom_days; every_n_months needs `interval_months` (1-24) and custom_days needs `interval_days` (1-366). `next_date` is YYYY-MM-DD, from a year ago to 5 years ahead. `status` can only be "confirmed" (to confirm a suggested commitment, e.g. rent paid by transfer); use dismiss_commitment to dismiss one. `card_account_id` is a credit card from the accounts tool that this commitment repays; `clear_card=true` says it repays no card. `idempotency_key` is 8-64 characters of letters, digits, - or _: new for each change you intend, reused only to retry that same change.
 
@@ -311,7 +311,7 @@ def create_server(settings: Settings, api_transport: httpx.AsyncBaseTransport | 
     async def dismiss_commitment(
         commitment_id: str, idempotency_key: str, batch_id: str = "", dry_run: bool = True,
     ) -> dict:
-        """Dismiss a commitment (an id from the commitments tool) that is wrong or a duplicate, so it stops counting. The user can undo it in the app under "Changes made by Claude". To merge duplicates, see update_commitment's `batch_id`.
+        """Dismiss an expense commitment (an id from the commitments tool) that is wrong or a duplicate, so it stops counting. Incomes can't be dismissed here; the user does that in the app. The user can undo it in the app under "Changes made by Claude". To merge duplicates, see update_commitment's `batch_id`.
 
         With dry_run=true (the default) nothing changes: you get a preview. Show it to the user and get their explicit confirmation before calling again with dry_run=false. `idempotency_key` is 8-64 characters of letters, digits, - or _, new for each change you intend.
 
@@ -362,10 +362,12 @@ def _write_error(response: httpx.Response, not_found: str = _PLANNED_NOT_FOUND) 
     if code in (409, 422):
         try:
             detail = response.json().get("detail")
-            if code == 422:
-                return "Invalid input: " + "; ".join(f"{d['loc'][-1]}: {d['msg']}" for d in detail)
+            # Our own fixed sentences (e.g. "make this change in the app") pass
+            # through as written; field errors are summarised.
             if isinstance(detail, str) and len(detail) <= 200:
                 return detail
+            if code == 422:
+                return "Invalid input: " + "; ".join(f"{d['loc'][-1]}: {d['msg']}" for d in detail)
         except (ValueError, KeyError, TypeError, AttributeError, IndexError):
             pass
         return "The change was refused." if code == 409 else "Invalid input."

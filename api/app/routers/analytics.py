@@ -333,7 +333,10 @@ def update_commitment(
         and rule.source == CommitmentSource.DETECTED.value
     ):
         # A manual rule without a key falls back to its label's: store the
-        # old label's key first (older detected rows have none).
+        # old label's key first (older detected rows have none). A keyless
+        # *manual* rule is not frozen here, unlike Claude's rename (#127):
+        # it matches by its label by design, and renaming it is the user's
+        # own choice of what it should match.
         rule.match_key = rule.match_key or analytics_service.merchant_match_key(rule.direction, rule.label)
         rule.source = CommitmentSource.MANUAL.value
     for field, value in updates.items():

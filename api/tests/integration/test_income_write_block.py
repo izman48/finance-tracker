@@ -1,13 +1,11 @@
-"""Stopgap T-08-21a (sec, high): Claude may not move, re-time, confirm or
-dismiss an income commitment over MCP.
+"""Stopgap T-08-21a is lifted (T-08-21): Claude may move, re-time, confirm or
+dismiss an income commitment over MCP again.
 
-The bills counted against safe-to-spend are those due before the next
-payday, and the payday comes from confirmed income commitments. Moving the
-salary's date earlier, changing its cadence, confirming a sooner income or
-dismissing the payday income shrinks that window and raises safe-to-spend.
-Until T-08-21 lands the real fix, these writes are refused with 422 and a
-fixed message; nothing is written or audited. Expense commitments, and the
-web routes, are unchanged.
+21a refused these with 422 because they could shrink the payday window and
+raise safe-to-spend. T-08-21 now holds the window at the later of payday now
+and payday before Claude's pending changes, and T-08-20 holds savable back,
+until the user keeps the change. These tests pin that the writes work again
+and that sec's repro stays safe; test_claude_payday_window.py has the rest.
 """
 from datetime import timedelta
 from decimal import Decimal
@@ -19,10 +17,6 @@ from app.services import analytics_service as svc
 from tests.integration.test_commitment_writes_api import API, World, _bearer
 from tests.integration.test_transactions_endpoint import _account
 
-BLOCKED_TEXT = (
-    "Claude can't change when or how often income arrives, or confirm or dismiss an income. "
-    "Ask the user to make this change in the nilu. app."
-)
 
 
 @pytest.fixture
@@ -39,11 +33,6 @@ def _income(world, **over):
     return rid
 
 
-def _snapshot(world, rid):
-    r = world.rule(rid)
-    return (r.next_date, r.cadence, r.interval_days, r.interval_months, r.status, r.amount, r.label)
-
-
 @pytest.mark.parametrize("body", [
     {"next_date": (svc._today() + timedelta(days=2)).isoformat()},
     {"cadence": "weekly"},
@@ -54,30 +43,26 @@ def _snapshot(world, rid):
     {"label": "Salary", "next_date": (svc._today() + timedelta(days=2)).isoformat()},
 ])
 @pytest.mark.parametrize("dry_run", [False, True])
-def test_timing_or_status_writes_on_income_are_refused(world, body, dry_run):
+def test_timing_or_status_writes_on_income_work_again(world, body, dry_run):
+    """T-08-21 lifted the 21a stopgap: the real fix holds the payday window
+    and savable back until the user keeps the change, so these are allowed."""
     rid = _income(world)
-    before = _snapshot(world, rid)
     r = world.update(rid, dry_run=dry_run, **body)
-    assert r.status_code == 422, r.text
-    assert r.json() == {"detail": BLOCKED_TEXT}
-    assert _snapshot(world, rid) == before
-    assert world.audit_count() == 0
+    assert r.status_code == 200, r.text
+    recorded = not dry_run and not r.json()["unchanged"]  # re-confirming a confirmed income is a no-op
+    assert world.audit_count() == (1 if recorded else 0)
 
 
-def test_confirming_a_suggested_income_is_refused(world):
+def test_confirming_a_suggested_income_works_again(world):
     rid = _income(world, status="suggested", source="detected")
-    r = world.update(rid, status="confirmed", dry_run=False)
-    assert r.status_code == 422 and r.json() == {"detail": BLOCKED_TEXT}
-    assert world.rule(rid).status == "suggested"
-    assert world.audit_count() == 0
-
-
-def test_dismissing_an_income_is_refused(world):
-    rid = _income(world)
-    r = world.dismiss(rid, dry_run=False)
-    assert r.status_code == 422 and r.json() == {"detail": BLOCKED_TEXT}
+    assert world.update(rid, status="confirmed", dry_run=False).status_code == 200
     assert world.rule(rid).status == "confirmed"
-    assert world.audit_count() == 0
+
+
+def test_dismissing_an_income_works_again(world):
+    rid = _income(world)
+    assert world.dismiss(rid, dry_run=False).status_code == 200
+    assert world.rule(rid).status == "dismissed"
 
 
 def test_an_income_label_can_still_be_fixed(world):
@@ -122,5 +107,5 @@ def test_secs_repro_safe_to_spend_cannot_be_raised(world):
 
     assert safe() == Decimal("200")  # precondition: the bill counts
     r = world.update(rid, next_date=(svc._today() + timedelta(days=2)).isoformat(), dry_run=False)
-    assert r.status_code == 422
+    assert r.status_code == 200  # allowed again: T-08-21 holds the window back instead
     assert safe() == Decimal("200")

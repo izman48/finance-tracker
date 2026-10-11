@@ -62,7 +62,8 @@ def _value(field: str, raw):
 
 
 def _raising(entry: AuditEntry) -> list[dict]:
-    """The money changes in a write that could bring in more."""
+    """The money changes in a write that need the user to keep them: those
+    that could bring in more, or move payday (a dismissal can, T-08-21)."""
     out = []
     for c in json.loads(entry.changes):
         field = c["field"]
@@ -72,7 +73,10 @@ def _raising(entry: AuditEntry) -> list[dict]:
             if Decimal(c["after"] or 0) > Decimal(c["before"] or 0):
                 out.append(c)
         elif field == "status":
-            if c["after"] == CommitmentStatus.CONFIRMED.value and c["before"] != CommitmentStatus.CONFIRMED.value:
+            # Confirming brings an income in. Dismissing one doesn't, but it
+            # can make a nearer income payday and so shorten the committed
+            # window (T-08-21): that is held too, so it must be keepable.
+            if (c["after"] == CommitmentStatus.CONFIRMED.value) != (c["before"] == CommitmentStatus.CONFIRMED.value):
                 out.append(c)
         else:  # when or how often it arrives: could bring more into the window
             out.append(c)
@@ -149,6 +153,27 @@ def held_back(rule: CommitmentRule, rows: list[AuditEntry], value) -> object | N
         id=rule.id, direction=rule.direction, label=rule.label, account_id=rule.account_id,
         **{f: getattr(before, f) for f in MONEY_FIELDS},
     )
+
+
+def pre_claude_payday_incomes(db: Session, user) -> list:
+    """The income rules that defined payday before Claude's pending changes
+    (T-08-21): every income commitment (dismissed ones too, a dismissal may
+    be Claude's) seen through `before_claude`, kept if it was confirmed then,
+    with the is_payday preference applied as `_payday_incomes` does."""
+    rules = (
+        db.query(CommitmentRule)
+        .filter(CommitmentRule.user_id == user.id, CommitmentRule.direction == CommitmentDirection.INCOME.value)
+        .all()
+    )
+    claude = claude_rows(db, user.id, [r.id for r in rules])
+    confirmed = CommitmentStatus.CONFIRMED.value
+    out = []
+    for r in rules:
+        view = before_claude(r, claude[r.id]) if r.id in claude else r
+        if view.status == confirmed:
+            out.append(SimpleNamespace(is_payday=r.is_payday, **{f: getattr(view, f) for f in MONEY_FIELDS}))
+    flagged = [r for r in out if r.is_payday]
+    return flagged or out
 
 
 def before_claude(rule: CommitmentRule, rows: list[AuditEntry]) -> SimpleNamespace:

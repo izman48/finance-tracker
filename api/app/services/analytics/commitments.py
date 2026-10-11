@@ -460,9 +460,29 @@ def _payday_incomes(db: Session, user) -> list[CommitmentRule]:
 
 def next_payday(db: Session, user, from_date: date) -> date | None:
     """Next payday income date on/after from_date."""
-    incomes = _payday_incomes(db, user)
+    return _first_payday(_payday_incomes(db, user), from_date)
+
+
+def _first_payday(incomes, from_date: date) -> date | None:
     dates = [occ for r in incomes for occ in commitment_occurrences(r, from_date, from_date + timedelta(days=400))]
     return min(dates) if dates else None
+
+
+def committed_window_end(db: Session, user, today: date) -> date:
+    """Where safe-to-spend's committed window ends: next payday, or 30 days.
+
+    While Claude has changed an income and the user hasn't kept the change,
+    the window ends at the *later* of payday now and payday as it was before
+    Claude (T-08-21, sec): moving the salary closer, changing its cadence,
+    confirming a nearer income or dismissing the payday one must never cut
+    bills out of the window and so raise safe-to-spend.
+    """
+    from app.services.claude_keep import pre_claude_payday_incomes
+
+    fallback = today + timedelta(days=30)
+    now = next_payday(db, user, today) or fallback
+    before = _first_payday(pre_claude_payday_incomes(db, user), today) or fallback
+    return max(now, before)
 
 
 def last_payday(db: Session, user, today: date) -> date | None:

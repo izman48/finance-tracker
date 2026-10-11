@@ -21,6 +21,7 @@ from .commitments import next_payday
 from .common import _d, _load, _today, resolve_roles
 from .planned import planned_events
 from .planned_matching import planned_states
+from .late_income import late_incomes
 from .repayments import scheduled_outflows
 
 
@@ -253,4 +254,10 @@ def get_forecast(db: Session, user, horizon: str = "payday") -> dict:
         "unassigned_attributed_to": str(fallback) if fallback is not None else None,
         "timeline": timeline,
         "late_planned": late_planned,
+        # Shown, never added to the balance (T-08-10).
+        "late_income": [
+            {"label": li.label, "amount": li.amount, "expected_date": li.expected_date,
+             "commitment_id": li.commitment_id}
+            for li in sorted(late_incomes(db, user, today).values(), key=lambda li: li.expected_date)
+        ],
     }

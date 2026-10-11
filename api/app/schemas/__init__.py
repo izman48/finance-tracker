@@ -638,6 +638,10 @@ class CommitmentResponse(BaseModel):
     card_link_source: str | None = None
     # Claude's latest change still in effect (links to /changes#change-{id}).
     changed_by_claude: "ClaudeMarker | None" = None
+    # Income only: the latest expected payment hasn't arrived (T-08-10). It is
+    # shown, never counted. expected_date is that payment's date.
+    late: bool = False
+    expected_date: date | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -716,6 +720,14 @@ class LatePlanned(BaseModel):
     expected_date: date
 
 
+class LateIncomeItem(BaseModel):
+    """A recurring income that hasn't arrived: listed, never counted (T-08-10)."""
+    label: str
+    amount: Decimal
+    expected_date: date
+    commitment_id: uuid.UUID
+
+
 class ForecastResponse(BaseModel):
     horizon: str
     horizon_end: date
@@ -732,6 +744,7 @@ class ForecastResponse(BaseModel):
     unassigned_attributed_to: str | None
     timeline: list[ForecastPoint]
     late_planned: list[LatePlanned] = []
+    late_income: list[LateIncomeItem] = []
 
 
 class CategorySlice(BaseModel):

@@ -24,6 +24,7 @@ from .common import _d, _load, _today, resolve_roles
 from .net_worth import assets_total
 from .planned import planned_events
 from .planned_matching import planned_states
+from app.services.claude_keep import before_claude, claude_rows
 from .repayments import repayment_events, scheduled_outflows
 
 
@@ -88,10 +89,23 @@ def get_summary(db: Session, user) -> dict:
         )
         .all()
     )
-    income_30 = sum(
-        (_d(r.amount) * len(commitment_occurrences(r, today, horizon)) for r in income_rules),
-        Decimal(0),
-    )
+    # Strict parity (D4): an income Claude raised or confirmed counts as it
+    # was before Claude until the user keeps the change (or as it is now, if
+    # that's less). The difference is reported so the UI can say so.
+    claude = claude_rows(db, user.id, [r.id for r in income_rules])
+
+    def in_window(r) -> Decimal:
+        if r.status != CommitmentStatus.CONFIRMED.value:
+            return Decimal(0)
+        return _d(r.amount) * len(commitment_occurrences(r, today, horizon))
+
+    income_30 = Decimal(0)
+    pending_keep = Decimal(0)
+    for r in income_rules:
+        now = in_window(r)
+        counted = min(now, in_window(before_claude(r, claude[r.id]))) if r.id in claude else now
+        income_30 += counted
+        pending_keep += now - counted
     # Planned income is left out on purpose: it never raises safe-to-spend or
     # savable until the credit lands (owner decision D1; an injected "refund
     # coming" must not unlock spending). It still shows in the forecast.
@@ -110,6 +124,7 @@ def get_summary(db: Session, user) -> dict:
         "committed_before_payday": committed,
         "safe_to_spend": safe_to_spend,
         "savable": savable,
+        "savable_pending_keep_total": pending_keep,
         "next_payday": payday,
         # Show upcoming card repayments over a display horizon, independent of the
         # payday window — so a bill due just after payday is still visible.

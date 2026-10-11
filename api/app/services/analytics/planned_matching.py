@@ -44,6 +44,10 @@ from .commitments import commitment_match_keys, transaction_match_key
 from .common import _d, _load, resolve_roles
 
 MATCH_DAYS = 7
+# Income gets more grace (7 days) than an expense (3, OVERDUE_AFTER_DAYS):
+# a late income only stops being counted, so a short wait costs nothing, and
+# payers (refunds, invoices) often pay a few days late; an expense keeps
+# counting either way, so its flag only needs to cover bank posting lag.
 LATE_AFTER_DAYS = 7
 # Income this far past its date is no longer listed as late (it's history).
 INCOME_LOOKBACK_DAYS = 60

@@ -123,8 +123,12 @@ async def test_is_a_non_destructive_write_and_explains_itself():
     hints = tool.annotations
     assert hints.readOnlyHint is False
     assert hints.destructiveHint is False
-    assert hints.idempotentHint is False
+    # sec, T-08-22: repeating a refresh fetches the same data again, and it
+    # reaches the bank (an external service).
+    assert hints.idempotentHint is True
+    assert hints.openWorldHint is True
     text = tool.description
+    assert "not_attempted" in text
     assert "10 minutes" in text and "24 hours" not in text
     assert "sync_status" in text
     assert "reconnect" in text
@@ -136,3 +140,10 @@ async def test_sync_status_now_points_at_refresh_banks():
     tools = {t.name: t for t in await _local(FakeApi()).list_tools()}
 
     assert "refresh_banks" in tools["sync_status"].description
+
+
+def test_the_tool_waits_a_little_longer_than_the_api_budget():
+    """The API stops at 45 s (T-08-22); the tool waits for that answer, and
+    stays under a typical 60 s MCP client timeout."""
+    import server
+    assert 45 < server.SYNC_TIMEOUT < 60

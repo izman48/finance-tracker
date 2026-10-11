@@ -51,8 +51,22 @@ async def test_write_tools_ask_for_approval():
         hints = tool.annotations
         assert hints is not None, tool.name
         assert hints.readOnlyHint is False, tool.name
-        assert hints.idempotentHint is False, tool.name
+        assert hints.idempotentHint is (tool.name in IDEMPOTENT_WRITES), tool.name
         assert hints.destructiveHint is tool.name.startswith(DESTRUCTIVE_PREFIXES), tool.name
+
+
+# Writes that a repeat leaves as one call left it (sec, T-08-22): a second
+# refresh fetches the same data again.
+IDEMPOTENT_WRITES = {"refresh_banks"}
+
+
+@pytest.mark.anyio
+async def test_refresh_banks_says_it_reaches_the_bank():
+    """sec, T-08-22: it calls an external service, so openWorldHint."""
+    hints = next(t for t in await _tools() if t.name == "refresh_banks").annotations
+    assert (hints.readOnlyHint, hints.destructiveHint, hints.idempotentHint, hints.openWorldHint) == (
+        False, False, True, True,
+    )
 
 
 @pytest.mark.anyio

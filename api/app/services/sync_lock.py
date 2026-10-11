@@ -46,8 +46,13 @@ def acquire(db: Session, user_id: uuid.UUID, now: datetime | None = None) -> uui
 
 
 def release(db: Session, user_id: uuid.UUID, token: uuid.UUID) -> None:
-    """Give the lease back, if this holder still has it."""
-    db.rollback()  # a failed sync may have left the session mid-transaction
+    """Give the lease back, if this holder still has it.
+
+    This rolls the session back first: a failed or cut-off sync may have
+    left it mid-transaction, and that uncommitted work is discarded, never
+    committed with the release. A sync commits what it means to keep as it
+    goes, so nothing it finished is lost."""
+    db.rollback()
     db.execute(
         update(UserSyncLock)
         .where(UserSyncLock.user_id == user_id, UserSyncLock.lock_token == token)

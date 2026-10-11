@@ -1,5 +1,6 @@
 """Banking endpoints for Open Banking integration."""
 import logging
+import time
 import uuid
 from typing import Annotated
 from datetime import date, datetime, timedelta, timezone
@@ -219,7 +220,9 @@ async def oauth_callback(
         db.commit()
         db.refresh(bank_connection)
 
-        # Immediately sync accounts and historical data with the initial access token
+        # Immediately sync accounts and historical data with the initial access token.
+        # No sync lease here (T-08-22): it skips the token refresh, so it can't
+        # race another sync's rotation of this new connection's refresh token.
         # IMPORTANT: Use skip_token_refresh=True to preserve the initial token for historical data access
         # Per TrueLayer's SCA requirements, do NOT refresh the token until all historical data is fetched
         try:
@@ -299,7 +302,8 @@ async def _sync_all_accounts(current_user, db: Session) -> SyncAccountsResponse:
             logger.info(f"Synced {len(accounts)} accounts from {connection.provider_name}")
         except Exception as e:
             needs_reauth += isinstance(e, ReauthRequired)
-            logger.error(f"Failed to sync accounts for {connection.provider_name}: {str(e)}")
+            # The type only: the message can carry provider detail (as /sync does).
+            logger.error("Failed to sync accounts for %s: %s", connection.provider_name, type(e).__name__)
             errors.append(_sync_error(connection.provider_name, e))
 
     if errors and not all_accounts:
@@ -362,7 +366,7 @@ async def _sync_all_transactions(request: SyncTransactionsRequest, current_user,
             logger.info(f"Synced {count} transactions from {connection.provider_name}")
         except Exception as e:
             needs_reauth += isinstance(e, ReauthRequired)
-            logger.error(f"Failed to sync transactions for {connection.provider_name}: {str(e)}")
+            logger.error("Failed to sync transactions for %s: %s", connection.provider_name, type(e).__name__)
             errors.append(_sync_error(connection.provider_name, e))
 
     if errors and total_count == 0:
@@ -382,6 +386,15 @@ async def _sync_all_transactions(request: SyncTransactionsRequest, current_user,
 # cannot call it in a loop. Banks may cap unattended reads (PSD2 allows them
 # 4 a day); a refused read only marks that connection `failed`.
 SYNC_COOLDOWN_SECONDS = 10 * 60
+# POST /banking/sync starts a bank only while this much of its budget is
+# left, and a started bank runs to the end: cancelling one mid-sync could
+# lose a refresh token TrueLayer had just rotated (sec, eng-a on #138). Each
+# TrueLayer call times out at 10 s, but a bank makes one call per account,
+# so a started bank usually, not always, ends inside the margin. If it runs
+# past the MCP client's wait, the API still finishes it safely, well inside
+# the 5-minute sync lease (T-08-22).
+SYNC_BUDGET_SECONDS = 45
+SYNC_START_MARGIN_SECONDS = 25
 # Same window as the web sync; stored transactions are de-duplicated.
 SYNC_DAYS = 90
 
@@ -418,7 +431,7 @@ async def sync_banks(
         try:
             with sync_lease(db, current_user.id):
                 user_rate_limiter.check_key(key, limit=1, window_seconds=SYNC_COOLDOWN_SECONDS)
-                results = [await _sync_connection(connection, db) for connection in connections]
+                results = await _sync_within_budget(connections, db)
         except SyncBusy:
             raise _busy() from None
 
@@ -426,6 +439,27 @@ async def sync_banks(
         connections=results,
         accounts_synced=sum(r.accounts_synced for r in results),
         transactions_synced=sum(r.transactions_synced for r in results),
+    )
+
+
+async def _sync_within_budget(connections: list[BankConnection], db: Session) -> list[BankSyncConnectionResult]:
+    """Each connection in turn, starting one only while at least
+    SYNC_START_MARGIN_SECONDS of the budget are left. A started one is never
+    cancelled; the rest are `not_attempted`, never a success they didn't have."""
+    deadline = time.monotonic() + SYNC_BUDGET_SECONDS
+    results = []
+    for connection in connections:
+        if deadline - time.monotonic() < SYNC_START_MARGIN_SECONDS:
+            results.append(_result(connection, "not_attempted"))
+        else:
+            results.append(await _sync_connection(connection, db))
+    return results
+
+
+def _result(connection: BankConnection, outcome: str, accounts: int = 0, transactions: int = 0) -> BankSyncConnectionResult:
+    return BankSyncConnectionResult(
+        connection_id=str(connection.id), provider=connection.provider_name, status=outcome,
+        accounts_synced=accounts, transactions_synced=transactions,
     )
 
 
@@ -443,13 +477,7 @@ async def _sync_connection(connection: BankConnection, db: Session) -> BankSyncC
         logger.error("Bank sync failed for %s: %s", connection.provider_name, type(exc).__name__)
         db.rollback()
         outcome = "failed"
-    return BankSyncConnectionResult(
-        connection_id=str(connection.id),
-        provider=connection.provider_name,
-        status=outcome,
-        accounts_synced=accounts,
-        transactions_synced=transactions,
-    )
+    return _result(connection, outcome, accounts, transactions)
 
 
 @router.get("/accounts", response_model=list[AccountResponse])

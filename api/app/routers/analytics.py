@@ -311,6 +311,16 @@ def update_commitment(
         rule.match_key = analytics_service.merchant_match_key(direction, merchant)
     if "card_account_id" in updates:
         rule.card_link_source = card_links.USER
+    # sync_suggestions re-derives a detected rule's match_key from its label.
+    # A user's rename must not do that (T-08-18): their payments would stop
+    # matching and the merchant would be suggested again. A manual rule's key
+    # is left alone, the same as for Claude's renames (T-08-9).
+    if (
+        "label" in updates
+        and updates["label"] != rule.label
+        and rule.source == CommitmentSource.DETECTED.value
+    ):
+        rule.source = CommitmentSource.MANUAL.value
     for field, value in updates.items():
         setattr(rule, field, value)
     db.commit()

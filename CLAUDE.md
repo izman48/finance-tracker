@@ -179,8 +179,12 @@ quick overflow check, navigate a page and compare `document.documentElement
   data (sync happens at login/on demand); loading another user's row through an
   un-scoped query raises `InvalidToken` — always scope queries by user; a
   missing session key raises `DEKUnavailableError` → 401 (fail closed).
-  Recovery codes are shown once; password reset without one purges bank data
-  by design.
+  Recovery codes are shown once; password reset without one purges, by
+  design, every row encrypted under the old key (`services/key_loss_purge.py`:
+  bank data, commitments, planned events, rules and packs, assets, Claude's
+  change history) and revokes MCP grants. A new table with a `UserEncrypted*`
+  column fails `tests/integration/test_reset_purge.py` until the purge
+  deletes it.
 - **Remote MCP / OAuth** (`services/oauth.py`, `core/oauth_tokens.py`): the API
   is the OAuth 2.1 server for the MCP server at `/mcp`. MCP tokens are `typ:
   mcp_access`, audience-bound, scoped (`finance:read`, `finance:rules.write`,

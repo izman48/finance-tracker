@@ -86,8 +86,9 @@ export const authApi = {
   forgotPassword: (email: string) =>
     api.post('/auth/forgot-password', { email }),
 
-  // Without the recovery code, resetting issues a new encryption key: bank
-  // data is purged (rebuilt by re-syncing) and a fresh code comes back.
+  // Without the recovery code, resetting issues a new encryption key:
+  // everything encrypted under the old one is purged (`message` lists it)
+  // and a fresh code comes back.
   resetPassword: (token: string, newPassword: string, recoveryCode?: string) =>
     api.post<{ message: string; recovery_code?: string }>('/auth/reset-password', {
       token,

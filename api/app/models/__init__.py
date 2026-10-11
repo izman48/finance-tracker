@@ -21,10 +21,12 @@ from app.models.category_rule import CategoryRule, RulePack, merchant_match_key
 from app.models.asset import Asset, AssetFlow, AssetValuation, ASSET_TYPES
 from app.models.oauth import OAuthAuthorizationCode, OAuthClient, OAuthGrant
 from app.models.audit import AuditEntry, WriteIdempotency
+from app.models.sync_lock import UserSyncLock
 
 __all__ = [
     "AuditEntry",
     "WriteIdempotency",
+    "UserSyncLock",
     "User",
     "BankConnection",
     "Account",

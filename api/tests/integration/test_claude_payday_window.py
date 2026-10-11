@@ -170,17 +170,22 @@ def _flagged_salary_and_nearer_interest(w):
 def test_a_claude_dismissal_of_an_income_is_pending_and_can_be_kept(client, db_session):
     """sec on #121: the dismissal is held (window), so the user must be able
     to keep it, as the dismiss_commitment text promises."""
+    from tests.integration.test_oauth import _bearer
+
     w = World(client, db_session)
     _flagged_salary_and_nearer_interest(w)
     audit_id = w.claude_dismiss(w.salary)
     assert w.safe() == Decimal("200.00")
-    # A dismissed commitment leaves the commitments list, so the Keep control
-    # for it is on its Changes row (ux 9.1).
+    # ux 9.3: it stays on the commitments list, dismissed and pending.
+    row = w.commitment(w.salary)
+    assert (row["status"], row["keep"]) == ("dismissed", "pending")
     assert w.audit_row(audit_id)["keep"] == "pending"
     res = w.keep(audit_id)
     assert res.status_code == 200, res.text
     assert res.json()["keep"] == "kept"
     assert w.safe() == Decimal("500.00")  # the interest in 2 days is payday now
+    ids = [c["id"] for c in client.get(f"{API}/analytics/commitments", headers=_bearer(w.web)).json()]
+    assert str(w.salary) not in ids  # kept: an ordinary dismissal, off the list
 
 
 def test_undo_of_a_claude_income_dismissal_restores_it(client, db_session):

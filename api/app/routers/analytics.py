@@ -46,7 +46,7 @@ from decimal import Decimal
 
 from app.services import analytics_service
 from app.services.analytics import card_links
-from app.services.claude_keep import claude_rows, commitment_keep, pending_ids, record_user_edit
+from app.services.claude_keep import PENDING, claude_rows, commitment_keep, pending_ids, record_user_edit
 from app.services.analytics.common import _today
 from app.services.analytics.planned_matching import planned_states
 from app.services.analytics.late_income import late_incomes
@@ -221,25 +221,30 @@ def list_commitments(
     db: Annotated[Session, Depends(get_db)],
 ) -> list[CommitmentResponse]:
     """Detected + user commitments to review. Refreshes suggestions first.
-    Income whose latest payment hasn't arrived is flagged `late` (T-08-10)."""
+    Income whose latest payment hasn't arrived is flagged `late` (T-08-10).
+    Dismissed commitments are left out, except one Claude dismissed that is
+    still pending keep (ux 9.3): it stays, with `status: dismissed` and
+    `keep: pending`, until the user keeps or undoes it."""
     analytics_service.sync_suggestions(db, current_user)
     rules = (
         db.query(CommitmentRule)
-        .filter(
-            CommitmentRule.user_id == current_user.id,
-            CommitmentRule.status != CommitmentStatus.DISMISSED.value,
-        )
+        .filter(CommitmentRule.user_id == current_user.id)
         .order_by(CommitmentRule.direction, CommitmentRule.next_date)
         .all()
     )
-    markers = claude_markers(db, current_user.id, "commitment", [r.id for r in rules])
     claude = claude_rows(db, current_user.id, [r.id for r in rules])
+    keeps = {r.id: commitment_keep(r, claude.get(r.id, [])) for r in rules}
+    rules = [
+        r for r in rules
+        if r.status != CommitmentStatus.DISMISSED.value or keeps[r.id][0] == PENDING
+    ]
+    markers = claude_markers(db, current_user.id, "commitment", [r.id for r in rules])
     late = late_incomes(db, current_user, _today())
     return [
         CommitmentResponse.model_validate(r).model_copy(update={
             "changed_by_claude": ClaudeMarker(**markers[r.id]) if r.id in markers else None,
             "late": r.id in late,
-            **dict(zip(("keep", "kept_at"), commitment_keep(r, claude.get(r.id, [])))),
+            **dict(zip(("keep", "kept_at"), keeps[r.id])),
             "keep_audit_ids": pending_ids(r, claude.get(r.id, [])),
             "expected_date": late[r.id].expected_date if r.id in late else None,
         })

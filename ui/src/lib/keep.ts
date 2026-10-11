@@ -8,8 +8,9 @@ import type { Commitment } from '../types'
 import { gbp } from './format'
 
 export const KEEP_PENDING_TEXT = 'Not counted in savable until you keep it.'
-// A dismissed income is held in the safe-to-spend window instead (ux spec 9.3, T-08-21).
-const KEEP_DISMISSED_TEXT = 'Claude dismissed this. It still counts in your safe to spend until you keep this change.'
+// A dismissed income is out of savable at once; only the payday it sets is held (ux spec 9.3, KP15b).
+const KEEP_DISMISSED_TEXT =
+  'Claude dismissed this. Your safe to spend still uses it to find your payday until you keep this change. It no longer counts in savable.'
 
 export const pendingText = (dismissed: boolean) => (dismissed ? KEEP_DISMISSED_TEXT : KEEP_PENDING_TEXT)
 

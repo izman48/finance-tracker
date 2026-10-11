@@ -118,7 +118,7 @@ describe('CommitmentKeep (the commitment row, 9.1)', () => {
 
   it('9.3: a dismissed income gets the dismissal line, Keep and Undo', () => {
     const h = row(income({ status: 'dismissed' }))
-    expect(text(h)).toContain('Claude dismissed this. It still counts in your safe to spend until you keep this change.')
+    expect(text(h)).toContain('Claude dismissed this. Your safe to spend still uses it to find your payday until you keep this change. It no longer counts in savable.')
     expect(text(h)).not.toContain(KEEP_PENDING_TEXT)
     expect(names(h)).toEqual(['Keep this change: Salary', 'Undo: Claude’s changes to “Salary”'])
   })

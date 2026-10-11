@@ -31,7 +31,7 @@ describe('keep copy', () => {
   it('9.3: a dismissal has its own pending line and toast', () => {
     expect(pendingText(false)).toBe(KEEP_PENDING_TEXT)
     expect(pendingText(true)).toBe(
-      'Claude dismissed this. It still counts in your safe to spend until you keep this change.',
+      'Claude dismissed this. Your safe to spend still uses it to find your payday until you keep this change. It no longer counts in savable.',
     )
     expect(keepToast('Salary', true)).toBe('Kept “Salary”. Your safe to spend now reflects it.')
   })

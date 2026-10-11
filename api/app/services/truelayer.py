@@ -1,7 +1,8 @@
 """TrueLayer Open Banking API service."""
 import logging
 from typing import Any
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 from urllib.parse import urlencode
 
 import httpx
@@ -22,9 +23,22 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 # request, under the sync lease and the MCP client's wait.
 TRUELAYER_TIMEOUT_SECONDS = 10
 TRUELAYER_TIMEOUT = httpx.Timeout(TRUELAYER_TIMEOUT_SECONDS)
-# The fallback window when a longer fetch fails. A day inside the banks'
-# 90-day limit, so time-of-day drift can't put it just outside (T-08-24).
-FALLBACK_DAYS = 89
+# The fallback window after a 403 on a longer fetch: Monzo serves only the
+# last 90 days of its own (UK) date once consent is a few minutes old.
+# Counted from the Europe/London date, with two days' margin (sec on #141:
+# from the UTC date, 89 days landed on day 90 between 00:00 and 01:00 BST).
+FALLBACK_DAYS = 88
+BANK_TZ = ZoneInfo("Europe/London")
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _fallback_from() -> datetime:
+    """Midnight, London time, FALLBACK_DAYS before today's London date."""
+    bank_today = _utcnow().astimezone(BANK_TZ).date()
+    return datetime.combine(bank_today - timedelta(days=FALLBACK_DAYS), time.min, tzinfo=BANK_TZ)
 
 
 def _status_and_code(e: httpx.HTTPStatusError) -> str:
@@ -631,25 +645,20 @@ class TrueLayerService:
         return new_count
 
     async def _account_transactions(self, bank_connection: BankConnection, account, days: int, from_date) -> list:
-        """One account's transactions. More than the bank's recent window is
-        tried first, then FALLBACK_DAYS. Not for 404 or 501 (the endpoint
-        isn't there, e.g. Revolut card transactions): a shorter window can't
-        fix that. A 403 is retried: Monzo allows only the last 90 days after
-        the first minutes of consent, and asking for exactly 90 can fall just
-        outside it (T-08-24)."""
+        """One account's transactions. The requested window first; only after
+        a 403 (Monzo's "outside the last 90 days"), FALLBACK_DAYS from the
+        London date (T-08-24). Any other failure isn't retried: a shorter
+        window can't fix it, and each try spends the bank's quota (sec)."""
         token, ext = bank_connection.access_token, account.external_id
         if days <= FALLBACK_DAYS:
             return await self.get_transactions(token, ext, from_date=from_date)
         try:
             return await self.get_transactions(token, ext, from_date=from_date)
         except httpx.HTTPStatusError as e:
-            if e.response.status_code in (404, 501):
+            if e.response.status_code != 403:
                 raise
             logger.warning("Failed to fetch %s days (%s), trying %s", days, _status_and_code(e), FALLBACK_DAYS)
-        except httpx.HTTPError as e:
-            logger.warning("Failed to fetch %s days (%s), trying %s", days, type(e).__name__, FALLBACK_DAYS)
-        fallback = datetime.now(timezone.utc) - timedelta(days=FALLBACK_DAYS)
-        return await self.get_transactions(token, ext, from_date=fallback)
+        return await self.get_transactions(token, ext, from_date=_fallback_from())
 
 
 # Singleton instance

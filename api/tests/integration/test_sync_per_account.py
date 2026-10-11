@@ -128,15 +128,18 @@ def test_every_account_failing_is_failed_never_a_500(client, db_session, monkeyp
 
 
 def test_monzo_403_on_the_long_fetch_retries_inside_the_90_day_window(client, db_session, monkeypatch):
-    """Lead's hint: after the first minutes of consent Monzo serves only the
-    last 90 days; asking for exactly 90 can fall just outside. The fallback
-    asks for 89 and gets the data."""
+    """Lead's hint, and sec on #141: after the first minutes of consent Monzo
+    serves only the last 90 days of its (UK) date; asking for exactly 90 can
+    fall just outside. The fallback asks for 88 days from the Europe/London
+    date. Frozen at 00:30 BST, when the UTC date is still the day before."""
     from datetime import date
 
-    conn_id, dek = _connection_with_card(client, db_session)
+    _connection_with_card(client, db_session)
+    frozen = datetime(2026, 10, 11, 23, 30, tzinfo=timezone.utc)  # 00:30 on 12 Oct in London
+    monkeypatch.setattr(truelayer_module, "_utcnow", lambda: frozen)
+    bank_today = date(2026, 10, 12)
     real_client = httpx.AsyncClient
     asked = []
-
     card_tx = {**TX, "transaction_id": "tx-card-1"}
 
     def handler(request):
@@ -146,7 +149,7 @@ def test_monzo_403_on_the_long_fetch_retries_inside_the_90_day_window(client, db
         if path.endswith("/cards/card-1/transactions"):
             frm = date.fromisoformat(request.url.params["from"])
             asked.append(frm)
-            if (date.today() - frm).days >= 90:
+            if (bank_today - frm).days >= 90:
                 return httpx.Response(403, json={"error": "access_denied"})
             return httpx.Response(200, json={"results": [card_tx]})
         return httpx.Response(404)  # a card isn't under /accounts
@@ -155,8 +158,30 @@ def test_monzo_403_on_the_long_fetch_retries_inside_the_90_day_window(client, db
                         lambda *a, **k: real_client(*a, transport=httpx.MockTransport(handler), **k))
     r = client.post("/api/v1/banking/sync/transactions", json={"days": 365})
     assert r.status_code == 200, r.text
-    assert r.json()["transactions_synced"] == 2  # the card's too, via the 89-day retry
-    assert (date.today() - asked[-1]).days == 89
+    assert r.json()["transactions_synced"] == 2  # the card's too, via the retry
+    assert asked[-1] == date(2026, 7, 16)  # 12 Oct (London) less 88 days
+
+
+def test_only_a_403_is_retried(client, db_session, monkeypatch):
+    """sec on #141: a timeout or a 5xx on the long fetch skips that account
+    rather than trying again (each try spends the bank's quota)."""
+    _connection_with_card(client, db_session)
+    real_client = httpx.AsyncClient
+    card_calls = []
+
+    def handler(request):
+        if request.url.path.endswith("/cards/card-1/transactions"):
+            card_calls.append(request.url.params["from"])
+            return httpx.Response(503, json={"error": "temporarily_unavailable"})
+        if request.url.path.endswith("/accounts/cur-1/transactions"):
+            return httpx.Response(200, json={"results": [TX]})
+        return httpx.Response(404)
+
+    monkeypatch.setattr(truelayer_module.httpx, "AsyncClient",
+                        lambda *a, **k: real_client(*a, transport=httpx.MockTransport(handler), **k))
+    r = client.post("/api/v1/banking/sync/transactions", json={"days": 365})
+    assert r.status_code == 200, r.text
+    assert len(card_calls) == 1
 
 
 def test_a_501_card_is_skipped_quietly(client, db_session, monkeypatch, caplog):

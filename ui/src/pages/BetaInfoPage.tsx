@@ -10,6 +10,11 @@ function Contact() {
   return <a className="btn-link" href={`mailto:${contactEmail}`}>{contactEmail}</a>
 }
 
+// ux spec section 10, PV1 (T-08-22): a refresh started in the app sends the
+// user's network address to TrueLayer (X-PSU-IP, attended access).
+export const PSU_IP_NOTICE =
+  "When you refresh your banks in nilu, we share your device's network address with TrueLayer, our bank-data provider, so your bank knows you asked."
+
 function LegalShell({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="max-w-3xl mx-auto px-4 py-10 sm:py-16">
@@ -41,6 +46,7 @@ export function PrivacyPage() {
       <section>
         <h2 className="font-display font-semibold text-slate-100 text-lg mb-1">Why and who receives it</h2>
         <p>We use this information only to run nilu., secure it, and send account emails such as password resets. TrueLayer and the email provider are used as service providers where necessary. We do not sell data or use advertising/tracking scripts in the dashboard.</p>
+        <p>{PSU_IP_NOTICE}</p>
       </section>
       <section>
         <h2 className="font-display font-semibold text-slate-100 text-lg mb-1">Your control</h2>

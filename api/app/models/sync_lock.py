@@ -21,3 +21,7 @@ class UserSyncLock(Base):
     )
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     lock_token: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    # When the last sync that reached TrueLayer started: POST /banking/sync
+    # waits SYNC_COOLDOWN_SECONDS after it, shared by both workers and kept
+    # across restarts (T-08-22, owner "A + address").
+    cooldown_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

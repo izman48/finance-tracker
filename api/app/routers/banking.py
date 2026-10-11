@@ -1,19 +1,22 @@
 """Banking endpoints for Open Banking integration."""
 import logging
+import math
+from contextlib import nullcontext
 import time
 import uuid
 from typing import Annotated
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, Request, status, Query
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.security import CurrentUser, verify_oauth_state
-from app.core.oauth_tokens import CurrentUserOrMcpRead, CurrentUserOrMcpSync
+from app.core.oauth_tokens import SCOPE_SYNC, Caller, CurrentUserOrMcpRead, scoped_caller
+from app.core.psu_ip import user_present
 from app.core.user_crypto import current_dek, require_dek
 from app.schemas import (
     BankConnectionURL,
@@ -34,7 +37,7 @@ from app.schemas.transaction_search import TransactionSearchRequest, Transaction
 from app.services import analytics_service, categorization
 from app.services import transaction_search as search
 from app.services.balance_sign import credit_owed
-from app.services.sync_lock import RETRY_AFTER_SECONDS, SyncBusy, sync_lease
+from app.services.sync_lock import RETRY_AFTER_SECONDS, SyncBusy, cooldown_left, start_cooldown, sync_lease
 from app.services.sync_status import freshness, sync_status
 from app.services.truelayer import ReauthRequired, truelayer_service
 from app.models import Account, AccountRole, Transaction, User, BankConnection
@@ -126,6 +129,7 @@ def reconnect_bank(
 
 @router.get("/callback")
 async def oauth_callback(
+    http: Request,
     db: Annotated[Session, Depends(get_db)],
     code: str | None = Query(None, description="OAuth authorization code"),
     state: str | None = Query(None, description="Signed OAuth state token"),
@@ -220,38 +224,40 @@ async def oauth_callback(
         db.commit()
         db.refresh(bank_connection)
 
-        # Immediately sync accounts and historical data with the initial access token.
-        # No sync lease here (T-08-22): it skips the token refresh, so it can't
-        # race another sync's rotation of this new connection's refresh token.
-        # IMPORTANT: Use skip_token_refresh=True to preserve the initial token for historical data access
-        # Per TrueLayer's SCA requirements, do NOT refresh the token until all historical data is fetched
-        try:
-            await truelayer_service.sync_accounts(bank_connection, db, skip_token_refresh=True)
-            logger.info(f"Successfully synced accounts for {provider_name}")
-        except Exception as e:
-            error_msg = str(e)
-            # Check if this is a card-only provider (AMEX, etc.) that doesn't support accounts endpoint
-            if "501" in error_msg or "endpoint_not_supported" in error_msg:
-                logger.warning(f"{provider_name} does not support accounts endpoint (card-only provider). Skipping account sync.")
-            else:
-                logger.error(f"Failed to sync accounts during callback: {error_msg}")
+        # The user just came back from their bank: present, so X-PSU-IP (T-08-22).
+        with user_present(http):
+            # Immediately sync accounts and historical data with the initial access token.
+            # No sync lease here (T-08-22): it skips the token refresh, so it can't
+            # race another sync's rotation of this new connection's refresh token.
+            # IMPORTANT: Use skip_token_refresh=True to preserve the initial token for historical data access
+            # Per TrueLayer's SCA requirements, do NOT refresh the token until all historical data is fetched
+            try:
+                await truelayer_service.sync_accounts(bank_connection, db, skip_token_refresh=True)
+                logger.info(f"Successfully synced accounts for {provider_name}")
+            except Exception as e:
+                error_msg = str(e)
+                # Check if this is a card-only provider (AMEX, etc.) that doesn't support accounts endpoint
+                if "501" in error_msg or "endpoint_not_supported" in error_msg:
+                    logger.warning(f"{provider_name} does not support accounts endpoint (card-only provider). Skipping account sync.")
+                else:
+                    logger.error(f"Failed to sync accounts during callback: {error_msg}")
 
-        # IMPORTANT: Sync maximum historical data (730 days = 2 years) with the initial token
-        # Due to SCA (Strong Customer Authentication), banks only allow historical data
-        # retrieval beyond 90 days within the first 45 minutes (or 5 minutes) after authentication
-        # After this period, only 90 days will be available
-        # NOTE: In sandbox/mock environment, banks may only return limited test data (~90 days)
-        try:
-            logger.info(f"Attempting to sync 730 days of historical transactions for {provider_name}")
-            count = await truelayer_service.sync_transactions(bank_connection, db, days=730, skip_token_refresh=True)
-            logger.info(f"Successfully synced {count} historical transactions for {provider_name}")
-        except Exception as e:
-            error_msg = str(e)
-            # Check if this is a card-only provider that doesn't support accounts endpoint
-            if "501" in error_msg or "endpoint_not_supported" in error_msg or "No accounts found" in error_msg:
-                logger.warning(f"{provider_name} does not support transaction sync (card-only provider). Card support coming soon.")
-            else:
-                logger.error(f"Failed to sync historical transactions during callback: {error_msg}")
+            # IMPORTANT: Sync maximum historical data (730 days = 2 years) with the initial token
+            # Due to SCA (Strong Customer Authentication), banks only allow historical data
+            # retrieval beyond 90 days within the first 45 minutes (or 5 minutes) after authentication
+            # After this period, only 90 days will be available
+            # NOTE: In sandbox/mock environment, banks may only return limited test data (~90 days)
+            try:
+                logger.info(f"Attempting to sync 730 days of historical transactions for {provider_name}")
+                count = await truelayer_service.sync_transactions(bank_connection, db, days=730, skip_token_refresh=True)
+                logger.info(f"Successfully synced {count} historical transactions for {provider_name}")
+            except Exception as e:
+                error_msg = str(e)
+                # Check if this is a card-only provider that doesn't support accounts endpoint
+                if "501" in error_msg or "endpoint_not_supported" in error_msg or "No accounts found" in error_msg:
+                    logger.warning(f"{provider_name} does not support transaction sync (card-only provider). Card support coming soon.")
+                else:
+                    logger.error(f"Failed to sync historical transactions during callback: {error_msg}")
 
         return RedirectResponse(url=f"{frontend_url}/dashboard?bank_connected=true")
 
@@ -262,6 +268,7 @@ async def oauth_callback(
 
 @router.post("/sync/accounts", response_model=SyncAccountsResponse)
 async def sync_accounts(
+    http: Request,
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> SyncAccountsResponse:
@@ -272,7 +279,7 @@ async def sync_accounts(
     and stores them in the database. One sync per user at a time.
     """
     try:
-        with sync_lease(db, current_user.id):
+        with sync_lease(db, current_user.id), user_present(http):
             return await _sync_all_accounts(current_user, db)
     except SyncBusy:
         raise _busy() from None
@@ -323,6 +330,7 @@ async def _sync_all_accounts(current_user, db: Session) -> SyncAccountsResponse:
 @router.post("/sync/transactions", response_model=SyncTransactionsResponse)
 async def sync_transactions(
     request: SyncTransactionsRequest,
+    http: Request,
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> SyncTransactionsResponse:
@@ -334,7 +342,7 @@ async def sync_transactions(
     at a time.
     """
     try:
-        with sync_lease(db, current_user.id):
+        with sync_lease(db, current_user.id), user_present(http):
             return await _sync_all_transactions(request, current_user, db)
     except SyncBusy:
         raise _busy() from None
@@ -411,7 +419,8 @@ def sync_in_flight_key(user_id: uuid.UUID) -> str:
 
 @router.post("/sync", response_model=BankSyncResponse)
 async def sync_banks(
-    current_user: CurrentUserOrMcpSync,
+    http: Request,
+    caller: Annotated[Caller, Depends(scoped_caller(SCOPE_SYNC))],
     db: Annotated[Session, Depends(get_db)],
 ) -> BankSyncResponse:
     """Fetch fresh accounts, then transactions, from every connected bank.
@@ -422,7 +431,12 @@ async def sync_banks(
     not count), and at least SYNC_COOLDOWN_SECONDS between syncs. A failing connection
     does not stop the others: each reports synced | reconnect | failed, and
     never the error text.
+
+    The cooldown is held in the database, so both workers and restarts share
+    it, and only a sync that reaches TrueLayer starts it. X-PSU-IP goes only
+    with a web session (the user is present), never for an MCP token.
     """
+    current_user = caller.user
     key = sync_in_flight_key(current_user.id)
     with user_in_flight.hold(key, detail="A bank sync is already running. Please try again shortly."):
         connections = db.query(BankConnection).filter(BankConnection.user_id == current_user.id).all()
@@ -435,8 +449,17 @@ async def sync_banks(
         # other worker and the older sync routes (T-08-22, sec).
         try:
             with sync_lease(db, current_user.id):
-                user_rate_limiter.check_key(key, limit=1, window_seconds=SYNC_COOLDOWN_SECONDS)
-                results = await _sync_within_budget(connections, db)
+                left = cooldown_left(db, current_user.id, timedelta(seconds=SYNC_COOLDOWN_SECONDS))
+                if left > 0:
+                    raise HTTPException(
+                        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                        detail="Your banks were refreshed a few minutes ago. Please try again later.",
+                        headers={"Retry-After": str(math.ceil(left))},
+                    )
+                start_cooldown(db, current_user.id)
+                web_session = caller.grant_id is None
+                with user_present(http) if web_session else nullcontext():
+                    results = await _sync_within_budget(connections, db)
         except SyncBusy:
             raise _busy() from None
 

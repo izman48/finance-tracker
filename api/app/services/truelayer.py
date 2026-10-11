@@ -9,6 +9,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.psu_ip import current_psu_ip
 from app.core.security import create_oauth_state
 from app.models import User, Account, Transaction, BankConnection
 from app.services.categorization import category_from_provider
@@ -40,6 +41,16 @@ def _fallback_from() -> datetime:
     """Midnight, London time, FALLBACK_DAYS before today's London date."""
     bank_today = _utcnow().astimezone(BANK_TZ).date()
     return datetime.combine(bank_today - timedelta(days=FALLBACK_DAYS), time.min, tzinfo=BANK_TZ)
+
+
+def _data_headers(access_token: str) -> dict[str, str]:
+    """Headers for a TrueLayer data call. X-PSU-IP only while the user is
+    present (a sync they started in the web app, T-08-22); never logged."""
+    headers = {"Authorization": f"Bearer {access_token}"}
+    ip = current_psu_ip.get()
+    if ip:
+        headers["X-PSU-IP"] = ip
+    return headers
 
 
 def _status_and_code(e: httpx.HTTPStatusError) -> str:
@@ -250,7 +261,7 @@ class TrueLayerService:
                 try:
                     response = await client.get(
                         f"{self.api_url}/data/v1/{endpoint}",
-                        headers={"Authorization": f"Bearer {access_token}"},
+                        headers=_data_headers(access_token),
                     )
                     response.raise_for_status()
                     results = response.json().get("results", [])
@@ -305,7 +316,7 @@ class TrueLayerService:
             logger.info(f"Fetching accounts from {self.api_url}/data/v1/accounts")
             response = await client.get(
                 f"{self.api_url}/data/v1/accounts",
-                headers={"Authorization": f"Bearer {access_token}"},
+                headers=_data_headers(access_token),
             )
             logger.info(f"Accounts response status: {response.status_code}")
             # Never the body (sec, T-08-24): it can carry provider detail.
@@ -327,7 +338,7 @@ class TrueLayerService:
             logger.info(f"Fetching cards from {self.api_url}/data/v1/cards")
             response = await client.get(
                 f"{self.api_url}/data/v1/cards",
-                headers={"Authorization": f"Bearer {access_token}"},
+                headers=_data_headers(access_token),
             )
             logger.info(f"Cards response status: {response.status_code}")
             # Never the body (sec, T-08-24): it can carry provider detail.
@@ -374,7 +385,7 @@ class TrueLayerService:
             try:
                 response = await client.get(
                     f"{self.api_url}/data/v1/accounts/{account_id}/balance",
-                    headers={"Authorization": f"Bearer {access_token}"},
+                    headers=_data_headers(access_token),
                 )
                 response.raise_for_status()
                 data = response.json()
@@ -384,7 +395,7 @@ class TrueLayerService:
                 # Try card balance as fallback
                 response = await client.get(
                     f"{self.api_url}/data/v1/cards/{account_id}/balance",
-                    headers={"Authorization": f"Bearer {access_token}"},
+                    headers=_data_headers(access_token),
                 )
                 response.raise_for_status()
                 data = response.json()
@@ -424,7 +435,7 @@ class TrueLayerService:
             try:
                 response = await client.get(
                     f"{self.api_url}/data/v1/accounts/{account_id}/transactions",
-                    headers={"Authorization": f"Bearer {access_token}"},
+                    headers=_data_headers(access_token),
                     params=params,
                 )
                 response.raise_for_status()
@@ -435,7 +446,7 @@ class TrueLayerService:
                 # Try card transactions as fallback
                 response = await client.get(
                     f"{self.api_url}/data/v1/cards/{account_id}/transactions",
-                    headers={"Authorization": f"Bearer {access_token}"},
+                    headers=_data_headers(access_token),
                     params=params,
                 )
                 response.raise_for_status()

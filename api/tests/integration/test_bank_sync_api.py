@@ -223,9 +223,12 @@ def test_response_names_only_the_documented_fields(client, db_session, truelayer
 # --------------------------------------------------------------------------- #
 @pytest.fixture
 def clock(monkeypatch):
-    """The limiter's clock, moved by hand."""
-    now = [1_000.0]
-    monkeypatch.setattr(rate_limit, "monotonic", lambda: now[0])
+    """The cooldown's clock (held in the DB since T-08-22), moved by hand in seconds."""
+    from app.services import sync_lock
+
+    now = [0.0]
+    start = datetime(2026, 10, 12, 12, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(sync_lock, "utcnow", lambda: start + timedelta(seconds=now[0]))
     return now
 
 
@@ -285,4 +288,55 @@ def test_one_sync_at_a_time_and_a_refused_one_costs_nothing(client, db_session, 
     assert "sync" in r.json()["detail"].lower()
     assert truelayer.calls == []
 
+    assert w.sync().status_code == 200
+
+
+
+# --------------------------------------------------------------------------- #
+# The cooldown is held in the database (T-08-22, owner "A + address")
+# --------------------------------------------------------------------------- #
+def test_the_cooldown_survives_a_restart(client, db_session, truelayer, clock):
+    """Held in the DB: a restart (the in-process limiter reset) can't clear it."""
+    w = World(client, db_session)
+    w.connection("MONZO")
+    assert w.sync().status_code == 200
+    rate_limit.user_rate_limiter.reset()
+    clock[0] += 60
+    assert w.sync().status_code == 429
+
+
+def test_the_other_worker_sees_the_cooldown(client, db_session, truelayer, clock):
+    """Another session (the other worker) reads the same row."""
+    from app.services import sync_lock
+    from tests.conftest import TestingSessionLocal
+
+    w = World(client, db_session)
+    w.connection("MONZO")
+    assert w.sync().status_code == 200
+    other = TestingSessionLocal()
+    try:
+        assert sync_lock.cooldown_left(other, w.user.id) > 0
+    finally:
+        other.close()
+
+
+def test_a_sync_refused_for_no_connections_starts_no_cooldown(client, db_session, truelayer, clock):
+    w = World(client, db_session)
+    assert w.sync().status_code == 400
+    w.connection("MONZO")
+    assert w.sync().status_code == 200
+
+
+def test_a_sync_refused_while_another_runs_starts_no_cooldown(client, db_session, truelayer, clock):
+    from app.services import sync_lock
+    from tests.conftest import TestingSessionLocal
+
+    w = World(client, db_session)
+    w.connection("MONZO")
+    other = TestingSessionLocal()
+    try:
+        with sync_lock.sync_lease(other, w.user.id):
+            assert w.sync().status_code == 429
+    finally:
+        other.close()
     assert w.sync().status_code == 200

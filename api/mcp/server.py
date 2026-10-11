@@ -311,7 +311,7 @@ def create_server(settings: Settings, api_transport: httpx.AsyncBaseTransport | 
     async def dismiss_commitment(
         commitment_id: str, idempotency_key: str, batch_id: str = "", dry_run: bool = True,
     ) -> dict:
-        """Dismiss a commitment (an id from the commitments tool) that is wrong or a duplicate, so it stops counting. Dismissing an income doesn't shorten the user's safe-to-spend window until they keep the change in the app. The user can undo it in the app under "Changes made by Claude". To merge duplicates, see update_commitment's `batch_id`.
+        """Dismiss a commitment (an id from the commitments tool) that is wrong or a duplicate, so it stops counting. Dismissing the income that sets payday doesn't shorten the user's safe-to-spend window until they keep the change in the app. The user can undo it in the app under "Changes made by Claude". To merge duplicates, see update_commitment's `batch_id`.
 
         With dry_run=true (the default) nothing changes: you get a preview. Show it to the user and get their explicit confirmation before calling again with dry_run=false. `idempotency_key` is 8-64 characters of letters, digits, - or _, new for each change you intend.
 

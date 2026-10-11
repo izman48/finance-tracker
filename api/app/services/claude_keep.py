@@ -17,6 +17,10 @@ Savable counts the *smaller* of the commitment as it is and as it was before
 Claude's pending changes, so a change that brings in less counts at once.
 Safe-to-spend never counts income, and the forecast may show the new figure
 (owner decision D1 = a).
+
+A dismissal brings nothing in, so it waits for keep only when it could bring
+payday nearer (T-08-21): see `applied_dismissals`. Any other Claude dismissal
+applies at once, like a kept change.
 """
 from __future__ import annotations
 
@@ -61,9 +65,18 @@ def _value(field: str, raw):
     return None if raw is None else TARGETS["commitment"].fields[field](raw)
 
 
+def _is_dismissal(entry: AuditEntry) -> bool:
+    confirmed = CommitmentStatus.CONFIRMED.value
+    return any(
+        c["field"] == "status" and c["before"] == confirmed and c["after"] != confirmed
+        for c in json.loads(entry.changes)
+    )
+
+
 def _raising(entry: AuditEntry) -> list[dict]:
     """The money changes in a write that need the user to keep them: those
-    that could bring in more, or move payday (a dismissal can, T-08-21)."""
+    that could bring in more, or move payday nearer (a dismissal that isn't
+    in `applied`, T-08-21)."""
     out = []
     for c in json.loads(entry.changes):
         field = c["field"]
@@ -83,13 +96,19 @@ def _raising(entry: AuditEntry) -> list[dict]:
     return out
 
 
-def _live_fields(rows: list[AuditEntry]) -> dict[uuid.UUID, set[str]]:
+def _settled(row: AuditEntry, applied: frozenset) -> bool:
+    """Kept, or a dismissal that applies at once: its values stand."""
+    return row.kept_at is not None or row.id in applied
+
+
+def _live_fields(rows: list[AuditEntry], applied: frozenset = frozenset()) -> dict[uuid.UUID, set[str]]:
     """{row id: the money fields of that Claude write still in effect}.
 
     Walking newest first, a field stops being Claude's once the user set it
     by hand afterwards, or a newer Claude change to it was kept (the user
-    accepted that value instead). A newer *pending* change doesn't settle an
-    older one: both revert, newest first."""
+    accepted that value instead), or a newer dismissal applied at once. A
+    newer *pending* change doesn't settle an older one: both revert, newest
+    first."""
     settled: set[str] = set()
     out = {}
     for row in reversed(rows):
@@ -97,19 +116,23 @@ def _live_fields(rows: list[AuditEntry]) -> dict[uuid.UUID, set[str]]:
         user_set = set(row.user_set_fields or [])
         out[row.id] = fields - user_set - settled
         settled |= user_set
-        if row.kept_at is not None:
+        if _settled(row, applied):
             settled |= fields
     return out
 
 
-def keep_states(rule: CommitmentRule | None, rows: list[AuditEntry]) -> dict[uuid.UUID, str | None]:
+def keep_states(rule: CommitmentRule | None, rows: list[AuditEntry],
+                applied: frozenset = frozenset()) -> dict[uuid.UUID, str | None]:
     """{row id: `pending`, `kept`, or None (D4 doesn't apply)} for Claude's
-    not-undone writes to one income commitment, oldest first."""
-    live = _live_fields(rows)
+    not-undone writes to one income commitment, oldest first. `applied`:
+    from `applied_dismissals`."""
+    live = _live_fields(rows, applied)
     out = {}
     for row in rows:
         out[row.id] = None
         if rule is None or rule.direction != CommitmentDirection.INCOME.value or row.client_id is None:
+            continue
+        if row.id in applied:
             continue
         raising = _raising(row)
         if not raising:
@@ -121,15 +144,16 @@ def keep_states(rule: CommitmentRule | None, rows: list[AuditEntry]) -> dict[uui
     return out
 
 
-def pending_ids(rule: CommitmentRule, rows: list[AuditEntry]) -> list[uuid.UUID]:
+def pending_ids(rule: CommitmentRule, rows: list[AuditEntry], applied: frozenset = frozenset()) -> list[uuid.UUID]:
     """Claude's writes to this commitment that are waiting to be kept, oldest first."""
-    by_id = keep_states(rule, rows)
+    by_id = keep_states(rule, rows, applied)
     return [r.id for r in rows if by_id[r.id] == PENDING]
 
 
-def commitment_keep(rule: CommitmentRule, rows: list[AuditEntry]) -> tuple[str | None, object]:
+def commitment_keep(rule: CommitmentRule, rows: list[AuditEntry],
+                    applied: frozenset = frozenset()) -> tuple[str | None, object]:
     """(keep, kept_at) for a commitment: pending if any of Claude's writes is."""
-    by_id = keep_states(rule, rows)
+    by_id = keep_states(rule, rows, applied)
     states = [(by_id[r.id], r.kept_at) for r in rows]
     if any(s == PENDING for s, _ in states):
         return PENDING, None
@@ -160,30 +184,72 @@ def pre_claude_payday_incomes(db: Session, user) -> list:
     (T-08-21): every income commitment (dismissed ones too, a dismissal may
     be Claude's) seen through `before_claude`, kept if it was confirmed then,
     with the is_payday preference applied as `_payday_incomes` does."""
-    rules = (
-        db.query(CommitmentRule)
-        .filter(CommitmentRule.user_id == user.id, CommitmentRule.direction == CommitmentDirection.INCOME.value)
-        .all()
-    )
+    rules = _income_rules(db, user.id)
     claude = claude_rows(db, user.id, [r.id for r in rules])
-    confirmed = CommitmentStatus.CONFIRMED.value
+    applied = _applied_dismissals(rules, claude)
     out = []
     for r in rules:
-        view = before_claude(r, claude[r.id]) if r.id in claude else r
-        if view.status == confirmed:
+        view = before_claude(r, claude[r.id], applied) if r.id in claude else r
+        if view.status == CommitmentStatus.CONFIRMED.value:
             out.append(SimpleNamespace(is_payday=r.is_payday, **{f: getattr(view, f) for f in MONEY_FIELDS}))
     flagged = [r for r in out if r.is_payday]
     return flagged or out
 
 
-def before_claude(rule: CommitmentRule, rows: list[AuditEntry]) -> SimpleNamespace:
+def _income_rules(db: Session, user_id: uuid.UUID) -> list[CommitmentRule]:
+    return (
+        db.query(CommitmentRule)
+        .filter(CommitmentRule.user_id == user_id, CommitmentRule.direction == CommitmentDirection.INCOME.value)
+        .all()
+    )
+
+
+def applied_dismissals(db: Session, user_id: uuid.UUID) -> frozenset:
+    """The audit ids of Claude's income dismissals that apply at once."""
+    rules = _income_rules(db, user_id)
+    return _applied_dismissals(rules, claude_rows(db, user_id, [r.id for r in rules]))
+
+
+def _applied_dismissals(rules: list[CommitmentRule], claude: dict) -> frozenset:
+    """Claude's pending income dismissals that can't bring payday nearer, so
+    apply at once (T-08-21 follow-up).
+
+    Payday is the soonest date among the payday incomes: the flagged ones,
+    or every income if none is flagged, or 30 days out if there are none.
+    Taking incomes out of that set can only make its soonest date the same
+    or later. Payday can come nearer only when the dismissals change *which*
+    set it is: the flagged ones all go (payday falls back to every income)
+    or every income goes (the 30-day fallback). Then the dismissals of
+    payday incomes are held; otherwise every dismissal applies at once."""
+    dismissals: dict[uuid.UUID, list[uuid.UUID]] = {}
+    for r in rules:
+        rows = claude.get(r.id, [])
+        live = _live_fields(rows)
+        for row in rows:
+            if row.kept_at is None and _is_dismissal(row) and "status" in live[row.id]:
+                dismissals.setdefault(r.id, []).append(row.id)
+    if not dismissals:
+        return frozenset()
+    confirmed = CommitmentStatus.CONFIRMED.value
+    before = [r for r in rules if (before_claude(r, claude[r.id]) if r.id in claude else r).status == confirmed]
+
+    def payday_set(incomes) -> set:
+        return {r.id for r in incomes if r.is_payday} or {r.id for r in incomes}
+
+    all_set = payday_set(before)
+    rest_set = payday_set([r for r in before if r.id not in dismissals])
+    held = set(dismissals) & all_set if not rest_set or not rest_set <= all_set else set()
+    return frozenset(row_id for rid, ids in dismissals.items() if rid not in held for row_id in ids)
+
+
+def before_claude(rule: CommitmentRule, rows: list[AuditEntry], applied: frozenset = frozenset()) -> SimpleNamespace:
     """The commitment's money fields as they were before Claude's pending
     (not kept) writes, walking newest first and reverting each field that is
     still Claude's (`_live_fields`)."""
-    live = _live_fields(rows)
+    live = _live_fields(rows, applied)
     view = SimpleNamespace(**{f: getattr(rule, f) for f in MONEY_FIELDS})
     for entry in reversed(rows):
-        if entry.kept_at is not None:
+        if _settled(entry, applied):
             continue
         for c in json.loads(entry.changes):
             if c["field"] in live[entry.id]:

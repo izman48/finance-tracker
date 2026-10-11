@@ -20,7 +20,7 @@ from app.core.security import CurrentUser
 from app.models import AuditEntry, CommitmentRule, OAuthClient, OAuthGrant
 from app.models.audit import AUDIT_KIND_WRITE
 from app.schemas import AuditEntryResponse, AuditPage
-from app.services.claude_keep import KEPT, PENDING, claude_rows, keep_states
+from app.services.claude_keep import KEPT, PENDING, applied_dismissals, claude_rows, keep_states
 from app.services.planning_writes import undo_write
 
 router = APIRouter(prefix="/audit", tags=["audit"])
@@ -108,9 +108,10 @@ def _keep_states(db: Session, user_id, rows: list[AuditEntry]) -> dict:
     commitments = {
         c.id: c for c in db.query(CommitmentRule).filter(CommitmentRule.user_id == user_id, CommitmentRule.id.in_(ids))
     }
+    applied = applied_dismissals(db, user_id)
     out = {}
     for target_id, history in claude_rows(db, user_id, ids).items():
-        out.update(keep_states(commitments.get(target_id), history))
+        out.update(keep_states(commitments.get(target_id), history, applied))
     return out
 
 

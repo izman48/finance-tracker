@@ -46,7 +46,9 @@ from decimal import Decimal
 
 from app.services import analytics_service
 from app.services.analytics import card_links
-from app.services.claude_keep import PENDING, claude_rows, commitment_keep, pending_ids, record_user_edit
+from app.services.claude_keep import (
+    PENDING, applied_dismissals, claude_rows, commitment_keep, pending_ids, record_user_edit,
+)
 from app.services.analytics.common import _today
 from app.services.analytics.planned_matching import planned_states
 from app.services.analytics.late_income import late_incomes
@@ -233,7 +235,8 @@ def list_commitments(
         .all()
     )
     claude = claude_rows(db, current_user.id, [r.id for r in rules])
-    keeps = {r.id: commitment_keep(r, claude.get(r.id, [])) for r in rules}
+    applied = applied_dismissals(db, current_user.id)
+    keeps = {r.id: commitment_keep(r, claude.get(r.id, []), applied) for r in rules}
     rules = [
         r for r in rules
         if r.status != CommitmentStatus.DISMISSED.value or keeps[r.id][0] == PENDING
@@ -245,7 +248,7 @@ def list_commitments(
             "changed_by_claude": ClaudeMarker(**markers[r.id]) if r.id in markers else None,
             "late": r.id in late,
             **dict(zip(("keep", "kept_at"), keeps[r.id])),
-            "keep_audit_ids": pending_ids(r, claude.get(r.id, [])),
+            "keep_audit_ids": pending_ids(r, claude.get(r.id, []), applied),
             "expected_date": late[r.id].expected_date if r.id in late else None,
         })
         for r in rules

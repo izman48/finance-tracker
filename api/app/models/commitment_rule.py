@@ -99,6 +99,9 @@ class CommitmentRule(Base):
         nullable=True, index=True,
     )
     card_link_source: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    # Income only: the user skipped the missed payment expected on this date,
+    # so it is no longer flagged late (T-08-23). Next payments are unchanged.
+    skipped_through: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

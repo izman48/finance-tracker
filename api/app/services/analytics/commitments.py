@@ -430,7 +430,15 @@ def skip_commitment(db: Session, user, commitment_id):
     )
     if not rule or not rule.next_date:
         return None
-    rule.next_date = _step(rule.next_date, rule.cadence, rule.interval_days, rule.interval_months)
+    from .late_income import late_incomes
+
+    late = late_incomes(db, user, _today()).get(rule.id)
+    if late is not None:
+        # A late income: Skip settles the missed payment (T-08-23). Moving
+        # next_date on would drop the next real one instead.
+        rule.skipped_through = late.expected_date
+    else:
+        rule.next_date = _step(rule.next_date, rule.cadence, rule.interval_days, rule.interval_months)
     db.commit()
     db.refresh(rule)
     return rule

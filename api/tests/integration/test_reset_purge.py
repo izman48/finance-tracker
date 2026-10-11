@@ -207,13 +207,15 @@ def test_the_check_catches_an_encrypted_table_the_purge_misses(db_session):
     db_session.add(user)
     db_session.commit()
     dummy.create(db_session.connection())
-    db_session.execute(dummy.insert().values(id=uuid.uuid4(), user_id=user.id, secret="hidden"))
+    try:
+        db_session.execute(dummy.insert().values(id=uuid.uuid4(), user_id=user.id, secret="hidden"))
 
-    purge_data_under_lost_key(db_session, user.id)
+        purge_data_under_lost_key(db_session, user.id)
 
-    assert [t.name for t in encrypted_tables(dummy_metadata)] == ["dummy_secrets"]
-    assert tables_with_extra_rows(db_session, encrypted_tables(dummy_metadata), {}) == ["dummy_secrets"]
-    dummy.drop(db_session.connection())
+        assert [t.name for t in encrypted_tables(dummy_metadata)] == ["dummy_secrets"]
+        assert tables_with_extra_rows(db_session, encrypted_tables(dummy_metadata), {}) == ["dummy_secrets"]
+    finally:
+        dummy.drop(db_session.connection())
 
 
 # --------------------------------------------------------------------------- #
@@ -349,7 +351,11 @@ def test_a_failed_reset_purges_nothing_and_keeps_the_old_password(client, db_ses
     monkeypatch.setattr("app.routers.auth.get_password_hash", fail)
     with pytest.raises(RuntimeError):
         _reset(client, db_session)
-    db_session.rollback()  # what get_db's session close does with an uncommitted transaction
+    # The test client shares db_session with the request, so the purge's
+    # uncommitted deletes are still pending here. In production get_db closes
+    # the session, which rolls them back; rolling back does the same. If the
+    # purge had committed, the counts below would show it.
+    db_session.rollback()
     monkeypatch.undo()
 
     assert row_counts(db_session, tables) == before

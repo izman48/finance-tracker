@@ -190,7 +190,9 @@ class NudgeResponse(BaseModel):
     rank: int
     body: str
     detail: str
-    source: str
+    # A published source for nudges that cite one (rates, FSCS). Null for a
+    # nudge about the user's own data, e.g. duplicate commitments (T-08-25).
+    source: str | None
     as_of: date | None
 
 

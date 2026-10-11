@@ -261,3 +261,39 @@ def test_clearing_a_card_link_applies_at_once(client, db_session):
     w.claude_update(w.bill, card_account_id=None)
     assert _committed(w) == Decimal("700.00")
     assert w.commitment(w.bill)["keep"] is None
+
+
+def test_a_card_link_with_a_1p_raise_in_one_write_raises_nothing(client, db_session):
+    """sec on #131: the raised version wins on value and carried the new
+    link, so committed fell to GBP 400. The link is chosen on its own."""
+    w = World(client, db_session)
+    card = _card_with_repayment(w)
+    audit_id = w.claude_update(w.bill, card_account_id=str(card), amount="300.01")
+    assert _committed(w) >= Decimal("700.00")
+    assert w.keep(audit_id).status_code == 200
+    assert _committed(w) == Decimal("400.00")
+
+
+def test_a_card_link_then_a_1p_raise_raises_nothing(client, db_session):
+    w = World(client, db_session)
+    card = _card_with_repayment(w)
+    w.claude_update(w.bill, card_account_id=str(card))
+    w.claude_update(w.bill, amount="300.01")
+    assert _committed(w) >= Decimal("700.00")
+
+
+def test_a_card_link_with_a_1p_raise_leaves_the_projection_unchanged(client, db_session):
+    w = World(client, db_session)
+    card = _card_with_repayment(w)
+    before = _projection(w)
+    w.claude_update(w.bill, card_account_id=str(card), amount="300.01")
+    assert sum(_projection(w)[1]) <= sum(before[1])
+
+
+def test_a_raise_then_a_card_link_raises_nothing(client, db_session):
+    """eng-a on #131: the raise applies, the link waits (GBP 310 + 400)."""
+    w = World(client, db_session)
+    card = _card_with_repayment(w)
+    w.claude_update(w.bill, amount="310.00")
+    w.claude_update(w.bill, card_account_id=str(card))
+    assert _committed(w) == Decimal("710.00")

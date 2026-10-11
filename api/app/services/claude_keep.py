@@ -117,8 +117,11 @@ def _favourable(entry: AuditEntry, direction: str) -> list[dict]:
             if (started or stopped) if income else stopped:
                 out.append(c)
         elif field in ("card_account_id", "card_link_source"):
-            # Linking a bill to a card can count it once with the card's
-            # repayment instead of both; clearing a link only adds.
+            # Linking a bill to a card (or moving it to another card) can
+            # count it once with the card's repayment instead of both;
+            # clearing a link only adds. card_link_source is never held on
+            # its own: it is tracked so a revert or hand edit covers it with
+            # card_account_id.
             if field == "card_account_id" and not income and c["after"] is not None:
                 out.append(c)
         elif field == "next_date" and not income:
@@ -195,29 +198,58 @@ def commitment_keep(rule: CommitmentRule, rows: list[AuditEntry],
 
 def held_back(rule: CommitmentRule, rows: list[AuditEntry], value) -> object | None:
     """The version of a commitment to count while Claude's changes to it are
-    pending, judged by `value(version)` (the money it moves in some window):
-    the lower of now and before-Claude for an income, the higher for an
-    expense. None if that is "not a confirmed commitment" (it counts nothing)."""
+    pending, judged by `value(version)` (the money it moves in some window).
+    An income counts the lower of now and before-Claude; an expense the safe
+    side of each part on its own (`_expense_held`). None if that is "not a
+    confirmed commitment" (it counts nothing)."""
     before = before_claude(rule, rows)
+    if rule.direction != CommitmentDirection.INCOME.value:
+        return _expense_held(rule, before, value)
     confirmed = CommitmentStatus.CONFIRMED.value
     now_worth = value(rule) if rule.status == confirmed else Decimal(0)
     before_worth = value(before) if before.status == confirmed else Decimal(0)
-    income = rule.direction == CommitmentDirection.INCOME.value
-    if income:
-        use_now = now_worth <= before_worth
-    else:
-        # `value` can't see the card link: a linked bill may count once with
-        # its card's repayment, an unlinked one counts as well. On a tie the
-        # safe side is no link, or else the link from before Claude.
-        link_held = rule.card_account_id is not None and before.card_account_id != rule.card_account_id
-        use_now = now_worth > before_worth or (now_worth == before_worth and not link_held)
-    if use_now:
+    if now_worth <= before_worth:
         return rule if rule.status == confirmed else None
     if before.status != confirmed:
         return None
+    return _version(rule, before)
+
+
+TIMING_FIELDS = ("next_date", "cadence", "interval_days", "interval_months")
+
+
+def _expense_held(rule: CommitmentRule, before, value) -> object | None:
+    """A bill counted the safe way, part by part (sec on #131): a version-by-
+    version choice let a 1p raise carry a new card link through.
+
+    - status: counted if confirmed now or before Claude;
+    - amount: the higher;
+    - when and how often: whichever of the two schedules moves more money;
+    - card link: none if it has none now (both then count), else the link
+      from before Claude while Claude's link is pending."""
+    confirmed = CommitmentStatus.CONFIRMED.value
+    if confirmed not in (rule.status, before.status):
+        return None
+    if all(getattr(before, f) == getattr(rule, f) for f in HELD_FIELDS):
+        return rule
+    amount = max(rule.amount, before.amount)
+    timing = max(
+        (before, rule),
+        key=lambda v: value(SimpleNamespace(amount=amount, **{f: getattr(v, f) for f in TIMING_FIELDS})),
+    )
+    link = rule if rule.card_account_id is None else before
     return SimpleNamespace(
         id=rule.id, direction=rule.direction, label=rule.label, account_id=rule.account_id,
-        **{f: getattr(before, f) for f in HELD_FIELDS},
+        status=confirmed, amount=amount,
+        **{f: getattr(timing, f) for f in TIMING_FIELDS},
+        card_account_id=link.card_account_id, card_link_source=link.card_link_source,
+    )
+
+
+def _version(rule: CommitmentRule, view) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=rule.id, direction=rule.direction, label=rule.label, account_id=rule.account_id,
+        **{f: getattr(view, f) for f in HELD_FIELDS},
     )
 
 

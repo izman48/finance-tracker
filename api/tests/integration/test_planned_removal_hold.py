@@ -92,3 +92,19 @@ def test_an_mcp_token_cannot_keep_a_removal(client, db_session):
     audit_id = w.remove(item_id).json()["audit_id"]
     assert _keep(w, audit_id, token=w.mcp).status_code == 401
     assert _money(w) == before
+
+
+def _surplus(w):
+    from app.services import analytics_service as svc
+    return w.as_user(lambda: list(svc.monthly_surplus_series(w.db, w.user, 6, Decimal(0))))
+
+
+def test_the_projection_keeps_a_removed_planned_expense_until_kept(client, db_session):
+    """sec on #132: the Wealth projection holds it too, like #131's bills."""
+    w = World(client, db_session)
+    item_id = _added(w)
+    before = _surplus(w)
+    audit_id = w.remove(item_id).json()["audit_id"]
+    assert _surplus(w) == before
+    _keep(w, audit_id)
+    assert sum(_surplus(w)) == sum(before) + 200

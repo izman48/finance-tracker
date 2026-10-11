@@ -123,3 +123,62 @@ def test_skip_on_an_income_that_is_not_late_still_skips_the_next_one(client, db_
     next_before = date.fromisoformat(w.commitments()[LABEL]["next_date"])
     after = date.fromisoformat(w.skip()["next_date"])
     assert after > next_before
+
+
+def _keyed_with_bank_prefix(w):
+    """A commitment keyed on a description with a generic bank prefix (manual,
+    so sync doesn't re-key it from the label)."""
+    def rekey():
+        rule = w.db.get(CommitmentRule, w.rule_id)
+        rule.match_key, rule.source = "income:faster payment payer x parents and rent", "manual"
+        w.db.commit()
+    w.as_user(rekey)
+
+
+def test_two_payers_behind_the_same_bank_prefix_do_not_combine(client, db_session):
+    """sec on #133: "FASTER PAYMENT" isn't a payer."""
+    w = World(client, db_session)
+    _keyed_with_bank_prefix(w)
+    w.paid("1003.00", "FASTER PAYMENT PAYER X RENT")
+    w.paid("200.00", "FASTER PAYMENT PAYER Y MAMA AND DADA")
+    assert w.late() is True
+
+
+def test_the_same_payer_behind_different_bank_prefixes_combines(client, db_session):
+    w = World(client, db_session)
+    _keyed_with_bank_prefix(w)
+    w.paid("1003.00", "BANK GIRO CREDIT PAYER X RENT")
+    w.paid("200.00", "TRANSFER FROM PAYER X MAMA AND DADA")
+    assert w.late() is False
+
+
+def _second_income(w, label="Payer X expenses", amount="150.00"):
+    rule_id = w.income(EXPECTED)
+
+    def relabel():
+        rule = w.db.get(CommitmentRule, rule_id)
+        rule.label, rule.amount, rule.source = label, Decimal(amount), "manual"
+        rule.match_key = "income:" + label.lower()
+        w.db.commit()
+    w.as_user(relabel)
+    return label
+
+
+def test_one_payment_clears_only_one_income_from_the_payer(client, db_session):
+    """eng-a on #133: credits are allocated, each used once."""
+    w = World(client, db_session)
+    other = _second_income(w)
+    w.paid("1203.00", "PAYER X PARENTS AND RENT")
+    rows = w.commitments()
+    assert rows[LABEL]["late"] is False
+    assert rows[other]["late"] is True
+
+
+def test_split_credits_are_shared_out_between_two_incomes(client, db_session):
+    w = World(client, db_session)
+    other = _second_income(w)
+    w.paid("1003.00", "PAYER X RENT")
+    w.paid("200.00", "PAYER X MAMA AND DADA")
+    w.paid("150.00", "PAYER X EXPENSES")
+    rows = w.commitments()
+    assert (rows[LABEL]["late"], rows[other]["late"]) == (False, False)

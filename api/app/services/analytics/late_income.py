@@ -40,12 +40,16 @@ from app.models import Account, CommitmentDirection, CommitmentRule, CommitmentS
 from .cadence import _step, _step_back
 from .commitments import _match_key, _normalise_merchant, transaction_match_key
 from .common import _d, _load, detect_internal_transfers, resolve_roles
-from .planned_matching import tolerance
+from .planned_matching import _STOP_WORDS, tolerance
 
 GRACE_DAYS = 3
 EARLY_DAYS = 7  # a payment this many days early still counts
 SPLIT_DAYS = 7  # credits from the payer this close to the expected date add up
 PAYER_WORDS = 2  # the leading words of a description that name the payer
+# Leading words a bank puts before the payer's name (sec on #133).
+_BANK_PREFIX = _STOP_WORDS | {
+    "faster", "payments", "bank", "giro", "credit", "fps", "bacs", "chaps", "tfr", "received", "receipt",
+}
 
 
 @dataclass(frozen=True)
@@ -98,38 +102,79 @@ def late_incomes(db: Session, user, today: date) -> dict[uuid.UUID, LateIncome]:
     if not candidates:
         return {}
     credits = _income_credits(db, user, min(e for _, e in candidates) - timedelta(days=EARLY_DAYS))
+    # Each credit pays one income (eng-a on #133): exact matches first, then
+    # the payer's leftover credits, soonest expected income first.
+    unused = list(credits)
+    waiting = []
+    for rule, expected in sorted(candidates, key=lambda c: c[1]):
+        match = _exact_match(rule, expected, unused)
+        if match is None:
+            waiting.append((rule, expected))
+        else:
+            unused.remove(match)
     out = {}
-    for rule, expected in candidates:
-        if not _arrived(rule, expected, credits):
+    for rule, expected in waiting:
+        used = _split_match(rule, expected, unused)
+        if used is None:
             out[rule.id] = LateIncome(rule.id, rule.label, _d(rule.amount), expected)
+        else:
+            for c in used:
+                unused.remove(c)
     return out
 
 
-def _arrived(rule: CommitmentRule, expected: date, credits: list[_Credit]) -> bool:
-    keys = {k for k in (rule.match_key, _match_key(rule.direction, rule.label)) if k}
-    amount = _d(rule.amount)
+def _keys(rule: CommitmentRule) -> set[str]:
+    return {k for k in (rule.match_key, _match_key(rule.direction, rule.label)) if k}
+
+
+def _exact_match(rule: CommitmentRule, expected: date, credits: list[_Credit]) -> _Credit | None:
+    """One credit with the commitment's own key, within tolerance."""
+    keys, amount = _keys(rule), _d(rule.amount)
     allowed = tolerance(amount)  # the same rule as planned items (T-08-7)
     early = expected - timedelta(days=EARLY_DAYS)
-    if any(c.key in keys and c.day >= early and abs(c.amount - amount) <= allowed for c in credits):
-        return True
-    payers = {_payer(k.split(":", 1)[1]) for k in keys}
-    near = [
-        c for c in credits
-        if c.payer in payers and abs((c.day - expected).days) <= SPLIT_DAYS
-    ]
-    return sum((c.amount for c in near), Decimal(0)) >= amount - allowed
+    return next(
+        (c for c in credits if c.key in keys and c.day >= early and abs(c.amount - amount) <= allowed),
+        None,
+    )
+
+
+def _split_match(rule: CommitmentRule, expected: date, credits: list[_Credit]) -> list[_Credit] | None:
+    """Credits from the same payer near the expected date that together make
+    at least the expected amount less tolerance, taken in date order until
+    they do; None if they don't."""
+    payers = {_payer(k.split(":", 1)[1]) for k in _keys(rule)} - {()}
+    amount = _d(rule.amount)
+    needed = amount - tolerance(amount)
+    near = sorted(
+        (c for c in credits if c.payer in payers and abs((c.day - expected).days) <= SPLIT_DAYS),
+        key=lambda c: c.day,
+    )
+    used, total = [], Decimal(0)
+    for c in near:
+        used.append(c)
+        total += c.amount
+        if total >= needed:
+            return used
+    return None
 
 
 def _payer(text: str) -> tuple[str, ...]:
-    """The leading words of a normalised description: the payer's name,
-    before the free-text reference ("PAYER X RENT" -> payer x)."""
-    return tuple(_normalise_merchant(text).lower().split()[:PAYER_WORDS])
+    """The payer's name: the leading words of a normalised description after
+    any bank prefix ("FASTER PAYMENT", "BANK GIRO CREDIT", "TRANSFER FROM")
+    and before the free-text reference ("PAYER X RENT" -> payer x)."""
+    words = _normalise_merchant(text).lower().split()
+    while words and words[0] in _BANK_PREFIX:
+        words.pop(0)
+    return tuple(words[:PAYER_WORDS])
 
 
 def _income_credits(db: Session, user, since: date) -> list[_Credit]:
     """Credits since `since` that could be the income: not a detected
     internal transfer leg (money from your own accounts) and not a card
-    payment. One the user marked as a transfer still counts here."""
+    payment. One the user marked as a transfer (override or transfer
+    category) still counts here: it is often pass-through money that did
+    arrive, and this check moves no figure. Spending and safe-to-spend keep
+    excluding it."""
     from .spending import classify_noise
 
     txns = (

@@ -11,6 +11,9 @@ import httpx
 from mcp.server.auth.middleware.auth_context import get_access_token
 
 
+DEFAULT_TIMEOUT = 60  # seconds
+
+
 class NotAuthenticatedError(RuntimeError):
     """No authenticated caller in context — refuse rather than guess."""
 
@@ -72,11 +75,11 @@ class ApiClient:
     async def get(self, path: str, params: dict | None = None):
         return await self._request("GET", path, params=params)
 
-    async def post(self, path: str, payload: dict):
-        return await self._request("POST", path, json=payload)
+    async def post(self, path: str, payload: dict, timeout: float = DEFAULT_TIMEOUT):
+        return await self._request("POST", path, timeout=timeout, json=payload)
 
-    async def _request(self, method: str, path: str, **kwargs):
-        async with httpx.AsyncClient(transport=self._transport, timeout=60) as http:
+    async def _request(self, method: str, path: str, timeout: float = DEFAULT_TIMEOUT, **kwargs):
+        async with httpx.AsyncClient(transport=self._transport, timeout=timeout) as http:
             token = await self.credentials.token(http)
             r = await http.request(method, f"{self._api}{path}", headers=_bearer(token), **kwargs)
             if r.status_code == 401 and self.credentials.retry_on_401:

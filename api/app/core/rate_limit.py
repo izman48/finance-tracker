@@ -97,12 +97,17 @@ class InFlightGuard:
         self._lock = Lock()
 
     @contextmanager
-    def hold(self, key: str, retry_after: int = 2) -> Iterator[None]:
+    def hold(
+        self,
+        key: str,
+        retry_after: int = 2,
+        detail: str = "A search is already running. Please try again shortly.",
+    ) -> Iterator[None]:
         with self._lock:
             if key in self._held:
                 raise HTTPException(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                    detail="A search is already running. Please try again shortly.",
+                    detail=detail,
                     headers={"Retry-After": str(retry_after)},
                 )
             self._held.add(key)

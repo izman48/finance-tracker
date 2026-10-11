@@ -4,19 +4,24 @@ import { consentScopes, cleanDisplayName } from './oauthConsent'
 // docs/design/nilu-s08-claude-changes.md (HQ) section 5, K2 and C15.
 
 describe('consentScopes (K2)', () => {
-  it('sends read only when neither optional box is ticked', () => {
-    expect(consentScopes({ rules: false, planning: false })).toEqual(['finance:read'])
+  it('sends read only when no optional box is ticked', () => {
+    expect(consentScopes({ rules: false, planning: false, sync: false })).toEqual(['finance:read'])
   })
 
   it('adds planning.write only when its box is ticked', () => {
-    expect(consentScopes({ rules: false, planning: true })).toEqual(['finance:read', 'finance:planning.write'])
+    expect(consentScopes({ rules: false, planning: true, sync: false })).toEqual(['finance:read', 'finance:planning.write'])
   })
 
-  it('sends all three when both boxes are ticked', () => {
-    expect(consentScopes({ rules: true, planning: true })).toEqual([
+  it('adds sync only when its box is ticked', () => {
+    expect(consentScopes({ rules: false, planning: false, sync: true })).toEqual(['finance:read', 'finance:sync'])
+  })
+
+  it('sends all four when every box is ticked', () => {
+    expect(consentScopes({ rules: true, planning: true, sync: true })).toEqual([
       'finance:read',
       'finance:rules.write',
       'finance:planning.write',
+      'finance:sync',
     ])
   })
 })

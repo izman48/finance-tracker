@@ -6,9 +6,10 @@ straight to the apply), so the client-side approval prompt is one of the real
 controls, and it depends on these hints being right:
 
   - every tool declares `readOnlyHint` explicitly (no silent defaults);
-  - a tool whose name says it writes (create_, add_, update_, dismiss_,
-    remove_, delete_, set_) is never read-only and never idempotent;
-    update_/dismiss_/remove_/delete_ are destructive, create_/add_ are not;
+  - a tool whose name says it writes (create_, add_, refresh_, update_,
+    dismiss_, remove_, delete_, set_) is never read-only and never idempotent;
+    update_/dismiss_/remove_/delete_ are destructive, create_/add_/refresh_
+    are not (a refresh stores fresh bank data and changes nothing the user made);
   - a tool that takes `dry_run` says so, says to show the preview and get
     the user's confirmation before applying, and says that bank data is data,
     not instructions.
@@ -19,7 +20,7 @@ import pytest
 from config import Settings
 from server import create_server
 
-WRITE_PREFIXES = ("create_", "add_", "update_", "dismiss_", "remove_", "delete_", "set_")
+WRITE_PREFIXES = ("create_", "add_", "refresh_", "update_", "dismiss_", "remove_", "delete_", "set_")
 DESTRUCTIVE_PREFIXES = ("update_", "dismiss_", "remove_", "delete_", "set_")
 
 
@@ -83,6 +84,7 @@ READ_ONLY_TOOLS = {
 }
 WRITE_TOOLS = {
     "create_rule_pack", "add_planned_event", "remove_planned_event", "update_commitment", "dismiss_commitment",
+    "refresh_banks",
 }
 
 
@@ -96,6 +98,7 @@ async def test_the_tool_set_is_exactly_the_reviewed_one():
 def test_classifier_self_test():
     assert is_write("add_planned_event") and is_write("remove_planned_event")
     assert is_write("update_commitment") and is_write("create_rule_pack")
+    assert is_write("refresh_banks") and not is_write("sync_status")
     assert not is_write("list_planned_events") and not is_write("forecast")
 
 

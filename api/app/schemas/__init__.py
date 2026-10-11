@@ -541,6 +541,25 @@ class SyncAccountsResponse(BaseModel):
     message: str
 
 
+class BankSyncConnectionResult(BaseModel):
+    """One connection's outcome. `status` is synced | reconnect | failed;
+    never the exception text, which can name URLs or provider detail."""
+
+    connection_id: str
+    provider: str
+    status: Literal["synced", "reconnect", "failed"]
+    accounts_synced: int
+    transactions_synced: int
+
+
+class BankSyncResponse(BaseModel):
+    """Result of POST /banking/sync (accounts, then transactions, per bank)."""
+
+    connections: list[BankSyncConnectionResult]
+    accounts_synced: int
+    transactions_synced: int
+
+
 class SyncTransactionsRequest(BaseModel):
     """Request to sync transactions."""
 

@@ -12,10 +12,12 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.security import CurrentUser, verify_oauth_state
-from app.core.oauth_tokens import CurrentUserOrMcpRead
+from app.core.oauth_tokens import CurrentUserOrMcpRead, CurrentUserOrMcpSync
 from app.core.user_crypto import current_dek, require_dek
 from app.schemas import (
     BankConnectionURL,
+    BankSyncConnectionResult,
+    BankSyncResponse,
     SyncAccountsResponse,
     SyncStatusResponse,
     SyncTransactionsRequest,
@@ -343,6 +345,74 @@ async def sync_transactions(
     return SyncTransactionsResponse(
         transactions_synced=total_count,
         message=message
+    )
+
+
+# A new sync starts at least this long after the last one, so an assistant
+# cannot call it in a loop. Banks may cap unattended reads (PSD2 allows them
+# 4 a day); a refused read only marks that connection `failed`.
+SYNC_COOLDOWN_SECONDS = 10 * 60
+# Same window as the web sync; stored transactions are de-duplicated.
+SYNC_DAYS = 90
+
+
+def sync_in_flight_key(user_id: uuid.UUID) -> str:
+    """One key for the one-at-a-time guard and the daily limit."""
+    return f"bank-sync:{user_id}"
+
+
+@router.post("/sync", response_model=BankSyncResponse)
+async def sync_banks(
+    current_user: CurrentUserOrMcpSync,
+    db: Annotated[Session, Depends(get_db)],
+) -> BankSyncResponse:
+    """Fetch fresh accounts, then transactions, from every connected bank.
+
+    Reachable from a web session or an MCP token with `finance:sync`. It runs
+    inside the request because the DEK that decrypts the bank tokens exists
+    only for the request. One sync per user at a time (a refused call does
+    not count), and at least SYNC_COOLDOWN_SECONDS between syncs. A failing connection
+    does not stop the others: each reports synced | reconnect | failed, and
+    never the error text.
+    """
+    key = sync_in_flight_key(current_user.id)
+    with user_in_flight.hold(key, detail="A bank sync is already running. Please try again shortly."):
+        connections = db.query(BankConnection).filter(BankConnection.user_id == current_user.id).all()
+        if not connections:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No bank connections found. Please connect a bank first.",
+            )
+        user_rate_limiter.check_key(key, limit=1, window_seconds=SYNC_COOLDOWN_SECONDS)
+        results = [await _sync_connection(connection, db) for connection in connections]
+
+    return BankSyncResponse(
+        connections=results,
+        accounts_synced=sum(r.accounts_synced for r in results),
+        transactions_synced=sum(r.transactions_synced for r in results),
+    )
+
+
+async def _sync_connection(connection: BankConnection, db: Session) -> BankSyncConnectionResult:
+    accounts = transactions = 0
+    try:
+        accounts = len(await truelayer_service.sync_accounts(connection, db))
+        transactions = await truelayer_service.sync_transactions(connection, db, days=SYNC_DAYS)
+        outcome = "synced"
+    except ReauthRequired:
+        # The service has already flagged the connection and dropped the dead token.
+        outcome = "reconnect"
+    except Exception as exc:
+        # Log the type only: the message can carry provider detail.
+        logger.error("Bank sync failed for %s: %s", connection.provider_name, type(exc).__name__)
+        db.rollback()
+        outcome = "failed"
+    return BankSyncConnectionResult(
+        connection_id=str(connection.id),
+        provider=connection.provider_name,
+        status=outcome,
+        accounts_synced=accounts,
+        transactions_synced=transactions,
     )
 
 

@@ -226,3 +226,34 @@ export function mergeFirstPage(loaded: AuditItem[], fresh: AuditItem[]): AuditIt
   const ids = new Set(fresh.map((it) => it.id))
   return [...fresh, ...loaded.filter((it) => !ids.has(it.id))]
 }
+
+/**
+ * A newer, not-undone change Claude made to the same item (ux 9.7). While
+ * there is one, an older change's undo can be refused (409) because of it:
+ * the user acts on the later change first.
+ */
+export function laterChange(item: AuditItem, items: AuditItem[]): AuditItem | null {
+  return (
+    items.find(
+      (other) =>
+        other.id !== item.id &&
+        other.target_id === item.target_id &&
+        other.undone_at === null &&
+        other.created_at > item.created_at,
+    ) ?? null
+  )
+}
+
+/** laterId: the newer change by Claude that was in the way of a 409 (ux 9.7). */
+export type UndoState = { undoing: boolean; failure: UndoFailure | null; laterId?: string | null }
+
+/**
+ * A 409 caused by a later change ends once that change is undone or kept:
+ * the older row gets its Undo back (KP21). Any other 409 stays for the session.
+ */
+export function settledUndoState(state: UndoState, items: AuditItem[]): UndoState {
+  if (state.failure !== 'changed' || !state.laterId) return state
+  const later = items.find((it) => it.id === state.laterId)
+  if (later && (later.undone_at !== null || later.keep === 'kept')) return { undoing: false, failure: null }
+  return state
+}

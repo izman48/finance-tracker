@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { describe, expect, it } from 'vitest'
 import {
+  laterChange,
   changeLines,
   changeTitle,
   clientText,
@@ -169,5 +170,20 @@ describe('mergeFirstPage (refetch after an undo)', () => {
     const merged = mergeFirstPage(loaded, fresh)
     expect(merged.map((r) => r.id)).toEqual(['1', '2', '3'])
     expect(merged[0].undone_at).toBe('2026-10-13T08:00:00Z')
+  })
+})
+
+describe('laterChange (ux 9.7, KP21)', () => {
+  const add = item({ id: 'add', target_id: 'p1', created_at: '2026-10-11T09:00:00Z', tool: 'add_planned_event' })
+  const remove = item({ id: 'rm', target_id: 'p1', created_at: '2026-10-11T10:00:00Z', tool: 'remove_planned_event', keep: 'pending' })
+  const other = item({ id: 'x', target_id: 'p2', created_at: '2026-10-11T11:00:00Z' })
+
+  it('finds a newer, not-undone row for the same target', () => {
+    expect(laterChange(add, [other, remove, add])?.id).toBe('rm')
+  })
+
+  it('ignores older rows, other targets and undone rows', () => {
+    expect(laterChange(remove, [other, remove, add])).toBeNull()
+    expect(laterChange(add, [other, { ...remove, undone_at: '2026-10-11T12:00:00Z' }, add])).toBeNull()
   })
 })

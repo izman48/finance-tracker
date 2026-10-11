@@ -1,15 +1,18 @@
 import { Link } from 'react-router-dom'
-import { changeTitle, type AuditItem, type UndoFailure } from '../../lib/changes'
+import { changeTitle, type AuditItem, type UndoFailure, type UndoState } from '../../lib/changes'
 
 export const CHANGED_SINCE_TEXT =
   "Can't undo this: it has changed since Claude made the change. Check its current value and change it by hand if you need to."
+// A newer change by Claude to the same item is in the way (ux 9.7, KP21).
+export const LATER_CHANGE_TEXT =
+  "Can't undo this yet: Claude changed it again afterwards. Keep or undo the later change first."
 export const UNDO_FAILED_TEXT = "Couldn't undo this. Nothing was changed. Try again."
 export const RATE_LIMIT_TEXT = " You've reached the hourly limit; try again later."
 // No answer from the server: the undo may have gone through, so don't claim otherwise.
 export const UNDO_UNCERTAIN_TEXT =
   "Couldn't confirm the undo. It may have gone through; check this change before you try again."
 
-export type UndoState = { undoing: boolean; failure: UndoFailure | null }
+export type { UndoState } from '../../lib/changes'
 
 /**
  * The row's Undo button (ux spec 1.5). Gone once the server says the change
@@ -40,10 +43,17 @@ export function UndoButton({ item, state, onUndo }: { item: AuditItem; state: Un
 }
 
 /** The inline message after a failed undo. It never carries the server's text. */
-export function UndoNotice({ item, failure }: { item: AuditItem; failure: UndoFailure | null }) {
+export function UndoNotice({ item, failure, later = false }: { item: AuditItem; failure: UndoFailure | null; later?: boolean }) {
   if (failure === null) return null
   // A refetch showed the undo went through after all: the Undone chip says so.
   if (item.undone_at !== null && failure !== 'changed') return null
+  if (failure === 'changed' && later) {
+    return (
+      <div id={`change-${item.id}-alert`} role="alert" tabIndex={-1} className="banner-err mt-3 text-sm outline-none">
+        {LATER_CHANGE_TEXT}
+      </div>
+    )
+  }
   if (failure === 'changed') {
     const commitments = item.target_kind === 'commitment'
     return (

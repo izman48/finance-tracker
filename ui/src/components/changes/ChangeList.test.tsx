@@ -115,4 +115,17 @@ describe('ChangeList', () => {
     const t = text(render([item({ keep: 'pending', keep_kind: 'expense_cut', target_label: 'Gym', changes: [{ field: 'amount', before: '50.00', after: '30.00' }] })]))
     expect(t).toContain('Claude lowered this from £50.00 to £30.00. It still counts at £50.00 in your safe to spend until you keep this change.')
   })
+
+  it('KP22: a held removal of a planned expense shows the generic line on its Changes row', () => {
+    const removal = addEvent('expense', {
+      tool: 'remove_planned_event',
+      keep: 'pending',
+      keep_kind: 'expense_cut',
+      changes: [
+        { field: 'active', before: true, after: false },
+        { field: 'amount', before: '200.00', after: '200.00' },
+      ],
+    })
+    expect(text(render([removal]))).toContain('Still counted in your safe to spend until you keep this change.')
+  })
 })

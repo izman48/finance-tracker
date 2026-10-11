@@ -121,6 +121,12 @@ def _seed(db):
         _tx(db, cur, "credit", "1.10", days, "Interest paid", "INTEREST")
         _tx(db, cur, "debit", "12.80", days, "Pret", "Eating out")
         _tx(db, cur, "debit", "5", days, "Mystery", "SOMETHING_NEW")
+        # Every raw type seen on production (precheck 2026-10-12), DEBIT the largest.
+        _tx(db, cur, "debit", "42.15", days, "Corner shop", "DEBIT")
+        _tx(db, cur, "debit", "6", days, "Overdraft fee", "FEE_CHARGE")
+        _tx(db, cur, "debit", "30", days, "Cash withdrawal", "CASH")
+        _tx(db, cur, "debit", "75", days, "Cheque 0001", "CHEQUE")
+        _tx(db, cur, "credit", "60", days, "Cheque deposit", "CHEQUE")
         _tx(db, cur, "debit", "9.99", days, "Streaming", "PURCHASE", locked=True)
     db.add(CommitmentRule(
         user_id=user.id, direction="expense", label="Energy co", amount=Decimal("80"),
@@ -167,6 +173,8 @@ class TestBackfill:
             ("To saver", "Transfers"), ("Flywire", "Transfers"),
             ("Tesco", None), ("Energy co", None), ("Landlord", None),
             ("AMEX PAYMENT", None), ("Pizza place", None), ("Cash machine", None),
+            ("Corner shop", None), ("Overdraft fee", None), ("Cash withdrawal", None),
+            ("Cheque 0001", None), ("Cheque deposit", "Income"),
             ("Pret", "Eating out"),          # a rule/user category: untouched
             ("Mystery", "SOMETHING_NEW"),    # not a known provider type: untouched
             ("Streaming", "PURCHASE"),       # hand-set (locked): untouched

@@ -32,10 +32,14 @@ export default function ResetPasswordPage() {
       return
     }
     if (!recoveryCode.trim() && !window.confirm(
-      'Reset without your recovery code?\n\nYour encrypted data cannot be ' +
-      'unlocked without it, so it will be cleared: bank data, commitments, ' +
-      'planned events, rules, assets and the history of changes made by Claude. ' +
-      'You can reconnect your bank afterwards.'
+      'Reset without your recovery code?\n\n' +
+      "This can't be undone. Without your recovery code we can't unlock your " +
+      'encrypted data, so it will be permanently deleted: bank data, commitments, ' +
+      "planned events, rules (a shared rule pack's public link will stop working), " +
+      'assets and the history of changes made by Claude. Claude (MCP) access to ' +
+      'your account will also be disconnected.\n\n' +
+      'If you might still have your recovery code, choose Cancel and look for it ' +
+      'first. Choose OK to reset your password and delete this data.'
     )) {
       return
     }
@@ -78,7 +82,7 @@ export default function ResetPasswordPage() {
         title="Save your new recovery code"
         subtitle="A new encryption key was issued — the old code no longer works."
       >
-        <div className="banner-ok mb-4">{clearedMessage}</div>
+        <div className="banner-ok mb-4">{clearedMessage ?? 'Password updated.'}</div>
         <RecoveryCodeCard
           code={newRecoveryCode}
           continueLabel="I've saved it — log in"
@@ -140,7 +144,8 @@ export default function ResetPasswordPage() {
             <p className="text-xs text-slate-500 mt-1.5">
               The code you saved at signup. It unlocks your encrypted data so
               nothing is lost. Without it, your bank data, commitments, planned
-              events, rules, assets and Claude's change history are cleared.
+              events, rules, assets and the history of changes made by Claude are
+              permanently deleted, and Claude access is disconnected.
             </p>
           </div>
 

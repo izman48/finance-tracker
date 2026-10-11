@@ -248,8 +248,10 @@ def test_reset_message_says_exactly_what_was_cleared(client, db_session):
     res = _reset(client, db_session)
     assert res.status_code == 200
     assert res.json()["message"] == (
-        "Password updated. We cleared your bank data, commitments, planned events, rules, "
-        "assets and the history of changes made by Claude. Reconnect your bank to start again."
+        "Password updated. We deleted your bank data, commitments, planned events, rules "
+        "(shared rule pack links no longer work), assets and the history of changes made by "
+        "Claude, and disconnected Claude (MCP) access. Reconnect your bank to start again, "
+        "and reconnect Claude if you use it."
     )
     assert res.json()["recovery_code"]
 

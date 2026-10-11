@@ -104,8 +104,8 @@ the audit). `.github/scripts/check_workflows.py` enforces all of this
 (self-tested by `test_check_workflows.py`; `test_audit_gate.py` covers the
 gate and the ignore list; both run in `test.yml`). Pin new actions the same way.
 On a PR, `test.yml` skips jobs whose files didn't change (a path filter);
-called from `deploy.yml`, every job runs. Its `required` job is the one
-check to require: it passes only if every job passed or, on a PR, was
+called from `deploy.yml`, every job runs. Its `required` job is the single
+status to look at: it passes only if every job passed or, on a PR, was
 skipped as unaffected. A new job must be added to its `needs`
 (check_workflows.py enforces this).
 

@@ -168,7 +168,7 @@ jobs:
       - name: Actions pinned to SHAs; the audit can't fail silently
         run: python3 .github/scripts/check_workflows.py .github/workflows
 
-  # The one check to require on PRs (T-08-26). It passes when every job
+  # One status for the whole run (T-08-26). It passes when every job
   # passed or, on a PR only, was skipped because its files didn't change.
   # Off a PR, a skipped job fails it: a deploy runs everything.
   required:

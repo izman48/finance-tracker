@@ -617,6 +617,10 @@ class CashflowSummary(BaseModel):
     # Income Claude raised or confirmed that the user hasn't kept yet, held
     # back from savable (T-08-20, D4). 0 when nothing is pending.
     savable_pending_keep_total: Decimal = Decimal(0)
+    # Bills Claude removed, lowered or moved later that the user hasn't kept:
+    # still counted in committed_before_payday, so held back from safe to
+    # spend (T-08-21b, D5). 0 when nothing is pending.
+    safe_to_spend_pending_keep_total: Decimal = Decimal(0)
     next_payday: date | None
     next_repayments: list[NextRepayment]
     accounts: list[CashflowAccount]
@@ -645,12 +649,19 @@ class CommitmentResponse(BaseModel):
     # shown, never counted. expected_date is that payment's date.
     late: bool = False
     expected_date: date | None = None
-    # Income Claude raised or confirmed: "pending" until the user keeps it in
-    # the app (it doesn't count in savable until then), then "kept" (T-08-20).
+    # A Claude change that would make the figures look better: "pending"
+    # until the user keeps it in the app, then "kept" (T-08-20, T-08-21b).
+    # keep_kind: "income" (held from savable) or "expense_cut" (held in safe
+    # to spend); null when keep is.
     keep: str | None = None
+    keep_kind: str | None = None
     kept_at: datetime | None = None
     # The audit rows the app's Keep button keeps (the pending ones), oldest first.
     keep_audit_ids: list[uuid.UUID] = []
+    # While pending: the before-Claude amount / next date the figures still
+    # use, for each that Claude moved the favourable way (ux KP18); else null.
+    held_amount: Decimal | None = None
+    held_next_date: date | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -926,9 +937,11 @@ class AuditEntryResponse(BaseModel):
     target_label: str
     changes: list[AuditChange]
     undone_at: datetime | None
-    # D4 (T-08-20): "pending" / "kept" for a Claude change that raised an
-    # income commitment; null when it doesn't apply.
+    # D4/D5 (T-08-20, T-08-21b): "pending" / "kept" for a Claude change that
+    # would make the figures look better; null when it doesn't apply.
+    # keep_kind: "income" or "expense_cut", null when keep is.
     keep: str | None = None
+    keep_kind: str | None = None
     kept_at: datetime | None = None
 
 

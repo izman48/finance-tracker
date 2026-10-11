@@ -295,9 +295,15 @@ def test_a_merge_is_two_undoable_rows_sharing_a_batch(world):
 
     entries = world.db.query(AuditEntry.id, AuditEntry.batch_id).order_by(AuditEntry.created_at).all()
     assert [str(batch_id) for _, batch_id in entries] == [batch, batch]
-    assert _committed(world)[0] == Decimal("12.99")
+    # The duplicate's dismissal is held until the user keeps it (T-08-21b,
+    # D5): both still count (overstates, safe).
+    assert _committed(world)[0] == Decimal("12.99") + Decimal("10.99")
 
     dismiss_id = entries[0][0]
+    keep = world.client.post(f"{API}/audit/{dismiss_id}/keep", headers=_bearer(world.web))
+    assert keep.status_code == 200, keep.text
+    assert _committed(world)[0] == Decimal("12.99")
+
     undo = world.client.post(f"{API}/audit/{dismiss_id}/undo", headers=_bearer(world.web))
     assert undo.status_code == 200, undo.text
     # Undoing only the dismiss brings the duplicate back: both count (overstates, safe).

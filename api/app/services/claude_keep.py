@@ -1,4 +1,13 @@
-"""Claude can't raise savable on its own (T-08-20, owner decision D4 = strict parity).
+"""Claude can't raise savable or safe-to-spend on its own (T-08-20, owner
+decision D4 = strict parity; T-08-21b, owner decision D5 = yes).
+
+One rule: no Claude change may make the money figures look better until the
+user keeps it. For an **income** that is anything that brings in more
+(below). For an **expense** commitment it is anything that takes out less:
+a lower amount, a dismissal, a later next date, or another cadence
+(T-08-21b, `keep_kind` "expense_cut"). Incomes count the *lower* of now and
+before-Claude, expenses the *higher*. Raising or confirming a bill lowers
+the figures, so it applies at once.
 
 An income commitment that Claude changed so it brings in more (raised the
 amount, confirmed it from suggested, changed when or how often it arrives)
@@ -38,6 +47,12 @@ from app.services.planning_writes import TARGETS
 # The fields that decide how much an income brings in, and when.
 MONEY_FIELDS = ("amount", "cadence", "interval_days", "interval_months", "next_date", "status")
 PENDING, KEPT = "pending", "kept"
+INCOME_KIND, EXPENSE_CUT_KIND = "income", "expense_cut"
+
+
+def keep_kind(rule: CommitmentRule) -> str:
+    """What a held change to this commitment holds back (ux spec 9, A8a)."""
+    return INCOME_KIND if rule.direction == CommitmentDirection.INCOME.value else EXPENSE_CUT_KIND
 
 
 def claude_rows(db: Session, user_id: uuid.UUID, commitment_ids) -> dict[uuid.UUID, list[AuditEntry]]:
@@ -73,25 +88,36 @@ def _is_dismissal(entry: AuditEntry) -> bool:
     )
 
 
-def _raising(entry: AuditEntry) -> list[dict]:
+def _favourable(entry: AuditEntry, direction: str) -> list[dict]:
     """The money changes in a write that need the user to keep them: those
-    that could bring in more, or move payday nearer (a dismissal that isn't
-    in `applied`, T-08-21)."""
+    that could make the figures look better. For an income: more coming in,
+    or payday moved nearer (a dismissal that isn't in `applied`, T-08-21).
+    For an expense: less going out (T-08-21b)."""
+    income = direction == CommitmentDirection.INCOME.value
+    confirmed = CommitmentStatus.CONFIRMED.value
     out = []
     for c in json.loads(entry.changes):
         field = c["field"]
         if field not in MONEY_FIELDS:
             continue
         if field == "amount":
-            if Decimal(c["after"] or 0) > Decimal(c["before"] or 0):
+            after, before = Decimal(c["after"] or 0), Decimal(c["before"] or 0)
+            if (after > before) if income else (after < before):
                 out.append(c)
         elif field == "status":
-            # Confirming brings an income in. Dismissing one doesn't, but it
-            # can make a nearer income payday and so shorten the committed
-            # window (T-08-21): that is held too, so it must be keepable.
-            if (c["after"] == CommitmentStatus.CONFIRMED.value) != (c["before"] == CommitmentStatus.CONFIRMED.value):
+            # Confirming brings an income in; dismissing one can make a
+            # nearer income payday (T-08-21). Dismissing a bill takes it out.
+            started, stopped = (
+                c["after"] == confirmed and c["before"] != confirmed,
+                c["before"] == confirmed and c["after"] != confirmed,
+            )
+            if (started or stopped) if income else stopped:
                 out.append(c)
-        else:  # when or how often it arrives: could bring more into the window
+        elif field == "next_date" and not income:
+            # A bill moved later can leave the window; moved earlier, it can't.
+            if c["after"] is None or c["before"] is None or c["after"] > c["before"]:
+                out.append(c)
+        else:  # how often (or, for an income, when): could move money across a window
             out.append(c)
     return out
 
@@ -130,11 +156,9 @@ def keep_states(rule: CommitmentRule | None, rows: list[AuditEntry],
     out = {}
     for row in rows:
         out[row.id] = None
-        if rule is None or rule.direction != CommitmentDirection.INCOME.value or row.client_id is None:
+        if rule is None or row.client_id is None or row.id in applied:
             continue
-        if row.id in applied:
-            continue
-        raising = _raising(row)
+        raising = _favourable(row, rule.direction)
         if not raising:
             continue
         if row.kept_at is not None:
@@ -162,21 +186,56 @@ def commitment_keep(rule: CommitmentRule, rows: list[AuditEntry],
 
 
 def held_back(rule: CommitmentRule, rows: list[AuditEntry], value) -> object | None:
-    """The version of an income to count while Claude's changes to it are
-    pending: whichever of now and before-Claude `value(version)` rates lower,
-    or None if that is "not a confirmed commitment" (it counts nothing)."""
+    """The version of a commitment to count while Claude's changes to it are
+    pending, judged by `value(version)` (the money it moves in some window):
+    the lower of now and before-Claude for an income, the higher for an
+    expense. None if that is "not a confirmed commitment" (it counts nothing)."""
     before = before_claude(rule, rows)
     confirmed = CommitmentStatus.CONFIRMED.value
     now_worth = value(rule) if rule.status == confirmed else Decimal(0)
     before_worth = value(before) if before.status == confirmed else Decimal(0)
-    if before_worth >= now_worth:
+    income = rule.direction == CommitmentDirection.INCOME.value
+    if (now_worth <= before_worth) if income else (now_worth >= before_worth):
         return rule if rule.status == confirmed else None
     if before.status != confirmed:
         return None
     return SimpleNamespace(
         id=rule.id, direction=rule.direction, label=rule.label, account_id=rule.account_id,
+        card_account_id=rule.card_account_id, card_link_source=rule.card_link_source,
         **{f: getattr(before, f) for f in MONEY_FIELDS},
     )
+
+
+def counted_commitments(db: Session, user_id: uuid.UUID, direction: str, value) -> list:
+    """The commitments of one direction to count in a figure judged by
+    `value`, with Claude's pending changes resolved the safe way
+    (`held_back`). Every status is read: a dismissal may be Claude's."""
+    rules = (
+        db.query(CommitmentRule)
+        .filter(CommitmentRule.user_id == user_id, CommitmentRule.direction == direction)
+        .all()
+    )
+    claude = claude_rows(db, user_id, [r.id for r in rules])
+    confirmed = CommitmentStatus.CONFIRMED.value
+    out = []
+    for r in rules:
+        version = held_back(r, claude[r.id], value) if r.id in claude else (r if r.status == confirmed else None)
+        if version is not None:
+            out.append(version)
+    return out
+
+
+def held_values(rule: CommitmentRule, rows: list[AuditEntry], applied: frozenset = frozenset()) -> dict:
+    """{"held_amount", "held_next_date"}: the before-Claude value the figures
+    still use, for each that a pending change moved (else None; ux KP18)."""
+    before = before_claude(rule, rows, applied)
+    income = rule.direction == CommitmentDirection.INCOME.value
+    amount_held = before.amount < rule.amount if income else before.amount > rule.amount
+    date_held = before.next_date != rule.next_date if income else before.next_date < rule.next_date
+    return {
+        "held_amount": before.amount if amount_held else None,
+        "held_next_date": before.next_date if date_held else None,
+    }
 
 
 def pre_claude_payday_incomes(db: Session, user) -> list:

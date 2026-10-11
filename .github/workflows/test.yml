@@ -36,15 +36,15 @@ jobs:
         run: ./deploy/test-deploy.sh
 
   # The UI's tests, types and lint gate merges and deploys too (T-08-16).
-  # Same Node image as ui/Dockerfile and deploy/ui.Dockerfile, so CI tests
-  # what ships; T-08-15 moves all three together.
-  # node:20 (Debian), not node:20-alpine like the Dockerfiles: JavaScript
+  # Same Node major as ui/Dockerfile and deploy/ui.Dockerfile (Node 24, the
+  # active LTS), so CI tests what ships. Move all of them together.
+  # node:24 (Debian), not node:24-alpine like the Dockerfiles: JavaScript
   # actions such as actions/checkout don't run in Alpine job containers.
   ui:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    container: node:20
+    container: node:24
     defaults:
       run:
         working-directory: ui
@@ -60,6 +60,17 @@ jobs:
         run: npm run lint
       - name: Production build (catches what tsc alone doesn't)
         run: npm run build
+
+  # The production UI image (deploy/ui.Dockerfile) is built here too, so a
+  # broken image shows on the PR, not on the next deploy.
+  ui-image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - name: Build the production UI image
+        run: docker build -f deploy/ui.Dockerfile -t ui-image-check .
 
   workflows:
     runs-on: ubuntu-latest

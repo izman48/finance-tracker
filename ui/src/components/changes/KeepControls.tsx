@@ -10,12 +10,13 @@ export const KEEP_UNCERTAIN_TEXT =
   "Couldn't confirm that. It may have been kept; check this item before you try again."
 // A newer change by Claude to the same item is in the way (ux 9.7).
 export const KEEP_LATER_TEXT =
-  "Can't keep this yet: Claude changed it again afterwards. Keep or undo the later change first."
+  "Can't keep this yet: Claude changed it again afterwards. Undo the later change first."
 export const KEEP_CHANGED_TEXT =
   "Can't keep this: it has changed since Claude made the change. Check its current value first."
 
 /** One row action (keep or undo) in flight or failed. Never optimistic (KP4). */
-export type KeepState = { keeping: boolean; failure: UndoFailure | null }
+/** laterId: the newer change by Claude that was in the way of a 409 (ux 9.7). */
+export type KeepState = { keeping: boolean; failure: UndoFailure | null; laterId?: string | null }
 
 const BUTTON = 'btn-ghost w-full sm:w-auto min-h-[44px] sm:min-h-0 shrink-0'
 

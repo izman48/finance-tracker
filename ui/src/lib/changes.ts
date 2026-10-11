@@ -248,12 +248,24 @@ export function laterChange(item: AuditItem, items: AuditItem[]): AuditItem | nu
 export type UndoState = { undoing: boolean; failure: UndoFailure | null; laterId?: string | null }
 
 /**
- * A 409 caused by a later change ends once that change is undone or kept:
+ * A 409 caused by a later change ends once that change is undone:
  * the older row gets its Undo back (KP21). Any other 409 stays for the session.
  */
 export function settledUndoState(state: UndoState, items: AuditItem[]): UndoState {
-  if (state.failure !== 'changed' || !state.laterId) return state
+  return laterResolved(state, items) ? { undoing: false, failure: null } : state
+}
+
+/** The same rule for a refused Keep (KP21b): Keep comes back once the later change is undone. */
+export function settledKeepState<S extends { keeping: boolean; failure: UndoFailure | null; laterId?: string | null }>(
+  state: S,
+  items: AuditItem[],
+): S {
+  return laterResolved(state, items) ? { ...state, keeping: false, failure: null, laterId: undefined } : state
+}
+
+function laterResolved(state: { failure: UndoFailure | null; laterId?: string | null }, items: AuditItem[]): boolean {
+  if (state.failure !== 'changed' || !state.laterId) return false
   const later = items.find((it) => it.id === state.laterId)
-  if (later && (later.undone_at !== null || later.keep === 'kept')) return { undoing: false, failure: null }
-  return state
+  // Only undoing it helps: keeping changes no values, so the older undo would still be refused (eng-b on #135).
+  return Boolean(later && later.undone_at !== null)
 }

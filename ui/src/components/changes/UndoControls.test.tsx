@@ -11,7 +11,7 @@ import {
   LATER_CHANGE_TEXT,
 } from './UndoControls'
 import { addEvent, item } from '../../lib/changes.fixtures'
-import { settledUndoState } from '../../lib/changes'
+import { settledKeepState, settledUndoState } from '../../lib/changes'
 
 // C6-C9 row states (ux spec 1.5). Node suite, static markup.
 const noop = () => {}
@@ -112,7 +112,7 @@ describe('UndoNotice', () => {
 
 describe('a later Claude change blocks the undo (ux 9.7, KP21)', () => {
   it('the 409 says to act on the later change first, with no Open link', () => {
-    expect(LATER_CHANGE_TEXT).toBe("Can't undo this yet: Claude changed it again afterwards. Keep or undo the later change first.")
+    expect(LATER_CHANGE_TEXT).toBe("Can't undo this yet: Claude changed it again afterwards. Undo the later change first.")
     const h = html(<UndoNotice item={item()} failure="changed" later />)
     expect(text(h)).toBe(LATER_CHANGE_TEXT)
     expect(h).toContain('role="alert"')
@@ -132,14 +132,32 @@ describe('settledUndoState (KP21: the older Undo comes back)', () => {
     expect(settledUndoState(blocked, [later])).toEqual(blocked)
   })
 
-  it('clears once the later change is undone or kept', () => {
-    const idle = { undoing: false, failure: null }
-    expect(settledUndoState(blocked, [{ ...later, undone_at: '2026-10-11T12:00:00Z' }])).toEqual(idle)
-    expect(settledUndoState(blocked, [{ ...later, keep: 'kept' }])).toEqual(idle)
+  it('clears once the later change is undone', () => {
+    expect(settledUndoState(blocked, [{ ...later, undone_at: '2026-10-11T12:00:00Z' }])).toEqual({ undoing: false, failure: null })
+  })
+
+  it('keeping the later change does not bring the Undo back (keep changes no values; the undo would 409 again)', () => {
+    expect(settledUndoState(blocked, [{ ...later, keep: 'kept' }])).toEqual(blocked)
   })
 
   it('a plain 409 (no later change) stays as it was', () => {
     const plain = { undoing: false, failure: 'changed' as const }
     expect(settledUndoState(plain, [later])).toEqual(plain)
+  })
+})
+
+describe('settledKeepState (KP21b: a refused Keep settles the same way)', () => {
+  const blocked = { keeping: false, failure: 'changed' as const, laterId: 'rm' }
+  const later = item({ id: 'rm', keep: 'pending' })
+
+  it('stays blocked while the later change stands, and Keep comes back once it is undone', () => {
+    expect(settledKeepState(blocked, [later])).toEqual(blocked)
+    expect(settledKeepState(blocked, [{ ...later, undone_at: '2026-10-11T12:00:00Z' }])).toEqual({ keeping: false, failure: null })
+    expect(settledKeepState(blocked, [{ ...later, keep: 'kept' }])).toEqual(blocked)
+  })
+
+  it('a plain 409 on Keep stays', () => {
+    const plain = { keeping: false, failure: 'changed' as const }
+    expect(settledKeepState(plain, [later])).toEqual(plain)
   })
 })

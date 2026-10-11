@@ -5,7 +5,7 @@ export const CHANGED_SINCE_TEXT =
   "Can't undo this: it has changed since Claude made the change. Check its current value and change it by hand if you need to."
 // A newer change by Claude to the same item is in the way (ux 9.7, KP21).
 export const LATER_CHANGE_TEXT =
-  "Can't undo this yet: Claude changed it again afterwards. Keep or undo the later change first."
+  "Can't undo this yet: Claude changed it again afterwards. Undo the later change first."
 export const UNDO_FAILED_TEXT = "Couldn't undo this. Nothing was changed. Try again."
 export const RATE_LIMIT_TEXT = " You've reached the hourly limit; try again later."
 // No answer from the server: the undo may have gone through, so don't claim otherwise.

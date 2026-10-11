@@ -7,7 +7,7 @@ import { useRowActions } from '../hooks/useRowActions'
 import { keepMovesSafeToSpend, keepToast } from '../lib/keep'
 import { useToast } from '../components/ui/Toast'
 import { auditAPI, bankingAPI } from '../services/api'
-import { failureFromError, laterChange, mergeFirstPage, settledUndoState, undoToast, type AuditItem } from '../lib/changes'
+import { failureFromError, laterChange, mergeFirstPage, settledKeepState, settledUndoState, undoToast, type AuditItem } from '../lib/changes'
 import { withTimeout } from '../lib/forecastLoad'
 
 /** A load that hasn't answered by then is shown as the error state (ux A6). */
@@ -132,12 +132,13 @@ export default function ChangesPage() {
 
   // Keep this change (ux spec 9): the same flow, then the row shows Kept from the refetch.
   const rowActions = useRowActions(refetchFirst)
-  const keepState = (it: AuditItem) => rowActions.stateOf(`keep-${it.id}`)
+  const keepState = (it: AuditItem) => settledKeepState(rowActions.stateOf(`keep-${it.id}`), items)
   const keepChange = (it: AuditItem) =>
     rowActions.run(`keep-${it.id}`, () => withTimeout(auditAPI.keep(it.id), AUDIT_TIMEOUT_MS), {
       toast: keepToast(it.target_label, keepMovesSafeToSpend(it.keep_kind, it.tool === 'dismiss_commitment')),
       focusId: `change-${it.id}`,
       alertId: `change-${it.id}-keep-alert`,
+      laterId: () => laterChange(it, items)?.id ?? null,
     })
   const keepFailure = (it: AuditItem) => {
     const { failure } = keepState(it)
@@ -193,7 +194,7 @@ export default function ChangesPage() {
       )}
       renderNotice={(it) => (
         <>
-          <KeepNotice alertId={`change-${it.id}-keep-alert`} failure={keepFailure(it)} later={laterChange(it, items) !== null} />
+          <KeepNotice alertId={`change-${it.id}-keep-alert`} failure={keepFailure(it)} later={Boolean(keepState(it).laterId)} />
           <UndoNotice item={it} failure={stateOf(it).failure} later={Boolean(stateOf(it).laterId)} />
         </>
       )}

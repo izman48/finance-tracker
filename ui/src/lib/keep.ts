@@ -1,9 +1,40 @@
 /**
  * "Keep this change" (T-08-20; ux spec section 9, income scope). Income
  * Claude raised or confirmed doesn't count in savable until the user keeps
- * it here. Expense changes wait on owner decision D5.
+ * it here. Expense changes wait on owner decision D5, so only income rows
+ * ever get the control.
  */
+import type { Commitment } from '../types'
+import { gbp } from './format'
 
 export const KEEP_PENDING_TEXT = 'Not counted in savable until you keep it.'
 
 export const keepToast = (label: string) => `Kept “${label}”. It now counts in your savable.`
+
+/** The line under savable (KP10), or null when nothing is held back. */
+export function savableNote(total: number | string | undefined): string | null {
+  const amount = Number(total ?? 0)
+  if (!(amount > 0)) return null
+  return `${gbp(amount)} of income Claude added isn't counted in savable until you keep it.`
+}
+
+/** Whether a commitment row shows the pending line, Keep and Undo (KP1, KP13). */
+export function canKeep(c: Commitment): boolean {
+  return c.direction === 'income' && c.keep === 'pending' && (c.keep_audit_ids?.length ?? 0) > 0
+}
+
+/**
+ * Keep each row in turn. A refusal before anything was kept is passed on
+ * as it came (so "nothing was changed" holds); after one was kept it is
+ * re-thrown without a status, which the row shows as an unknown outcome.
+ */
+export async function keepAll(ids: string[], post: (id: string) => Promise<unknown>): Promise<void> {
+  for (const [i, id] of ids.entries()) {
+    try {
+      await post(id)
+    } catch (err) {
+      if (i === 0) throw err
+      throw new Error('partly kept')
+    }
+  }
+}

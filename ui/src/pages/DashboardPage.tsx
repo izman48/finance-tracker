@@ -22,6 +22,7 @@ import InfoTip from '../components/ui/InfoTip'
 import { EXPLAIN } from '../copy/statExplainers'
 import useReveal from '../components/ui/useReveal'
 import { buildUpcoming, upcomingAmount, upcomingShowsDate } from '../lib/upcoming'
+import { SavableNote } from '../components/changes/KeepControls'
 
 export default function DashboardPage() {
   const [bankStatus, setBankStatus] = useState<BankStatus | null>(null)
@@ -298,7 +299,7 @@ export default function DashboardPage() {
                 {[
                   { icon: Banknote, label: 'Safe to spend', value: formatCurrency(summary.safe_to_spend), tone: safeToSpendNegative ? 'text-neg' : 'text-slate-100', explain: EXPLAIN.safeToSpend },
                   { icon: CalendarClock, label: 'Committed soon', value: `−${formatCurrency(summary.committed_before_payday)}`, tone: 'text-neg', explain: EXPLAIN.committedSoon },
-                  { icon: PiggyBank, label: 'Savable (30d)', value: formatCurrency(summary.savable), tone: 'text-pos', explain: EXPLAIN.savable },
+                  { icon: PiggyBank, label: 'Savable (30d)', value: formatCurrency(summary.savable), tone: 'text-pos', explain: EXPLAIN.savable, note: <SavableNote total={summary.savable_pending_keep_total} /> },
                   { icon: ShieldAlert, label: 'Overdraft cushion', value: formatCurrency(summary.overdraft_cushion), tone: 'text-slate-400', explain: EXPLAIN.overdraftCushion },
                 ].map((s) => (
                   <div key={s.label} className="min-w-0">
@@ -310,6 +311,7 @@ export default function DashboardPage() {
                       </span>
                     </div>
                     <div className={`font-semibold tnum ${s.tone}`}>{s.value}</div>
+                    {'note' in s && s.note}
                   </div>
                 ))}
               </div>

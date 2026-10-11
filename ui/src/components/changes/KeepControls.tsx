@@ -1,5 +1,8 @@
 import { Link } from 'react-router-dom'
 import type { UndoFailure } from '../../lib/changes'
+import { canKeep, KEEP_PENDING_TEXT, savableNote } from '../../lib/keep'
+import type { Commitment } from '../../types'
+import { CHANGED_SINCE_TEXT, RATE_LIMIT_TEXT, UNDO_FAILED_TEXT, UNDO_UNCERTAIN_TEXT } from './UndoControls'
 
 export const KEEP_FAILED_TEXT = "Couldn't keep this. Nothing was changed. Try again."
 // No answer from the server: the keep may have gone through.
@@ -54,5 +57,81 @@ export function KeepNotice({ alertId, failure }: { alertId: string; failure: Und
     <div role="alert" className="banner-err mt-3 text-sm">
       {failure === 'unknown' ? KEEP_UNCERTAIN_TEXT : KEEP_FAILED_TEXT}
     </div>
+  )
+}
+
+/** The commitment row's undo message: the Changes screen's copy, without its link back here. */
+function RowUndoNotice({ alertId, failure }: { alertId: string; failure: UndoFailure | null }) {
+  if (failure === null) return null
+  const textOf = { changed: CHANGED_SINCE_TEXT, unknown: UNDO_UNCERTAIN_TEXT, other: UNDO_FAILED_TEXT, rate: UNDO_FAILED_TEXT + RATE_LIMIT_TEXT }
+  return (
+    <div id={alertId} role="alert" tabIndex={-1} className="banner-err mt-3 text-sm outline-none">
+      {textOf[failure]}
+    </div>
+  )
+}
+
+type Props = {
+  c: Commitment
+  keep: KeepState
+  undo: KeepState
+  onKeep: (c: Commitment) => void
+  onUndo: (c: Commitment) => void
+}
+
+/**
+ * Under a pending income's `Changed by Claude` chip (ux spec 9.1, KP1): the
+ * pending line, `Keep this change` and `Undo`. Once the server says it is
+ * kept or no longer held, only a "changed since" message can remain.
+ */
+export function CommitmentKeep({ c, keep, undo, onKeep, onUndo }: Props) {
+  const pending = canKeep(c)
+  if (!pending && keep.failure !== 'changed' && undo.failure !== 'changed') return null
+  const undoName = `Claude’s change to “${c.label}”`
+  const undoText = undo.keeping
+    ? { visible: 'Undoing…', name: 'Undoing: ' }
+    : undo.failure
+      ? { visible: 'Try again', name: 'Try again: undo ' }
+      : { visible: 'Undo', name: 'Undo: ' }
+  return (
+    <div className="basis-full min-w-0">
+      {pending && (
+        <>
+          <p className="text-xs text-slate-400">{KEEP_PENDING_TEXT}</p>
+          <div className="mt-2 flex flex-col sm:flex-row gap-2">
+            <KeepButton actionKey={`keep-${c.id}`} label={c.label} state={keep} onKeep={() => onKeep(c)} />
+            {undo.failure !== 'changed' && (
+              <button
+                type="button"
+                data-action={`undo-${c.id}`}
+                className={BUTTON}
+                onClick={() => onUndo(c)}
+                disabled={undo.keeping}
+                aria-busy={undo.keeping}
+                aria-label={`${undoText.name}${undoName}`}
+              >
+                {undoText.visible}
+              </button>
+            )}
+          </div>
+        </>
+      )}
+      <KeepNotice alertId={`commitment-${c.id}-keep-alert`} failure={pending || keep.failure === 'changed' ? keep.failure : null} />
+      <RowUndoNotice alertId={`commitment-${c.id}-undo-alert`} failure={pending || undo.failure === 'changed' ? undo.failure : null} />
+    </div>
+  )
+}
+
+/** One plain line under the savable figure while income is held back (ux spec 9.2, KP10). */
+export function SavableNote({ total }: { total: number | string | undefined }) {
+  const note = savableNote(total)
+  if (!note) return null
+  return (
+    <p className="text-xs text-slate-400 mt-1">
+      {note}{' '}
+      <Link to="/commitments" className="text-accent hover:underline">
+        Review
+      </Link>
+    </p>
   )
 }

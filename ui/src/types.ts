@@ -85,6 +85,8 @@ export interface CashflowSummary {
   committed_before_payday: number
   safe_to_spend: number
   savable: number
+  // Income Claude added that savable leaves out until it is kept (T-08-20).
+  savable_pending_keep_total?: number | string
   next_payday: string | null
   next_repayments: NextRepayment[]
   accounts: SummaryAccount[]
@@ -109,6 +111,11 @@ export interface Commitment {
   // Income whose latest payment hasn't arrived (T-08-10): shown, never counted.
   late?: boolean
   expected_date?: string | null
+  // Income Claude raised or confirmed: not counted in savable until kept (T-08-20).
+  keep?: 'pending' | 'kept' | null
+  kept_at?: string | null
+  // The audit rows the Keep button keeps, oldest first.
+  keep_audit_ids?: string[]
 }
 
 export interface ClaudeMarker {

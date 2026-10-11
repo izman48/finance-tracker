@@ -1,8 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { moneyStyle } from '../lib/late'
 import ClaudeMarker from '../components/changes/ClaudeMarker'
+import { CommitmentKeep } from '../components/changes/KeepControls'
+import { useRowActions } from '../hooks/useRowActions'
+import { keepAll, keepToast } from '../lib/keep'
+import { withTimeout } from '../lib/forecastLoad'
 import { Link } from 'react-router-dom'
-import { analyticsAPI } from '../services/api'
+import { analyticsAPI, auditAPI } from '../services/api'
 import { Commitment, NextRepayment, PlannedItem } from '../types'
 import { gbp as formatCurrency, dateLong as formatDate } from '../lib/format'
 import { cadenceLabel, isYearly, monthlyEquivalent } from '../lib/cadence'
@@ -11,6 +15,9 @@ import AddCommitmentModal from '../components/AddCommitmentModal'
 import EditCommitmentModal from '../components/EditCommitmentModal'
 import PlannedItems from '../components/PlannedItems'
 import useReveal from '../components/ui/useReveal'
+
+/** A keep or undo that hasn't answered by then is an unknown outcome (KP6). */
+const AUDIT_TIMEOUT_MS = 10_000
 
 export default function CommitmentsPage() {
   const [commitments, setCommitments] = useState<Commitment[]>([])
@@ -22,8 +29,8 @@ export default function CommitmentsPage() {
 
   const revealRef = useReveal(!loading)
 
-  const load = async () => {
-    setLoading(true)
+  /** Refetch without the loading screen, so a row keeps its place and focus. */
+  const refresh = useCallback(async () => {
     try {
       // Card repayments aren't commitment rules — they're derived from each
       // credit account's balance and repayment settings — but they're money
@@ -39,14 +46,47 @@ export default function CommitmentsPage() {
       setPlanned(p.data ?? [])
     } catch (error) {
       console.error('Failed to load commitments:', error)
-    } finally {
-      setLoading(false)
     }
+  }, [])
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    await refresh()
+    setLoading(false)
+  }, [refresh])
+
+  // Keep this change / Undo on a pending income (ux spec 9.1).
+  const rowActions = useRowActions(refresh)
+  const done = (c: Commitment, toast: string, kind: string) => ({
+    toast,
+    focusId: `commitment-${c.id}`,
+    alertId: `commitment-${c.id}-${kind}-alert`,
+  })
+  const keepCommitment = (c: Commitment) =>
+    rowActions.run(
+      `keep-${c.id}`,
+      () => keepAll(c.keep_audit_ids ?? [], (id) => withTimeout(auditAPI.keep(id), AUDIT_TIMEOUT_MS)),
+      done(c, keepToast(c.label), 'keep'),
+    )
+  // Undo takes back Claude's newest pending change; an older one, if any, stays pending.
+  const undoCommitment = (c: Commitment) => {
+    const newest = (c.keep_audit_ids ?? []).slice(-1)[0]
+    if (!newest) return
+    rowActions.run(`undo-${c.id}`, () => withTimeout(auditAPI.undo(newest), AUDIT_TIMEOUT_MS), done(c, `Put “${c.label}” back to how it was.`, 'undo'))
   }
+  const renderKeep = (c: Commitment) => (
+    <CommitmentKeep
+      c={c}
+      keep={rowActions.stateOf(`keep-${c.id}`)}
+      undo={rowActions.stateOf(`undo-${c.id}`)}
+      onKeep={keepCommitment}
+      onUndo={undoCommitment}
+    />
+  )
 
   useEffect(() => {
     load()
-  }, [])
+  }, [load])
 
   const setStatus = async (id: string, status: string) => {
     await analyticsAPI.updateCommitment(id, { status })
@@ -143,7 +183,7 @@ export default function CommitmentsPage() {
           </div>
           <div className="card divide-y divide-white/[0.06]">
             {suggested.map((c) => (
-              <div key={c.id} className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div key={c.id} id={`commitment-${c.id}`} tabIndex={-1} className="p-4 flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 outline-none focus-visible:ring-2 focus-visible:ring-accent/60">
                 <div>
                   <div className="font-medium text-slate-200">
                     {c.label}{' '}
@@ -168,6 +208,7 @@ export default function CommitmentsPage() {
                     Dismiss
                   </button>
                 </div>
+                {renderKeep(c)}
               </div>
             ))}
           </div>
@@ -178,7 +219,7 @@ export default function CommitmentsPage() {
       {/* Explicit base column so mobile gets minmax(0,1fr), not an implicit
           max-content track that overflows (see CLAUDE.md gotcha). */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6" data-reveal>
-        <ConfirmedList title="Regular income" items={confirmedIncome} planned={plannedIncome} onRemovePlanned={removePlanned} onRemove={(id) => setStatus(id, 'dismissed')} onEdit={setEditing} onSkip={handleSkip} onPayday={handlePayday} positive />
+        <ConfirmedList title="Regular income" items={confirmedIncome} renderKeep={renderKeep} planned={plannedIncome} onRemovePlanned={removePlanned} onRemove={(id) => setStatus(id, 'dismissed')} onEdit={setEditing} onSkip={handleSkip} onPayday={handlePayday} positive />
         <ConfirmedList title="Regular expenses" items={confirmedExpense} repayments={nextRepayments} planned={plannedExpense} onRemovePlanned={removePlanned} onRemove={(id) => setStatus(id, 'dismissed')} onEdit={setEditing} onSkip={handleSkip} />
       </div>
 
@@ -187,6 +228,7 @@ export default function CommitmentsPage() {
       {yearly.length > 0 && (
         <YearlyList
           items={yearly}
+          renderKeep={renderKeep}
           onRemove={(id) => setStatus(id, 'dismissed')}
           onEdit={setEditing}
           onSkip={handleSkip}
@@ -239,6 +281,7 @@ function ConfirmedList({
   onSkip,
   onPayday,
   positive,
+  renderKeep,
 }: {
   title: string
   items: Commitment[]
@@ -250,6 +293,7 @@ function ConfirmedList({
   onSkip: (c: Commitment) => void
   onPayday?: (c: Commitment) => void
   positive?: boolean
+  renderKeep?: (c: Commitment) => ReactNode
 }) {
   const reps = repayments ?? []
   const plans = planned ?? []
@@ -347,7 +391,7 @@ function ConfirmedList({
                 </div>
               </div>
             ) : (
-              renderCommitmentRow(row.commitment!, { onRemove, onEdit, onSkip, onPayday, positive })
+              renderCommitmentRow(row.commitment!, { onRemove, onEdit, onSkip, onPayday, positive, renderKeep })
             ),
           )}
         </div>
@@ -364,16 +408,18 @@ function renderCommitmentRow(
     onSkip,
     onPayday,
     positive,
+    renderKeep,
   }: {
     onRemove: (id: string) => void
     onEdit: (c: Commitment) => void
     onSkip: (c: Commitment) => void
     onPayday?: (c: Commitment) => void
     positive?: boolean
+    renderKeep?: (c: Commitment) => ReactNode
   },
 ) {
   return (
-    <div key={c.id} className="p-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+    <div key={c.id} id={`commitment-${c.id}`} tabIndex={-1} className="p-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 outline-none focus-visible:ring-2 focus-visible:ring-accent/60">
       <div className="min-w-0 flex-1 basis-40">
         <div className="font-medium text-slate-200 flex items-center gap-2">
           <span className="truncate">{c.label}</span>
@@ -413,6 +459,7 @@ function renderCommitmentRow(
           Remove
         </button>
       </div>
+      {renderKeep?.(c)}
     </div>
   )
 }
@@ -422,11 +469,13 @@ function YearlyList({
   onRemove,
   onEdit,
   onSkip,
+  renderKeep,
 }: {
   items: Commitment[]
   onRemove: (id: string) => void
   onEdit: (c: Commitment) => void
   onSkip: (c: Commitment) => void
+  renderKeep: (c: Commitment) => ReactNode
 }) {
   const expenseTotal = items
     .filter((c) => c.direction === 'expense')
@@ -463,7 +512,7 @@ function YearlyList({
         {sorted.map((c) => {
           const income = c.direction === 'income'
           return (
-            <div key={c.id} className="p-4 flex items-center justify-between">
+            <div key={c.id} id={`commitment-${c.id}`} tabIndex={-1} className="p-4 flex flex-wrap items-center justify-between gap-y-1.5 outline-none focus-visible:ring-2 focus-visible:ring-accent/60">
               <div>
                 <div className="font-medium text-slate-200">
                   {c.label} {income && <span className="chip-pos">income</span>}
@@ -484,6 +533,7 @@ function YearlyList({
                   Remove
                 </button>
               </div>
+              {renderKeep(c)}
             </div>
           )
         })}

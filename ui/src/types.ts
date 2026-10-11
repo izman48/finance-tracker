@@ -87,6 +87,8 @@ export interface CashflowSummary {
   savable: number
   // Income Claude added that savable leaves out until it is kept (T-08-20).
   savable_pending_keep_total?: number | string
+  // Bills Claude removed or reduced that safe to spend still counts until kept (T-08-21b).
+  safe_to_spend_pending_keep_total?: number | string
   next_payday: string | null
   next_repayments: NextRepayment[]
   accounts: SummaryAccount[]
@@ -116,6 +118,11 @@ export interface Commitment {
   kept_at?: string | null
   // The audit rows the Keep button keeps, oldest first.
   keep_audit_ids?: string[]
+  // What a pending keep holds: savable ("income") or safe to spend ("expense_cut").
+  keep_kind?: 'income' | 'expense_cut' | null
+  // The before-Claude values the figures still use, while held (KP18).
+  held_amount?: number | string | null
+  held_next_date?: string | null
 }
 
 export interface ClaudeMarker {

@@ -110,4 +110,9 @@ describe('ChangeList', () => {
     expect(t).toContain('Claude dismissed this. Your safe to spend still uses it to find your payday until you keep this change. It no longer counts in savable.')
     expect(t).not.toContain('Not counted in savable')
   })
+
+  it('KP18: a lowered expense shows the lowered line on its Changes row', () => {
+    const t = text(render([item({ keep: 'pending', keep_kind: 'expense_cut', target_label: 'Gym', changes: [{ field: 'amount', before: '50.00', after: '30.00' }] })]))
+    expect(t).toContain('Claude lowered this from £50.00 to £30.00. It still counts at £50.00 in your safe to spend until you keep this change.')
+  })
 })

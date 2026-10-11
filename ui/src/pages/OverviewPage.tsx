@@ -11,6 +11,7 @@ import Sparkline, { SparkPoint } from '../components/ui/Sparkline'
 import InfoTip from '../components/ui/InfoTip'
 import { EXPLAIN } from '../copy/statExplainers'
 import useReveal from '../components/ui/useReveal'
+import { SafeToSpendNote } from '../components/changes/KeepControls'
 
 interface SpendingSnapshot {
   total: number
@@ -264,6 +265,7 @@ export default function OverviewPage() {
             explain={EXPLAIN.totalCash}
             figure={totalCash}
             context={
+              <>
               <span className={safeToSpend < 0 ? 'text-neg' : 'text-slate-400'}>
                 <span className={`tnum font-semibold ${safeToSpend < 0 ? 'text-neg' : 'text-slate-100'}`}>
                   {gbp(safeToSpend)}
@@ -271,6 +273,9 @@ export default function OverviewPage() {
                 safe to spend until{' '}
                 {summary.next_payday ? `payday on ${dateDayMonth(summary.next_payday)}` : 'next month'}
               </span>
+              {/* The card is a link already: plain text, no Review (KP19). */}
+              <SafeToSpendNote total={summary.safe_to_spend_pending_keep_total} review={false} />
+              </>
             }
             chart={forecast && <Sparkline data={forecast.points} format={gbp} zeroLine />}
             chartCaption={

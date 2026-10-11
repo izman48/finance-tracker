@@ -3,7 +3,7 @@ import { moneyStyle } from '../lib/late'
 import ClaudeMarker from '../components/changes/ClaudeMarker'
 import { CommitmentKeep } from '../components/changes/KeepControls'
 import { useRowActions } from '../hooks/useRowActions'
-import { canKeep, countsInListTotal, keepToast, postEach } from '../lib/keep'
+import { canKeep, countsInListTotal, keepMovesSafeToSpend, keepToast, postEach } from '../lib/keep'
 import { withTimeout } from '../lib/forecastLoad'
 import { Link } from 'react-router-dom'
 import { analyticsAPI, auditAPI } from '../services/api'
@@ -19,8 +19,10 @@ import useReveal from '../components/ui/useReveal'
 /** A keep or undo that hasn't answered by then is an unknown outcome (KP6). */
 const AUDIT_TIMEOUT_MS = 10_000
 const INCOME_HEADING = 'commitments-income-heading'
+const EXPENSE_HEADING = 'commitments-expense-heading'
 const YEARLY_HEADING = 'commitments-yearly-heading'
-const listHeadingId = (c: Commitment) => (isYearly(c) ? YEARLY_HEADING : INCOME_HEADING)
+const listHeadingId = (c: Commitment) =>
+  isYearly(c) ? YEARLY_HEADING : c.direction === 'income' ? INCOME_HEADING : EXPENSE_HEADING
 // Claude's dismissal, still waiting to be kept: listed, counted, not removable (9.3).
 const heldDismissal = (c: Commitment) => c.status === 'dismissed'
 const DISMISSED_CHIP = <span className="chip shrink-0">Dismissed by Claude</span>
@@ -74,7 +76,7 @@ export default function CommitmentsPage() {
       `keep-${c.id}`,
       () => postEach(c.keep_audit_ids ?? [], (id) => withTimeout(auditAPI.keep(id), AUDIT_TIMEOUT_MS)),
       // A kept dismissal leaves the list: focus its list's heading (9.3).
-      done(c, keepToast(c.label, dismissed), 'keep', dismissed ? listHeadingId(c) : undefined),
+      done(c, keepToast(c.label, keepMovesSafeToSpend(c.keep_kind, dismissed)), 'keep', dismissed ? listHeadingId(c) : undefined),
     )
   }
   // Undo takes back every pending change Claude made to it, newest first.
@@ -231,7 +233,7 @@ export default function CommitmentsPage() {
           max-content track that overflows (see CLAUDE.md gotcha). */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6" data-reveal>
         <ConfirmedList title="Regular income" headingId={INCOME_HEADING} items={confirmedIncome} renderKeep={renderKeep} planned={plannedIncome} onRemovePlanned={removePlanned} onRemove={(id) => setStatus(id, 'dismissed')} onEdit={setEditing} onSkip={handleSkip} onPayday={handlePayday} positive />
-        <ConfirmedList title="Regular expenses" items={confirmedExpense} repayments={nextRepayments} planned={plannedExpense} onRemovePlanned={removePlanned} onRemove={(id) => setStatus(id, 'dismissed')} onEdit={setEditing} onSkip={handleSkip} />
+        <ConfirmedList title="Regular expenses" headingId={EXPENSE_HEADING} items={confirmedExpense} renderKeep={renderKeep} repayments={nextRepayments} planned={plannedExpense} onRemovePlanned={removePlanned} onRemove={(id) => setStatus(id, 'dismissed')} onEdit={setEditing} onSkip={handleSkip} />
       </div>
 
       {/* Yearly commitments — billed once a year, so they get their own totals

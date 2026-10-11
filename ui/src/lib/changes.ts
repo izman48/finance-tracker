@@ -34,6 +34,7 @@ export interface AuditItem {
   undone_at: string | null
   // Income Claude raised or confirmed: waiting for the user to keep it (T-08-20).
   keep?: 'pending' | 'kept' | null
+  keep_kind?: 'income' | 'expense_cut' | null
   kept_at?: string | null
 }
 

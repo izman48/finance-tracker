@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import type { UndoFailure } from '../../lib/changes'
-import { canKeep, pendingText, savableNote } from '../../lib/keep'
+import { canKeep, pendingLine, safeToSpendNote, savableNote } from '../../lib/keep'
 import type { Commitment } from '../../types'
 import { CHANGED_SINCE_TEXT, RATE_LIMIT_TEXT, UNDO_FAILED_TEXT, UNDO_UNCERTAIN_TEXT } from './UndoControls'
 
@@ -98,7 +98,7 @@ export function CommitmentKeep({ c, keep, undo, onKeep, onUndo }: Props) {
     <div className="basis-full min-w-0">
       {pending && (
         <>
-          <p className="text-xs text-slate-400">{pendingText(c.status === 'dismissed')}</p>
+          <p className="text-xs text-slate-400">{pendingLine(c)}</p>
           <div className="mt-2 flex flex-col sm:flex-row gap-2">
             <KeepButton actionKey={`keep-${c.id}`} label={c.label} state={keep} onKeep={() => onKeep(c)} />
             {undo.failure !== 'changed' && (
@@ -123,16 +123,33 @@ export function CommitmentKeep({ c, keep, undo, onKeep, onUndo }: Props) {
   )
 }
 
-/** One plain line under the savable figure while income is held back (ux spec 9.2, KP10). */
-export function SavableNote({ total }: { total: number | string | undefined }) {
-  const note = savableNote(total)
+/**
+ * One plain line under a held figure while something is waiting to be kept
+ * (ux spec 9.2). Home's cards are links already, so there it has no Review.
+ */
+function HeldNote({ note, review }: { note: string | null; review: boolean }) {
   if (!note) return null
   return (
     <p className="text-xs text-slate-400 mt-1">
-      {note}{' '}
-      <Link to="/commitments" className="text-accent hover:underline">
-        Review
-      </Link>
+      {note}
+      {review && (
+        <>
+          {' '}
+          <Link to="/commitments" className="text-accent hover:underline">
+            Review
+          </Link>
+        </>
+      )}
     </p>
   )
+}
+
+/** Under savable (KP10). */
+export function SavableNote({ total, review = true }: { total: number | string | undefined; review?: boolean }) {
+  return <HeldNote note={savableNote(total)} review={review} />
+}
+
+/** Under safe to spend (KP19). */
+export function SafeToSpendNote({ total, review = true }: { total: number | string | undefined; review?: boolean }) {
+  return <HeldNote note={safeToSpendNote(total)} review={review} />
 }

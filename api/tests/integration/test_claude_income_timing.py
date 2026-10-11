@@ -71,3 +71,24 @@ def test_a_change_to_the_date_that_is_not_a_web_edit_keeps_it_pending(client, db
     w.as_user(move)
     assert w.savable() == Decimal("500.00")
     assert w.commitment(cid)["keep"] == "pending"
+
+
+def test_renaming_a_commitment_does_not_settle_a_pending_raise(client, db_session):
+    """eng-a's nit: a web rename (which also makes a detected rule manual,
+    T-08-18) is a hand edit of the name only. Claude's raise stays pending."""
+    w = World(client, db_session)
+    def make():
+        rule = CommitmentRule(
+            user_id=w.user.id, direction="income", label="Income A", amount=Decimal("1000.00"),
+            cadence="monthly", next_date=TODAY + timedelta(days=10), source="detected", status="confirmed",
+            match_key="income:income a",
+        )
+        db_session.add(rule)
+        db_session.commit()
+        return rule.id
+    cid = w.as_user(make)
+    w.claude_update(cid, amount="1500.00")
+    res = client.patch(f"{API}/analytics/commitments/{cid}", json={"label": "Salary"}, headers=_bearer(w.web))
+    assert res.status_code == 200, res.text
+    assert w.savable() == Decimal("1500.00")
+    assert w.commitment(cid)["keep"] == "pending"

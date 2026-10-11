@@ -1,8 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { moneyStyle } from '../lib/late'
 import ClaudeMarker from '../components/changes/ClaudeMarker'
+import { CommitmentKeep } from '../components/changes/KeepControls'
+import { useRowActions } from '../hooks/useRowActions'
+import { canKeep, countsInListTotal, keepToast, postEach } from '../lib/keep'
+import { withTimeout } from '../lib/forecastLoad'
 import { Link } from 'react-router-dom'
-import { analyticsAPI } from '../services/api'
+import { analyticsAPI, auditAPI } from '../services/api'
 import { Commitment, NextRepayment, PlannedItem } from '../types'
 import { gbp as formatCurrency, dateLong as formatDate } from '../lib/format'
 import { cadenceLabel, isYearly, monthlyEquivalent } from '../lib/cadence'
@@ -11,6 +15,15 @@ import AddCommitmentModal from '../components/AddCommitmentModal'
 import EditCommitmentModal from '../components/EditCommitmentModal'
 import PlannedItems from '../components/PlannedItems'
 import useReveal from '../components/ui/useReveal'
+
+/** A keep or undo that hasn't answered by then is an unknown outcome (KP6). */
+const AUDIT_TIMEOUT_MS = 10_000
+const INCOME_HEADING = 'commitments-income-heading'
+const YEARLY_HEADING = 'commitments-yearly-heading'
+const listHeadingId = (c: Commitment) => (isYearly(c) ? YEARLY_HEADING : INCOME_HEADING)
+// Claude's dismissal, still waiting to be kept: listed, counted, not removable (9.3).
+const heldDismissal = (c: Commitment) => c.status === 'dismissed'
+const DISMISSED_CHIP = <span className="chip shrink-0">Dismissed by Claude</span>
 
 export default function CommitmentsPage() {
   const [commitments, setCommitments] = useState<Commitment[]>([])
@@ -22,8 +35,8 @@ export default function CommitmentsPage() {
 
   const revealRef = useReveal(!loading)
 
-  const load = async () => {
-    setLoading(true)
+  /** Refetch without the loading screen, so a row keeps its place and focus. */
+  const refresh = useCallback(async () => {
     try {
       // Card repayments aren't commitment rules — they're derived from each
       // credit account's balance and repayment settings — but they're money
@@ -39,14 +52,51 @@ export default function CommitmentsPage() {
       setPlanned(p.data ?? [])
     } catch (error) {
       console.error('Failed to load commitments:', error)
-    } finally {
-      setLoading(false)
     }
+  }, [])
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    await refresh()
+    setLoading(false)
+  }, [refresh])
+
+  // Keep this change / Undo on a pending income (ux spec 9.1).
+  const rowActions = useRowActions(refresh)
+  const done = (c: Commitment, toast: string, kind: string, focusId = `commitment-${c.id}`) => ({
+    toast,
+    focusId,
+    alertId: `commitment-${c.id}-${kind}-alert`,
+  })
+  const keepCommitment = (c: Commitment) => {
+    const dismissed = c.status === 'dismissed'
+    rowActions.run(
+      `keep-${c.id}`,
+      () => postEach(c.keep_audit_ids ?? [], (id) => withTimeout(auditAPI.keep(id), AUDIT_TIMEOUT_MS)),
+      // A kept dismissal leaves the list: focus its list's heading (9.3).
+      done(c, keepToast(c.label, dismissed), 'keep', dismissed ? listHeadingId(c) : undefined),
+    )
   }
+  // Undo takes back every pending change Claude made to it, newest first.
+  const undoCommitment = (c: Commitment) =>
+    rowActions.run(
+      `undo-${c.id}`,
+      () => postEach([...(c.keep_audit_ids ?? [])].reverse(), (id) => withTimeout(auditAPI.undo(id), AUDIT_TIMEOUT_MS)),
+      done(c, `Put “${c.label}” back to how it was.`, 'undo'),
+    )
+  const renderKeep = (c: Commitment) => (
+    <CommitmentKeep
+      c={c}
+      keep={rowActions.stateOf(`keep-${c.id}`)}
+      undo={rowActions.stateOf(`undo-${c.id}`)}
+      onKeep={keepCommitment}
+      onUndo={undoCommitment}
+    />
+  )
 
   useEffect(() => {
     load()
-  }, [])
+  }, [load])
 
   const setStatus = async (id: string, status: string) => {
     await analyticsAPI.updateCommitment(id, { status })
@@ -81,7 +131,8 @@ export default function CommitmentsPage() {
   }
 
   const suggested = commitments.filter((c) => c.status === 'suggested')
-  const confirmed = commitments.filter((c) => c.status === 'confirmed')
+  // An income Claude dismissed stays in its list until the user keeps or undoes that (9.3).
+  const confirmed = commitments.filter((c) => c.status === 'confirmed' || (c.status === 'dismissed' && canKeep(c)))
   const yearly = confirmed.filter(isYearly)
   const regular = confirmed.filter((c) => !isYearly(c))
   const confirmedIncome = regular.filter((c) => c.direction === 'income')
@@ -143,7 +194,7 @@ export default function CommitmentsPage() {
           </div>
           <div className="card divide-y divide-white/[0.06]">
             {suggested.map((c) => (
-              <div key={c.id} className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div key={c.id} id={`commitment-${c.id}`} tabIndex={-1} className="p-4 flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 outline-none focus-visible:ring-2 focus-visible:ring-accent/60">
                 <div>
                   <div className="font-medium text-slate-200">
                     {c.label}{' '}
@@ -168,6 +219,7 @@ export default function CommitmentsPage() {
                     Dismiss
                   </button>
                 </div>
+                {renderKeep(c)}
               </div>
             ))}
           </div>
@@ -178,7 +230,7 @@ export default function CommitmentsPage() {
       {/* Explicit base column so mobile gets minmax(0,1fr), not an implicit
           max-content track that overflows (see CLAUDE.md gotcha). */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6" data-reveal>
-        <ConfirmedList title="Regular income" items={confirmedIncome} planned={plannedIncome} onRemovePlanned={removePlanned} onRemove={(id) => setStatus(id, 'dismissed')} onEdit={setEditing} onSkip={handleSkip} onPayday={handlePayday} positive />
+        <ConfirmedList title="Regular income" headingId={INCOME_HEADING} items={confirmedIncome} renderKeep={renderKeep} planned={plannedIncome} onRemovePlanned={removePlanned} onRemove={(id) => setStatus(id, 'dismissed')} onEdit={setEditing} onSkip={handleSkip} onPayday={handlePayday} positive />
         <ConfirmedList title="Regular expenses" items={confirmedExpense} repayments={nextRepayments} planned={plannedExpense} onRemovePlanned={removePlanned} onRemove={(id) => setStatus(id, 'dismissed')} onEdit={setEditing} onSkip={handleSkip} />
       </div>
 
@@ -187,6 +239,7 @@ export default function CommitmentsPage() {
       {yearly.length > 0 && (
         <YearlyList
           items={yearly}
+          renderKeep={renderKeep}
           onRemove={(id) => setStatus(id, 'dismissed')}
           onEdit={setEditing}
           onSkip={handleSkip}
@@ -239,8 +292,11 @@ function ConfirmedList({
   onSkip,
   onPayday,
   positive,
+  renderKeep,
+  headingId,
 }: {
   title: string
+  headingId?: string
   items: Commitment[]
   repayments?: NextRepayment[]
   planned?: PlannedItem[]
@@ -250,11 +306,12 @@ function ConfirmedList({
   onSkip: (c: Commitment) => void
   onPayday?: (c: Commitment) => void
   positive?: boolean
+  renderKeep?: (c: Commitment) => ReactNode
 }) {
   const reps = repayments ?? []
   const plans = planned ?? []
   const total =
-    items.reduce((sum, c) => sum + monthlyEquivalent(c), 0) +
+    items.filter(countsInListTotal).reduce((sum, c) => sum + monthlyEquivalent(c), 0) +
     reps.reduce((sum, r) => sum + Number(r.amount), 0) +
     plans.reduce((sum, p) => sum + plannedMonthly(p), 0)
   // Rules, card repayments and payment plans sit in one ranked list — to the
@@ -271,7 +328,7 @@ function ConfirmedList({
   return (
     <div className="card">
       <div className="px-4 py-3 border-b border-white/[0.06] flex items-center justify-between">
-        <span className="font-display font-semibold text-slate-100">{title}</span>
+        <h2 id={headingId} tabIndex={-1} className="font-display font-semibold text-slate-100 outline-none">{title}</h2>
         {sorted.length > 0 && (
           <span className={`text-sm font-semibold tnum ${positive ? 'text-pos' : 'text-slate-100'}`}>
             {positive ? '+' : ''}{formatCurrency(total)}/mo
@@ -347,7 +404,7 @@ function ConfirmedList({
                 </div>
               </div>
             ) : (
-              renderCommitmentRow(row.commitment!, { onRemove, onEdit, onSkip, onPayday, positive })
+              renderCommitmentRow(row.commitment!, { onRemove, onEdit, onSkip, onPayday, positive, renderKeep })
             ),
           )}
         </div>
@@ -364,22 +421,25 @@ function renderCommitmentRow(
     onSkip,
     onPayday,
     positive,
+    renderKeep,
   }: {
     onRemove: (id: string) => void
     onEdit: (c: Commitment) => void
     onSkip: (c: Commitment) => void
     onPayday?: (c: Commitment) => void
     positive?: boolean
+    renderKeep?: (c: Commitment) => ReactNode
   },
 ) {
   return (
-    <div key={c.id} className="p-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+    <div key={c.id} id={`commitment-${c.id}`} tabIndex={-1} className="p-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 outline-none focus-visible:ring-2 focus-visible:ring-accent/60">
       <div className="min-w-0 flex-1 basis-40">
         <div className="font-medium text-slate-200 flex items-center gap-2">
           <span className="truncate">{c.label}</span>
           {c.is_payday && <span className="chip-pos shrink-0">Payday</span>}
           {c.late && <span className="chip-warn shrink-0">Late</span>}
           {c.changed_by_claude && <ClaudeMarker auditId={c.changed_by_claude.audit_id} />}
+          {heldDismissal(c) && DISMISSED_CHIP}
         </div>
         <div className="text-sm text-slate-500">
           {cadenceLabel(c)} · {c.late && c.expected_date ? `expected ${formatDate(c.expected_date)}` : `next ${formatDate(c.next_date)}`}
@@ -391,7 +451,7 @@ function renderCommitmentRow(
         <span className={`font-semibold tnum ${moneyStyle(Boolean(positive), Boolean(c.late)).tone}`}>
           {moneyStyle(Boolean(positive), Boolean(c.late)).sign}{formatCurrency(c.amount)}
         </span>
-        {onPayday && (
+        {onPayday && !heldDismissal(c) && (
           <button
             onClick={() => onPayday(c)}
             className={`text-sm transition-colors ${c.is_payday ? 'text-accent' : 'text-slate-500 hover:text-accent'}`}
@@ -403,16 +463,21 @@ function renderCommitmentRow(
             {c.is_payday ? '★' : '☆'} Payday
           </button>
         )}
-        <button onClick={() => onSkip(c)} className="text-sm text-slate-500 hover:text-accent transition-colors" title={`Skip the ${formatDate(c.next_date)} occurrence (e.g. paid early)`}>
-          Skip
-        </button>
+        {!heldDismissal(c) && (
+          <button onClick={() => onSkip(c)} className="text-sm text-slate-500 hover:text-accent transition-colors" title={`Skip the ${formatDate(c.next_date)} occurrence (e.g. paid early)`}>
+            Skip
+          </button>
+        )}
         <button onClick={() => onEdit(c)} className="text-sm text-slate-500 hover:text-accent transition-colors">
           Edit
         </button>
-        <button onClick={() => onRemove(c.id)} className="text-sm text-slate-500 hover:text-neg transition-colors">
-          Remove
-        </button>
+        {!heldDismissal(c) && (
+          <button onClick={() => onRemove(c.id)} className="text-sm text-slate-500 hover:text-neg transition-colors">
+            Remove
+          </button>
+        )}
       </div>
+      {renderKeep?.(c)}
     </div>
   )
 }
@@ -422,17 +487,19 @@ function YearlyList({
   onRemove,
   onEdit,
   onSkip,
+  renderKeep,
 }: {
   items: Commitment[]
   onRemove: (id: string) => void
   onEdit: (c: Commitment) => void
   onSkip: (c: Commitment) => void
+  renderKeep: (c: Commitment) => ReactNode
 }) {
   const expenseTotal = items
     .filter((c) => c.direction === 'expense')
     .reduce((sum, c) => sum + (Number(c.amount) || 0), 0)
   const incomeTotal = items
-    .filter((c) => c.direction === 'income')
+    .filter((c) => c.direction === 'income' && countsInListTotal(c))
     .reduce((sum, c) => sum + (Number(c.amount) || 0), 0)
   const sorted = [...items].sort(
     (a, b) => new Date(a.next_date).getTime() - new Date(b.next_date).getTime(),
@@ -442,7 +509,7 @@ function YearlyList({
     <div className="mt-6 card" data-reveal>
       <div className="px-4 py-3 border-b border-white/[0.06] flex flex-wrap items-center justify-between gap-2">
         <div>
-          <span className="font-display font-semibold text-slate-100">Yearly</span>
+          <h2 id={YEARLY_HEADING} tabIndex={-1} className="inline font-display font-semibold text-slate-100 outline-none">Yearly</h2>
           <span className="ml-2 text-xs text-slate-500">billed once a year — sorted by next due</span>
         </div>
         <div className="text-sm tnum text-right">
@@ -463,10 +530,12 @@ function YearlyList({
         {sorted.map((c) => {
           const income = c.direction === 'income'
           return (
-            <div key={c.id} className="p-4 flex items-center justify-between">
+            <div key={c.id} id={`commitment-${c.id}`} tabIndex={-1} className="p-4 flex flex-wrap items-center justify-between gap-y-1.5 outline-none focus-visible:ring-2 focus-visible:ring-accent/60">
               <div>
                 <div className="font-medium text-slate-200">
                   {c.label} {income && <span className="chip-pos">income</span>}
+                  {c.changed_by_claude && <ClaudeMarker auditId={c.changed_by_claude.audit_id} />}
+                  {heldDismissal(c) && DISMISSED_CHIP}
                 </div>
                 <div className="text-sm text-slate-500">due {formatDate(c.next_date)}</div>
               </div>
@@ -474,16 +543,21 @@ function YearlyList({
                 <span className={`font-semibold tnum ${income ? 'text-pos' : 'text-slate-100'}`}>
                   {income ? '+' : ''}{formatCurrency(c.amount)}
                 </span>
-                <button onClick={() => onSkip(c)} className="text-sm text-slate-500 hover:text-accent transition-colors" title={`Skip the ${formatDate(c.next_date)} occurrence`}>
-                  Skip
-                </button>
+                {!heldDismissal(c) && (
+                  <button onClick={() => onSkip(c)} className="text-sm text-slate-500 hover:text-accent transition-colors" title={`Skip the ${formatDate(c.next_date)} occurrence`}>
+                    Skip
+                  </button>
+                )}
                 <button onClick={() => onEdit(c)} className="text-sm text-slate-500 hover:text-accent transition-colors">
                   Edit
                 </button>
-                <button onClick={() => onRemove(c.id)} className="text-sm text-slate-500 hover:text-neg transition-colors">
-                  Remove
-                </button>
+                {!heldDismissal(c) && (
+                  <button onClick={() => onRemove(c.id)} className="text-sm text-slate-500 hover:text-neg transition-colors">
+                    Remove
+                  </button>
+                )}
               </div>
+              {renderKeep(c)}
             </div>
           )
         })}

@@ -8,8 +8,10 @@ import {
   UNDO_FAILED_TEXT,
   UNDO_UNCERTAIN_TEXT,
   RATE_LIMIT_TEXT,
+  LATER_CHANGE_TEXT,
 } from './UndoControls'
 import { addEvent, item } from '../../lib/changes.fixtures'
+import { settledUndoState } from '../../lib/changes'
 
 // C6-C9 row states (ux spec 1.5). Node suite, static markup.
 const noop = () => {}
@@ -105,5 +107,41 @@ describe('UndoNotice', () => {
     for (const f of ['changed', 'other', 'rate'] as const) {
       expect(text(html(<UndoNotice item={item()} failure={f} />))).not.toContain('Undone')
     }
+  })
+})
+
+describe('a later Claude change blocks the undo (ux 9.7, KP21)', () => {
+  it('the 409 says to act on the later change first, with no Open link', () => {
+    expect(LATER_CHANGE_TEXT).toBe("Can't undo this yet: Claude changed it again afterwards. Undo the later change first.")
+    const h = html(<UndoNotice item={item()} failure="changed" later />)
+    expect(text(h)).toBe(LATER_CHANGE_TEXT)
+    expect(h).toContain('role="alert"')
+    expect(h).not.toContain('<a')
+  })
+
+  it('without a later change, the generic 409 text and link stay', () => {
+    expect(text(html(<UndoNotice item={item()} failure="changed" />))).toContain(CHANGED_SINCE_TEXT)
+  })
+})
+
+describe('settledUndoState (KP21: the older Undo comes back)', () => {
+  const blocked = { undoing: false, failure: 'changed' as const, laterId: 'rm' }
+  const later = item({ id: 'rm', keep: 'pending' })
+
+  it('stays blocked while the later change is still pending', () => {
+    expect(settledUndoState(blocked, [later])).toEqual(blocked)
+  })
+
+  it('clears once the later change is undone', () => {
+    expect(settledUndoState(blocked, [{ ...later, undone_at: '2026-10-11T12:00:00Z' }])).toEqual({ undoing: false, failure: null })
+  })
+
+  it('keeping the later change does not bring the Undo back (keep changes no values; the undo would 409 again)', () => {
+    expect(settledUndoState(blocked, [{ ...later, keep: 'kept' }])).toEqual(blocked)
+  })
+
+  it('a plain 409 (no later change) stays as it was', () => {
+    const plain = { undoing: false, failure: 'changed' as const }
+    expect(settledUndoState(plain, [later])).toEqual(plain)
   })
 })

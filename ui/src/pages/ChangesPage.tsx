@@ -7,7 +7,7 @@ import { useRowActions } from '../hooks/useRowActions'
 import { keepMovesSafeToSpend, keepToast } from '../lib/keep'
 import { useToast } from '../components/ui/Toast'
 import { auditAPI, bankingAPI } from '../services/api'
-import { failureFromError, mergeFirstPage, undoToast, type AuditItem } from '../lib/changes'
+import { failureFromError, laterChange, mergeFirstPage, settledUndoState, undoToast, type AuditItem } from '../lib/changes'
 import { withTimeout } from '../lib/forecastLoad'
 
 /** A load that hasn't answered by then is shown as the error state (ux A6). */
@@ -110,7 +110,9 @@ export default function ChangesPage() {
     } catch (err) {
       if (!mounted.current) return
       const failure = failureFromError(err)
-      setUndo((s) => ({ ...s, [it.id]: { undoing: false, failure } }))
+      // A newer change by Claude to the same item may be what's in the way (ux 9.7).
+      const laterId = failure === 'changed' ? (laterChange(it, items)?.id ?? null) : null
+      setUndo((s) => ({ ...s, [it.id]: { undoing: false, failure, laterId } }))
       // Always show the server's real state: after a timeout the undo may
       // have gone through, and the refetch then shows the row as Undone.
       refetchFirst()
@@ -126,7 +128,7 @@ export default function ChangesPage() {
     }
   }
 
-  const stateOf = (it: AuditItem): UndoState => undo[it.id] ?? { undoing: false, failure: null }
+  const stateOf = (it: AuditItem): UndoState => settledUndoState(undo[it.id] ?? { undoing: false, failure: null }, items)
 
   // Keep this change (ux spec 9): the same flow, then the row shows Kept from the refetch.
   const rowActions = useRowActions(refetchFirst)
@@ -192,7 +194,7 @@ export default function ChangesPage() {
       renderNotice={(it) => (
         <>
           <KeepNotice alertId={`change-${it.id}-keep-alert`} failure={keepFailure(it)} />
-          <UndoNotice item={it} failure={stateOf(it).failure} />
+          <UndoNotice item={it} failure={stateOf(it).failure} later={Boolean(stateOf(it).laterId)} />
         </>
       )}
     />

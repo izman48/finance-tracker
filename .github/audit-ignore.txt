@@ -1,3 +1,10 @@
 # Documented exceptions to the weekly dependency audit (.github/workflows/audit.yml).
 # One per line: <ID> review-by:<YYYY-MM-DD> <why it is safe to ignore, and who decided>
 # Only sec adds entries. An entry past its review-by date fails the audit.
+CVE-2026-85394 review-by:2026-11-30 python-jose HS256 alg confusion: not exploitable, HS256 secret only, algorithms pinned on every decode, no public keys; removed by PyJWT (Sprint 09). sec 2026-10-11
+PYSEC-2026-2263 review-by:2026-11-30 pyasn1 via python-jose only (RSA/EC key parsing never called); jose pins pyasn1<0.5; removed with jose. sec 2026-10-11
+PYSEC-2026-3455 review-by:2026-11-30 pyasn1 via python-jose only; see PYSEC-2026-2263. sec 2026-10-11
+PYSEC-2026-3456 review-by:2026-11-30 pyasn1 via python-jose only; see PYSEC-2026-2263. sec 2026-10-11
+PYSEC-2026-3457 review-by:2026-11-30 pyasn1 via python-jose only; see PYSEC-2026-2263. sec 2026-10-11
+PYSEC-2026-1325 review-by:2026-11-30 ecdsa Minerva affects ECDSA signing only; nilu never signs with ECDSA; removed with jose. sec 2026-10-11
+GHSA-vfj7-8cjw-p6xm review-by:2026-12-31 braces: build-time only (tailwind 3 -> chokidar/micromatch on our own globs), not in the shipped bundle; fixed by the tailwind 4 upgrade. sec 2026-10-11

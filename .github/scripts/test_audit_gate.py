@@ -44,7 +44,8 @@ def report(*advisories, error=None) -> dict:
         return {"error": {"code": "ENOAUDIT", "summary": error}}
     vulns = {f"p{i}": {"name": f"p{i}", "severity": a["severity"], "via": [a, "other-pkg"]}
              for i, a in enumerate(advisories)}
-    return {"vulnerabilities": vulns}
+    return {"auditReportVersion": 2, "vulnerabilities": vulns,
+            "metadata": {"vulnerabilities": {"high": len(advisories)}}}
 
 
 def test_ignore_file():
@@ -75,12 +76,30 @@ def test_npm_gate():
         raise AssertionError("an npm audit error must fail the gate, never pass it")
 
 
+def test_a_report_without_its_sections_fails():
+    """sec on #115: `{}` passed the gate. An unexpected shape must fail it,
+    never turn the weekly audit silently green."""
+    full = report()
+    cases = [{}, {k: v for k, v in full.items() if k != "auditReportVersion"},
+             {k: v for k, v in full.items() if k != "vulnerabilities"},
+             {k: v for k, v in full.items() if k != "metadata"},
+             {**full, "metadata": {}},
+             {**full, "auditReportVersion": 1}]
+    for bad in cases:
+        try:
+            blocking_advisories(bad, set())
+        except RuntimeError:
+            continue
+        raise AssertionError(f"accepted a malformed report: {bad}")
+
+
 def test_gate_cli_exit_codes():
     gate = HERE / "npm_audit_gate.py"
     ignores = write("GHSA-hhhh-hhhh-hhhh review-by:2027-01-31 test reason\n")
     for rep, code in [(report(advisory("GHSA-hhhh-hhhh-hhhh", "high")), 0),
                       (report(advisory("GHSA-zzzz-zzzz-zzzz", "high")), 1),
-                      (report(error="boom"), 1)]:
+                      (report(error="boom"), 1),
+                      ({}, 1)]:
         f = write(json.dumps(rep))
         r = subprocess.run([sys.executable, str(gate), str(f), str(ignores)], capture_output=True, text=True)
         assert r.returncode == code, (rep, r.stdout, r.stderr)

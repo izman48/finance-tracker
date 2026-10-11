@@ -18,9 +18,17 @@ BLOCKING = {"high", "critical"}
 def blocking_advisories(report: dict, ignored: set[str]) -> list[str]:
     if "error" in report:
         raise RuntimeError(f"npm audit failed: {report['error'].get('summary', report['error'])}")
+    # Anything but the report shape we know fails: an empty or changed report
+    # must never read as "nothing found" (sec on #115).
+    if report.get("auditReportVersion") != 2:
+        raise RuntimeError(f"unexpected npm audit report version: {report.get('auditReportVersion')!r}")
+    if not isinstance(report.get("vulnerabilities"), dict):
+        raise RuntimeError("npm audit report has no 'vulnerabilities' section")
+    if not isinstance(report.get("metadata", {}).get("vulnerabilities"), dict):
+        raise RuntimeError("npm audit report has no 'metadata.vulnerabilities' counts")
     found = set()
     for vuln in report.get("vulnerabilities", {}).values():
-        for via in vuln.get("via", []):
+        for via in vuln["via"]:
             if isinstance(via, dict) and via.get("severity") in BLOCKING:
                 advisory = via.get("url", "").rstrip("/").rsplit("/", 1)[-1] or str(via.get("source"))
                 if advisory not in ignored:

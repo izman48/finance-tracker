@@ -86,13 +86,18 @@ npm run build    # tsc && vite build — run before merging
 npm run lint     # eslint, --max-warnings 0
 npm run dev      # 127.0.0.1 only; VITE_DEV_LAN=1 npm run dev to test from a phone on your LAN
 ```
-The Docker dev stack publishes the UI on `127.0.0.1:5173` only, for the same reason.
+The Docker dev stack publishes the UI, API and Postgres on `127.0.0.1` only
+(5173, 8000, 5433), for the same reason.
 
 **CI wiring**: every GitHub Action is pinned to a commit SHA, and
-`.github/workflows/audit.yml` runs `npm audit --audit-level=high` (dev
-dependencies included) and `pip-audit` weekly and on demand. Both are
-enforced by `.github/scripts/check_workflows.py` (self-tested by
-`test_check_workflows.py`, run in `test.yml`). Pin new actions the same way.
+`.github/workflows/audit.yml` runs weekly and on demand: `npm audit --json`
+(dev dependencies included) through `.github/scripts/npm_audit_gate.py`,
+which fails on any high/critical advisory, and `pip-audit` on the API's and
+MCP server's requirements. `.github/audit-ignore.txt` lists the exceptions
+sec has documented (`<ID> review-by:<date> <reason>`; an expired entry fails
+the audit). `.github/scripts/check_workflows.py` enforces all of this
+(self-tested by `test_check_workflows.py`; `test_audit_gate.py` covers the
+gate and the ignore list; both run in `test.yml`). Pin new actions the same way.
 
 **Visual / mobile check** (dev server must be running):
 ```bash

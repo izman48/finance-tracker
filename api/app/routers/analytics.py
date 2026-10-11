@@ -314,12 +314,15 @@ def update_commitment(
     # sync_suggestions re-derives a detected rule's match_key from its label.
     # A user's rename must not do that (T-08-18): their payments would stop
     # matching and the merchant would be suggested again. A manual rule's key
-    # is left alone, the same as for Claude's renames (T-08-9).
+    # is left alone, the same as for Claude's renames (T-08-9). A manual rule
+    # without a key falls back to its label, so an older detected row with
+    # none keeps the old label's key.
     if (
         "label" in updates
         and updates["label"] != rule.label
         and rule.source == CommitmentSource.DETECTED.value
     ):
+        rule.match_key = rule.match_key or analytics_service.merchant_match_key(rule.direction, rule.label)
         rule.source = CommitmentSource.MANUAL.value
     for field, value in updates.items():
         setattr(rule, field, value)

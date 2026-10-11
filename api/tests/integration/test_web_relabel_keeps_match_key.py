@@ -62,3 +62,15 @@ def test_sending_the_same_label_does_not_change_the_source(world):
 def test_a_manual_commitment_stays_manual(world):
     rid = world.commitment(label="Gym", source="manual")
     assert _patch(world, rid, label="Gym (PureGym)").json()["source"] == "manual"
+
+
+def test_a_detected_rule_without_a_stored_key_keeps_matching_its_old_label(world):
+    """eng-b's nit: a detected rule with match_key NULL (older data) falls
+    back to its label's key once manual, so the rename freezes the old key."""
+    rid, key = _detected(world)
+    with world.as_user():
+        world.db.query(CommitmentRule).filter(CommitmentRule.id == rid).update({"match_key": None})
+        world.db.commit()
+    old_label_key = svc.merchant_match_key(world.rule(rid).direction, world.rule(rid).label)
+    assert _patch(world, rid, label="Streaming", status="confirmed").status_code == 200
+    assert world.rule(rid).match_key == old_label_key

@@ -31,7 +31,10 @@ settings = get_settings()
 SCOPE_READ = "finance:read"
 SCOPE_RULES_WRITE = "finance:rules.write"
 SCOPE_PLANNING_WRITE = "finance:planning.write"
-SUPPORTED_SCOPES = (SCOPE_READ, SCOPE_RULES_WRITE, SCOPE_PLANNING_WRITE)
+# Opt-in: lets a client ask the API to fetch fresh data from the user's banks
+# (POST /banking/sync). It never connects, reconnects or disconnects a bank.
+SCOPE_SYNC = "finance:sync"
+SUPPORTED_SCOPES = (SCOPE_READ, SCOPE_RULES_WRITE, SCOPE_PLANNING_WRITE, SCOPE_SYNC)
 
 MCP_ACCESS_TOKEN_TTL = timedelta(hours=1)
 
@@ -172,3 +175,4 @@ def scoped_user(scope: str) -> Callable[..., User]:
 # Routes the MCP tools call opt in with one of these instead of CurrentUser.
 CurrentUserOrMcpRead = Annotated[User, Depends(scoped_user(SCOPE_READ))]
 CurrentUserOrMcpRulesWrite = Annotated[User, Depends(scoped_user(SCOPE_RULES_WRITE))]
+CurrentUserOrMcpSync = Annotated[User, Depends(scoped_user(SCOPE_SYNC))]

@@ -188,7 +188,10 @@ quick overflow check, navigate a page and compare `document.documentElement
 - **Remote MCP / OAuth** (`services/oauth.py`, `core/oauth_tokens.py`): the API
   is the OAuth 2.1 server for the MCP server at `/mcp`. MCP tokens are `typ:
   mcp_access`, audience-bound, scoped (`finance:read`, `finance:rules.write`,
-  `finance:planning.write`), and checked against their grant on every use.
+  `finance:planning.write`, `finance:sync`), and checked against their grant
+  on every use. `finance:sync` (`CurrentUserOrMcpSync`) opens only
+  `POST /banking/sync`: rate limited per user (`SYNC_LIMIT_PER_DAY`, one at a
+  time), per-connection status only, never error text.
   **Routes are web-only by default**: a route the MCP tools need opts in by
   typing its user as `CurrentUserOrMcpRead` / `CurrentUserOrMcpRulesWrite`
   instead of `CurrentUser`. Planning write routes take `PlanningWriter`

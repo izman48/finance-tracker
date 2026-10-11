@@ -4,15 +4,27 @@ export const RULES_DESCRIPTION =
 export const PLANNING_DESCRIPTION =
   "Add planned events, remove ones it added, and edit or dismiss commitments. It's asked to show you a preview before each change. Every change is listed under Changes made by Claude, where you can undo it. Nothing it changes raises your safe to spend or savable until you keep it in nilu."
 
+export const SYNC_DESCRIPTION =
+  "Ask nilu. to fetch new data from your connected banks. It can't connect, reconnect or disconnect a bank. Limited to 4 times a day, shared with the app."
+
 type Props = {
   allowRules: boolean
   allowPlanning: boolean
+  allowSync: boolean
   onRulesChange: (allowed: boolean) => void
   onPlanningChange: (allowed: boolean) => void
+  onSyncChange: (allowed: boolean) => void
 }
 
 /** The permissions an MCP client asks for on the consent screen. Read is always granted. */
-export default function ConsentScopes({ allowRules, allowPlanning, onRulesChange, onPlanningChange }: Props) {
+export default function ConsentScopes({
+  allowRules,
+  allowPlanning,
+  allowSync,
+  onRulesChange,
+  onPlanningChange,
+  onSyncChange,
+}: Props) {
   return (
     <ul className="space-y-3">
       <li className="flex gap-3">
@@ -55,6 +67,25 @@ export default function ConsentScopes({ allowRules, allowPlanning, onRulesChange
               Change your planned events and commitments
             </span>
             <span id="allow-planning-desc" className="block text-xs text-slate-400">{PLANNING_DESCRIPTION}</span>
+          </span>
+        </label>
+      </li>
+      <li>
+        <label htmlFor="allow-sync" className="flex gap-3 cursor-pointer">
+          <input
+            id="allow-sync"
+            type="checkbox"
+            checked={allowSync}
+            onChange={(e) => onSyncChange(e.target.checked)}
+            aria-labelledby="allow-sync-title"
+            aria-describedby="allow-sync-desc"
+            className="mt-1 shrink-0 accent-accent"
+          />
+          <span className="min-w-0">
+            <span id="allow-sync-title" className="block text-sm text-slate-100">
+              Refresh your bank data
+            </span>
+            <span id="allow-sync-desc" className="block text-xs text-slate-400">{SYNC_DESCRIPTION}</span>
           </span>
         </label>
       </li>

@@ -30,6 +30,7 @@ It runs two ways:
 | `commitments` | recurring income/expenses |
 | `accounts` | balances, types, providers; `sync_stale` per account |
 | `sync_status` | per connection: last sync, consent (`expired`/`unknown`), `stale` (no sync for 48 h, never synced, or consent lapsed). Stored data only; never calls the bank |
+| `refresh_banks` | **writes** (`finance:sync`): fetches fresh accounts, then transactions, from every connected bank and waits; per connection `synced` / `reconnect` / `failed`. 4 per user in 24 h, shared with the app |
 | `list_planned_events` | planned items (max 200) with who made each (`created_via`) |
 | `add_planned_event(name, amount, date, direction, idempotency_key, account_id?, dry_run=true)` | **writes** (`finance:planning.write`): a one-off planned income or expense; previews unless `dry_run=false`; planned income never raises safe-to-spend |
 | `remove_planned_event(item_id, idempotency_key, dry_run=true)` | **writes** (`finance:planning.write`): soft-removes a one-off item an assistant added |
@@ -137,6 +138,14 @@ commitments) is a separate box on the consent screen, unticked by default, and
 is enforced by the API itself, so a token without it is refused even when it
 calls the API directly. An existing connection never gains it: connect again
 to grant it.
+
+`refresh_banks` needs `finance:sync`, also its own box, unticked by default.
+It calls `POST /banking/sync`, which syncs inside the request (the key that
+decrypts the bank tokens exists only for a request, so there is no background
+job). The API allows one sync per user at a time and 4 in 24 hours, the PSD2
+cap on reading an account without the user present. The older
+`/banking/sync/accounts` and `/banking/sync/transactions` routes stay
+web-only.
 
 **stdio mode holds every scope.** Locally the server logs in with your own
 email and password, which is a full web session: every tool can do anything

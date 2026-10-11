@@ -1,14 +1,21 @@
 import { describe, it, expect } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
-import ConsentScopes, { PLANNING_DESCRIPTION, RULES_DESCRIPTION } from './ConsentScopes'
+import ConsentScopes, { PLANNING_DESCRIPTION, RULES_DESCRIPTION, SYNC_DESCRIPTION } from './ConsentScopes'
 
 // docs/design/nilu-s08-claude-changes.md (HQ) section 5, K1, K3, K4.
 
 const noop = () => {}
 
-function render(allowRules = true, allowPlanning = false) {
+function render(allowRules = true, allowPlanning = false, allowSync = false) {
   return renderToStaticMarkup(
-    <ConsentScopes allowRules={allowRules} allowPlanning={allowPlanning} onRulesChange={noop} onPlanningChange={noop} />,
+    <ConsentScopes
+      allowRules={allowRules}
+      allowPlanning={allowPlanning}
+      allowSync={allowSync}
+      onRulesChange={noop}
+      onPlanningChange={noop}
+      onSyncChange={noop}
+    />,
   )
 }
 
@@ -61,5 +68,30 @@ describe('ConsentScopes', () => {
 
   it('K4: the planning label is a real <label for>', () => {
     expect(render()).toMatch(/<label[^>]*for="allow-planning"[^>]*>/)
+  })
+
+  it('the sync box exists, is unchecked and enabled by default, after the planning box', () => {
+    const html = render()
+    const sync = input(html, 'allow-sync')
+    expect(sync).not.toBe('')
+    expect(sync).not.toMatch(/checked/)
+    expect(sync).not.toMatch(/disabled/)
+    expect(html.indexOf('Refresh your bank data')).toBeGreaterThan(
+      html.indexOf('Change your planned events and commitments'),
+    )
+  })
+
+  it('reflects the ticked sync state', () => {
+    expect(input(render(true, false, true), 'allow-sync')).toMatch(/checked/)
+  })
+
+  it('the sync box has a real <label for> and its description is linked by aria-describedby', () => {
+    const html = render()
+    expect(html).toMatch(/<label[^>]*for="allow-sync"[^>]*>/)
+    const id = input(html, 'allow-sync').match(/aria-describedby="([^"]+)"/)?.[1]
+    expect(id).toBeTruthy()
+    const described = (html.match(new RegExp(`id="${id}"[^>]*>([^<]*)<`))?.[1] ?? '').replace(/&#x27;/g, "'")
+    expect(described).toBe(SYNC_DESCRIPTION)
+    expect(SYNC_DESCRIPTION).toContain('4 times a day')
   })
 })

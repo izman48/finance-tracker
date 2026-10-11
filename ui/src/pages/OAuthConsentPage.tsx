@@ -27,8 +27,9 @@ export default function OAuthConsentPage() {
   const [details, setDetails] = useState<OAuthRequestDetails | null>(null)
   const [error, setError] = useState('')
   const [allowRules, setAllowRules] = useState(true)
-  // Off by default and never remembered: each connection opts in.
+  // Planning and sync are off by default and never remembered: each connection opts in.
   const [allowPlanning, setAllowPlanning] = useState(false)
+  const [allowSync, setAllowSync] = useState(false)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -48,7 +49,7 @@ export default function OAuthConsentPage() {
     setBusy(true)
     setError('')
     try {
-      const scopes = consentScopes({ rules: allowRules, planning: allowPlanning })
+      const scopes = consentScopes({ rules: allowRules, planning: allowPlanning, sync: allowSync })
       const res = await oauthApi.decide(params, approve, scopes)
       window.location.assign(res.data.redirect_to)
     } catch (err) {
@@ -90,8 +91,10 @@ export default function OAuthConsentPage() {
         <ConsentScopes
           allowRules={allowRules}
           allowPlanning={allowPlanning}
+          allowSync={allowSync}
           onRulesChange={setAllowRules}
           onPlanningChange={setAllowPlanning}
+          onSyncChange={setAllowSync}
         />
 
         <p className="text-xs text-slate-500">

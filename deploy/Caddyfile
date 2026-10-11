@@ -35,14 +35,24 @@
 {$DOMAIN} {
 	encode gzip
 
-	# API and TrueLayer OAuth callback
+	# API and TrueLayer OAuth callback.
+	# Bodies are capped at 1 MB here, before the API buffers them: Starlette
+	# ignores its form limits on urlencoded bodies (PYSEC-2026-249), and
+	# /auth/login and /oauth/token take those unauthenticated. The largest
+	# legitimate body (a 200-rule bulk pack) is a few hundred kB at most.
 	handle /api/* {
+		request_body {
+			max_size 1MB
+		}
 		reverse_proxy api:8000
 	}
 
 	# Remote MCP server, and its OAuth protected-resource metadata (RFC 9728)
-	# that tells clients where to sign in.
+	# that tells clients where to sign in. Same 1 MB body cap.
 	handle /mcp {
+		request_body {
+			max_size 1MB
+		}
 		reverse_proxy mcp:8001
 	}
 	handle /.well-known/oauth-protected-resource/mcp {

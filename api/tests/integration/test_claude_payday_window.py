@@ -74,9 +74,9 @@ def test_keeping_the_change_applies_it(client, db_session):
 
 def test_a_cadence_change_does_not_widen_it(client, db_session):
     w = World(client, db_session)
-    # Weekly from a date 5 days ago: the next one would land in 2 days.
+    # Weekly, next one in 2 days (past dates are refused over MCP).
     w.claude_update(w.salary, cadence="custom_days", interval_days=7,
-                    next_date=(TODAY - timedelta(days=5)).isoformat())
+                    next_date=(TODAY + timedelta(days=2)).isoformat())
     assert w.safe() == Decimal("200.00")
 
 
@@ -115,3 +115,45 @@ def test_the_payday_shown_is_unchanged(client, db_session):
     w = World(client, db_session)
     w.claude_update(w.salary, next_date=(TODAY + timedelta(days=2)).isoformat())
     assert w.summary()["next_payday"] == (TODAY + timedelta(days=2)).isoformat()
+
+
+def test_secs_past_date_variant_is_refused(client, db_session):
+    """sec on #121: Claude set the salary to a *past* date on the "in 2 days"
+    schedule, which sync then rolled forward. A past next_date is now 422."""
+    from app.services.analytics.cadence import _step_back
+    from tests.integration.test_oauth import _bearer
+
+    w = World(client, db_session)
+    past = _step_back(TODAY + timedelta(days=2), "monthly", None, None)
+    res = client.post(
+        f"{API}/planning/commitments/{w.salary}/update",
+        json={"next_date": past.isoformat(), "dry_run": False, "idempotency_key": "past-salary-0001"},
+        headers=_bearer(w.mcp),
+    )
+    assert res.status_code == 422
+    assert w.safe() == Decimal("200.00")
+
+
+def test_a_date_moved_by_sync_not_the_user_stays_held_back(client, db_session):
+    """sec on #121: once the stored date stops equalling Claude's value (sync
+    rolling it on after time passes, or any non-web write), the old code read
+    that as a hand edit and let the window shrink. Only a recorded web edit
+    counts as the user's now."""
+    w = World(client, db_session)
+    w.claude_update(w.salary, next_date=(TODAY + timedelta(days=2)).isoformat())
+    def roll():
+        db_session.get(CommitmentRule, w.salary).next_date = TODAY + timedelta(days=3)
+        db_session.commit()
+    w.as_user(roll)
+    w.commitment(w.salary)  # a commitments load (sync) in between
+    assert w.safe() == Decimal("200.00")
+
+
+def test_a_web_edit_of_the_salary_date_is_the_users_and_applies(client, db_session):
+    from tests.integration.test_oauth import _bearer
+
+    w = World(client, db_session)
+    w.claude_update(w.salary, next_date=(TODAY + timedelta(days=2)).isoformat())
+    client.patch(f"{API}/analytics/commitments/{w.salary}",
+                 json={"next_date": (TODAY + timedelta(days=2)).isoformat()}, headers=_bearer(w.web))
+    assert w.safe() == Decimal("500.00")

@@ -159,10 +159,14 @@ class TrueLayerService:
             return
 
         logger.info(f"Refreshing expired token for bank connection {bank_connection.id}")
+        tried = bank_connection.refresh_token
         try:
-            token_data = await self.refresh_access_token(bank_connection.refresh_token)
+            token_data = await self.refresh_access_token(tried)
         except ReauthRequired:
-            if bank_connection.refresh_token is not None:
+            # Drop only the token TrueLayer rejected: if another sync rotated
+            # it meanwhile, the new one is good (T-08-22, sec).
+            db.refresh(bank_connection)
+            if bank_connection.refresh_token is not None and bank_connection.refresh_token == tried:
                 bank_connection.refresh_token = None
                 db.commit()
             raise

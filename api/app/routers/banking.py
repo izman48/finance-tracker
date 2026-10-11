@@ -33,6 +33,7 @@ from app.schemas.transaction_search import TransactionSearchRequest, Transaction
 from app.services import analytics_service, categorization
 from app.services import transaction_search as search
 from app.services.balance_sign import credit_owed
+from app.services.sync_lock import RETRY_AFTER_SECONDS, SyncBusy, sync_lease
 from app.services.sync_status import freshness, sync_status
 from app.services.truelayer import ReauthRequired, truelayer_service
 from app.models import Account, AccountRole, Transaction, User, BankConnection
@@ -43,9 +44,21 @@ router = APIRouter(prefix="/banking", tags=["banking"])
 
 
 def _sync_error(provider_name: str, exc: Exception) -> str:
+    """Fixed words per connection: the exception's text (TrueLayer error
+    bodies, URLs) goes to the server log only (T-08-22, sec)."""
     if isinstance(exc, ReauthRequired):
         return f"{provider_name}: bank access has expired, reconnect it on the Wealth tab"
-    return f"{provider_name}: {exc}"
+    return f"{provider_name}: couldn't sync right now, try again later"
+
+
+def _busy() -> HTTPException:
+    """A second sync for the user, on any worker (T-08-22): wait, don't race
+    the first one's token refresh."""
+    return HTTPException(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        detail="A bank sync is already running. Please try again shortly.",
+        headers={"Retry-After": str(RETRY_AFTER_SECONDS)},
+    )
 
 
 def _all_failed(action: str, errors: list[str], needs_reauth: int) -> HTTPException:
@@ -253,8 +266,16 @@ async def sync_accounts(
     Sync bank accounts from TrueLayer for ALL connected banks.
 
     Fetches all connected bank accounts and their balances,
-    and stores them in the database.
+    and stores them in the database. One sync per user at a time.
     """
+    try:
+        with sync_lease(db, current_user.id):
+            return await _sync_all_accounts(current_user, db)
+    except SyncBusy:
+        raise _busy() from None
+
+
+async def _sync_all_accounts(current_user, db: Session) -> SyncAccountsResponse:
     # Get all bank connections for this user
     bank_connections = db.query(BankConnection).filter(
         BankConnection.user_id == current_user.id
@@ -305,8 +326,17 @@ async def sync_transactions(
     Sync transactions from TrueLayer for ALL connected banks.
 
     Fetches transactions for all connected accounts and stores them.
-    By default, syncs the last 90 days of transactions.
+    By default, syncs the last 90 days of transactions. One sync per user
+    at a time.
     """
+    try:
+        with sync_lease(db, current_user.id):
+            return await _sync_all_transactions(request, current_user, db)
+    except SyncBusy:
+        raise _busy() from None
+
+
+async def _sync_all_transactions(request: SyncTransactionsRequest, current_user, db: Session) -> SyncTransactionsResponse:
     # Get all bank connections for this user
     bank_connections = db.query(BankConnection).filter(
         BankConnection.user_id == current_user.id
@@ -383,8 +413,14 @@ async def sync_banks(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No bank connections found. Please connect a bank first.",
             )
-        user_rate_limiter.check_key(key, limit=1, window_seconds=SYNC_COOLDOWN_SECONDS)
-        results = [await _sync_connection(connection, db) for connection in connections]
+        # The in-process guard covers this worker; the DB lease covers the
+        # other worker and the older sync routes (T-08-22, sec).
+        try:
+            with sync_lease(db, current_user.id):
+                user_rate_limiter.check_key(key, limit=1, window_seconds=SYNC_COOLDOWN_SECONDS)
+                results = [await _sync_connection(connection, db) for connection in connections]
+        except SyncBusy:
+            raise _busy() from None
 
     return BankSyncResponse(
         connections=results,

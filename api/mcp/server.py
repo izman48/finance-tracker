@@ -56,12 +56,16 @@ from config import ConfigError, Settings
 READ_ONLY = ToolAnnotations(readOnlyHint=True)
 
 # A refresh syncs every bank, one after another, inside one API request.
-# The API stops a sync at 45 s (T-08-22); wait a little longer for its
-# answer, and stay under a typical 60 s MCP client timeout.
+# The API stops starting banks once its 45 s budget is nearly spent
+# (T-08-22); wait a little longer for its answer. A bank with many accounts
+# can run past this and a client's 60 s wait; that is safe, as the API still
+# finishes that bank and sync_status shows the result.
 SYNC_TIMEOUT = 55  # seconds
-# A refresh changes stored data and reaches the bank (sec, T-08-22): clients
-# should ask; repeating it fetches the same data again.
-REFRESH_TOOL = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=True)
+# A refresh changes stored data and reaches the bank (sec, T-08-22), so
+# clients should ask. Not idempotent: each repeat spends the bank's
+# unattended-access quota, and clients may retry idempotent tools on their
+# own after a timeout.
+REFRESH_TOOL = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True)
 
 
 def write_tool(*, destructive: bool) -> ToolAnnotations:
@@ -159,7 +163,7 @@ def create_server(settings: Settings, api_transport: httpx.AsyncBaseTransport | 
 
     @mcp.tool(annotations=REFRESH_TOOL)
     async def refresh_banks() -> dict:
-        """Fetch fresh accounts and transactions from every connected bank now, and wait for the result (up to about 45 seconds). Use it when sync_status shows the data is old and the user wants up-to-date figures, then read the data again. Ask the user before you call it.
+        """Fetch fresh accounts and transactions from every connected bank now, and wait for the result (usually under a minute). If this times out, check sync_status before refreshing again: the refresh may still have finished. Use it when sync_status shows the data is old and the user wants up-to-date figures, then read the data again. Ask the user before you call it.
 
         The API allows one refresh per user every 10 minutes, shared with the app. Banks can also limit how often an app reads an account without the user present, so do not refresh just in case. Per connection, `status` is `synced`, `reconnect` (the user must reconnect that bank in the app; this tool can't), `failed` (try again later) or `not_attempted` (the refresh ran out of time before that bank; its data is unchanged). A purchase can still be missing after a refresh: banks often post card payments a day later.
 

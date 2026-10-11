@@ -279,7 +279,7 @@ def create_server(settings: Settings, api_transport: httpx.AsyncBaseTransport | 
         batch_id: str = "",
         dry_run: bool = True,
     ) -> dict:
-        """Fix a commitment (an id from the commitments tool): its name, amount, how often, next date, the credit card it repays, or confirm a suggestion. Only the fields you pass change; the direction (income/expense) can't be changed.
+        """Fix a commitment (an id from the commitments tool): its name, amount, how often, next date, the credit card it repays, or confirm a suggestion. Only the fields you pass change; the direction (income/expense) can't be changed. If you raise an income or confirm a suggested one, it doesn't count in the user's savable until they keep the change in the app ("Keep this change"): tell them so.
 
         `amount` is a positive string with up to 2 decimals ("12.99"), at most 1,000,000. `cadence` is weekly|monthly|every_n_months|custom_days; every_n_months needs `interval_months` (1-24) and custom_days needs `interval_days` (1-366). `next_date` is YYYY-MM-DD, from a year ago to 5 years ahead. `status` can only be "confirmed" (to confirm a suggested commitment, e.g. rent paid by transfer); use dismiss_commitment to dismiss one. `card_account_id` is a credit card from the accounts tool that this commitment repays; `clear_card=true` says it repays no card. `idempotency_key` is 8-64 characters of letters, digits, - or _: new for each change you intend, reused only to retry that same change.
 

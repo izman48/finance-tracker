@@ -46,6 +46,7 @@ from decimal import Decimal
 
 from app.services import analytics_service
 from app.services.analytics import card_links
+from app.services.claude_keep import claude_rows, commitment_keep
 from app.services.analytics.common import _today
 from app.services.analytics.planned_matching import planned_states
 from app.services.analytics.late_income import late_incomes
@@ -232,11 +233,13 @@ def list_commitments(
         .all()
     )
     markers = claude_markers(db, current_user.id, "commitment", [r.id for r in rules])
+    claude = claude_rows(db, current_user.id, [r.id for r in rules])
     late = late_incomes(db, current_user, _today())
     return [
         CommitmentResponse.model_validate(r).model_copy(update={
             "changed_by_claude": ClaudeMarker(**markers[r.id]) if r.id in markers else None,
             "late": r.id in late,
+            **dict(zip(("keep", "kept_at"), commitment_keep(r, claude.get(r.id, [])))),
             "expected_date": late[r.id].expected_date if r.id in late else None,
         })
         for r in rules

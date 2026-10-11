@@ -381,7 +381,7 @@ export interface Nudge {
   rank: number
   body: string
   detail: string
-  source: string
+  source: string | null
   as_of: string | null
 }
 

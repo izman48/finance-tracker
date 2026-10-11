@@ -17,6 +17,7 @@ from app.core.planning_write import PlanningWriter
 from app.models import CommitmentRule, CommitmentSource, CommitmentStatus
 from app.schemas import DismissCommitmentRequest, UpdateCommitmentRequest
 from app.services.analytics.card_links import USER as CARD_LINK_USER
+from app.services.analytics.commitments import merchant_match_key
 from app.services.planning_writes import WriteRequest, run_write
 
 router = APIRouter(prefix="/planning", tags=["planning"])
@@ -35,10 +36,16 @@ def update_commitment(
 
     def apply(db: Session, rule: CommitmentRule) -> CommitmentRule:
         relabelled = "label" in updates and updates["label"] != rule.label
+        old_key = rule.match_key or merchant_match_key(rule.direction, rule.label)
         for field, value in updates.items():
             setattr(rule, field, value)
         if "card_account_id" in updates:
             rule.card_link_source = CARD_LINK_USER
+        if relabelled:
+            # A rule with no key matches payments by its label, so a rename
+            # would quietly change what it matches (sec on #127): keep the
+            # old label's key, detected or manual.
+            rule.match_key = old_key
         if relabelled and rule.source == CommitmentSource.DETECTED.value:
             # sync_suggestions re-derives a detected rule's match_key from its
             # label; a manual rule's key is left alone, so its payments keep

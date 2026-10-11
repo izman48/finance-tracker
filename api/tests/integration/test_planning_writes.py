@@ -326,11 +326,12 @@ def test_an_mcp_token_with_the_planning_scope_cannot_use_the_web_write_routes(cl
 
 
 @pytest.mark.parametrize("column,value", [
-    ("match_key", "expense:something-else"),
     ("is_payday", True),
     ("direction", "income"),
     # `source` is allow-listed since T-08-9 (a relabel makes a detected rule
-    # manual, server side only); the commitment's spending account is not.
+    # manual, server side only), and `match_key` since T-08-18b (that relabel
+    # stores the old label's key on a rule with none; audited, undoable).
+    # The commitment's spending account is not.
     ("account_id", uuid.UUID("00000000-0000-0000-0000-0000000000aa")),
 ])
 @pytest.mark.parametrize("dry_run", [True, False])

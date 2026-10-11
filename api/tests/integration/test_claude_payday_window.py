@@ -157,3 +157,38 @@ def test_a_web_edit_of_the_salary_date_is_the_users_and_applies(client, db_sessi
     client.patch(f"{API}/analytics/commitments/{w.salary}",
                  json={"next_date": (TODAY + timedelta(days=2)).isoformat()}, headers=_bearer(w.web))
     assert w.safe() == Decimal("500.00")
+
+
+def _flagged_salary_and_nearer_interest(w):
+    def flag():
+        w.db.get(CommitmentRule, w.salary).is_payday = True
+        w.db.commit()
+    w.as_user(flag)
+    w.rule("Interest", "1.00", TODAY + timedelta(days=2))
+
+
+def test_a_claude_dismissal_of_an_income_is_pending_and_can_be_kept(client, db_session):
+    """sec on #121: the dismissal is held (window), so the user must be able
+    to keep it, as the dismiss_commitment text promises."""
+    w = World(client, db_session)
+    _flagged_salary_and_nearer_interest(w)
+    audit_id = w.claude_dismiss(w.salary)
+    assert w.safe() == Decimal("200.00")
+    # A dismissed commitment leaves the commitments list, so the Keep control
+    # for it is on its Changes row (ux 9.1).
+    assert w.audit_row(audit_id)["keep"] == "pending"
+    res = w.keep(audit_id)
+    assert res.status_code == 200, res.text
+    assert res.json()["keep"] == "kept"
+    assert w.safe() == Decimal("500.00")  # the interest in 2 days is payday now
+
+
+def test_undo_of_a_claude_income_dismissal_restores_it(client, db_session):
+    from tests.integration.test_oauth import _bearer
+
+    w = World(client, db_session)
+    _flagged_salary_and_nearer_interest(w)
+    audit_id = w.claude_dismiss(w.salary)
+    assert client.post(f"{API}/audit/{audit_id}/undo", headers=_bearer(w.web)).status_code == 200
+    assert w.commitment(w.salary)["keep"] is None  # back on the list, nothing pending
+    assert w.safe() == Decimal("200.00")

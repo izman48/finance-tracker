@@ -62,7 +62,8 @@ def _value(field: str, raw):
 
 
 def _raising(entry: AuditEntry) -> list[dict]:
-    """The money changes in a write that could bring in more."""
+    """The money changes in a write that need the user to keep them: those
+    that could bring in more, or move payday (a dismissal can, T-08-21)."""
     out = []
     for c in json.loads(entry.changes):
         field = c["field"]
@@ -72,7 +73,10 @@ def _raising(entry: AuditEntry) -> list[dict]:
             if Decimal(c["after"] or 0) > Decimal(c["before"] or 0):
                 out.append(c)
         elif field == "status":
-            if c["after"] == CommitmentStatus.CONFIRMED.value and c["before"] != CommitmentStatus.CONFIRMED.value:
+            # Confirming brings an income in. Dismissing one doesn't, but it
+            # can make a nearer income payday and so shorten the committed
+            # window (T-08-21): that is held too, so it must be keepable.
+            if (c["after"] == CommitmentStatus.CONFIRMED.value) != (c["before"] == CommitmentStatus.CONFIRMED.value):
                 out.append(c)
         else:  # when or how often it arrives: could bring more into the window
             out.append(c)

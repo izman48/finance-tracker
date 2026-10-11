@@ -186,6 +186,66 @@ reload && fail "reload accepted a broken site file" || pass "reload rejects a br
 page="$(headers probe.test /)"
 expect_header "running sites keep serving after a rejected reload" 'HTTP/1.1 200'
 
+# --- Request body cap (T-08-19) ---------------------------------------------
+# The API and the MCP server must never buffer an unbounded body: Starlette
+# ignores its form limits for urlencoded bodies (PYSEC-2026-249), and
+# /auth/login and /oauth/token take them unauthenticated. Caddy caps both at
+# 1 MB. Real upstreams stand in for api:8000 and mcp:8001 on a private
+# network, so a body under the cap gets through (200) and one over it is
+# refused by Caddy (413) before reaching them.
+
+NET="caddy-test-net-$$"
+UPSTREAMS=(caddy-test-api-$$ caddy-test-mcp-$$)
+APP="caddy-test-app-$$"
+cleanup_cap() {
+  docker rm -f "$APP" "${UPSTREAMS[@]}" >/dev/null 2>&1 || true
+  docker network rm "$NET" >/dev/null 2>&1 || true
+}
+trap 'cleanup_cap; cleanup' EXIT
+docker network create "$NET" >/dev/null
+# Upstreams that read the whole body, as uvicorn does for a form, then answer
+# 200: the cap only bites while a body is being read.
+UPSTREAM_IMAGE="python:3.12-alpine"
+UPSTREAM_PY='
+import http.server, sys
+class H(http.server.BaseHTTPRequestHandler):
+    def do_POST(self):
+        self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        self.send_response(200); self.send_header("Content-Length", "2"); self.end_headers(); self.wfile.write(b"ok")
+http.server.ThreadingHTTPServer(("", int(sys.argv[1])), H).serve_forever()'
+docker pull -q "$UPSTREAM_IMAGE" >/dev/null
+docker run -d --name "${UPSTREAMS[0]}" --network "$NET" --network-alias api "$UPSTREAM_IMAGE" \
+  python -c "$UPSTREAM_PY" 8000 >/dev/null
+docker run -d --name "${UPSTREAMS[1]}" --network "$NET" --network-alias mcp "$UPSTREAM_IMAGE" \
+  python -c "$UPSTREAM_PY" 8001 >/dev/null
+docker run -d --name "$APP" --network "$NET" -e DOMAIN=http://app.test:8082 \
+  -v "$CADDYFILE:/etc/caddy/Caddyfile:ro" "$IMAGE" >/dev/null
+
+# post_status <path> <body bytes> — status line of a urlencoded POST of that size.
+# (stdin stays open a moment after the body: busybox nc closes the connection
+# at EOF, which Caddy would log as the client giving up, 499.)
+post_status() {
+  docker exec "$APP" sh -c "
+    head -c $2 /dev/zero | tr '\\0' a > /tmp/body
+    { printf 'POST $1 HTTP/1.1\\r\\nHost: app.test\\r\\nContent-Type: application/x-www-form-urlencoded\\r\\nContent-Length: $2\\r\\nConnection: close\\r\\n\\r\\n'; cat /tmp/body; sleep 3; } \\
+      | nc 127.0.0.1 8082 | head -n 1" 2>/dev/null | tr -d '\r'
+}
+for _ in $(seq 1 30); do post_status /api/v1/auth/login 10 | grep -q 'HTTP/1.1 200' && break; sleep 0.5; done
+
+MB=1048576
+for path in /api/v1/auth/login /api/v1/oauth/token /mcp; do
+  got="$(post_status "$path" $((2 * MB)))"
+  [ "$got" = "HTTP/1.1 413 Request Entity Too Large" ] \
+    && pass "a 2 MB POST to $path is refused with 413" || fail "2 MB POST to $path (got: '$got')"
+done
+# The largest legitimate body (a 200-rule bulk pack, worst case escaping, see
+# the PR) is well under the cap; a body just under it still gets through.
+# (Caddy's "1MB" is 1,000,000 bytes.)
+got="$(post_status /api/v1/rules/packs/bulk 900000)"
+[ "$got" = "HTTP/1.1 200 OK" ] \
+  && pass "a 900 kB body still reaches the API" || fail "900 kB body (got: '$got')"
+cleanup_cap
+
 # --- Pre-deploy check (deploy/preflight-sites.sh, run by deploy.sh before `up`) ---
 # Mirrors the server: HOME is $SERVER, the repo copy (deploy/, the prod compose
 # file and a fake .env.production) is ~/finance-tracker, the sites sit beside it.

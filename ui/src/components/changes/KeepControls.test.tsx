@@ -10,7 +10,6 @@ import {
   KEEP_CHANGED_TEXT,
   KEEP_FAILED_TEXT,
   KEEP_UNCERTAIN_TEXT,
-  KEEP_LATER_TEXT,
   type KeepState,
 } from './KeepControls'
 import { KEEP_PENDING_TEXT } from '../../lib/keep'
@@ -208,15 +207,5 @@ describe('CommitmentKeep on an expense cut (KP15, KP18, KP20)', () => {
 
   it('KP20: nothing when Claude raised or confirmed it (keep null)', () => {
     expect(row(cut({ keep: null, keep_kind: null }))).toBe('')
-  })
-})
-
-describe('KeepNotice when a later Claude change is in the way (ux 9.7)', () => {
-  it('says to act on the later change first, with no Open link', () => {
-    expect(KEEP_LATER_TEXT).toBe("Can't keep this yet: Claude changed it again afterwards. Undo the later change first.")
-    const h = html(<KeepNotice alertId="x-alert" failure="changed" later />)
-    expect(text(h)).toBe(KEEP_LATER_TEXT)
-    expect(h).toContain('role="alert"')
-    expect(h).not.toContain('<a')
   })
 })

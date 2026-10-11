@@ -11,7 +11,7 @@ import {
   LATER_CHANGE_TEXT,
 } from './UndoControls'
 import { addEvent, item } from '../../lib/changes.fixtures'
-import { settledKeepState, settledUndoState } from '../../lib/changes'
+import { settledUndoState } from '../../lib/changes'
 
 // C6-C9 row states (ux spec 1.5). Node suite, static markup.
 const noop = () => {}
@@ -143,21 +143,5 @@ describe('settledUndoState (KP21: the older Undo comes back)', () => {
   it('a plain 409 (no later change) stays as it was', () => {
     const plain = { undoing: false, failure: 'changed' as const }
     expect(settledUndoState(plain, [later])).toEqual(plain)
-  })
-})
-
-describe('settledKeepState (KP21b: a refused Keep settles the same way)', () => {
-  const blocked = { keeping: false, failure: 'changed' as const, laterId: 'rm' }
-  const later = item({ id: 'rm', keep: 'pending' })
-
-  it('stays blocked while the later change stands, and Keep comes back once it is undone', () => {
-    expect(settledKeepState(blocked, [later])).toEqual(blocked)
-    expect(settledKeepState(blocked, [{ ...later, undone_at: '2026-10-11T12:00:00Z' }])).toEqual({ keeping: false, failure: null })
-    expect(settledKeepState(blocked, [{ ...later, keep: 'kept' }])).toEqual(blocked)
-  })
-
-  it('a plain 409 on Keep stays', () => {
-    const plain = { keeping: false, failure: 'changed' as const }
-    expect(settledKeepState(plain, [later])).toEqual(plain)
   })
 })

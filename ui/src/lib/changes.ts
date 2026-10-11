@@ -255,14 +255,6 @@ export function settledUndoState(state: UndoState, items: AuditItem[]): UndoStat
   return laterResolved(state, items) ? { undoing: false, failure: null } : state
 }
 
-/** The same rule for a refused Keep (KP21b): Keep comes back once the later change is undone. */
-export function settledKeepState<S extends { keeping: boolean; failure: UndoFailure | null; laterId?: string | null }>(
-  state: S,
-  items: AuditItem[],
-): S {
-  return laterResolved(state, items) ? { ...state, keeping: false, failure: null, laterId: undefined } : state
-}
-
 function laterResolved(state: { failure: UndoFailure | null; laterId?: string | null }, items: AuditItem[]): boolean {
   if (state.failure !== 'changed' || !state.laterId) return false
   const later = items.find((it) => it.id === state.laterId)

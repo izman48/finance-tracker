@@ -11,8 +11,6 @@ type Done = {
   /** Focus after success (the row), and after a 409 (its message). */
   focusId: string
   alertId: string
-  /** On a 409: the newer change in the way, if any, so the row can settle later (ux 9.7). */
-  laterId?: () => string | null
 }
 
 /**
@@ -46,8 +44,7 @@ export function useRowActions(refetch: () => Promise<unknown>) {
       failure = failureFromError(err)
     }
     if (!mounted.current) return
-    const laterId = failure === 'changed' ? (done.laterId?.() ?? null) : null
-    setStates((s) => ({ ...s, [key]: { keeping: false, failure, laterId } }))
+    setStates((s) => ({ ...s, [key]: { keeping: false, failure } }))
     if (ok) toast(done.toast)
     await refetch()
     if (!mounted.current) return

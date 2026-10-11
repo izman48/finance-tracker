@@ -388,9 +388,11 @@ async def _sync_all_transactions(request: SyncTransactionsRequest, current_user,
 SYNC_COOLDOWN_SECONDS = 10 * 60
 # POST /banking/sync starts a bank only while this much of its budget is
 # left, and a started bank runs to the end: cancelling one mid-sync could
-# lose a refresh token TrueLayer had just rotated (sec, eng-a on #138). The
-# 10 s per-call timeouts bound a started bank, so the whole sync stays well
-# under the MCP client's 60 s wait and the 5-minute sync lease (T-08-22).
+# lose a refresh token TrueLayer had just rotated (sec, eng-a on #138). Each
+# TrueLayer call times out at 10 s, but a bank makes one call per account,
+# so a started bank usually, not always, ends inside the margin. If it runs
+# past the MCP client's wait, the API still finishes it safely, well inside
+# the 5-minute sync lease (T-08-22).
 SYNC_BUDGET_SECONDS = 45
 SYNC_START_MARGIN_SECONDS = 25
 # Same window as the web sync; stored transactions are de-duplicated.

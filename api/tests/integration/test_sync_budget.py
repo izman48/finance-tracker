@@ -1,7 +1,8 @@
 """A bank sync is bounded (T-08-22 PR 2a, sec).
 
 It runs inside the request (the DEK exists only there), so it must finish
-well inside the MCP client's wait and the 5-minute sync lease: every
+well inside the 5-minute sync lease, and usually inside the MCP client's
+wait (a bank with many accounts can run past that, which is safe): every
 TrueLayer call has an explicit timeout of at most 10 s, and `POST
 /banking/sync` starts a bank only while at least SYNC_START_MARGIN_SECONDS
 of its 45 s budget remain. A started bank is never cancelled (that could
@@ -38,7 +39,7 @@ def test_every_truelayer_call_has_an_explicit_timeout_of_10s_or_less(client, db_
         assert all(t is not None and t <= 10 for t in (timeout.connect, timeout.read, timeout.write, timeout.pool))
 
 
-def test_the_budget_is_well_inside_the_lease_and_the_mcp_wait():
+def test_the_budget_is_well_inside_the_lease():
     assert banking.SYNC_BUDGET_SECONDS <= 45
     # A bank is only started with this much budget left, enough for a token
     # refresh and a data call at their timeouts.

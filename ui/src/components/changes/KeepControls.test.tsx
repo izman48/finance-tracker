@@ -199,6 +199,12 @@ describe('CommitmentKeep on an expense cut (KP15, KP18, KP20)', () => {
     )
   })
 
+  it('a yearly bill moved later: the moved line, Keep and Undo', () => {
+    const h = row(cut({ cadence: 'every_n_months', interval_months: 12, next_date: '2027-03-01', held_next_date: '2027-01-15' }))
+    expect(text(h)).toContain('Claude moved this from 15 Jan to 1 Mar. It still counts on 15 Jan in your safe to spend until you keep this change.')
+    expect(names(h)).toEqual(['Keep this change: Gym', 'Undo: Claude’s changes to “Gym”'])
+  })
+
   it('KP20: nothing when Claude raised or confirmed it (keep null)', () => {
     expect(row(cut({ keep: null, keep_kind: null }))).toBe('')
   })

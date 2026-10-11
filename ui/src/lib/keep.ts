@@ -43,6 +43,9 @@ export function auditPendingLine(item: AuditItem): string {
     if (only.field === 'amount') return loweredLine(String(only.before), String(only.after))
     if (only.field === 'next_date') return movedLine(String(only.before), String(only.after))
   }
+  // Anything else gets the generic line on purpose: a card link (it changes
+  // how a bill counts with its card, not an amount or a date), a cadence
+  // change, a planned-expense removal, or several fields at once.
   return CUT_SEVERAL
 }
 

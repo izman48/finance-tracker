@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { changeLines, changeTitle, clientText, metaTime, type AuditItem } from '../../lib/changes'
 import { dateDayMonth } from '../../lib/format'
+import { KEEP_PENDING_TEXT } from '../../lib/keep'
 
 type Props = {
   item: AuditItem
@@ -32,6 +33,9 @@ export default function ChangeRow({ item, accountNames, action, notice, highligh
           <p className={`font-medium [overflow-wrap:anywhere] ${undone ? 'text-slate-400' : 'text-slate-200'}`}>
             {title}
             {undone && <span className="chip ml-2 align-middle">Undone {dateDayMonth(item.undone_at)}</span>}
+            {!undone && item.keep === 'kept' && item.kept_at && (
+              <span className="chip-pos ml-2 align-middle">Kept {dateDayMonth(item.kept_at)}</span>
+            )}
           </p>
           {lines.length > 0 && (
             <dl className="mt-2 space-y-1 text-sm">
@@ -58,6 +62,7 @@ export default function ChangeRow({ item, accountNames, action, notice, highligh
             <span title={client.title}>{client.text}</span>
             {item.connection_created_at && ` · connected ${dateDayMonth(item.connection_created_at)}`}
           </p>
+          {!undone && item.keep === 'pending' && <p className="mt-2 text-xs text-slate-400">{KEEP_PENDING_TEXT}</p>}
           {notice}
         </div>
         {action}

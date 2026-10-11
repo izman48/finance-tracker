@@ -339,6 +339,7 @@ const listParams = (params: Record<string, unknown>) => {
 export const auditAPI = {
   list: (cursor?: string) => api.get<AuditPage>('/audit', { params: cursor ? { cursor } : {} }),
   undo: (id: string) => api.post<AuditItem>(`/audit/${id}/undo`),
+  keep: (id: string) => api.post<AuditItem>(`/audit/${id}/keep`),
 }
 
 export const bankingAPI = {

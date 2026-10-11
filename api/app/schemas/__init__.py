@@ -649,6 +649,8 @@ class CommitmentResponse(BaseModel):
     # the app (it doesn't count in savable until then), then "kept" (T-08-20).
     keep: str | None = None
     kept_at: datetime | None = None
+    # The audit rows the app's Keep button keeps (the pending ones), oldest first.
+    keep_audit_ids: list[uuid.UUID] = []
 
     model_config = ConfigDict(from_attributes=True)
 

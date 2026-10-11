@@ -117,6 +117,12 @@ def keep_states(rule: CommitmentRule | None, rows: list[AuditEntry]) -> dict[uui
     return out
 
 
+def pending_ids(rule: CommitmentRule, rows: list[AuditEntry]) -> list[uuid.UUID]:
+    """Claude's writes to this commitment that are waiting to be kept, oldest first."""
+    by_id = keep_states(rule, rows)
+    return [r.id for r in rows if by_id[r.id] == PENDING]
+
+
 def commitment_keep(rule: CommitmentRule, rows: list[AuditEntry]) -> tuple[str | None, object]:
     """(keep, kept_at) for a commitment: pending if any of Claude's writes is."""
     by_id = keep_states(rule, rows)

@@ -193,7 +193,7 @@ export default function ChangesPage() {
       )}
       renderNotice={(it) => (
         <>
-          <KeepNotice alertId={`change-${it.id}-keep-alert`} failure={keepFailure(it)} />
+          <KeepNotice alertId={`change-${it.id}-keep-alert`} failure={keepFailure(it)} later={laterChange(it, items) !== null} />
           <UndoNotice item={it} failure={stateOf(it).failure} later={Boolean(stateOf(it).laterId)} />
         </>
       )}

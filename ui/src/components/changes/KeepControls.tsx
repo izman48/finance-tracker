@@ -8,6 +8,9 @@ export const KEEP_FAILED_TEXT = "Couldn't keep this. Nothing was changed. Try ag
 // No answer from the server: the keep may have gone through.
 export const KEEP_UNCERTAIN_TEXT =
   "Couldn't confirm that. It may have been kept; check this item before you try again."
+// A newer change by Claude to the same item is in the way (ux 9.7).
+export const KEEP_LATER_TEXT =
+  "Can't keep this yet: Claude changed it again afterwards. Keep or undo the later change first."
 export const KEEP_CHANGED_TEXT =
   "Can't keep this: it has changed since Claude made the change. Check its current value first."
 
@@ -41,8 +44,15 @@ export function KeepButton({ actionKey, label, state, onKeep }: { actionKey: str
 }
 
 /** The inline message after a failed keep. It never carries the server's text. */
-export function KeepNotice({ alertId, failure }: { alertId: string; failure: UndoFailure | null }) {
+export function KeepNotice({ alertId, failure, later = false }: { alertId: string; failure: UndoFailure | null; later?: boolean }) {
   if (failure === null) return null
+  if (failure === 'changed' && later) {
+    return (
+      <div id={alertId} role="alert" tabIndex={-1} className="banner-err mt-3 text-sm outline-none">
+        {KEEP_LATER_TEXT}
+      </div>
+    )
+  }
   if (failure === 'changed') {
     return (
       <div id={alertId} role="alert" tabIndex={-1} className="banner-err mt-3 text-sm outline-none">

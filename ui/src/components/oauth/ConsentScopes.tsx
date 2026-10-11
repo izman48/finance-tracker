@@ -2,7 +2,7 @@ export const RULES_DESCRIPTION =
   "Create new categorisation rule packs. A new pack can recategorise past transactions, but never ones you set by hand. It can't edit or delete your existing rules, and you can remove a pack in Rules."
 
 export const PLANNING_DESCRIPTION =
-  "Add planned events, remove ones it added, and edit or dismiss commitments. It's asked to show you a preview before each change. Every change is listed under Changes made by Claude, where you can undo it. Income it adds never raises your safe to spend."
+  "Add planned events, remove ones it added, and edit or dismiss commitments. It's asked to show you a preview before each change. Every change is listed under Changes made by Claude, where you can undo it. Nothing it changes raises your safe to spend or savable until you keep it in nilu."
 
 type Props = {
   allowRules: boolean

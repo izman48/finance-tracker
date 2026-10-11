@@ -37,7 +37,9 @@ describe('ConsentScopes', () => {
     const described = (html.match(new RegExp(`id="${id}"[^>]*>([^<]*)<`))?.[1] ?? '').replace(/&#x27;/g, "'")
     expect(described).toBe(PLANNING_DESCRIPTION)
     expect(PLANNING_DESCRIPTION.startsWith('Add planned events, remove ones it added, and edit or dismiss commitments.')).toBe(true)
-    expect(PLANNING_DESCRIPTION).toContain('Income it adds never raises your safe to spend.')
+    // D4/D5 (T-08-21b): nothing Claude changes raises either figure until kept.
+    expect(PLANNING_DESCRIPTION.endsWith('Nothing it changes raises your safe to spend or savable until you keep it in nilu.')).toBe(true)
+    expect(PLANNING_DESCRIPTION).not.toContain('Income it adds never raises your safe to spend.')
   })
 
   it('K3: the rules description no longer says it cannot edit or delete anything', () => {

@@ -614,6 +614,9 @@ class CashflowSummary(BaseModel):
     committed_before_payday: Decimal
     safe_to_spend: Decimal
     savable: Decimal
+    # Income Claude raised or confirmed that the user hasn't kept yet, held
+    # back from savable (T-08-20, D4). 0 when nothing is pending.
+    savable_pending_keep_total: Decimal = Decimal(0)
     next_payday: date | None
     next_repayments: list[NextRepayment]
     accounts: list[CashflowAccount]
@@ -642,6 +645,10 @@ class CommitmentResponse(BaseModel):
     # shown, never counted. expected_date is that payment's date.
     late: bool = False
     expected_date: date | None = None
+    # Income Claude raised or confirmed: "pending" until the user keeps it in
+    # the app (it doesn't count in savable until then), then "kept" (T-08-20).
+    keep: str | None = None
+    kept_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -917,6 +924,10 @@ class AuditEntryResponse(BaseModel):
     target_label: str
     changes: list[AuditChange]
     undone_at: datetime | None
+    # D4 (T-08-20): "pending" / "kept" for a Claude change that raised an
+    # income commitment; null when it doesn't apply.
+    keep: str | None = None
+    kept_at: datetime | None = None
 
 
 class AuditPage(BaseModel):
@@ -1046,8 +1057,10 @@ class UpdateCommitmentRequest(PlanningWriteRequest):
     def _date_window(cls, v: date | None) -> date | None:
         if v is not None:
             today = date.today()
-            if not today - timedelta(days=365) <= v <= _add_years(today, 5):
-                raise ValueError("must be within a year ago and five years ahead")
+            # Never in the past (sec on #121): a past date would be rolled on
+            # by sync, and there's no legitimate reason for Claude to set one.
+            if not today <= v <= _add_years(today, 5):
+                raise ValueError("must be from today to five years ahead")
         return v
 
     @model_validator(mode="after")

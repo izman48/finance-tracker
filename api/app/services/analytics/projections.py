@@ -33,6 +33,7 @@ from app.models import (
 )
 from app.models.asset import LIABILITY_TYPES
 
+from app.services.claude_keep import claude_rows, held_back
 from .cadence import commitment_occurrences
 from .common import _add_months, _d, _today
 from .net_worth import net_worth_history
@@ -80,7 +81,25 @@ def _projected_commitments(db: Session, user, today: date) -> list[CommitmentRul
         .all()
     )
     repayments = card_repayment_rule_ids(db, user, rules, today)
-    return [r for r in rules if r.id not in repayments]
+    rules = [r for r in rules if r.id not in repayments]
+    # Strict parity (D4, T-08-20): an income Claude raised or confirmed is
+    # projected as it was before Claude until the user keeps the change (a
+    # Claude-confirmed suggestion is left out), or as it is if that's lower.
+    income_ids = [r.id for r in rules if r.direction == CommitmentDirection.INCOME.value]
+    claude = claude_rows(db, user.id, income_ids)
+    if not claude:
+        return rules
+    year_out = _add_months(today, 12)
+
+    def worth(version) -> Decimal:
+        return _d(version.amount) * len(commitment_occurrences(version, today, year_out))
+
+    out = []
+    for r in rules:
+        counted = held_back(r, claude[r.id], worth) if r.id in claude else r
+        if counted is not None:
+            out.append(counted)
+    return out
 
 
 def derived_contribution(db: Session, user) -> dict:

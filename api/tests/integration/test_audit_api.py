@@ -129,7 +129,11 @@ def test_there_is_no_route_that_edits_or_deletes_audit_rows():
         for route in app.routes if getattr(route, "path", "").startswith(f"{API}/audit")
         for method in getattr(route, "methods", set())
     }
-    assert audit_routes == {("GET", f"{API}/audit"), ("POST", f"{API}/audit/{{audit_id}}/undo")}
+    assert audit_routes == {
+        ("GET", f"{API}/audit"),
+        ("POST", f"{API}/audit/{{audit_id}}/undo"),
+        ("POST", f"{API}/audit/{{audit_id}}/keep"),  # T-08-20: stamps kept_at only
+    }
 
 
 # --- list ---------------------------------------------------------------------------
@@ -152,7 +156,7 @@ def test_the_list_shows_the_callers_writes_newest_first_decrypted(client, db_ses
     assert row["undone_at"] is None and row["batch_id"] is None
     assert set(row) == {
         "id", "created_at", "tool", "batch_id", "client_name", "connection_created_at",
-        "target_kind", "target_id", "target_label", "changes", "undone_at",
+        "target_kind", "target_id", "target_label", "changes", "undone_at", "keep", "kept_at",
     }
 
 

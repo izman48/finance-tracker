@@ -222,3 +222,46 @@ def test_keep_is_scoped_to_the_callers_rows(client, db_session):
     assert b.keep(audit_id).status_code == 404
     assert b.keep(uuid.uuid4()).status_code == 404
     assert a.savable() == Decimal("1500.00")
+
+
+# --- Wealth projections wait too (lead, 2026-10-11) ------------------------------
+
+
+def _projection(w):
+    from app.services import analytics_service as svc
+
+    def run():
+        basis = svc.derived_contribution(w.db, w.user)
+        series = svc.monthly_surplus_series(w.db, w.user, 6, Decimal(0))
+        return basis["income_monthly"], list(series)
+    return w.as_user(run)
+
+
+def test_a_pending_raise_leaves_the_projections_unchanged_and_keeping_moves_them(client, db_session):
+    w = World(client, db_session)
+    cid = w.income("1000.00")
+    before = _projection(w)
+    audit_id = w.claude_update(cid, amount="1500.00")
+    assert _projection(w) == before
+    w.keep(audit_id)
+    income_after, series_after = _projection(w)
+    assert income_after == before[0] * Decimal("1.5")
+    assert sum(series_after) > sum(before[1])
+
+
+def test_a_claude_confirmed_suggestion_is_not_projected_until_kept(client, db_session):
+    w = World(client, db_session)
+    cid = w.income("1000.00", status="suggested")
+    before = _projection(w)
+    audit_id = w.claude_update(cid, status="confirmed")
+    assert _projection(w) == before
+    w.keep(audit_id)
+    assert _projection(w)[0] > before[0]
+
+
+def test_a_claude_cut_shows_in_the_projections_at_once(client, db_session):
+    w = World(client, db_session)
+    cid = w.income("1000.00")
+    before = _projection(w)
+    w.claude_update(cid, amount="600.00")
+    assert _projection(w)[0] < before[0]

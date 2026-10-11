@@ -24,7 +24,7 @@ from .common import _d, _load, _today, resolve_roles
 from .net_worth import assets_total
 from .planned import planned_events
 from .planned_matching import planned_states
-from app.services.claude_keep import before_claude, claude_rows
+from app.services.claude_keep import claude_rows, held_back
 from .repayments import repayment_events, scheduled_outflows
 
 
@@ -103,7 +103,8 @@ def get_summary(db: Session, user) -> dict:
     pending_keep = Decimal(0)
     for r in income_rules:
         now = in_window(r)
-        counted = min(now, in_window(before_claude(r, claude[r.id]))) if r.id in claude else now
+        version = held_back(r, claude[r.id], in_window) if r.id in claude else r
+        counted = in_window(version) if version is not None else Decimal(0)
         income_30 += counted
         pending_keep += now - counted
     # Planned income is left out on purpose: it never raises safe-to-spend or

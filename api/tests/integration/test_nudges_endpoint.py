@@ -24,8 +24,8 @@ def _confirmed_bill(w, label, next_date):
 
 def test_a_duplicate_commitment_nudge_is_served_with_no_source(client, db_session):
     w = World(client, db_session, email="nudges@example.com")
-    _confirmed_bill(w, "ANTHROPIC CLAUDE SUB", TODAY + timedelta(days=5))
-    _confirmed_bill(w, "CLAUDE.AI SUBSCRIPTION", TODAY + timedelta(days=6))
+    _confirmed_bill(w, "STREAMCO SUB", TODAY + timedelta(days=5))
+    _confirmed_bill(w, "STREAMCO.TV SUBSCRIPTION", TODAY + timedelta(days=6))
 
     res = client.get(f"{API}/analytics/nudges", headers=_bearer(w.web))
 

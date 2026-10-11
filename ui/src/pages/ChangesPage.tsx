@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import ChangesView from '../components/changes/ChangesView'
 import { UndoButton, UndoNotice, type UndoState } from '../components/changes/UndoControls'
+import { KeepButton, KeepNotice } from '../components/changes/KeepControls'
+import { useRowActions } from '../hooks/useRowActions'
+import { keepToast } from '../lib/keep'
 import { useToast } from '../components/ui/Toast'
 import { auditAPI, bankingAPI } from '../services/api'
 import { failureFromError, mergeFirstPage, undoToast, type AuditItem } from '../lib/changes'
@@ -125,6 +128,21 @@ export default function ChangesPage() {
 
   const stateOf = (it: AuditItem): UndoState => undo[it.id] ?? { undoing: false, failure: null }
 
+  // Keep this change (ux spec 9): the same flow, then the row shows Kept from the refetch.
+  const rowActions = useRowActions(refetchFirst)
+  const keepState = (it: AuditItem) => rowActions.stateOf(`keep-${it.id}`)
+  const keepChange = (it: AuditItem) =>
+    rowActions.run(`keep-${it.id}`, () => withTimeout(auditAPI.keep(it.id), AUDIT_TIMEOUT_MS), {
+      toast: keepToast(it.target_label),
+      focusId: `change-${it.id}`,
+      alertId: `change-${it.id}-keep-alert`,
+    })
+  const keepFailure = (it: AuditItem) => {
+    const { failure } = keepState(it)
+    // Hidden once a refetch shows it kept or no longer held (KP6), except a 409.
+    return failure === 'changed' || (it.keep === 'pending' && it.undone_at === null) ? failure : null
+  }
+
   const retry = async () => {
     setRetrying(true)
     const ok = await loadFirst()
@@ -162,8 +180,21 @@ export default function ChangesPage() {
       onOlder={loadOlder}
       headingRef={headingRef}
       highlightedId={target}
-      renderAction={(it) => <UndoButton item={it} state={stateOf(it)} onUndo={undoChange} />}
-      renderNotice={(it) => <UndoNotice item={it} failure={stateOf(it).failure} />}
+      renderAction={(it) => (
+        // Keep first: it is the forward action (ux spec 9.5).
+        <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+          {it.keep === 'pending' && it.undone_at === null && (
+            <KeepButton actionKey={`keep-${it.id}`} label={it.target_label} state={keepState(it)} onKeep={() => keepChange(it)} />
+          )}
+          <UndoButton item={it} state={stateOf(it)} onUndo={undoChange} />
+        </div>
+      )}
+      renderNotice={(it) => (
+        <>
+          <KeepNotice alertId={`change-${it.id}-keep-alert`} failure={keepFailure(it)} />
+          <UndoNotice item={it} failure={stateOf(it).failure} />
+        </>
+      )}
     />
   )
 }

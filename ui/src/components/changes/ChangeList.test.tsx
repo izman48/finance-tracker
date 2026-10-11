@@ -89,4 +89,19 @@ describe('ChangeList', () => {
   it('uses no low-contrast slate shades', () => {
     expect(render([item(), addEvent('income', { id: 'z' })])).not.toMatch(/text-slate-(500|600|700)/)
   })
+
+  it('KP2: a pending change shows the pending line; a kept one a Kept chip and no line', () => {
+    const pending = text(render([item({ keep: 'pending' })]))
+    expect(pending).toContain('Not counted in savable until you keep it.')
+    expect(pending).not.toContain('Kept')
+    const kept = render([item({ keep: 'kept', kept_at: '2026-10-11T10:00:00Z' })])
+    expect(kept).toMatch(/<span class="chip-pos[^"]*">Kept 11 Oct<\/span>/)
+    expect(text(kept)).not.toContain('Not counted in savable')
+  })
+
+  it('KP9: an undone change shows no pending line and no Kept chip', () => {
+    const undone = { undone_at: '2026-10-12T10:00:00Z' }
+    expect(text(render([item({ keep: 'pending', ...undone })]))).not.toContain('Not counted in savable')
+    expect(text(render([item({ keep: 'kept', kept_at: '2026-10-11T10:00:00Z', ...undone })]))).not.toContain('Kept')
+  })
 })

@@ -32,6 +32,9 @@ export interface AuditItem {
   target_label: string
   changes: AuditChange[]
   undone_at: string | null
+  // Income Claude raised or confirmed: waiting for the user to keep it (T-08-20).
+  keep?: 'pending' | 'kept' | null
+  kept_at?: string | null
 }
 
 export interface AuditPage {

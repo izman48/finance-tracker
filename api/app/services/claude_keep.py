@@ -46,6 +46,9 @@ from app.services.planning_writes import TARGETS
 
 # The fields that decide how much an income brings in, and when.
 MONEY_FIELDS = ("amount", "cadence", "interval_days", "interval_months", "next_date", "status")
+# The card link decides whether a bill and its card's repayment count once or
+# both (T-08-8), so a link Claude sets is held like a cut (sec on T-08-21b).
+HELD_FIELDS = MONEY_FIELDS + ("card_account_id", "card_link_source")
 PENDING, KEPT = "pending", "kept"
 INCOME_KIND, EXPENSE_CUT_KIND = "income", "expense_cut"
 
@@ -98,7 +101,7 @@ def _favourable(entry: AuditEntry, direction: str) -> list[dict]:
     out = []
     for c in json.loads(entry.changes):
         field = c["field"]
-        if field not in MONEY_FIELDS:
+        if field not in HELD_FIELDS:
             continue
         if field == "amount":
             after, before = Decimal(c["after"] or 0), Decimal(c["before"] or 0)
@@ -112,6 +115,11 @@ def _favourable(entry: AuditEntry, direction: str) -> list[dict]:
                 c["before"] == confirmed and c["after"] != confirmed,
             )
             if (started or stopped) if income else stopped:
+                out.append(c)
+        elif field in ("card_account_id", "card_link_source"):
+            # Linking a bill to a card can count it once with the card's
+            # repayment instead of both; clearing a link only adds.
+            if field == "card_account_id" and not income and c["after"] is not None:
                 out.append(c)
         elif field == "next_date" and not income:
             # A bill moved later can leave the window; moved earlier, it can't.
@@ -138,7 +146,7 @@ def _live_fields(rows: list[AuditEntry], applied: frozenset = frozenset()) -> di
     settled: set[str] = set()
     out = {}
     for row in reversed(rows):
-        fields = {c["field"] for c in json.loads(row.changes) if c["field"] in MONEY_FIELDS}
+        fields = {c["field"] for c in json.loads(row.changes) if c["field"] in HELD_FIELDS}
         user_set = set(row.user_set_fields or [])
         out[row.id] = fields - user_set - settled
         settled |= user_set
@@ -195,14 +203,21 @@ def held_back(rule: CommitmentRule, rows: list[AuditEntry], value) -> object | N
     now_worth = value(rule) if rule.status == confirmed else Decimal(0)
     before_worth = value(before) if before.status == confirmed else Decimal(0)
     income = rule.direction == CommitmentDirection.INCOME.value
-    if (now_worth <= before_worth) if income else (now_worth >= before_worth):
+    if income:
+        use_now = now_worth <= before_worth
+    else:
+        # `value` can't see the card link: a linked bill may count once with
+        # its card's repayment, an unlinked one counts as well. On a tie the
+        # safe side is no link, or else the link from before Claude.
+        link_held = rule.card_account_id is not None and before.card_account_id != rule.card_account_id
+        use_now = now_worth > before_worth or (now_worth == before_worth and not link_held)
+    if use_now:
         return rule if rule.status == confirmed else None
     if before.status != confirmed:
         return None
     return SimpleNamespace(
         id=rule.id, direction=rule.direction, label=rule.label, account_id=rule.account_id,
-        card_account_id=rule.card_account_id, card_link_source=rule.card_link_source,
-        **{f: getattr(before, f) for f in MONEY_FIELDS},
+        **{f: getattr(before, f) for f in HELD_FIELDS},
     )
 
 
@@ -311,7 +326,7 @@ def before_claude(rule: CommitmentRule, rows: list[AuditEntry], applied: frozens
     (not kept) writes, walking newest first and reverting each field that is
     still Claude's (`_live_fields`)."""
     live = _live_fields(rows, applied)
-    view = SimpleNamespace(**{f: getattr(rule, f) for f in MONEY_FIELDS})
+    view = SimpleNamespace(**{f: getattr(rule, f) for f in HELD_FIELDS})
     for entry in reversed(rows):
         if _settled(entry, applied):
             continue
@@ -325,7 +340,7 @@ def record_user_edit(db: Session, user_id: uuid.UUID, commitment_id: uuid.UUID, 
     """A web edit set these fields by hand: from now on they are the user's,
     not Claude's, on every pending Claude change to this commitment. Not
     keeping (Q-D4): the other fields stay pending. Caller commits."""
-    touched = set(fields) & set(MONEY_FIELDS)
+    touched = set(fields) & set(HELD_FIELDS)
     if not touched:
         return
     rows = (

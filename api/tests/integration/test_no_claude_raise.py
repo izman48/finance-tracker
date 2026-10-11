@@ -209,3 +209,55 @@ def test_an_mcp_token_cannot_keep_an_expense_change(client, db_session):
     audit_id = w.claude_dismiss(w.bill)
     assert w.keep(audit_id, token=w.mcp).status_code == 401
     assert w.safe_and_savable()[0] == Decimal("200.00")
+
+
+# --- a card link Claude sets (sec on T-08-21b) --------------------------------
+
+def _card_with_repayment(w, owed="400"):
+    """An Amex owing GBP 400, repaid in full in 6 days (after the bill, before payday)."""
+    from app.models import AccountSetting
+    from tests.integration.test_transactions_endpoint import _account
+
+    def make():
+        card = _account(w.db, w.user.id, atype="CREDIT_CARD", name="Gold", balance=owed)
+        card.provider_name = "American Express"
+        w.db.add(AccountSetting(
+            user_id=w.user.id, account_id=card.id, role="credit", repayment_cadence="monthly",
+            repayment_day=(TODAY + timedelta(days=6)).day, repayment_strategy="full_balance",
+        ))
+        w.db.commit()
+        return card.id
+    return w.as_user(make)
+
+
+def _committed(w) -> Decimal:
+    return Decimal(w.summary()["committed_before_payday"])
+
+
+def test_a_card_link_claude_sets_raises_nothing_until_kept(client, db_session):
+    """Linking the GBP 300 bill to the card makes the summary count the larger
+    of the bill and the card's GBP 400 repayment once, not both: committed
+    would drop from 700 to 400. Held until kept."""
+    w = World(client, db_session)
+    card = _card_with_repayment(w)
+    assert _committed(w) == Decimal("700.00")
+    audit_id = w.claude_update(w.bill, card_account_id=str(card))
+    assert _committed(w) == Decimal("700.00")
+    row = w.commitment(w.bill)
+    assert (row["keep"], row["keep_kind"]) == ("pending", "expense_cut")
+    assert Decimal(w.summary()["safe_to_spend_pending_keep_total"]) == Decimal("300.00")
+    assert w.keep(audit_id).status_code == 200
+    assert _committed(w) == Decimal("400.00")
+
+
+def test_clearing_a_card_link_applies_at_once(client, db_session):
+    """No card: both count, which only lowers safe-to-spend."""
+    w = World(client, db_session)
+    card = _card_with_repayment(w)
+    res = w.client.patch(f"{API}/analytics/commitments/{w.bill}", json={"card_account_id": str(card)},
+                         headers=_bearer(w.web))
+    assert res.status_code == 200, res.text
+    assert _committed(w) == Decimal("400.00")
+    w.claude_update(w.bill, card_account_id=None)
+    assert _committed(w) == Decimal("700.00")
+    assert w.commitment(w.bill)["keep"] is None

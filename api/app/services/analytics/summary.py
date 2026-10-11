@@ -17,7 +17,7 @@ from app.models import (
 )
 
 from .cadence import commitment_occurrences
-from .commitments import next_payday
+from .commitments import committed_window_end, next_payday
 from app.services.balance_sign import credit_owed as credit_owed_for
 
 from .common import _d, _load, _today, resolve_roles
@@ -56,7 +56,7 @@ def get_summary(db: Session, user) -> dict:
                 credit_in_favour -= owed
 
     payday = next_payday(db, user, today)
-    window_end = payday or (today + timedelta(days=30))
+    window_end = committed_window_end(db, user, today)
 
     # Confirmed expense commitments due before the next payday.
     expense_rules = (

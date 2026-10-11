@@ -323,6 +323,9 @@ def update_commitment(
         and updates["label"] != rule.label
         and rule.source == CommitmentSource.DETECTED.value
     ):
+        # A manual rule without a key falls back to its label's: store the
+        # old label's key first (older detected rows have none).
+        rule.match_key = rule.match_key or analytics_service.merchant_match_key(rule.direction, rule.label)
         rule.source = CommitmentSource.MANUAL.value
     for field, value in updates.items():
         setattr(rule, field, value)

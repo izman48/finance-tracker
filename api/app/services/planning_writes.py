@@ -75,8 +75,9 @@ TARGETS: dict[str, TargetSpec] = {
         # the request-time linker never changes.
         "card_account_id": uuid.UUID, "card_link_source": str,
         # A relabelled detected commitment becomes "manual", so sync_suggestions
-        # stops re-keying it from its label (T-08-9's match_key trap).
-        "source": str,
+        # stops re-keying it from its label (T-08-9's match_key trap); one
+        # with no stored key gets the old label's, so its payments still match.
+        "source": str, "match_key": str,
     }),
 }
 

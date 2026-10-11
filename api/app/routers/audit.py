@@ -20,7 +20,9 @@ from app.core.security import CurrentUser
 from app.models import AuditEntry, CommitmentRule, OAuthClient, OAuthGrant
 from app.models.audit import AUDIT_KIND_WRITE
 from app.schemas import AuditEntryResponse, AuditPage
-from app.services.claude_keep import KEPT, PENDING, applied_dismissals, claude_rows, keep_kind, keep_states
+from app.services.claude_keep import (
+    EXPENSE_CUT_KIND, KEPT, PENDING, applied_dismissals, claude_rows, keep_kind, keep_states, planned_removal_states,
+)
 from app.services.planning_writes import undo_write
 
 router = APIRouter(prefix="/audit", tags=["audit"])
@@ -106,14 +108,19 @@ def _keep_states(db: Session, user_id, rows: list[AuditEntry]) -> dict:
     commitments that the keep rule holds (T-08-20, T-08-21b).
     A row's state depends on its siblings (later kept changes, hand edits),
     so each commitment's whole Claude history is read."""
+    out = {}
+    if any(r.target_kind == "planned_event" for r in rows):
+        out.update({
+            audit_id: (state, EXPENSE_CUT_KIND)
+            for audit_id, (state, _item) in planned_removal_states(db, user_id).items()
+        })
     ids = {r.target_id for r in rows if r.target_kind == "commitment"}
     if not ids:
-        return {}
+        return out
     commitments = {
         c.id: c for c in db.query(CommitmentRule).filter(CommitmentRule.user_id == user_id, CommitmentRule.id.in_(ids))
     }
     applied = applied_dismissals(db, user_id)
-    out = {}
     for target_id, history in claude_rows(db, user_id, ids).items():
         rule = commitments.get(target_id)
         for row_id, state in keep_states(rule, history, applied).items():

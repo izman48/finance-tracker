@@ -251,7 +251,7 @@ def create_server(settings: Settings, api_transport: httpx.AsyncBaseTransport | 
 
     @mcp.tool(annotations=write_tool(destructive=True))
     async def remove_planned_event(item_id: str, idempotency_key: str, dry_run: bool = True) -> dict:
-        """Remove a one-off planned event that an assistant added (created_via `mcp` in list_planned_events). Items made in the app can't be removed here. It's a soft removal: the user can undo it in the app under "Changes made by Claude".
+        """Remove a one-off planned event that an assistant added (created_via `mcp` in list_planned_events). Items made in the app can't be removed here. It's a soft removal: the user can undo it in the app under "Changes made by Claude". A removed planned expense still counts in their safe to spend until they keep the change in the app: tell them so.
 
         With dry_run=true (the default) nothing changes: you get a preview. Show it to the user and get their explicit confirmation before calling again with dry_run=false. `idempotency_key` is 8-64 characters of letters, digits, - or _, new for each change you intend.
 

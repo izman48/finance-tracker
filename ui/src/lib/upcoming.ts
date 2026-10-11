@@ -12,6 +12,10 @@ export interface Upcoming {
   date: string
   income: boolean
   commitmentId?: string
+  /** Claude's latest change still in effect, for the "Changed by Claude" link. */
+  claudeAuditId?: string
+  /** Planned income: shown, but not counted until it arrives (D1). */
+  plannedIncome?: boolean
 }
 
 export function buildUpcoming(
@@ -31,6 +35,7 @@ export function buildUpcoming(
         date: c.next_date,
         income: c.direction === 'income',
         commitmentId: c.id,
+        claudeAuditId: c.changed_by_claude?.audit_id,
       })),
     ...repayments.map((r) => ({
       key: `r-${r.account_id}-${r.due_date}`,
@@ -39,7 +44,8 @@ export function buildUpcoming(
       date: r.due_date,
       income: false,
     })),
-    ...planned.flatMap((p) => {
+    // A planned item its real transaction already paid is no longer coming (T-08-7).
+    ...planned.filter((p) => !p.matched_transaction_id).flatMap((p) => {
       const date = nextPlannedDate(p, today)
       return date
         ? [{
@@ -48,6 +54,8 @@ export function buildUpcoming(
             amount: plannedPerPayment(p),
             date,
             income: p.direction === 'income',
+            plannedIncome: p.direction === 'income',
+            claudeAuditId: p.changed_by_claude?.audit_id,
           }]
         : []
     }),

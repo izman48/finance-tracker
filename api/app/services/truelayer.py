@@ -14,6 +14,11 @@ from app.models import User, Account, Transaction, BankConnection
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
+# Every TrueLayer call is bounded (T-08-22, sec): a sync runs inside the
+# request, under the sync lease and the MCP client's wait.
+TRUELAYER_TIMEOUT_SECONDS = 10
+TRUELAYER_TIMEOUT = httpx.Timeout(TRUELAYER_TIMEOUT_SECONDS)
+
 
 class TrueLayerError(Exception):
     """A TrueLayer call failed. The message names TrueLayer's error code only;
@@ -120,7 +125,7 @@ class TrueLayerService:
         TrueLayer answers a refresh token it will never accept again (consent
         lapsed after 90 days, or revoked at the bank) with 400 invalid_grant.
         """
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=TRUELAYER_TIMEOUT) as client:
             response = await client.post(
                 f"{self.auth_url}/connect/token",
                 data={
@@ -190,7 +195,7 @@ class TrueLayerService:
         """
         unknown = {"provider_id": "unknown", "display_name": "Unknown Bank"}
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=TRUELAYER_TIMEOUT) as client:
             # Try accounts first (most banks), then cards (AMEX/credit cards).
             for endpoint in ("accounts", "cards"):
                 try:
@@ -222,7 +227,7 @@ class TrueLayerService:
         used to reach the user's bank data. Failures are logged, not raised.
         """
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=TRUELAYER_TIMEOUT) as client:
                 response = await client.post(
                     f"{self.auth_url}/connect/token/revoke",
                     data={
@@ -247,7 +252,7 @@ class TrueLayerService:
         Returns:
             List of account data
         """
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=TRUELAYER_TIMEOUT) as client:
             logger.info(f"Fetching accounts from {self.api_url}/data/v1/accounts")
             response = await client.get(
                 f"{self.api_url}/data/v1/accounts",
@@ -270,7 +275,7 @@ class TrueLayerService:
         Returns:
             List of card data (formatted to look like accounts)
         """
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=TRUELAYER_TIMEOUT) as client:
             logger.info(f"Fetching cards from {self.api_url}/data/v1/cards")
             response = await client.get(
                 f"{self.api_url}/data/v1/cards",
@@ -317,7 +322,7 @@ class TrueLayerService:
         Returns:
             Balance data
         """
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=TRUELAYER_TIMEOUT) as client:
             # Try account balance first
             try:
                 response = await client.get(
@@ -367,7 +372,7 @@ class TrueLayerService:
             "to": to_date.strftime("%Y-%m-%d"),
         }
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=TRUELAYER_TIMEOUT) as client:
             # Try account transactions first
             try:
                 response = await client.get(

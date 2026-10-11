@@ -542,12 +542,13 @@ class SyncAccountsResponse(BaseModel):
 
 
 class BankSyncConnectionResult(BaseModel):
-    """One connection's outcome. `status` is synced | reconnect | failed;
+    """One connection's outcome. `status` is synced | reconnect | failed |
+    not_attempted (the sync's time budget ran out before it was reached);
     never the exception text, which can name URLs or provider detail."""
 
     connection_id: str
     provider: str
-    status: Literal["synced", "reconnect", "failed"]
+    status: Literal["synced", "reconnect", "failed", "not_attempted"]
     accounts_synced: int
     transactions_synced: int
 

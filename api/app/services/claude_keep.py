@@ -220,7 +220,12 @@ def _applied_dismissals(rules: list[CommitmentRule], claude: dict) -> frozenset:
     or later. Payday can come nearer only when the dismissals change *which*
     set it is: the flagged ones all go (payday falls back to every income)
     or every income goes (the 30-day fallback). Then the dismissals of
-    payday incomes are held; otherwise every dismissal applies at once."""
+    payday incomes are held; otherwise every dismissal applies at once.
+
+    It reads the incomes as they are now, so it can change after the
+    dismissal: flagging another payday releases a held one, and the user's
+    own changes (dismissing their last other income, say) can hold an
+    applied one again. Both are the safe side for the window."""
     dismissals: dict[uuid.UUID, list[uuid.UUID]] = {}
     for r in rules:
         rows = claude.get(r.id, [])

@@ -78,3 +78,20 @@ def test_a_held_dismissal_is_released_when_another_payday_is_flagged(client, db_
     assert w.audit_row(audit_id)["keep"] == "pending"
     _flag(w, bonus)
     assert w.audit_row(audit_id)["keep"] is None
+
+
+def test_an_applied_dismissal_is_held_again_once_it_would_move_payday(client, db_session):
+    """eng-a on #128: whether a dismissal is held follows the incomes as they
+    are now, so it can go back to pending. No flags: Claude's dismissal of
+    the lodger applies at once while the salary sets payday; once the user
+    dismisses the salary by hand, the lodger is the last income, and its
+    dismissal would bring payday to the 30-day fallback, so it is held."""
+    w = World(client, db_session)
+    lodger = w.rule("Rent from lodger", "300.00", TODAY + timedelta(days=12))
+    audit_id = w.claude_dismiss(lodger)
+    assert w.audit_row(audit_id)["keep"] is None
+    res = w.client.patch(f"{API}/analytics/commitments/{w.salary}", json={"status": "dismissed"},
+                         headers=_bearer(w.web))
+    assert res.status_code == 200, res.text
+    assert w.audit_row(audit_id)["keep"] == "pending"
+    assert w.commitment(lodger)["status"] == "dismissed"

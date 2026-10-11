@@ -30,3 +30,13 @@ export function moneyStyle(income: boolean, notArrived: boolean): { sign: string
   if (income && notArrived) return { sign: '', tone: 'text-slate-400' }
   return income ? { sign: '+', tone: 'text-pos' } : { sign: '', tone: 'text-slate-100' }
 }
+
+/** "Due 5 Oct · 5 days overdue": an unpaid planned expense, which still counts (ux spec 3a). */
+export function overdueLine(due: string, n: number): string {
+  return `Due ${dateDayMonth(due)} · ${n} ${n === 1 ? 'day' : 'days'} overdue`
+}
+
+/** "Due 9 Oct": an unpaid expense just past its date, still inside the grace (O9). */
+export function dueLine(due: string): string {
+  return `Due ${dateDayMonth(due)}`
+}

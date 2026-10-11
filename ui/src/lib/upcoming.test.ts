@@ -85,3 +85,77 @@ describe('late rows show their date once (ux nit)', () => {
     expect(upcomingShowsDate(future)).toBe(true)
   })
 })
+
+describe('overdue planned expenses (O1-O5, P4)', () => {
+  const overdue = (id: string, start: string) =>
+    planned({ id, name: `Bill ${id}`, start_date: start, overdue: true })
+
+  it('O3: overdue expenses join late income at the top, most overdue first', () => {
+    const rows = buildUpcoming(
+      [
+        commitment({ id: 'g', label: 'Gym', next_date: '2026-10-11' }),
+        commitment({ id: 's', label: 'Income A', direction: 'income', next_date: '2026-11-03', late: true, expected_date: '2026-10-03' }),
+      ],
+      [],
+      [overdue('a', '2026-10-05'), overdue('b', '2026-10-01')],
+      today,
+      10,
+    )
+    expect(rows.slice(0, 3).map((r) => [r.label, r.late?.days ?? null, r.overdue?.days ?? null])).toEqual([
+      ['Bill b', null, 9],
+      ['Income A', 7, null],
+      ['Bill a', null, 5],
+    ])
+    expect(rows[3].label).toBe('Gym')
+  })
+
+  it('O2: an overdue expense still reads as money going out', () => {
+    const [row] = buildUpcoming([], [], [overdue('a', '2026-10-05')], today)
+    expect(upcomingAmount(row)).toEqual({ sign: '', tone: 'text-slate-100' })
+    expect(upcomingShowsDate(row)).toBe(false) // the date is in its 'Due …' line
+    expect(row.plannedIncome).toBeFalsy()
+  })
+
+  it('O4/O5: no overdue flag, income, or a matched item never shows Overdue', () => {
+    const rows = buildUpcoming(
+      [],
+      [],
+      [
+        planned({ id: 'x', start_date: '2026-10-20', overdue: false }),
+        planned({ id: 'i', direction: 'income', start_date: '2026-10-01', overdue: true, late: true }),
+        planned({ id: 'm', start_date: '2026-10-05', overdue: true, matched_transaction_id: 't9' }),
+      ],
+      today,
+      10,
+    )
+    expect(rows.filter((r) => r.overdue)).toEqual([])
+    expect(rows.map((r) => r.key).some((k) => k.includes('-m'))).toBe(false)
+  })
+})
+
+describe('just past due, inside the 3-day grace (O9)', () => {
+  it('an unpaid one-off expense 2 days past its date is a normal row with a Due line', () => {
+    const rows = buildUpcoming([commitment({ next_date: '2026-10-11' })], [], [planned({ start_date: '2026-10-08' })], today, 10)
+    expect(rows.map((r) => r.label)).toEqual(['Dentist', 'Gym'])
+    const [row] = rows
+    expect(row.justDue).toEqual({ due: '2026-10-08' })
+    expect(row.overdue).toBeUndefined()
+    expect(upcomingAmount(row)).toEqual({ sign: '', tone: 'text-slate-100' })
+    expect(upcomingShowsDate(row)).toBe(false)
+  })
+
+  it('today or later has no Due line; income and matched items never get one', () => {
+    const rows = buildUpcoming(
+      [],
+      [],
+      [
+        planned({ id: 'today', start_date: today }),
+        planned({ id: 'inc', direction: 'income', start_date: '2026-10-08' }),
+        planned({ id: 'paid', start_date: '2026-10-08', matched_transaction_id: 't1' }),
+      ],
+      today,
+      10,
+    )
+    expect(rows.filter((r) => r.justDue)).toEqual([])
+  })
+})

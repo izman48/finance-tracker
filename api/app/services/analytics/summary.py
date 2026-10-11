@@ -24,7 +24,7 @@ from .common import _d, _load, _today, resolve_roles
 from .net_worth import assets_total
 from .planned import planned_events
 from .planned_matching import planned_states
-from app.services.claude_keep import claude_rows, held_back
+from app.services.claude_keep import counted_commitments
 from .repayments import repayment_events, scheduled_outflows
 
 
@@ -58,15 +58,23 @@ def get_summary(db: Session, user) -> dict:
     payday = next_payday(db, user, today)
     window_end = committed_window_end(db, user, today)
 
-    # Confirmed expense commitments due before the next payday.
-    expense_rules = (
-        db.query(CommitmentRule)
-        .filter(
+    # No Claude change may make these figures look better until the user
+    # keeps it (T-08-20, T-08-21b): with Claude's pending changes resolved,
+    # an expense counts the higher of now and before-Claude, an income the
+    # lower (claude_keep.counted_commitments).
+    def money_in(start, end):
+        return lambda r: _d(r.amount) * len(commitment_occurrences(r, start, end))
+
+    confirmed = CommitmentStatus.CONFIRMED.value
+    expense_now = [
+        r for r in db.query(CommitmentRule).filter(
             CommitmentRule.user_id == user.id,
             CommitmentRule.direction == CommitmentDirection.EXPENSE.value,
-            CommitmentRule.status == CommitmentStatus.CONFIRMED.value,
+            CommitmentRule.status == confirmed,
         )
-        .all()
+    ]
+    expense_to_payday = counted_commitments(
+        db, user.id, CommitmentDirection.EXPENSE.value, money_in(today, window_end)
     )
     planned = (
         db.query(PlannedItem)
@@ -74,43 +82,34 @@ def get_summary(db: Session, user) -> dict:
         .all()
     )
     states = planned_states(db, user, planned, today)
-    committed = _outflow(db, user, expense_rules, today, window_end) + _planned_out(planned, states, today, window_end)
+    committed = _outflow(db, user, expense_to_payday, today, window_end) + _planned_out(planned, states, today, window_end)
 
     safe_to_spend = max(Decimal(0), available_cash - committed)
 
     # Savable: surplus expected to survive a 30-day window (incl. next income).
     horizon = today + timedelta(days=30)
-    income_rules = (
-        db.query(CommitmentRule)
-        .filter(
+    in_30 = money_in(today, horizon)
+    income_now = sum(
+        (in_30(r) for r in db.query(CommitmentRule).filter(
             CommitmentRule.user_id == user.id,
             CommitmentRule.direction == CommitmentDirection.INCOME.value,
-            CommitmentRule.status == CommitmentStatus.CONFIRMED.value,
-        )
-        .all()
+            CommitmentRule.status == confirmed,
+        )),
+        Decimal(0),
     )
-    # Strict parity (D4): an income Claude raised or confirmed counts as it
-    # was before Claude until the user keeps the change (or as it is now, if
-    # that's less). The difference is reported so the UI can say so.
-    claude = claude_rows(db, user.id, [r.id for r in income_rules])
-
-    def in_window(r) -> Decimal:
-        if r.status != CommitmentStatus.CONFIRMED.value:
-            return Decimal(0)
-        return _d(r.amount) * len(commitment_occurrences(r, today, horizon))
-
-    income_30 = Decimal(0)
-    pending_keep = Decimal(0)
-    for r in income_rules:
-        now = in_window(r)
-        version = held_back(r, claude[r.id], in_window) if r.id in claude else r
-        counted = in_window(version) if version is not None else Decimal(0)
-        income_30 += counted
-        pending_keep += now - counted
+    income_30 = sum(
+        (in_30(r) for r in counted_commitments(db, user.id, CommitmentDirection.INCOME.value, in_30)),
+        Decimal(0),
+    )
     # Planned income is left out on purpose: it never raises safe-to-spend or
     # savable until the credit lands (owner decision D1; an injected "refund
     # coming" must not unlock spending). It still shows in the forecast.
-    out_30 = _outflow(db, user, expense_rules, today, horizon) + _planned_out(planned, states, today, horizon)
+    planned_30 = _planned_out(planned, states, today, horizon)
+    expense_30 = counted_commitments(db, user.id, CommitmentDirection.EXPENSE.value, in_30)
+    out_30 = _outflow(db, user, expense_30, today, horizon) + planned_30
+    # What is held back from savable until the user keeps Claude's changes.
+    out_30_now = _outflow(db, user, expense_now, today, horizon) + planned_30
+    pending_keep = (income_now - income_30) + (out_30 - out_30_now)
     savable = max(Decimal(0), available_cash + income_30 - out_30)
 
     manual_assets = assets_total(db, user)

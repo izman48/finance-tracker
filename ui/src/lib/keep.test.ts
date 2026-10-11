@@ -108,6 +108,22 @@ describe('auditPendingLine (the Changes row)', () => {
     )
   })
 
+  it('eng-b T-08-21b: a held card link and a held planned-expense removal get the generic line', () => {
+    const generic = 'Still counted in your safe to spend until you keep this change.'
+    expect(auditPendingLine(cut([{ field: 'card_account_id', before: 'k1', after: 'k2' }]))).toBe(generic)
+    expect(
+      auditPendingLine(
+        cut(
+          [
+            { field: 'active', before: 'true', after: 'false' },
+            { field: 'amount', before: '20.00', after: '20.00' },
+          ],
+          { tool: 'remove_planned_event', target_kind: 'planned_event' },
+        ),
+      ),
+    ).toBe(generic)
+  })
+
   it('KP15: a dismissed expense', () => {
     expect(auditPendingLine(cut([{ field: 'status', before: 'confirmed', after: 'dismissed' }], { tool: 'dismiss_commitment' }))).toBe(
       'Claude dismissed this. It still counts in your safe to spend until you keep this change.',

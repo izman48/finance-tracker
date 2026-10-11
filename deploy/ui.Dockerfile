@@ -2,7 +2,7 @@
 # which also terminates TLS and reverse-proxies /api to the API container.
 # Build context is the repo root.
 
-FROM node:20-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /app
 COPY ui/package*.json ./
 RUN npm ci

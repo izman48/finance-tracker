@@ -3,7 +3,7 @@ import { moneyStyle } from '../lib/late'
 import ClaudeMarker from '../components/changes/ClaudeMarker'
 import { CommitmentKeep } from '../components/changes/KeepControls'
 import { useRowActions } from '../hooks/useRowActions'
-import { canKeep, keepToast, postEach } from '../lib/keep'
+import { canKeep, countsInListTotal, keepToast, postEach } from '../lib/keep'
 import { withTimeout } from '../lib/forecastLoad'
 import { Link } from 'react-router-dom'
 import { analyticsAPI, auditAPI } from '../services/api'
@@ -311,7 +311,7 @@ function ConfirmedList({
   const reps = repayments ?? []
   const plans = planned ?? []
   const total =
-    items.filter((c) => !heldDismissal(c)).reduce((sum, c) => sum + monthlyEquivalent(c), 0) +
+    items.filter(countsInListTotal).reduce((sum, c) => sum + monthlyEquivalent(c), 0) +
     reps.reduce((sum, r) => sum + Number(r.amount), 0) +
     plans.reduce((sum, p) => sum + plannedMonthly(p), 0)
   // Rules, card repayments and payment plans sit in one ranked list — to the
@@ -499,7 +499,7 @@ function YearlyList({
     .filter((c) => c.direction === 'expense')
     .reduce((sum, c) => sum + (Number(c.amount) || 0), 0)
   const incomeTotal = items
-    .filter((c) => c.direction === 'income' && !heldDismissal(c))
+    .filter((c) => c.direction === 'income' && countsInListTotal(c))
     .reduce((sum, c) => sum + (Number(c.amount) || 0), 0)
   const sorted = [...items].sort(
     (a, b) => new Date(a.next_date).getTime() - new Date(b.next_date).getTime(),

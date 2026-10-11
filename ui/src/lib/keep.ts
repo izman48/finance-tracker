@@ -44,3 +44,10 @@ export async function postEach(ids: string[], post: (id: string) => Promise<unkn
     }
   }
 }
+
+/**
+ * Whether a listed commitment adds to its list's total. A dismissal Claude
+ * made that is still pending keep is listed (9.3) but not added: savable
+ * already leaves a dismissed income out; only the payday it sets is held.
+ */
+export const countsInListTotal = (c: Commitment) => c.status !== 'dismissed'

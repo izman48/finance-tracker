@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canKeep, postEach, keepToast, pendingText, savableNote, KEEP_PENDING_TEXT } from './keep'
+import { canKeep, countsInListTotal, postEach, keepToast, pendingText, savableNote, KEEP_PENDING_TEXT } from './keep'
 import { failureFromError } from './changes'
 import type { Commitment } from '../types'
 
@@ -84,5 +84,12 @@ describe('postEach (keep oldest first, undo newest first)', () => {
   it('KP6: a refusal after a row went through is an unknown outcome, never "nothing was changed"', async () => {
     const err = await postEach(['a1', 'a2'], (id) => (id === 'a1' ? ok() : status(500))).catch((e) => e)
     expect(failureFromError(err)).toBe('unknown')
+  })
+})
+
+describe('countsInListTotal', () => {
+  it('a held dismissal is listed but left out of the total, as savable leaves it out', () => {
+    expect(countsInListTotal(commitment({ status: 'dismissed' }))).toBe(false)
+    expect(countsInListTotal(commitment())).toBe(true)
   })
 })

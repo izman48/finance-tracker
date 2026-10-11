@@ -64,11 +64,11 @@ def _busy() -> HTTPException:
 
 def _all_failed(action: str, errors: list[str], needs_reauth: int) -> HTTPException:
     """Every connection failed. Expired consent is the user's to fix (409);
-    anything else is ours or TrueLayer's (500)."""
+    anything else is the bank's or TrueLayer's (502). Never a 500 (T-08-24)."""
     return HTTPException(
         status_code=(
             status.HTTP_409_CONFLICT if needs_reauth == len(errors)
-            else status.HTTP_500_INTERNAL_SERVER_ERROR
+            else status.HTTP_502_BAD_GATEWAY
         ),
         detail=f"Failed to sync {action}: {'; '.join(errors)}",
     )
@@ -353,15 +353,18 @@ async def _sync_all_transactions(request: SyncTransactionsRequest, current_user,
         )
 
     total_count = 0
+    skipped = 0
     errors = []
     needs_reauth = 0
 
     # Sync transactions for each bank connection
     for connection in bank_connections:
+        report: dict = {}
         try:
             count = await truelayer_service.sync_transactions(
-                connection, db, days=request.days
+                connection, db, days=request.days, report=report
             )
+            skipped += report.get("accounts_skipped", 0)
             total_count += count
             logger.info(f"Synced {count} transactions from {connection.provider_name}")
         except Exception as e:
@@ -373,6 +376,8 @@ async def _sync_all_transactions(request: SyncTransactionsRequest, current_user,
         raise _all_failed("transactions", errors, needs_reauth)
 
     message = f"Successfully synced {total_count} new transaction(s) from {len(bank_connections)} bank(s) (last {request.days} days)"
+    if skipped:
+        message += f". Skipped {skipped} account(s) whose transactions the bank wouldn't share right now"
     if errors:
         message += f". Errors: {'; '.join(errors)}"
 
@@ -465,9 +470,10 @@ def _result(connection: BankConnection, outcome: str, accounts: int = 0, transac
 
 async def _sync_connection(connection: BankConnection, db: Session) -> BankSyncConnectionResult:
     accounts = transactions = 0
+    report: dict = {}
     try:
         accounts = len(await truelayer_service.sync_accounts(connection, db))
-        transactions = await truelayer_service.sync_transactions(connection, db, days=SYNC_DAYS)
+        transactions = await truelayer_service.sync_transactions(connection, db, days=SYNC_DAYS, report=report)
         outcome = "synced"
     except ReauthRequired:
         # The service has already flagged the connection and dropped the dead token.
@@ -477,7 +483,9 @@ async def _sync_connection(connection: BankConnection, db: Session) -> BankSyncC
         logger.error("Bank sync failed for %s: %s", connection.provider_name, type(exc).__name__)
         db.rollback()
         outcome = "failed"
-    return _result(connection, outcome, accounts, transactions)
+    result = _result(connection, outcome, accounts, transactions)
+    result.accounts_skipped = report.get("accounts_skipped", 0)
+    return result
 
 
 @router.get("/accounts", response_model=list[AccountResponse])

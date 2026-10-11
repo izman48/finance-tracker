@@ -63,7 +63,7 @@ def test_a_started_bank_is_never_cut_off_and_later_ones_are_not_attempted(client
         await asyncio.sleep(0.5)
         return ["acct"]
 
-    async def no_transactions(connection, db, days=90, skip_token_refresh=False):
+    async def no_transactions(connection, db, days=90, skip_token_refresh=False, report=None):
         return 0
 
     monkeypatch.setattr(truelayer_service, "sync_accounts", slow_accounts)

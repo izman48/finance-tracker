@@ -14,10 +14,44 @@ from app.models import User, Account, Transaction, BankConnection
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
+# httpx logs each request's full URL at INFO, which names the provider's
+# account and card ids and the query (sec, T-08-24): keep it to warnings.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
 # Every TrueLayer call is bounded (T-08-22, sec): a sync runs inside the
 # request, under the sync lease and the MCP client's wait.
 TRUELAYER_TIMEOUT_SECONDS = 10
 TRUELAYER_TIMEOUT = httpx.Timeout(TRUELAYER_TIMEOUT_SECONDS)
+# The fallback window when a longer fetch fails. A day inside the banks'
+# 90-day limit, so time-of-day drift can't put it just outside (T-08-24).
+FALLBACK_DAYS = 89
+
+
+def _status_and_code(e: httpx.HTTPStatusError) -> str:
+    """The HTTP status and TrueLayer's `error` code: never the body, URL or tokens."""
+    try:
+        code = e.response.json().get("error")
+    except Exception:
+        code = None
+    return f"{e.response.status_code} {code}" if isinstance(code, str) and code.isidentifier() else str(e.response.status_code)
+
+
+def _describe(e: Exception) -> str:
+    """For a log line: the HTTP status and TrueLayer's error code, or the
+    exception type. Never its text, a URL, a body or a token."""
+    return _status_and_code(e) if isinstance(e, httpx.HTTPStatusError) else type(e).__name__
+
+
+def _log_skip(e: Exception, account) -> None:
+    """One account skipped, by the caller's own internal ids only (sec,
+    T-08-24). A 501 is the bank not offering it (Revolut card transactions
+    via TrueLayer): expected, so quiet."""
+    quiet = isinstance(e, httpx.HTTPStatusError) and e.response.status_code == 501
+    logger.log(
+        logging.INFO if quiet else logging.WARNING,
+        "Skipped an account's transactions: account %s, connection %s, %s %s",
+        account.id, account.bank_connection_id, account.provider_name, _describe(e),
+    )
 
 
 class TrueLayerError(Exception):
@@ -259,8 +293,7 @@ class TrueLayerService:
                 headers={"Authorization": f"Bearer {access_token}"},
             )
             logger.info(f"Accounts response status: {response.status_code}")
-            if response.status_code >= 400:
-                logger.error(f"Accounts response body: {response.text}")
+            # Never the body (sec, T-08-24): it can carry provider detail.
             response.raise_for_status()
             data = response.json()
             return data.get("results", [])
@@ -282,8 +315,7 @@ class TrueLayerService:
                 headers={"Authorization": f"Bearer {access_token}"},
             )
             logger.info(f"Cards response status: {response.status_code}")
-            if response.status_code >= 400:
-                logger.error(f"Cards response body: {response.text}")
+            # Never the body (sec, T-08-24): it can carry provider detail.
             response.raise_for_status()
             data = response.json()
             # Format cards to look like accounts for compatibility
@@ -333,7 +365,7 @@ class TrueLayerService:
                 data = response.json()
                 return data.get("results", [{}])[0]
             except Exception as e:
-                logger.info(f"Account balance failed, trying card balance: {str(e)}")
+                logger.info("Account balance failed (%s), trying card balance", type(e).__name__)
                 # Try card balance as fallback
                 response = await client.get(
                     f"{self.api_url}/data/v1/cards/{account_id}/balance",
@@ -384,7 +416,7 @@ class TrueLayerService:
                 data = response.json()
                 return data.get("results", [])
             except Exception as e:
-                logger.info(f"Account transactions failed, trying card transactions: {str(e)}")
+                logger.info("Account transactions failed (%s), trying card transactions", type(e).__name__)
                 # Try card transactions as fallback
                 response = await client.get(
                     f"{self.api_url}/data/v1/cards/{account_id}/transactions",
@@ -423,7 +455,7 @@ class TrueLayerService:
             tl_accounts = await self.get_accounts(bank_connection.access_token)
             logger.info(f"Fetched {len(tl_accounts)} accounts")
         except Exception as e:
-            logger.warning(f"Failed to fetch accounts: {str(e)}")
+            logger.warning("Failed to fetch accounts for connection %s: %s", bank_connection.id, _describe(e))
 
         # Try to fetch cards (for AMEX, etc.)
         try:
@@ -431,7 +463,7 @@ class TrueLayerService:
             logger.info(f"Fetched {len(tl_cards)} cards")
             tl_accounts.extend(tl_cards)  # Add cards to the accounts list
         except Exception as e:
-            logger.warning(f"Failed to fetch cards: {str(e)}")
+            logger.warning("Failed to fetch cards for connection %s: %s", bank_connection.id, _describe(e))
 
         if not tl_accounts:
             raise ValueError("No accounts or cards found for this connection")
@@ -439,13 +471,13 @@ class TrueLayerService:
         synced_accounts = []
         for tl_account in tl_accounts:
             # Try to get balance (may not work for cards)
-            balance_data = {}
+            balance_data = None
             try:
                 balance_data = await self.get_account_balance(
                     bank_connection.access_token, tl_account["account_id"]
                 )
             except Exception as e:
-                logger.warning(f"Could not fetch balance for {tl_account.get('display_name')}: {str(e)}")
+                logger.warning("Could not fetch a balance for connection %s: %s", bank_connection.id, _describe(e))
 
             # Check if account already exists. Scoped to this user: another
             # user's row can't be decrypted with (or re-encrypted under) this
@@ -464,9 +496,13 @@ class TrueLayerService:
                 account.display_name = tl_account.get("display_name", "Unknown")
                 account.account_type = tl_account.get("account_type", "TRANSACTION")
                 account.currency = tl_account.get("currency", "GBP")
-                account.current_balance = balance_data.get("current")
-                account.available_balance = balance_data.get("available")
-                account.balance_updated_at = datetime.now(timezone.utc)
+                # Fail safe (sec, T-08-24): a balance the bank didn't give
+                # keeps the last one and stays stale; never zeroed or dropped,
+                # which would understate a card's debt.
+                if balance_data is not None:
+                    account.current_balance = balance_data.get("current")
+                    account.available_balance = balance_data.get("available")
+                    account.balance_updated_at = datetime.now(timezone.utc)
             else:
                 # Create new account
                 account = Account(
@@ -477,9 +513,9 @@ class TrueLayerService:
                     account_type=tl_account.get("account_type", "TRANSACTION"),
                     display_name=tl_account.get("display_name", "Unknown"),
                     currency=tl_account.get("currency", "GBP"),
-                    current_balance=balance_data.get("current"),
-                    available_balance=balance_data.get("available"),
-                    balance_updated_at=datetime.now(timezone.utc),
+                    current_balance=(balance_data or {}).get("current"),
+                    available_balance=(balance_data or {}).get("available"),
+                    balance_updated_at=datetime.now(timezone.utc) if balance_data is not None else None,
                 )
                 db.add(account)
 
@@ -489,7 +525,8 @@ class TrueLayerService:
         return synced_accounts
 
     async def sync_transactions(
-        self, bank_connection: BankConnection, db: Session, days: int = 90, skip_token_refresh: bool = False
+        self, bank_connection: BankConnection, db: Session, days: int = 90, skip_token_refresh: bool = False,
+        report: dict | None = None,
     ) -> int:
         """
         Sync transactions from TrueLayer to database.
@@ -499,6 +536,11 @@ class TrueLayerService:
             db: Database session
             days: Number of days to fetch (default: 90)
             skip_token_refresh: If True, skip automatic token refresh (for initial historical sync)
+            report: if given, gets "accounts_skipped": accounts whose
+                transactions couldn't be fetched (T-08-24)
+
+        Each account is fetched on its own: one that fails is skipped and the
+        rest still sync. Raises TrueLayerError only if every account failed.
 
         Returns:
             Number of new transactions synced
@@ -524,40 +566,16 @@ class TrueLayerService:
 
         logger.info(f"Syncing transactions from {from_date.date()} to {to_date.date()} ({days} days)")
 
+        skipped = 0
         for account in accounts:
-            # Fetch transactions from TrueLayer
-            # Try to get maximum historical data first (730 days), fallback to 90 days if it fails
-            logger.info(f"Fetching transactions for account {account.external_id}")
-            tl_transactions = []
-
-            # If requesting more than 90 days, try that first with fallback
-            if days > 90:
-                try:
-                    logger.info(f"Attempting to fetch {days} days of transactions")
-                    tl_transactions = await self.get_transactions(
-                        bank_connection.access_token,
-                        account.external_id,
-                        from_date=from_date,
-                    )
-                    logger.info(f"Received {len(tl_transactions)} transactions from TrueLayer for account {account.external_id}")
-                except Exception as e:
-                    logger.warning(f"Failed to fetch {days} days, falling back to 90 days: {str(e)}")
-                    # Fallback to 90 days
-                    fallback_from_date = datetime.now(timezone.utc) - timedelta(days=90)
-                    tl_transactions = await self.get_transactions(
-                        bank_connection.access_token,
-                        account.external_id,
-                        from_date=fallback_from_date,
-                    )
-                    logger.info(f"Received {len(tl_transactions)} transactions (90 day fallback) from TrueLayer for account {account.external_id}")
-            else:
-                # Just fetch the requested days directly
-                tl_transactions = await self.get_transactions(
-                    bank_connection.access_token,
-                    account.external_id,
-                    from_date=from_date,
-                )
-                logger.info(f"Received {len(tl_transactions)} transactions from TrueLayer for account {account.external_id}")
+            # One account's endpoint failing (Monzo cards 403, Revolut cards
+            # 501, a timeout) must not stop the others (T-08-24).
+            try:
+                tl_transactions = await self._account_transactions(bank_connection, account, days, from_date)
+            except Exception as e:
+                skipped += 1
+                _log_skip(e, account)
+                continue
 
             for tl_tx in tl_transactions:
                 # Dedupe on external_id. Select only the id: loading the full
@@ -592,6 +610,9 @@ class TrueLayerService:
                 db.add(transaction)
                 new_transactions.append(transaction)
                 new_count += 1
+            # Committed per account (sec, T-08-24): a later account's failure
+            # can't roll back one that synced.
+            db.commit()
 
         # User-defined rules beat TrueLayer's generic categories.
         if new_transactions:
@@ -599,10 +620,36 @@ class TrueLayerService:
 
             categorization.apply_rules(db, bank_connection.user_id, new_transactions)
 
+        if skipped == len(accounts):
+            db.rollback()
+            raise TrueLayerError("transactions failed for every account")
         bank_connection.last_synced_at = datetime.now(timezone.utc)
         db.commit()
         logger.info(f"Synced {new_count} new transactions for bank connection {bank_connection.id}")
+        if report is not None:
+            report["accounts_skipped"] = skipped
         return new_count
+
+    async def _account_transactions(self, bank_connection: BankConnection, account, days: int, from_date) -> list:
+        """One account's transactions. More than the bank's recent window is
+        tried first, then FALLBACK_DAYS. Not for 404 or 501 (the endpoint
+        isn't there, e.g. Revolut card transactions): a shorter window can't
+        fix that. A 403 is retried: Monzo allows only the last 90 days after
+        the first minutes of consent, and asking for exactly 90 can fall just
+        outside it (T-08-24)."""
+        token, ext = bank_connection.access_token, account.external_id
+        if days <= FALLBACK_DAYS:
+            return await self.get_transactions(token, ext, from_date=from_date)
+        try:
+            return await self.get_transactions(token, ext, from_date=from_date)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code in (404, 501):
+                raise
+            logger.warning("Failed to fetch %s days (%s), trying %s", days, _status_and_code(e), FALLBACK_DAYS)
+        except httpx.HTTPError as e:
+            logger.warning("Failed to fetch %s days (%s), trying %s", days, type(e).__name__, FALLBACK_DAYS)
+        fallback = datetime.now(timezone.utc) - timedelta(days=FALLBACK_DAYS)
+        return await self.get_transactions(token, ext, from_date=fallback)
 
 
 # Singleton instance

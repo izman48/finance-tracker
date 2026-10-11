@@ -48,7 +48,7 @@ class FakeTrueLayer:
             raise self.fail[connection.provider_name]
         return ["acct-1", "acct-2"]
 
-    async def sync_transactions(self, connection, db, days=90, skip_token_refresh=False):
+    async def sync_transactions(self, connection, db, days=90, skip_token_refresh=False, report=None):
         self.calls.append(("transactions", connection.provider_name, days))
         return self.txns
 
@@ -214,6 +214,7 @@ def test_response_names_only_the_documented_fields(client, db_session, truelayer
     assert set(body) == {"connections", "accounts_synced", "transactions_synced"}
     assert set(body["connections"][0]) == {
         "connection_id", "provider", "status", "accounts_synced", "transactions_synced",
+        "accounts_skipped",  # a count only, never which account (T-08-24)
     }
 
 

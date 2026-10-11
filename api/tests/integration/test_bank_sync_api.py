@@ -8,8 +8,9 @@ reachable from a web session or from an MCP token that holds the opt-in
 
 The response says, per connection, whether it synced, needs reconnecting,
 or failed. It never carries exception text, URLs, tokens or provider ids.
-A user gets SYNC_LIMIT_PER_DAY syncs in 24 hours (PSD2 caps unattended bank
-access at 4 per day) and one at a time.
+A user gets one sync at a time, and a new sync starts at least
+SYNC_COOLDOWN_SECONDS after the last one, so an assistant cannot call it in
+a loop. A bank that refuses a read only marks that connection `failed`.
 
 TrueLayer is replaced by fakes of the two service calls; the TrueLayer
 client itself is tested in test_bank_reauth.py and the truelayer unit tests.
@@ -18,10 +19,10 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app.core import user_crypto
+from app.core import rate_limit, user_crypto
 from app.core.rate_limit import user_in_flight
 from app.models import BankConnection, User
-from app.routers.banking import SYNC_LIMIT_PER_DAY, sync_in_flight_key
+from app.routers.banking import SYNC_COOLDOWN_SECONDS, sync_in_flight_key
 from app.services.truelayer import ReauthRequired, TrueLayerError, truelayer_service
 from tests.integration.test_oauth import READ, _bearer, _connect
 from tests.integration.test_transactions_endpoint import _dek_from_token
@@ -219,34 +220,53 @@ def test_response_names_only_the_documented_fields(client, db_session, truelayer
 # --------------------------------------------------------------------------- #
 # Limits
 # --------------------------------------------------------------------------- #
-def test_daily_limit(client, db_session, truelayer):
+@pytest.fixture
+def clock(monkeypatch):
+    """The limiter's clock, moved by hand."""
+    now = [1_000.0]
+    monkeypatch.setattr(rate_limit, "monotonic", lambda: now[0])
+    return now
+
+
+def test_the_cooldown_is_ten_minutes():
+    assert SYNC_COOLDOWN_SECONDS == 600
+
+
+def test_a_second_sync_inside_the_cooldown_is_refused(client, db_session, truelayer, clock):
     w = World(client, db_session)
     w.connection("MONZO")
 
-    for _ in range(SYNC_LIMIT_PER_DAY):
-        assert w.sync().status_code == 200
+    assert w.sync().status_code == 200
+    clock[0] += SYNC_COOLDOWN_SECONDS - 1
     r = w.sync()
 
     assert r.status_code == 429
-    assert int(r.headers["Retry-After"]) > 0
-    assert len([c for c in truelayer.calls if c[0] == "accounts"]) == SYNC_LIMIT_PER_DAY
+    assert 0 < int(r.headers["Retry-After"]) <= SYNC_COOLDOWN_SECONDS
+    assert len([c for c in truelayer.calls if c[0] == "accounts"]) == 1
 
 
-def test_web_and_mcp_share_one_daily_budget(client, db_session, truelayer):
+def test_a_sync_after_the_cooldown_runs(client, db_session, truelayer, clock):
     w = World(client, db_session)
     w.connection("MONZO")
 
-    for _ in range(SYNC_LIMIT_PER_DAY):
-        assert w.sync(token=w.web).status_code == 200
+    for _ in range(5):
+        assert w.sync().status_code == 200
+        clock[0] += SYNC_COOLDOWN_SECONDS
+
+
+def test_web_and_mcp_share_one_cooldown(client, db_session, truelayer, clock):
+    w = World(client, db_session)
+    w.connection("MONZO")
+
+    assert w.sync(token=w.web).status_code == 200
 
     assert w.sync().status_code == 429
 
 
-def test_the_limit_is_per_user(client, db_session, truelayer):
+def test_the_cooldown_is_per_user(client, db_session, truelayer, clock):
     a = World(client, db_session, email="a@example.com")
     a.connection("MONZO")
-    for _ in range(SYNC_LIMIT_PER_DAY):
-        a.sync()
+    a.sync()
 
     b = World(client, db_session, email="b@example.com")
     b.connection("MONZO")
@@ -254,7 +274,7 @@ def test_the_limit_is_per_user(client, db_session, truelayer):
     assert b.sync().status_code == 200
 
 
-def test_one_sync_at_a_time_and_a_refused_one_costs_nothing(client, db_session, truelayer):
+def test_one_sync_at_a_time_and_a_refused_one_costs_nothing(client, db_session, truelayer, clock):
     w = World(client, db_session)
     w.connection("MONZO")
 
@@ -264,5 +284,4 @@ def test_one_sync_at_a_time_and_a_refused_one_costs_nothing(client, db_session, 
     assert "sync" in r.json()["detail"].lower()
     assert truelayer.calls == []
 
-    for _ in range(SYNC_LIMIT_PER_DAY):
-        assert w.sync().status_code == 200
+    assert w.sync().status_code == 200

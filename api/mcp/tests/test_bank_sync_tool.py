@@ -89,7 +89,7 @@ def test_without_the_sync_scope_nothing_is_called():
 @pytest.mark.parametrize(
     "status,headers,expected",
     [
-        (429, {"Retry-After": "3600"}, "Try again in 3600 seconds"),
+        (429, {"Retry-After": "540"}, "Try again in 540 seconds"),
         (403, {}, "Reconnect and approve"),
         (400, {}, "No bank is connected"),
         (500, {}, "Sync failed (500)"),
@@ -125,7 +125,7 @@ async def test_is_a_non_destructive_write_and_explains_itself():
     assert hints.destructiveHint is False
     assert hints.idempotentHint is False
     text = tool.description
-    assert "4" in text and "24 hours" in text
+    assert "10 minutes" in text and "24 hours" not in text
     assert "sync_status" in text
     assert "reconnect" in text
     assert "ask" in text.lower()

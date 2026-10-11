@@ -92,6 +92,7 @@ describe('ConsentScopes', () => {
     expect(id).toBeTruthy()
     const described = (html.match(new RegExp(`id="${id}"[^>]*>([^<]*)<`))?.[1] ?? '').replace(/&#x27;/g, "'")
     expect(described).toBe(SYNC_DESCRIPTION)
-    expect(SYNC_DESCRIPTION).toContain('4 times a day')
+    expect(SYNC_DESCRIPTION).toContain('once every 10 minutes')
+    expect(SYNC_DESCRIPTION).not.toContain('a day')
   })
 })

@@ -5,7 +5,7 @@ export const PLANNING_DESCRIPTION =
   "Add planned events, remove ones it added, and edit or dismiss commitments. It's asked to show you a preview before each change. Every change is listed under Changes made by Claude, where you can undo it. Nothing it changes raises your safe to spend or savable until you keep it in nilu."
 
 export const SYNC_DESCRIPTION =
-  "Ask nilu. to fetch new data from your connected banks. It can't connect, reconnect or disconnect a bank. Limited to 4 times a day, shared with the app."
+  "Ask nilu. to fetch new data from your connected banks. It can't connect, reconnect or disconnect a bank. Limited to once every 10 minutes, shared with the app."
 
 type Props = {
   allowRules: boolean

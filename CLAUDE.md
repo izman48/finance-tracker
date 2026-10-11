@@ -190,7 +190,7 @@ quick overflow check, navigate a page and compare `document.documentElement
   mcp_access`, audience-bound, scoped (`finance:read`, `finance:rules.write`,
   `finance:planning.write`, `finance:sync`), and checked against their grant
   on every use. `finance:sync` (`CurrentUserOrMcpSync`) opens only
-  `POST /banking/sync`: rate limited per user (`SYNC_LIMIT_PER_DAY`, one at a
+  `POST /banking/sync`: rate limited per user (`SYNC_COOLDOWN_SECONDS`, one at a
   time), per-connection status only, never error text.
   **Routes are web-only by default**: a route the MCP tools need opts in by
   typing its user as `CurrentUserOrMcpRead` / `CurrentUserOrMcpRulesWrite`

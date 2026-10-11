@@ -348,11 +348,10 @@ async def sync_transactions(
     )
 
 
-# PSD2 (RTS art. 36(5)) lets a provider read an account without the user
-# present at most 4 times a day. Every caller of POST /sync is held to that,
-# so an assistant can never use up the bank's daily allowance.
-SYNC_LIMIT_PER_DAY = 4
-SYNC_WINDOW_SECONDS = 24 * 60 * 60
+# A new sync starts at least this long after the last one, so an assistant
+# cannot call it in a loop. Banks may cap unattended reads (PSD2 allows them
+# 4 a day); a refused read only marks that connection `failed`.
+SYNC_COOLDOWN_SECONDS = 10 * 60
 # Same window as the web sync; stored transactions are de-duplicated.
 SYNC_DAYS = 90
 
@@ -372,7 +371,7 @@ async def sync_banks(
     Reachable from a web session or an MCP token with `finance:sync`. It runs
     inside the request because the DEK that decrypts the bank tokens exists
     only for the request. One sync per user at a time (a refused call does
-    not count), and SYNC_LIMIT_PER_DAY per 24 hours. A failing connection
+    not count), and at least SYNC_COOLDOWN_SECONDS between syncs. A failing connection
     does not stop the others: each reports synced | reconnect | failed, and
     never the error text.
     """
@@ -384,7 +383,7 @@ async def sync_banks(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No bank connections found. Please connect a bank first.",
             )
-        user_rate_limiter.check_key(key, limit=SYNC_LIMIT_PER_DAY, window_seconds=SYNC_WINDOW_SECONDS)
+        user_rate_limiter.check_key(key, limit=1, window_seconds=SYNC_COOLDOWN_SECONDS)
         results = [await _sync_connection(connection, db) for connection in connections]
 
     return BankSyncResponse(

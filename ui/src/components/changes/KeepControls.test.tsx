@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter } from 'react-router-dom'
 import {
   CommitmentKeep,
+  SafeToSpendNote,
   SavableNote,
   KeepButton,
   KeepNotice,
@@ -160,5 +161,51 @@ describe('SavableNote (KP10)', () => {
   it('absent when nothing is held back', () => {
     expect(html(<SavableNote total="0.00" />)).toBe('')
     expect(html(<SavableNote total={undefined} />)).toBe('')
+  })
+})
+
+describe('SafeToSpendNote (KP19)', () => {
+  const note = '£42.50 of bills Claude removed or reduced is still counted in your safe to spend until you keep it.'
+  it('on Cashflow: the total and a Review link', () => {
+    const h = html(<SafeToSpendNote total="42.50" />)
+    expect(text(h)).toBe(`${note} Review`)
+    expect(h).toMatch(/<a[^>]*href="\/commitments"[^>]*>Review<\/a>/)
+  })
+
+  it('on Home: plain text, no nested link', () => {
+    const h = html(<SafeToSpendNote total="42.50" review={false} />)
+    expect(text(h)).toBe(note)
+    expect(h).not.toContain('<a')
+  })
+
+  it('absent at zero', () => {
+    expect(html(<SafeToSpendNote total="0" />)).toBe('')
+  })
+})
+
+describe('CommitmentKeep on an expense cut (KP15, KP18, KP20)', () => {
+  const cut = (over: Partial<Commitment> = {}) =>
+    income({ direction: 'expense', label: 'Gym', amount: 30, keep_kind: 'expense_cut', keep_audit_ids: ['e1'], ...over })
+
+  it('KP18: the lowered line, Keep and Undo named with the label', () => {
+    const h = row(cut({ held_amount: '50.00' }))
+    expect(text(h)).toContain('Claude lowered this from £50.00 to £30.00.')
+    expect(names(h)).toEqual(['Keep this change: Gym', 'Undo: Claude’s changes to “Gym”'])
+  })
+
+  it('KP15: a dismissed expense', () => {
+    expect(text(row(cut({ status: 'dismissed' })))).toContain(
+      'Claude dismissed this. It still counts in your safe to spend until you keep this change.',
+    )
+  })
+
+  it('a yearly bill moved later: the moved line, Keep and Undo', () => {
+    const h = row(cut({ cadence: 'every_n_months', interval_months: 12, next_date: '2027-03-01', held_next_date: '2027-01-15' }))
+    expect(text(h)).toContain('Claude moved this from 15 Jan to 1 Mar. It still counts on 15 Jan in your safe to spend until you keep this change.')
+    expect(names(h)).toEqual(['Keep this change: Gym', 'Undo: Claude’s changes to “Gym”'])
+  })
+
+  it('KP20: nothing when Claude raised or confirmed it (keep null)', () => {
+    expect(row(cut({ keep: null, keep_kind: null }))).toBe('')
   })
 })

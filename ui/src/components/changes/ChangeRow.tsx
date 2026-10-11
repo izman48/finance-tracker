@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { changeLines, changeTitle, clientText, metaTime, type AuditItem } from '../../lib/changes'
 import { dateDayMonth } from '../../lib/format'
-import { pendingText } from '../../lib/keep'
+import { auditPendingLine } from '../../lib/keep'
 
 type Props = {
   item: AuditItem
@@ -62,7 +62,7 @@ export default function ChangeRow({ item, accountNames, action, notice, highligh
             <span title={client.title}>{client.text}</span>
             {item.connection_created_at && ` · connected ${dateDayMonth(item.connection_created_at)}`}
           </p>
-          {!undone && item.keep === 'pending' && <p className="mt-2 text-xs text-slate-400">{pendingText(item.tool === 'dismiss_commitment')}</p>}
+          {!undone && item.keep === 'pending' && <p className="mt-2 text-xs text-slate-400">{auditPendingLine(item)}</p>}
           {notice}
         </div>
         {action}

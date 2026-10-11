@@ -4,7 +4,7 @@ import ChangesView from '../components/changes/ChangesView'
 import { UndoButton, UndoNotice, type UndoState } from '../components/changes/UndoControls'
 import { KeepButton, KeepNotice } from '../components/changes/KeepControls'
 import { useRowActions } from '../hooks/useRowActions'
-import { keepToast } from '../lib/keep'
+import { keepMovesSafeToSpend, keepToast } from '../lib/keep'
 import { useToast } from '../components/ui/Toast'
 import { auditAPI, bankingAPI } from '../services/api'
 import { failureFromError, mergeFirstPage, undoToast, type AuditItem } from '../lib/changes'
@@ -133,7 +133,7 @@ export default function ChangesPage() {
   const keepState = (it: AuditItem) => rowActions.stateOf(`keep-${it.id}`)
   const keepChange = (it: AuditItem) =>
     rowActions.run(`keep-${it.id}`, () => withTimeout(auditAPI.keep(it.id), AUDIT_TIMEOUT_MS), {
-      toast: keepToast(it.target_label, it.tool === 'dismiss_commitment'),
+      toast: keepToast(it.target_label, keepMovesSafeToSpend(it.keep_kind, it.tool === 'dismiss_commitment')),
       focusId: `change-${it.id}`,
       alertId: `change-${it.id}-keep-alert`,
     })

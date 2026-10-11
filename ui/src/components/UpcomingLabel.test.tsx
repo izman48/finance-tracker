@@ -68,3 +68,11 @@ describe('UpcomingLabel overdue (O1, O2, O6)', () => {
     expect(text(h)).toContain('Due 5 Oct · 5 days overdue')
   })
 })
+
+describe('UpcomingLabel just past due (O9)', () => {
+  it('shows "Due {date}" and no chip', () => {
+    const h = html(row({ income: false, plannedIncome: false, justDue: { due: '2026-10-09' } }), true)
+    expect(text(h)).toContain('Due 9 Oct')
+    expect(h).not.toContain('chip-warn')
+  })
+})

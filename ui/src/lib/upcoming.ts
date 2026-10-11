@@ -21,6 +21,8 @@ export interface Upcoming {
   late?: { expected: string; days: number }
   /** An unpaid planned expense past its date (API-decided): still counts. */
   overdue?: { due: string; days: number }
+  /** An unpaid one-off expense just past its date, inside the API's grace (O9): a normal row, still counted. */
+  justDue?: { due: string }
 }
 
 /** How a row's amount reads: late income is not money you have, so no "+" and no green. */
@@ -28,9 +30,9 @@ export function upcomingAmount(u: Upcoming): { sign: string; tone: string } {
   return moneyStyle(u.income, Boolean(u.late))
 }
 
-/** A late or overdue row's date is in its own line; don't repeat it beside the amount. */
+/** A late, overdue or just-due row's date is in its own line; don't repeat it beside the amount. */
 export function upcomingShowsDate(u: Upcoming): boolean {
-  return !u.late && !u.overdue
+  return !u.late && !u.overdue && !u.justDue
 }
 
 export function buildUpcoming(
@@ -66,7 +68,16 @@ export function buildUpcoming(
       overdue: { due: p.start_date, days: daysLate(p.start_date, today) },
     }))
 
-  const pastDue = [...lateIncome, ...overdue].sort((a, b) => a.date.localeCompare(b.date))
+  // Unpaid one-off expenses just past their date, before the API calls them
+  // overdue (O9): a normal row that still counts, with a "Due {date}" line.
+  const justDue: Upcoming[] = planned
+    .filter((p) => isJustDue(p, today))
+    .map((p) => ({
+      key: `due-p-${p.id}`, label: p.name, amount: plannedPerPayment(p), date: p.start_date,
+      income: false, claudeAuditId: p.changed_by_claude?.audit_id, justDue: { due: p.start_date },
+    }))
+
+  const pastDue = [...lateIncome, ...overdue, ...justDue].sort((a, b) => a.date.localeCompare(b.date))
 
   const future: Upcoming[] = [
     ...commitments
@@ -88,7 +99,7 @@ export function buildUpcoming(
       income: false,
     })),
     // A planned item its real transaction already paid is no longer coming (T-08-7).
-    ...planned.filter((p) => !p.matched_transaction_id && !p.late && !(p.overdue && p.direction !== 'income')).flatMap((p) => {
+    ...planned.filter((p) => !p.matched_transaction_id && !p.late && !(p.overdue && p.direction !== 'income') && !isJustDue(p, today)).flatMap((p) => {
       const date = nextPlannedDate(p, today)
       return date
         ? [{
@@ -106,4 +117,9 @@ export function buildUpcoming(
     .sort((a, b) => a.date.localeCompare(b.date))
 
   return [...pastDue, ...future].slice(0, limit)
+}
+
+function isJustDue(p: PlannedItem, today: string): boolean {
+  return p.kind === 'one_off' && p.direction !== 'income' && !p.overdue && !p.matched_transaction_id
+    && p.start_date < today
 }

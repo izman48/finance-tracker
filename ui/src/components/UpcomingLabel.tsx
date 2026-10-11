@@ -1,5 +1,5 @@
 import type { Upcoming } from '../lib/upcoming'
-import { lateLine, overdueLine } from '../lib/late'
+import { dueLine, lateLine, overdueLine } from '../lib/late'
 import ClaudeMarker, { ClaudeChip, NOT_COUNTED_TEXT } from './changes/ClaudeMarker'
 
 /**
@@ -17,6 +17,7 @@ export default function UpcomingLabel({ item, linkMarker }: { item: Upcoming; li
         {item.overdue && <span className="chip-warn shrink-0">Overdue</span>}
       </span>
       {item.claudeAuditId && (linkMarker ? <ClaudeMarker auditId={item.claudeAuditId} /> : <ClaudeChip />)}
+      {item.justDue && <span className="block text-xs text-slate-400">{dueLine(item.justDue.due)}</span>}
       {item.overdue && (
         <span className="block text-xs text-slate-400">{overdueLine(item.overdue.due, item.overdue.days)}</span>
       )}

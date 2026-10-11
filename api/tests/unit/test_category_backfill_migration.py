@@ -22,7 +22,7 @@ from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from sqlalchemy import inspect, text
 
-from app.models import Account, AccountSetting, CommitmentRule, CommitmentStatus, Transaction, User
+from app.models import Account, AccountSetting, BankConnection, CommitmentRule, CommitmentStatus, Transaction, User
 from app.services import analytics_service as svc
 
 _MIGRATION = next(
@@ -71,8 +71,12 @@ def _user(db):
 
 
 def _account(db, user, atype, balance, name, role, provider="Test"):
+    # A real connection row, so the fixture also runs on Postgres (FKs enforced).
+    conn = BankConnection(user_id=user.id, provider_id="test", provider_name=provider)
+    db.add(conn)
+    db.commit()
     a = Account(
-        user_id=user.id, bank_connection_id=user.id,
+        user_id=user.id, bank_connection_id=conn.id,
         external_id=f"ext-{name}-{datetime.now().timestamp()}",
         provider_name=provider, account_type=atype, display_name=name,
         current_balance=Decimal(balance),

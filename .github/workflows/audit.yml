@@ -34,7 +34,7 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: Install pip-audit
         run: pip install --no-cache-dir pip-audit==2.10.1
-      - name: Audit the API's requirements
-        run: pip-audit -r api/requirements.txt
-      - name: Audit the MCP server's requirements
-        run: pip-audit -r api/mcp/requirements.txt
+      # One run for both, so a finding in the API's list can't stop the MCP
+      # server's from being checked.
+      - name: Audit the API's and the MCP server's requirements
+        run: pip-audit -r api/requirements.txt -r api/mcp/requirements.txt

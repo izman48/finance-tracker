@@ -19,6 +19,7 @@ from app.routers import (
     audit_router,
     planning_router,
     commitment_writes_router,
+    budgets_router,
 )
 
 settings = get_settings()
@@ -77,6 +78,7 @@ app.include_router(oauth_router, prefix="/api/v1")
 app.include_router(audit_router, prefix="/api/v1")
 app.include_router(planning_router, prefix="/api/v1")
 app.include_router(commitment_writes_router, prefix="/api/v1")
+app.include_router(budgets_router, prefix="/api/v1")
 # Discovery lives at the origin root (RFC 8414), not under /api/v1.
 app.include_router(well_known_router)
 

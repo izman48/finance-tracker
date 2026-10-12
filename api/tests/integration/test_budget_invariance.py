@@ -8,10 +8,9 @@ the lowest point and the projections. Only the forecast's new
 comparison.
 
 Every scenario in SCENARIOS runs against the same seeded user and is
-compared with the no-budget run. T-09-1 ships the harness and the counting
-function's scenario (computing budget spend must not write or move
-anything); T-09-2 adds active, paused, removed and over-limit budgets, and
-T-09-5 budgets changed by Claude.
+compared with the no-budget run: computing budget spend (T-09-1); active,
+paused, removed and over-limit budgets, bulk set and suggest (T-09-2).
+T-09-5 adds budgets changed by Claude.
 """
 from datetime import timedelta
 
@@ -44,13 +43,54 @@ def _money(client, token) -> dict:
     return out
 
 
-def _spend_computed(w):
+def _spend_computed(w, client, token):
     """Computing budget spend (as tracking, History and the projection will)."""
     w.as_user(lambda: budget_spend(w.db, w.user, START, TODAY))
     w.as_user(lambda: budget_spend(w.db, w.user, START - timedelta(days=60), START))
 
 
-SCENARIOS = {"budget spend computed": _spend_computed}
+def _create(client, token, category, limit):
+    r = client.post(f"{API}/budgets", json={"category": category, "limit_pounds": limit}, headers=_bearer(token))
+    assert r.status_code == 201, r.text
+    client.get(f"{API}/budgets", headers=_bearer(token))  # the read route computes everything
+    return r.json()["id"]
+
+
+def _active(w, client, token):
+    _create(client, token, "Eating out", 150)
+    _create(client, token, "Groceries", 400)
+
+
+def _paused(w, client, token):
+    budget_id = _create(client, token, "Eating out", 150)
+    client.patch(f"{API}/budgets/{budget_id}", json={"paused": True}, headers=_bearer(token))
+
+
+def _removed(w, client, token):
+    budget_id = _create(client, token, "Eating out", 150)
+    client.delete(f"{API}/budgets/{budget_id}", headers=_bearer(token))
+
+
+def _over_limit(w, client, token):
+    _create(client, token, "Groceries", 1)  # £30 spent against £1
+
+
+def _bulk_and_suggest(w, client, token):
+    client.put(f"{API}/budgets", json={"budgets": [{"category": "Eating out", "limit_pounds": 5},
+                                                  {"category": "Groceries", "limit_pounds": 5}]},
+               headers=_bearer(token))
+    client.post(f"{API}/budgets/suggest", json={}, headers=_bearer(token))
+
+
+# T-09-5 adds "budgets changed by Claude".
+SCENARIOS = {
+    "budget spend computed": _spend_computed,
+    "active budgets": _active,
+    "a paused budget": _paused,
+    "a removed budget": _removed,
+    "an over-limit budget": _over_limit,
+    "bulk set and suggest": _bulk_and_suggest,
+}
 
 
 @pytest.mark.parametrize("scenario", SCENARIOS)
@@ -59,7 +99,7 @@ def test_budgets_never_move_a_money_figure(client, db_session, scenario):
     w.seed()
     token = _web_login(client, "budgets@example.com")
     before = _money(client, token)
-    SCENARIOS[scenario](w)
+    SCENARIOS[scenario](w, client, token)
     assert _money(client, token) == before
 
 

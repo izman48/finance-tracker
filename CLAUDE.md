@@ -191,7 +191,7 @@ quick overflow check, navigate a page and compare `document.documentElement
   missing session key raises `DEKUnavailableError` → 401 (fail closed).
   Recovery codes are shown once; password reset without one purges, by
   design, every row encrypted under the old key (`services/key_loss_purge.py`:
-  bank data, commitments, planned events, rules and packs, assets, Claude's
+  bank data, commitments, planned events, budgets, rules and packs, assets, Claude's
   change history) and revokes MCP grants. A new table with a `UserEncrypted*`
   column fails `tests/integration/test_reset_purge.py` until the purge
   deletes it.

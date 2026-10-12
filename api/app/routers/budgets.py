@@ -1,0 +1,117 @@
+"""Budgets (T-09-2): web session only (`CurrentUser`); Claude's tools come
+in T-09-5 through the write framework. A budget is addressed by id, never by
+category (untrusted text). Writes are scoped to the caller, and another
+user's id is a 404. Log lines carry ids only, never a category or a limit.
+"""
+import logging
+import uuid
+from decimal import Decimal
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Response, status
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.core.database import get_db
+from app.core.security import CurrentUser
+from app.models import Budget
+from app.schemas.budgets import (
+    BudgetListResponse,
+    BudgetResponse,
+    BudgetSuggestResponse,
+    BulkBudgetsRequest,
+    CreateBudgetRequest,
+    UpdateBudgetRequest,
+)
+from app.services import budgets as svc
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/budgets", tags=["budgets"])
+
+
+def _commit(db: Session) -> None:
+    """Commit, turning a lost race for a category (the partial unique index:
+    another request created it first) into the same 422 as the check."""
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise svc._refuse("That category already has a budget.") from None
+
+
+def _one(db: Session, user, budget_id: uuid.UUID) -> BudgetResponse:
+    return next(b for b in svc.budget_list(db, user).budgets if b.id == budget_id)
+
+
+@router.get("", response_model=BudgetListResponse)
+def list_budgets(current_user: CurrentUser, db: Annotated[Session, Depends(get_db)]) -> BudgetListResponse:
+    return svc.budget_list(db, current_user)
+
+
+@router.post("", response_model=BudgetResponse, status_code=status.HTTP_201_CREATED)
+def create_budget(
+    body: CreateBudgetRequest, current_user: CurrentUser, db: Annotated[Session, Depends(get_db)],
+) -> BudgetResponse:
+    svc.validate_categories(db, current_user, [body.category])
+    existing = svc.active_budgets(db, current_user)
+    if any(b.category == body.category for b in existing):
+        raise svc._refuse("That category already has a budget.")
+    svc.check_cap(len(existing) + 1)
+    budget = Budget(user_id=current_user.id, category=body.category, limit_pounds=Decimal(body.limit_pounds))
+    db.add(budget)
+    _commit(db)
+    logger.info("Budget %s created for user %s", budget.id, current_user.id)
+    return _one(db, current_user, budget.id)
+
+
+@router.patch("/{budget_id}", response_model=BudgetResponse)
+def update_budget(
+    budget_id: uuid.UUID, body: UpdateBudgetRequest, current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> BudgetResponse:
+    budget = svc.owned_budget(db, current_user, budget_id)
+    if body.limit_pounds is not None:
+        budget.limit_pounds = Decimal(body.limit_pounds)
+    if body.paused is not None:
+        budget.paused = body.paused
+    db.commit()
+    return _one(db, current_user, budget.id)
+
+
+@router.delete("/{budget_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_budget(
+    budget_id: uuid.UUID, current_user: CurrentUser, db: Annotated[Session, Depends(get_db)],
+) -> Response:
+    budget = svc.owned_budget(db, current_user, budget_id)
+    budget.active = False  # kept for History
+    db.commit()
+    logger.info("Budget %s removed for user %s", budget.id, current_user.id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.put("", response_model=BudgetListResponse)
+def set_budgets(
+    body: BulkBudgetsRequest, current_user: CurrentUser, db: Annotated[Session, Depends(get_db)],
+) -> BudgetListResponse:
+    """Create or update each listed category's budget, all or nothing: every
+    entry is checked (categories, duplicates, the cap after the change)
+    before anything is written, then one commit writes them all."""
+    categories = [e.category for e in body.budgets]
+    svc.validate_categories(db, current_user, categories)
+    existing = {b.category: b for b in svc.active_budgets(db, current_user)}
+    new = [e for e in body.budgets if e.category not in existing]
+    svc.check_cap(len(existing) + len(new))
+    for entry in body.budgets:
+        if entry.category in existing:
+            existing[entry.category].limit_pounds = Decimal(entry.limit_pounds)
+        else:
+            db.add(Budget(user_id=current_user.id, category=entry.category, limit_pounds=Decimal(entry.limit_pounds)))
+    _commit(db)
+    return svc.budget_list(db, current_user)
+
+
+@router.post("/suggest", response_model=BudgetSuggestResponse)
+def suggest_budgets(current_user: CurrentUser, db: Annotated[Session, Depends(get_db)]) -> BudgetSuggestResponse:
+    """Dry: reads only."""
+    return svc.suggest(db, current_user)

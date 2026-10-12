@@ -43,6 +43,9 @@ EXCLUDED = {"commitment": "commitments", "transfer": "transfers", "card_payoff":
 class BudgetSpend:
     by_category: dict[str, Decimal]
     excluded: dict[str, Decimal] = field(default_factory=dict)
+    # Commitment-matched spending by category: a category that is mostly
+    # commitments can't have a budget (T-09-2).
+    commitments_by_category: dict[str, Decimal] = field(default_factory=dict)
 
 
 def budget_spend(db: Session, user, start: date, end: date) -> BudgetSpend:
@@ -65,10 +68,13 @@ def budget_spend(db: Session, user, start: date, end: date) -> BudgetSpend:
 
     by_category: dict[str, Decimal] = defaultdict(Decimal)
     excluded = {name: Decimal(0) for name in EXCLUDED.values()}
+    commitments: dict[str, Decimal] = defaultdict(Decimal)
     for tx in txns:
         kind = classify_purchase(tx, transfers, roles, financed, commitment_keys)
         if kind in ("credit", "cash"):
             by_category[tx.category or UNCATEGORISED] += _d(tx.amount)
         elif kind is not None:
             excluded[EXCLUDED[kind]] += _d(tx.amount)
-    return BudgetSpend(by_category=dict(by_category), excluded=excluded)
+            if kind == "commitment":
+                commitments[tx.category or UNCATEGORISED] += _d(tx.amount)
+    return BudgetSpend(by_category=dict(by_category), excluded=excluded, commitments_by_category=dict(commitments))

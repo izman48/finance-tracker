@@ -8,6 +8,7 @@ from app.routers.oauth import router as oauth_router, well_known_router
 from app.routers.audit import router as audit_router
 from app.routers.planning import router as planning_router
 from app.routers.commitment_writes import router as commitment_writes_router
+from app.routers.budgets import router as budgets_router
 
 __all__ = [
     "health_router",
@@ -21,4 +22,5 @@ __all__ = [
     "audit_router",
     "planning_router",
     "commitment_writes_router",
+    "budgets_router",
 ]

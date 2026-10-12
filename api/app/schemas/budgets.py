@@ -12,7 +12,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 
 from app.schemas import ClaudeMarker
 
@@ -104,7 +104,7 @@ class CreateBudgetRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     category: str = Field(min_length=1, max_length=CATEGORY_MAX_LENGTH)
-    limit_pounds: int = Field(ge=1, le=BUDGET_LIMIT_MAX)
+    limit_pounds: StrictInt = Field(ge=1, le=BUDGET_LIMIT_MAX)
 
 
 class UpdateBudgetRequest(BaseModel):
@@ -112,15 +112,15 @@ class UpdateBudgetRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    limit_pounds: int | None = Field(default=None, ge=1, le=BUDGET_LIMIT_MAX)
-    paused: bool | None = None
+    limit_pounds: StrictInt | None = Field(default=None, ge=1, le=BUDGET_LIMIT_MAX)
+    paused: StrictBool | None = None
 
 
 class BudgetSetEntry(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     category: str = Field(min_length=1, max_length=CATEGORY_MAX_LENGTH)
-    limit_pounds: int = Field(ge=1, le=BUDGET_LIMIT_MAX)
+    limit_pounds: StrictInt = Field(ge=1, le=BUDGET_LIMIT_MAX)
 
 
 class BulkBudgetsRequest(BaseModel):

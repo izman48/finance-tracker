@@ -8,6 +8,7 @@ from typing import Annotated
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status, Query
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
@@ -56,12 +57,20 @@ def _sync_error(provider_name: str, exc: Exception) -> str:
 
 
 def _log_detail(e: Exception) -> str:
-    """For a connection-level log line: the exception type, plus the HTTP
-    status and TrueLayer error code when known (T-08-27). Never its text."""
+    """For a log line: the exception type, plus the HTTP status and TrueLayer
+    error code when known (T-08-27). Never its text, which can carry a URL,
+    provider ids or SQL (sec on #145)."""
     parts = [type(e).__name__]
     if isinstance(e, TrueLayerError):
         parts += [str(p) for p in (e.status, e.code) if p]
+    elif isinstance(e, httpx.HTTPStatusError):
+        parts.append(str(e.response.status_code))
     return " ".join(parts)
+
+
+def _not_offered(e: Exception) -> bool:
+    """The bank doesn't offer this endpoint via TrueLayer (501)."""
+    return isinstance(e, httpx.HTTPStatusError) and e.response.status_code == 501
 
 
 def _busy() -> HTTPException:
@@ -175,7 +184,7 @@ async def oauth_callback(
     current_dek.set(dek)
 
     try:
-        user = db.query(User).filter(User.id == user_id).first()
+        user = db.query(User).filter(User.id == uuid.UUID(user_id)).first()
         if not user:
             logger.error("User from OAuth state no longer exists")
             return RedirectResponse(url=f"{frontend_url}/dashboard?bank_connected=false&error=user_not_found")
@@ -244,12 +253,12 @@ async def oauth_callback(
                 await truelayer_service.sync_accounts(bank_connection, db, skip_token_refresh=True)
                 logger.info(f"Successfully synced accounts for {provider_name}")
             except Exception as e:
-                error_msg = str(e)
-                # Check if this is a card-only provider (AMEX, etc.) that doesn't support accounts endpoint
-                if "501" in error_msg or "endpoint_not_supported" in error_msg:
-                    logger.warning(f"{provider_name} does not support accounts endpoint (card-only provider). Skipping account sync.")
+                # The type and status only: an HTTP error's text is its URL,
+                # naming the provider's account or card id (sec on #145).
+                if _not_offered(e):
+                    logger.warning("%s doesn't offer the accounts endpoint (card-only provider); skipping", provider_name)
                 else:
-                    logger.error(f"Failed to sync accounts during callback: {error_msg}")
+                    logger.error("Failed to sync accounts during callback: %s", _log_detail(e))
 
             # IMPORTANT: Sync maximum historical data (730 days = 2 years) with the initial token
             # Due to SCA (Strong Customer Authentication), banks only allow historical data
@@ -261,17 +270,15 @@ async def oauth_callback(
                 count = await truelayer_service.sync_transactions(bank_connection, db, days=730, skip_token_refresh=True)
                 logger.info(f"Successfully synced {count} historical transactions for {provider_name}")
             except Exception as e:
-                error_msg = str(e)
-                # Check if this is a card-only provider that doesn't support accounts endpoint
-                if "501" in error_msg or "endpoint_not_supported" in error_msg or "No accounts found" in error_msg:
-                    logger.warning(f"{provider_name} does not support transaction sync (card-only provider). Card support coming soon.")
+                if _not_offered(e) or isinstance(e, ValueError):  # ValueError: no accounts yet
+                    logger.warning("%s doesn't offer transaction sync here; skipping", provider_name)
                 else:
-                    logger.error(f"Failed to sync historical transactions during callback: {error_msg}")
+                    logger.error("Failed to sync historical transactions during callback: %s", _log_detail(e))
 
         return RedirectResponse(url=f"{frontend_url}/dashboard?bank_connected=true")
 
     except Exception as e:
-        logger.error(f"Failed to exchange code: {str(e)}")
+        logger.error("Failed to exchange code: %s", _log_detail(e))
         return RedirectResponse(url=f"{frontend_url}/dashboard?bank_connected=false&error=exchange_failed")
 
 
@@ -286,6 +293,10 @@ async def sync_accounts(
 
     Fetches all connected bank accounts and their balances,
     and stores them in the database. One sync per user at a time.
+
+    Web-only and attended: the user started it in the app, so it sends
+    X-PSU-IP (T-08-22) and the bank counts the read as attended. That is
+    why it doesn't take the cooldown, which bounds MCP-reachable /sync.
     """
     try:
         with sync_lease(db, current_user.id), user_present(http):
@@ -349,6 +360,10 @@ async def sync_transactions(
     Fetches transactions for all connected accounts and stores them.
     By default, syncs the last 90 days of transactions. One sync per user
     at a time.
+
+    Web-only and attended: the user started it in the app, so it sends
+    X-PSU-IP (T-08-22) and the bank counts the read as attended. That is
+    why it doesn't take the cooldown, which bounds MCP-reachable /sync.
     """
     try:
         with sync_lease(db, current_user.id), user_present(http):
@@ -444,7 +459,9 @@ async def sync_banks(
     never the error text.
 
     The cooldown is held in the database, so both workers and restarts share
-    it, and only a sync that reaches TrueLayer starts it. X-PSU-IP goes only
+    it. It starts once every refusal check has passed (no connections,
+    another sync running, still cooling down), just before TrueLayer is
+    called; a refused call doesn't start it. X-PSU-IP goes only
     with a web session (the user is present), never for an MCP token.
     """
     current_user = caller.user

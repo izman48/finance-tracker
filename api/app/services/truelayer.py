@@ -72,6 +72,15 @@ def _describe(e: Exception) -> str:
     return _status_and_code(e) if isinstance(e, httpx.HTTPStatusError) else type(e).__name__
 
 
+def _log_list_failure(kind: str, bank_connection: BankConnection, e: Exception) -> None:
+    """The accounts or cards list failed. A 501 is the bank not offering it
+    (Amex has no accounts, Revolut no cards): expected, so INFO (T-08-28)."""
+    if _not_offered(e):
+        logger.info("%s not offered for connection %s", kind.capitalize(), bank_connection.id)
+    else:
+        logger.warning("Failed to fetch %s for connection %s: %s", kind, bank_connection.id, _describe(e))
+
+
 def _not_offered(e: Exception) -> bool:
     """501: the bank doesn't offer this endpoint via TrueLayer."""
     return isinstance(e, httpx.HTTPStatusError) and e.response.status_code == 501
@@ -496,7 +505,7 @@ class TrueLayerService:
             tl_accounts = await self.get_accounts(bank_connection.access_token)
             logger.info(f"Fetched {len(tl_accounts)} accounts")
         except Exception as e:
-            logger.warning("Failed to fetch accounts for connection %s: %s", bank_connection.id, _describe(e))
+            _log_list_failure("accounts", bank_connection, e)
 
         # Try to fetch cards (for AMEX, etc.)
         try:
@@ -504,7 +513,7 @@ class TrueLayerService:
             logger.info(f"Fetched {len(tl_cards)} cards")
             tl_accounts.extend(tl_cards)  # Add cards to the accounts list
         except Exception as e:
-            logger.warning("Failed to fetch cards for connection %s: %s", bank_connection.id, _describe(e))
+            _log_list_failure("cards", bank_connection, e)
 
         if not tl_accounts:
             raise ValueError("No accounts or cards found for this connection")
@@ -567,7 +576,7 @@ class TrueLayerService:
 
     async def sync_transactions(
         self, bank_connection: BankConnection, db: Session, days: int = 90, skip_token_refresh: bool = False,
-        report: dict | None = None,
+        report: dict | None = None, history: bool = False,
     ) -> int:
         """
         Sync transactions from TrueLayer to database.
@@ -578,7 +587,14 @@ class TrueLayerService:
             days: Number of days to fetch (default: 90)
             skip_token_refresh: If True, skip automatic token refresh (for initial historical sync)
             report: if given, gets "accounts_skipped": accounts whose
-                transactions couldn't be fetched (T-08-24)
+                transactions couldn't be fetched (T-08-24), and "days":
+                the window actually asked for
+            history: the first sync after connecting (T-08-28). Banks give
+                more than 90 days only in the first minutes after consent, so
+                only then is a longer window asked for (falling back after a
+                403). Every other sync asks for the last FALLBACK_DAYS of the
+                London date straight away: asking for more only earns a 403
+                and a second call per account, spending the bank's quota.
 
         Each account is fetched on its own: one that fails is skipped and the
         rest still sync. Raises TrueLayerError only if every account failed.
@@ -600,7 +616,10 @@ class TrueLayerService:
             logger.warning(f"No accounts found for bank connection {bank_connection.id}")
             return 0
 
-        from_date = datetime.now(timezone.utc) - timedelta(days=days)
+        if history or days <= FALLBACK_DAYS:
+            from_date = _utcnow() - timedelta(days=days)
+        else:
+            days, from_date = FALLBACK_DAYS, _fallback_from()
         to_date = datetime.now(timezone.utc)
         new_count = 0
         new_transactions: list[Transaction] = []
@@ -680,6 +699,7 @@ class TrueLayerService:
         logger.info(f"Synced {new_count} new transactions for bank connection {bank_connection.id}")
         if report is not None:
             report["accounts_skipped"] = skipped
+            report["days"] = days
         return new_count
 
     async def _account_transactions(self, bank_connection: BankConnection, account, days: int, from_date) -> list:

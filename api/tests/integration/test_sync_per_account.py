@@ -127,11 +127,12 @@ def test_every_account_failing_is_failed_never_a_500(client, db_session, monkeyp
     assert _last_synced(db_session, conn_id, dek) is None
 
 
-def test_monzo_403_on_the_long_fetch_retries_inside_the_90_day_window(client, db_session, monkeypatch):
+def test_monzo_gets_a_window_inside_its_90_days(client, db_session, monkeypatch):
     """Lead's hint, and sec on #141: after the first minutes of consent Monzo
     serves only the last 90 days of its (UK) date; asking for exactly 90 can
-    fall just outside. The fallback asks for 88 days from the Europe/London
-    date. Frozen at 00:30 BST, when the UTC date is still the day before."""
+    fall just outside. The window is 88 days from the Europe/London date
+    (since T-08-28 asked for straight away, not after a 403). Frozen at
+    00:30 BST, when the UTC date is still the day before."""
     from datetime import date
 
     _connection_with_card(client, db_session)
@@ -158,7 +159,7 @@ def test_monzo_403_on_the_long_fetch_retries_inside_the_90_day_window(client, db
                         lambda *a, **k: real_client(*a, transport=httpx.MockTransport(handler), **k))
     r = client.post("/api/v1/banking/sync/transactions", json={"days": 365})
     assert r.status_code == 200, r.text
-    assert r.json()["transactions_synced"] == 2  # the card's too, via the retry
+    assert r.json()["transactions_synced"] == 2  # the card's too
     assert asked[-1] == date(2026, 7, 16)  # 12 Oct (London) less 88 days
 
 

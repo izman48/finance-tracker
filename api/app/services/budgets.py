@@ -372,7 +372,12 @@ def budget_nudges(db: Session, user) -> list[dict]:
         limit = Decimal(b.limit_pounds)
         if b.spent >= limit:
             kind = AT_LIMIT
-            body = f"{b.category} is {_money(b.spent - limit)} over its {_money(limit)} budget with {days_left} days left."
+            # Exactly at the limit is still "kept", so it never says "over" (lead on #158).
+            body = (
+                f"{b.category} is {_money(b.spent - limit)} over its {_money(limit)} budget with {days_left} days left."
+                if b.spent > limit else
+                f"{b.category} has reached its {_money(limit)} budget with {days_left} days left."
+            )
         elif b.status == "ahead_of_pace" and early:
             kind = PACE
             body = f"{b.category} is ahead of pace: {_money(b.spent)} of {_money(limit)} with {days_left} days left."

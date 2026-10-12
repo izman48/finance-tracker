@@ -147,3 +147,12 @@ def test_dismiss_is_web_only(client, db_session, w):
     r = client.post(f"{API}/budgets/nudges/{nudge['id'].removeprefix('budget-')}/dismiss",
                     headers=_bearer(tokens["access_token"]))
     assert r.status_code == 401
+
+
+def test_exactly_at_the_limit_says_reached_not_over(w):
+    """Lead on #158: "kept" means at or under the limit, so spend equal to
+    the limit is never called "over"."""
+    w.create("Shopping", 120)  # exactly 120 spent
+    [nudge] = _nudges(w)
+    assert nudge["body"] == f"Shopping has reached its £120 budget with {w.get().json()['cycle']['days_left']} days left."
+    assert "over" not in nudge["body"]

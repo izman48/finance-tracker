@@ -1,27 +1,106 @@
 name: Test
 
 # Runs on every PR, and is called by deploy.yml so main is gated on the exact
-# same checks.
+# same checks. On a PR, jobs whose files didn't change are skipped (T-08-26);
+# called from a deploy, every job always runs.
 on:
   pull_request:
   workflow_call:
 
+# The compose test images are built here under these names (ci-test,
+# ci-mcp-test), so `docker compose run` uses the cached build.
+env:
+  COMPOSE_PROJECT_NAME: ci
+
 jobs:
-  api:
+  # What a PR touched. Off a PR (a deploy), the filter steps don't run and
+  # every output reads true. A change to CI itself runs everything. The
+  # filter diffs with git against the PR's base (token: ''), so the job
+  # needs only contents: read, which deploy.yml can always grant.
+  changes:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      api: ${{ github.event_name != 'pull_request' || steps.filter.outputs.api == 'true' }}
+      mcp: ${{ github.event_name != 'pull_request' || steps.filter.outputs.mcp == 'true' }}
+      ui: ${{ github.event_name != 'pull_request' || steps.filter.outputs.ui == 'true' }}
+      deploy: ${{ github.event_name != 'pull_request' || steps.filter.outputs.deploy == 'true' }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-      - name: Run API tests
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 0
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          token: ''
+          base: ${{ github.event.pull_request.base.sha }}
+          filters: |
+            api:
+              - '.github/**'
+              - 'docker-compose.yml'
+              - 'api/*'
+              - 'api/app/**'
+              - 'api/migrations/**'
+              - 'api/tests/**'
+            mcp:
+              - '.github/**'
+              - 'docker-compose.yml'
+              - 'api/mcp/**'
+            ui:
+              - '.github/**'
+              - 'ui/**'
+              - 'deploy/ui.Dockerfile'
+            deploy:
+              - '.github/**'
+              - 'deploy/**'
+
+  api:
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build the API test image (layers cached between runs)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: api
+          load: true
+          tags: ci-test
+          cache-from: type=gha,scope=api-test
+          cache-to: type=gha,mode=max,scope=api-test
+      - name: Run API tests (in parallel, one in-memory database per worker)
         run: docker compose --profile test run --rm test
 
   mcp:
+    needs: changes
+    if: needs.changes.outputs.mcp == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build the MCP test image (layers cached between runs)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: api/mcp
+          target: test
+          load: true
+          tags: ci-mcp-test
+          cache-from: type=gha,scope=mcp-test
+          cache-to: type=gha,mode=max,scope=mcp-test
       - name: Run MCP server tests
-        run: docker compose --profile test run --rm --build mcp-test
+        run: docker compose --profile test run --rm mcp-test
 
   caddy:
+    needs: changes
+    if: needs.changes.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
@@ -29,6 +108,8 @@ jobs:
         run: ./deploy/test-caddy.sh
 
   deploy-scripts:
+    needs: changes
+    if: needs.changes.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
@@ -41,6 +122,8 @@ jobs:
   # node:24 (Debian), not node:24-alpine like the Dockerfiles: JavaScript
   # actions such as actions/checkout don't run in Alpine job containers.
   ui:
+    needs: changes
+    if: needs.changes.outputs.ui == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -64,6 +147,8 @@ jobs:
   # The production UI image (deploy/ui.Dockerfile) is built here too, so a
   # broken image shows on the PR, not on the next deploy.
   ui-image:
+    needs: changes
+    if: needs.changes.outputs.ui == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -82,3 +167,20 @@ jobs:
         run: python3 .github/scripts/test_audit_gate.py
       - name: Actions pinned to SHAs; the audit can't fail silently
         run: python3 .github/scripts/check_workflows.py .github/workflows
+
+  # One status for the whole run (T-08-26). It passes when every job
+  # passed or, on a PR only, was skipped because its files didn't change.
+  # Off a PR, a skipped job fails it: a deploy runs everything.
+  required:
+    if: always()
+    needs: [changes, api, mcp, caddy, deploy-scripts, ui, ui-image, workflows]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Every job passed, or was skipped on a PR as unaffected
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          echo "$NEEDS" | jq -e 'to_entries | all(.value.result == "success"
+            or (.value.result == "skipped" and env.EVENT == "pull_request"))'

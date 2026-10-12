@@ -301,11 +301,12 @@ def test_dry_run_must_be_a_real_boolean():
 
 # --- the existing web write routes stay web-only ---------------------------------
 
+# Fixed unknown ids: pytest-xdist needs the same test ids in every worker (T-08-26).
 WEB_ONLY_WRITES = [
-    ("patch", f"/api/v1/analytics/commitments/{uuid.uuid4()}", {"amount": "1"}),
+    ("patch", "/api/v1/analytics/commitments/00000000-0000-4000-8000-000000000002", {"amount": "1"}),
     ("post", "/api/v1/analytics/commitments", {"direction": "expense", "label": "x", "amount": "1", "next_date": "2026-11-01"}),
     ("post", "/api/v1/analytics/planned-items", {"name": "x", "kind": "one_off", "start_date": "2026-11-01", "amount": "1"}),
-    ("delete", f"/api/v1/analytics/planned-items/{uuid.uuid4()}", None),
+    ("delete", "/api/v1/analytics/planned-items/00000000-0000-4000-8000-000000000003", None),
 ]
 
 

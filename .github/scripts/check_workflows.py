@@ -7,6 +7,10 @@
   shrugs off a failure (`continue-on-error`), runs npm audit (dev included)
   through npm_audit_gate.py and pip-audit, and both read the documented
   ignores in .github/audit-ignore.txt.
+- test.yml gates every deploy (T-08-26): it can be called (workflow_call);
+  a PR may skip jobs whose files didn't change, but off a PR everything
+  runs (the path filter only runs on pull_request and each output defaults
+  to true); and a `required` job with `if: always()` needs every other job.
 Line-based on purpose (no YAML library to install); tested by
 test_check_workflows.py, which plants each mistake and expects it caught.
 """
@@ -57,8 +61,59 @@ def check(directory: pathlib.Path) -> list[str]:
     return problems
 
 
+def check_test_workflow(path: pathlib.Path) -> list[str]:
+    if not path.exists():
+        return []
+    lines = [re.sub(r"\s+#.*$|^\s*#.*$", "", line) for line in path.read_text().splitlines()]
+    text = "\n".join(lines)
+    problems = []
+    if not re.search(r"^\s*workflow_call:", text, re.M):
+        problems.append("test.yml: no workflow_call trigger (deploy.yml runs it)")
+    for n, line in enumerate(lines):
+        if "dorny/paths-filter@" in line:
+            step = _step(lines, n)
+            if not any(re.match(r"^\s*if:\s*github\.event_name == 'pull_request'\s*$", s) for s in step):
+                problems.append(f"test.yml:{n + 1}: the path filter must run only on pull_request")
+        if "steps.filter.outputs." in line and "github.event_name != 'pull_request' ||" not in line:
+            problems.append(f"test.yml:{n + 1}: a filter output must be true off a PR")
+    jobs = re.findall(r"^  ([\w-]+):\s*$", text.split("\njobs:", 1)[-1], re.M)
+    if "required" not in jobs:
+        return problems + ["test.yml: no `required` job summarising every job"]
+    block = _job(lines, "required")
+    if not any(re.match(r"^\s*if:\s*always\(\)\s*$", s) for s in block):
+        problems.append("test.yml: the required job must run with if: always()")
+    needs = re.search(r"needs:\s*\[([^\]]*)\]", "\n".join(block))
+    listed = {n.strip() for n in needs.group(1).split(",")} if needs else set()
+    for job in sorted(set(jobs) - {"required"} - listed):
+        problems.append(f"test.yml: the required job doesn't need `{job}`")
+    return problems
+
+
+def _step(lines: list[str], n: int) -> list[str]:
+    """The lines of the step containing line n (from its `- ` to the next)."""
+    start = n
+    while start > 0 and not re.match(r"^\s*-\s", lines[start]):
+        start -= 1
+    indent = len(lines[start]) - len(lines[start].lstrip())
+    end = start + 1
+    while end < len(lines) and not (
+        lines[end].strip() and len(lines[end]) - len(lines[end].lstrip()) <= indent
+    ):
+        end += 1
+    return [lines[start].replace("-", " ", 1)] + lines[start + 1:end]
+
+
+def _job(lines: list[str], name: str) -> list[str]:
+    start = next(i for i, line in enumerate(lines) if re.match(rf"^  {re.escape(name)}:\s*$", line))
+    end = start + 1
+    while end < len(lines) and not re.match(r"^  \S", lines[end]):
+        end += 1
+    return lines[start + 1:end]
+
+
 def main() -> int:
-    problems = check(pathlib.Path(sys.argv[1]))
+    directory = pathlib.Path(sys.argv[1])
+    problems = check(directory) + check_test_workflow(directory / "test.yml")
     for p in problems:
         print(p)
     if problems:

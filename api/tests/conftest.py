@@ -19,6 +19,21 @@ from app.core import user_crypto
 from app.core.database import Base, get_db
 from app.core.rate_limit import auth_rate_limiter, user_rate_limiter
 from app.main import app
+from app.core import security
+from passlib.context import CryptContext
+
+# Cheaper key stretching, in tests only (T-08-26). Most tests register and log
+# in, and bcrypt (12 rounds) plus Argon2id (64 MiB, 3 passes) took about half
+# of the suite's time. The same code runs, with the same algorithms, at a
+# lower cost. The production parameters are recorded here and pinned by
+# tests/unit/test_kdf_cost.py, so this can't hide a change to them.
+PRODUCTION_KDF = {
+    "argon2": (user_crypto._ARGON2_TIME_COST, user_crypto._ARGON2_MEMORY_COST, user_crypto._ARGON2_PARALLELISM),
+    "pwd_context": security.pwd_context,
+}
+user_crypto._ARGON2_TIME_COST = 1
+user_crypto._ARGON2_MEMORY_COST = 8 * 1024  # KiB
+security.pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=4)
 
 
 # In-memory SQLite for tests

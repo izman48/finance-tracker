@@ -111,3 +111,21 @@ def test_another_users_spending_is_never_counted(client, db_session):
     a.seed()
     b = World(client, db_session, email="b@example.com")
     assert b.spend().by_category == {} and sum(b.spend().excluded.values()) == 0
+
+
+def test_a_purchase_moved_to_a_payment_plan_is_reported_not_counted(client, db_session):
+    """eng-a on #149: counted through its instalments, so named in `excluded`."""
+    from app.models import PlannedItem
+
+    w = World(client, db_session)
+
+    def make():
+        current = _account(w.db, w.user.id, name="Current", balance="2000")
+        tx = _tx(w.db, current, "600.00", TODAY - timedelta(days=1), merchant="Laptop shop", category="Shopping")
+        w.db.add(PlannedItem(user_id=w.user.id, name="Laptop plan", direction="expense", kind="plan",
+                             start_date=TODAY, amount=Decimal("100"), source_transaction_id=tx.id))
+        w.db.commit()
+    w.as_user(make)
+    spend = w.spend()
+    assert "Shopping" not in spend.by_category
+    assert spend.excluded["financed"] == Decimal("600.00")

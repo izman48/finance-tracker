@@ -3,14 +3,17 @@ sections 2 and 15.3).
 
 Budget tracking, History and the Cashflow projection all read spend from
 `budget_spend`, so they can never disagree (three-sources rule). It is the
-Spending screen's purchases lens with commitments excluded: card purchases
+Spending screen's purchases lens with commitments excluded (the same
+`classify_purchase` predicate): card purchases
 and cash purchases, by category, inside one cycle. Excluded, and reported
 with their amounts so the budget screen reconciles to the transactions:
 
 - `commitments`: spending matching a confirmed commitment (already inside
   safe-to-spend);
 - `transfers`: money moved between the user's own accounts;
-- `card_payoffs`: paying a card off (its purchases counted when made).
+- `card_payoffs`: paying a card off (its purchases counted when made);
+- `financed`: a purchase moved to a payment plan (counted through its
+  instalments, which are planned items).
 
 Income and refunds are never netted (fail safe: refunds never turn spending
 into less spending). Transactions are the caller's own, read at request time
@@ -25,13 +28,15 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from app.models import Account, AccountRole, Transaction
-from app.services.analytics.commitments import commitment_match_keys, transaction_match_key
+from app.models import Account, Transaction
+from app.services.analytics.commitments import commitment_match_keys
 from app.services.analytics.common import _d, _load, resolve_roles
-from app.services.analytics.spending import _effective_transfers, _is_card_repayment, financed_transaction_ids
+from app.services.analytics.spending import _effective_transfers, classify_purchase, financed_transaction_ids
 
 UNCATEGORISED = "Uncategorized"
-COUNTED_ROLES = (AccountRole.SPENDING, AccountRole.CREDIT)
+# classify_purchase's reasons, as reported in `excluded`.
+EXCLUDED = {"commitment": "commitments", "transfer": "transfers", "card_payoff": "card_payoffs",
+            "financed": "financed"}
 
 
 @dataclass(frozen=True)
@@ -59,21 +64,11 @@ def budget_spend(db: Session, user, start: date, end: date) -> BudgetSpend:
     commitment_keys = commitment_match_keys(db, user)
 
     by_category: dict[str, Decimal] = defaultdict(Decimal)
-    excluded = {"commitments": Decimal(0), "transfers": Decimal(0), "card_payoffs": Decimal(0)}
+    excluded = {name: Decimal(0) for name in EXCLUDED.values()}
     for tx in txns:
-        if tx.transaction_type != "debit" or roles.get(tx.account_id) not in COUNTED_ROLES:
-            continue  # income, refunds, savings and excluded accounts never count
-        if tx.id in financed:
-            continue  # on a payment plan: counted through its instalments
-        amount = _d(tx.amount)
-        # A card payoff is also an internal transfer (its two legs pair up),
-        # so it's checked first to be named as what it is.
-        if _is_card_repayment(tx, roles):
-            excluded["card_payoffs"] += amount
-        elif tx.id in transfers:
-            excluded["transfers"] += amount
-        elif transaction_match_key(tx) in commitment_keys:
-            excluded["commitments"] += amount
-        else:
-            by_category[tx.category or UNCATEGORISED] += amount
+        kind = classify_purchase(tx, transfers, roles, financed, commitment_keys)
+        if kind in ("credit", "cash"):
+            by_category[tx.category or UNCATEGORISED] += _d(tx.amount)
+        elif kind is not None:
+            excluded[EXCLUDED[kind]] += _d(tx.amount)
     return BudgetSpend(by_category=dict(by_category), excluded=excluded)

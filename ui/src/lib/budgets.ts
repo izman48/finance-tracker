@@ -186,3 +186,46 @@ export function checkRows(rows: SuggestRow[]): { errors: Record<string, string>;
   const bad = Object.keys(errors).length > 0
   return { errors, budgets: bad ? [] : budgets, nothingTicked: ticked.length === 0 }
 }
+
+// --- Manage budgets (concept section 13; T-09-7) -----------------------------------
+
+export function manageSubtitle(cycle: BudgetCycle): string {
+  return `Pay cycle ${dateDayMonth(cycle.start)} to ${dateDayMonth(cycle.end)}. Changes apply to this cycle and the ones after.`
+}
+
+/** "Claude changed 2 budgets on 12 Oct", or null when Claude changed none. */
+export function claudeFooter(budgets: Budget[]): string | null {
+  const marks = budgets.map((b) => b.changed_by_claude).filter((m): m is ClaudeMarker => !!m)
+  if (marks.length === 0) return null
+  const latest = marks.map((m) => m.at).sort()[marks.length - 1]
+  return `Claude changed ${plural(marks.length, 'budget')} on ${dateDayMonth(latest)}`
+}
+
+/** Categories Add budget can offer: the user's own, without a budget (paused included). */
+export function addOptions(categories: string[], budgets: Budget[]): string[] {
+  const taken = new Set(budgets.map((b) => b.category))
+  return categories.filter((c) => c && c !== 'Uncategorized' && !taken.has(c)).sort((a, b) => a.localeCompare(b))
+}
+
+export const SAVE_ERROR = "Couldn't save your budgets. Nothing was changed. Try again."
+export const SAVE_UNKNOWN = "Couldn't confirm that. Your budgets may have been saved; check them before you try again."
+// The API's fixed words for a duplicate; matched to pick our copy, never shown.
+const API_DUPLICATE = 'That category already has a budget.'
+
+/** The message for a failed budget write: the spec's copy, chosen by status (and, for a 422, the API's fixed words). */
+export function writeFailure(err: unknown, category: string): string {
+  const response = (err as { response?: { status?: number; data?: { detail?: unknown } } } | null)?.response
+  if (response?.status === undefined) return SAVE_UNKNOWN
+  if (response.status === 422 && response.data?.detail === API_DUPLICATE) return `You already have a budget for ${category}.`
+  return SAVE_ERROR
+}
+
+/**
+ * Where focus goes after a Manage write, so it never falls to `body` when the
+ * focused control unmounts (BM19): the row's Edit button after an edit,
+ * + Add budget after an add or a remove, or the sheet itself if Add is off.
+ */
+export function focusAfterWrite(kind: 'edit' | 'add' | 'remove', id: string | null, canAdd: boolean): string {
+  if (kind === 'edit') return `[data-focus="edit-${id}"]`
+  return canAdd ? '[data-focus="add"]' : '[role="dialog"]'
+}

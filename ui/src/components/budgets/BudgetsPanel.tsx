@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import BudgetsView from './BudgetsView'
 import SuggestSheet, { type SuggestSheetProps } from './SuggestSheet'
+import ManageSheet from './ManageSheet'
 import { useToast } from '../ui/Toast'
-import { budgetsAPI, syncStatusAPI } from '../../services/api'
+import { bankingAPI, budgetsAPI, syncStatusAPI } from '../../services/api'
 import { failureFromError, type UndoFailure } from '../../lib/changes'
 import { withTimeout } from '../../lib/forecastLoad'
-import type { BudgetEntry, BudgetsResponse } from '../../lib/budgets'
+import { writeFailure, type Budget, type BudgetEntry, type BudgetsResponse } from '../../lib/budgets'
 
 /** A request that hasn't answered by then is shown as an error (or an unknown outcome for a save). */
 const TIMEOUT_MS = 10_000
@@ -20,6 +21,9 @@ export default function BudgetsPanel({ onOpenCategory }: { onOpenCategory: (cate
   const [suggest, setSuggest] = useState<SuggestSheetProps['load'] | null>(null)
   const [saving, setSaving] = useState(false)
   const [failure, setFailure] = useState<UndoFailure | null>(null)
+  const [managing, setManaging] = useState(false)
+  const [categories, setCategories] = useState<string[]>([])
+  const [manageMessage, setManageMessage] = useState<string | null>(null)
   const mounted = useRef(true)
   const toast = useToast()
 
@@ -95,8 +99,46 @@ export default function BudgetsPanel({ onOpenCategory }: { onOpenCategory: (cate
     }
   }
 
+  const openManage = () => {
+    setManageMessage(null)
+    setManaging(true)
+    bankingAPI
+      .getTransactionFacets()
+      .then((res) => mounted.current && setCategories(res.data.categories))
+      .catch(() => {}) // Add budget just offers nothing new
+  }
+
+  /** One Manage write: the API, then the server's list, then the toast. Never optimistic. */
+  const write = async (category: string, request: () => Promise<unknown>) => {
+    setManageMessage(null)
+    try {
+      await withTimeout(request(), TIMEOUT_MS)
+    } catch (err) {
+      if (!mounted.current) throw err
+      const message = writeFailure(err, category)
+      setManageMessage(message)
+      // No answer: it may have been saved, so show the server's state (BM11).
+      await fetchBudgets()
+      throw err
+    }
+    await fetchBudgets()
+    if (mounted.current) toast('Budgets saved.')
+  }
+
   return (
     <>
+      {managing && load.data && (
+        <ManageSheet
+          data={load.data}
+          categories={categories}
+          message={manageMessage}
+          onClose={() => setManaging(false)}
+          onAdd={(category, limit) => write(category, () => budgetsAPI.create({ category, limit_pounds: limit }))}
+          onSaveLimit={(b: Budget, limit) => write(b.category, () => budgetsAPI.update(b.id, { limit_pounds: limit }))}
+          onTogglePause={(b: Budget) => write(b.category, () => budgetsAPI.update(b.id, { paused: !b.paused }))}
+          onRemove={(b: Budget) => write(b.category, () => budgetsAPI.remove(b.id))}
+        />
+      )}
       <BudgetsView
         status={load.status}
         data={load.data}
@@ -104,6 +146,7 @@ export default function BudgetsPanel({ onOpenCategory }: { onOpenCategory: (cate
         retrying={retrying}
         onRetry={retry}
         onSuggest={openSuggest}
+        onManage={openManage}
         onOpenCategory={onOpenCategory}
       />
       {suggest && (

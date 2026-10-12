@@ -1,6 +1,5 @@
 import { ReactNode, useState } from 'react'
-import { Lightbulb } from 'lucide-react'
-import InfoTip from './ui/InfoTip'
+import NudgeRow from './NudgeRow'
 import { budgetsAPI } from '../services/api'
 import { budgetNudgeId } from '../lib/budgets'
 
@@ -23,6 +22,7 @@ export default function NudgeFeed({ nudges }: { nudges: UiNudge[] }) {
   const [dismissedAt, setDismissedAt] = useState(0) // bump to re-read localStorage
   void dismissedAt
   const [serverDismissed, setServerDismissed] = useState<Set<string>>(new Set())
+  const [failed, setFailed] = useState<Set<string>>(new Set())
 
   const visible = nudges
     .filter((n) => !serverDismissed.has(n.id) && localStorage.getItem(key(n.id)) !== '1')
@@ -33,11 +33,13 @@ export default function NudgeFeed({ nudges }: { nudges: UiNudge[] }) {
   const dismiss = (id: string) => {
     const budgetId = budgetNudgeId(id)
     if (budgetId) {
-      // Hidden once the server has it; on a failure it simply stays.
+      // Hidden once the server has it; on a failure it stays and says so.
+      const mark = (on: boolean) => setFailed((s) => { const next = new Set(s); if (on) next.add(id); else next.delete(id); return next })
+      mark(false)
       budgetsAPI
         .dismissNudge(budgetId)
         .then(() => setServerDismissed((s) => new Set(s).add(id)))
-        .catch(() => {})
+        .catch(() => mark(true))
       return
     }
     localStorage.setItem(key(id), '1')
@@ -47,27 +49,7 @@ export default function NudgeFeed({ nudges }: { nudges: UiNudge[] }) {
   return (
     <div className="mb-6 space-y-3" data-reveal>
       {visible.map((n) => (
-        <div key={n.id} className="card px-4 py-3 flex flex-wrap items-center gap-3">
-          <Lightbulb className="w-4 h-4 text-accent shrink-0" />
-          <span className="flex-1 min-w-0 text-sm text-slate-300">
-            {n.body}
-            {n.detail && (
-              <span className="ml-1.5 inline-flex align-middle">
-                <InfoTip text={n.detail} side="bottom" align="left" />
-              </span>
-            )}
-          </span>
-          <span className="flex gap-2 shrink-0">
-            {n.cta && (
-              <button onClick={n.cta.onClick} disabled={n.cta.disabled} className="btn-ghost !py-1.5 !text-accent">
-                {n.cta.label}
-              </button>
-            )}
-            <button onClick={() => dismiss(n.id)} className="btn-ghost !py-1.5">
-              Dismiss
-            </button>
-          </span>
-        </div>
+        <NudgeRow key={n.id} nudge={n} dismissFailed={failed.has(n.id)} onDismiss={() => dismiss(n.id)} />
       ))}
     </div>
   )

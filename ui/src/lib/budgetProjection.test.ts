@@ -3,6 +3,7 @@ import {
   differenceSentence,
   dipSentence,
   projectionNote,
+  projectionUnavailable,
   stripFigures,
   stripTitle,
   withBudgetLine,
@@ -62,6 +63,14 @@ describe('projectionNote (BC2, BC3)', () => {
     expect(projectionNote(null, undefined)).toBeNull()
     expect(projectionNote(null, 'no_payday')).toBe('Set your payday on Commitments to see how your budgets affect your balance.')
     expect(projectionNote(projection(), null)).toBeNull()
+  })
+})
+
+describe('projectionUnavailable (BC8)', () => {
+  it('our own line when the server could not compute it; nothing otherwise', () => {
+    expect(projectionUnavailable('unavailable')).toBe("Couldn't load your budget line.")
+    for (const r of ['no_budgets', 'no_payday', null, undefined] as const) expect(projectionUnavailable(r)).toBeNull()
+    expect(projectionNote(null, 'unavailable')).toBeNull()
   })
 })
 

@@ -57,8 +57,15 @@ def list_budgets(
     include: Literal["categories"] | None = None,
 ) -> BudgetListResponse:
     """`?include=categories` adds budgetable_categories (for Add budget).
-    Writes any missing closed-cycle snapshots first (T-09-3)."""
-    budget_history.write_snapshots(db, current_user)
+    Writes any missing closed-cycle snapshots first (T-09-3). If that fails
+    the budgets still load, and the next load retries."""
+    user_id = current_user.id
+    try:
+        budget_history.write_snapshots(db, current_user)
+    except Exception as exc:
+        db.rollback()  # the list below needs a clean transaction
+        # The type only: a message could carry a category or an amount.
+        logger.error("Budget snapshots not written for user %s (%s)", user_id, type(exc).__name__)
     return svc.budget_list(db, current_user, include_categories=include == "categories")
 
 

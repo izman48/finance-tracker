@@ -378,9 +378,12 @@ def test_income_and_transfer_categories_cant_have_a_budget(w):
     assert w.create("Eating out", 100).status_code == 201
 
 
-def test_get_budgets_lists_the_budgetable_categories(w):
+def test_get_budgets_lists_the_budgetable_categories_on_request(w):
+    """Only with ?include=categories: it reads a year of transactions."""
     _income_and_transfers(w)
-    categories = w.get().json()["budgetable_categories"]
+    assert w.get().json()["budgetable_categories"] is None
+    r = w.client.get(f"{API}/budgets", params={"include": "categories"}, headers=_bearer(w.web))
+    categories = r.json()["budgetable_categories"]
     assert {"Eating out", "Groceries", "Shopping"} <= set(categories)
     assert not {"Income", "Savings", "Rent", "Uncategorized"} & set(categories)
     assert categories == sorted(categories)
@@ -389,3 +392,8 @@ def test_get_budgets_lists_the_budgetable_categories(w):
 def test_suggest_never_offers_income(w):
     _income_and_transfers(w)
     assert "Income" not in {s["category"] for s in w.suggest().json()["suggestions"]}
+
+
+def test_an_unknown_include_is_refused(w):
+    r = w.client.get(f"{API}/budgets", params={"include": "everything"}, headers=_bearer(w.web))
+    assert r.status_code == 422

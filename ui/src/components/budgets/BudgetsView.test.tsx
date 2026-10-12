@@ -29,9 +29,10 @@ describe('BudgetsView', () => {
     expect(h).toMatch(/<button[^>]*>Try again<\/button>/)
   })
 
-  it('no budgets: the setup card with Suggest budgets', () => {
+  it('no budgets: the setup card with Suggest budgets and the reassurance line', () => {
     const h = html({ data: budgetsResponse({ budgets: [] }) })
     expect(text(h)).toContain('Set a limit for the things you want to keep an eye on.')
+    expect(text(h)).toContain('Budgets follow your pay cycle and never change your safe to spend.')
     expect(h).toMatch(/<button[^>]*class="btn-primary[^"]*"[^>]*>Suggest budgets<\/button>/)
   })
 
@@ -111,6 +112,23 @@ describe('BudgetsView', () => {
 
   it('without the budget projection yet, the line says it can\'t compare', () => {
     expect(text(html({ data: budgetsResponse({ reconciliation: null }) }))).toContain("Budgets can't be compared to safe to spend until a payday is set.")
+  })
+
+  it('all paused: not the setup card; says they are paused and shows Everything else', () => {
+    const data = budgetsResponse({ budgets: [budget({ paused: true, status: null })], reconciliation: null })
+    const t = text(html({ data }))
+    expect(t).not.toContain('Set a limit for the things you want to keep an eye on.')
+    expect(t).toContain('All your budgets are paused. Their spending counts under Everything else.')
+    expect(t).toContain('Everything else £392 no budget')
+  })
+
+  it('each bar has its own category colour, in list order', () => {
+    const fills = [...html({}).matchAll(/data-fill[^>]*style="width:[^;]*;background-color:(#[0-9A-Fa-f]{6})"/g)].map((m) => m[1])
+    expect(fills).toEqual(['#2DD4A7', '#38BDF8', '#A78BFA'])
+  })
+
+  it('the Budgets heading can take focus (BM18: after the first save)', () => {
+    expect(html({})).toMatch(/<h2[^>]*id="budgets-heading"[^>]*tabindex="-1"/)
   })
 
   it('a paused budget leaves the tracking list (its spending is in Everything else)', () => {

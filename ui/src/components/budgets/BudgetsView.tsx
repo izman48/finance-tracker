@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import ClaudeMarker from '../changes/ClaudeMarker'
+import { categoryColor } from '../../lib/categoryColors'
 import { dateDayMonth } from '../../lib/format'
 import {
   cycleLabel,
@@ -64,12 +65,13 @@ export default function BudgetsView(props: BudgetsViewProps) {
   }
 
   const tracked = data.budgets.filter((b) => !b.paused)
-  if (tracked.length === 0) {
+  if (data.budgets.length === 0) {
     return (
       <div className="card card-pad text-center py-8">
         <h2 className="font-display font-semibold text-lg text-slate-100">
           Set a limit for the things you want to keep an eye on.
         </h2>
+        <p className="text-sm text-slate-400 mt-2">Budgets follow your pay cycle and never change your safe to spend.</p>
         <button type="button" className="btn-primary mt-4 min-h-[44px] sm:min-h-0" onClick={onSuggest}>
           Suggest budgets
         </button>
@@ -88,14 +90,19 @@ export default function BudgetsView(props: BudgetsViewProps) {
       ))}
       <div className="grid grid-cols-1 lg:grid-cols-[1.35fr_1fr] gap-4 lg:gap-5 items-start">
         <div className="card card-pad">
-          <h2 className="font-display font-semibold text-slate-100">Budgets</h2>
+          <h2 id="budgets-heading" tabIndex={-1} className="font-display font-semibold text-slate-100 outline-none">
+            Budgets
+          </h2>
           <p className="text-xs text-slate-400 mt-1 mb-5">
             Measuring purchases. <span className="text-slate-300">Not counted here:</span> commitments, transfers, card
             payoffs.
           </p>
           <ul className="space-y-5">
-            {tracked.map((b) => (
-              <BudgetRow key={b.id} budget={b} daysLeft={data.cycle.days_left} onOpen={onOpenCategory} />
+            {tracked.length === 0 && (
+              <li className="text-sm text-slate-400">All your budgets are paused. Their spending counts under Everything else.</li>
+            )}
+            {tracked.map((b, i) => (
+              <BudgetRow key={b.id} budget={b} color={categoryColor(i)} daysLeft={data.cycle.days_left} onOpen={onOpenCategory} />
             ))}
             <li>
               <div className="flex justify-between gap-3 text-sm">
@@ -116,7 +123,7 @@ export default function BudgetsView(props: BudgetsViewProps) {
   )
 }
 
-function BudgetRow({ budget: b, daysLeft, onOpen }: { budget: Budget; daysLeft: number; onOpen: (c: string) => void }) {
+function BudgetRow({ budget: b, color, daysLeft, onOpen }: { budget: Budget; color: string; daysLeft: number; onOpen: (c: string) => void }) {
   const spent = Number(b.spent)
   const over = b.status === 'over'
   const fill = b.limit_pounds > 0 ? Math.min(spent / b.limit_pounds, 1) * 100 : 0
@@ -147,7 +154,7 @@ function BudgetRow({ budget: b, daysLeft, onOpen }: { budget: Budget; daysLeft: 
         aria-label={meterLabel(b, daysLeft)}
         className="relative h-2 rounded-full bg-white/[0.06]"
       >
-        <div className="h-2 rounded-full bg-accent motion-safe:transition-[width]" style={{ width: `${fill}%` }} />
+        <div data-fill className="h-2 rounded-full motion-safe:transition-[width]" style={{ width: `${fill}%`, backgroundColor: color }} />
         <span
           data-pace
           aria-hidden="true"

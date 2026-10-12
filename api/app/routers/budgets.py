@@ -5,11 +5,11 @@ user's id is a 404. Log lines carry ids only, never a category or a limit.
 """
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -17,6 +17,7 @@ from app.core.database import get_db
 from app.core.security import CurrentUser
 from app.models import Budget
 from app.schemas.budgets import (
+    BudgetHistoryResponse,
     BudgetListResponse,
     BudgetResponse,
     BudgetSuggestResponse,
@@ -24,6 +25,7 @@ from app.schemas.budgets import (
     CreateBudgetRequest,
     UpdateBudgetRequest,
 )
+from app.services import budget_history
 from app.services import budgets as svc
 
 logger = logging.getLogger(__name__)
@@ -54,8 +56,21 @@ def list_budgets(
     current_user: CurrentUser, db: Annotated[Session, Depends(get_db)],
     include: Literal["categories"] | None = None,
 ) -> BudgetListResponse:
-    """`?include=categories` adds budgetable_categories (for Add budget)."""
+    """`?include=categories` adds budgetable_categories (for Add budget).
+    Writes any missing closed-cycle snapshots first (T-09-3)."""
+    budget_history.write_snapshots(db, current_user)
     return svc.budget_list(db, current_user, include_categories=include == "categories")
+
+
+@router.get("/history", response_model=BudgetHistoryResponse)
+def budget_history_view(
+    current_user: CurrentUser, db: Annotated[Session, Depends(get_db)],
+    cycles: Annotated[int, Query(ge=1, le=budget_history.HISTORY_MAX_CYCLES)] = 6,
+    before: date | None = None,
+) -> BudgetHistoryResponse:
+    """Completed cycles (oldest first), at most 12, ending before `before`
+    for older pages. Writes missing snapshots, once each, with your key."""
+    return BudgetHistoryResponse(**budget_history.history(db, current_user, cycles, before))
 
 
 @router.post("", response_model=BudgetResponse, status_code=status.HTTP_201_CREATED)
@@ -70,6 +85,7 @@ def create_budget(
     svc.check_cap(len(existing) + 1)
     budget = Budget(user_id=current_user.id, category=body.category, limit_pounds=Decimal(body.limit_pounds))
     db.add(budget)
+    budget_history.record_change(db, budget)
     _commit(db)
     logger.info("Budget %s created for user %s", budget.id, current_user.id)
     return _one(db, current_user, budget.id)
@@ -89,6 +105,7 @@ def update_budget(
         else:
             budget.held_from, budget.held_remaining = None, None
         budget.paused = body.paused
+    budget_history.record_change(db, budget)
     db.commit()
     return _one(db, current_user, budget.id)
 
@@ -101,6 +118,7 @@ def remove_budget(
     if not budget.paused:
         _hold(db, current_user, budget)
     budget.active = False  # kept for History
+    budget_history.record_change(db, budget)
     db.commit()
     logger.info("Budget %s removed for user %s", budget.id, current_user.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -123,10 +141,13 @@ def set_budgets(
     new = [e for e in body.budgets if e.category not in existing]
     svc.check_cap(len(existing) + len(new))
     for entry in body.budgets:
-        if entry.category in existing:
-            existing[entry.category].limit_pounds = Decimal(entry.limit_pounds)
+        budget = existing.get(entry.category)
+        if budget is not None:
+            budget.limit_pounds = Decimal(entry.limit_pounds)
         else:
-            db.add(Budget(user_id=current_user.id, category=entry.category, limit_pounds=Decimal(entry.limit_pounds)))
+            budget = Budget(user_id=current_user.id, category=entry.category, limit_pounds=Decimal(entry.limit_pounds))
+            db.add(budget)
+        budget_history.record_change(db, budget)
     _commit(db)
     return svc.budget_list(db, current_user)
 

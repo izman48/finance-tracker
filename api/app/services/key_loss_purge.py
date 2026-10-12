@@ -27,6 +27,8 @@ from app.models import (
     AuditEntry,
     BankConnection,
     Budget,
+    BudgetChange,
+    BudgetCycleSnapshot,
     BudgetNudge,
     CategoryRule,
     CommitmentRule,
@@ -43,6 +45,8 @@ from app.models import (
 _OWNED_BY_USER = (
     WriteIdempotency,
     BudgetNudge,
+    BudgetCycleSnapshot,
+    BudgetChange,
     Budget,
     AuditEntry,
     CategoryRule,

@@ -157,6 +157,59 @@ class CycleFigure(BaseModel):
     spent: Decimal
 
 
+class HistoryCycle(BaseModel):
+    """One completed cycle overall. on_target: total budgeted spend at or
+    under the total of the limits in force at its close; null if every
+    budget was paused (not counted)."""
+
+    start: date
+    end: date
+    total_limit: Decimal
+    total_spent: Decimal
+    on_target: bool | None
+
+
+class HistorySlot(BaseModel):
+    """One budget in one cycle. existed=false: an empty slot (BH4).
+    paused: a "Paused" slot, not counted (BH5). kept: spend at or under the
+    limit in force at the cycle's close (BH2, BH3)."""
+
+    start: date
+    end: date
+    existed: bool
+    paused: bool
+    limit_pounds: int | None
+    spent: Decimal | None
+    kept: bool | None
+
+
+class HistoryBudget(BaseModel):
+    budget_id: uuid.UUID
+    category: str
+    kept: int        # k in "Kept k of n"
+    counted: int     # n: cycles it existed in and wasn't paused
+    usually: Decimal | None  # mean final spend over the counted cycles
+    cycles: list[HistorySlot]
+
+
+class HistoryTrend(BaseModel):
+    """Latest 3 completed cycles against the 3 before (6 or more needed)."""
+
+    difference: Decimal
+    direction: Literal["lower", "higher", "same"]
+
+
+class BudgetHistoryResponse(BaseModel):
+    """GET /budgets/history: completed cycles only, oldest first."""
+
+    cycles: list[HistoryCycle]
+    budgets: list[HistoryBudget]
+    on_target: int   # k in "On target in k of the last n cycles"
+    counted: int     # n
+    trend: HistoryTrend | None
+    has_more: bool   # older cycles exist (Show more cycles, up to 12)
+
+
 class BudgetSuggestion(BaseModel):
     """One category's proposal. `suggested_limit` is the median of the last 3
     complete cycles rounded up to £10, or null with `reason`

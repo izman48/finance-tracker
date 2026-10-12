@@ -128,7 +128,8 @@ def test_no_budgets_no_reconciliation(w):
 def test_the_limit_is_encrypted_at_rest(w):
     w.create("Eating out", 150)
     raw = w.db.execute(text("SELECT limit_pounds FROM budgets")).scalar()
-    assert "150" not in str(raw)
+    from tests.integration.test_budget_history import _not_a_number
+    assert _not_a_number(raw)  # ciphertext (a substring check flakes on base64 digits)
 
 
 # --- validation (sec: untrusted category, bounds) ---------------------------------

@@ -27,6 +27,8 @@ from app.models import (
     AuditEntry,
     BankConnection,
     Budget,
+    BudgetChange,
+    BudgetCycleSnapshot,
     CategoryRule,
     CommitmentRule,
     OAuthClient,
@@ -59,7 +61,7 @@ BYSTANDER = "bystander@example.com"
 ENCRYPTED_TYPES = (UserEncryptedString, UserEncryptedDecimal, UserEncryptedToken)
 KNOWN_ENCRYPTED_TABLES = {
     "accounts", "asset_flows", "asset_valuations", "assets", "audit_entries",
-    "bank_connections", "budgets", "category_rules", "commitment_rules", "planned_items",
+    "bank_connections", "budget_changes", "budget_cycle_snapshots", "budgets", "category_rules", "commitment_rules", "planned_items",
     "repayment_schedule_items", "transactions",
 }
 
@@ -153,6 +155,15 @@ def _seed_everything(db, user_id, dek) -> None:
                 amount=Decimal("600"), account_id=account.id, source_transaction_id=tx.id,
             ),
             WriteIdempotency(user_id=user_id, key="k-1", request_hash="h", audit_id=audit.id),
+        ])
+        db.flush()
+        budget = db.query(Budget).filter(Budget.user_id == user_id).one()
+        db.add_all([
+            BudgetChange(user_id=user_id, budget_id=budget.id, effective_at=datetime(2026, 9, 1, tzinfo=timezone.utc),
+                         limit_pounds=Decimal("300"), paused=False, active=True),
+            BudgetCycleSnapshot(user_id=user_id, budget_id=budget.id, cycle_start=date(2026, 9, 1),
+                                cycle_end=date(2026, 9, 30), limit_pounds=Decimal("300"), spent=Decimal("250"),
+                                paused=False),
         ])
         db.commit()
     finally:

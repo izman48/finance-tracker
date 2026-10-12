@@ -14,16 +14,13 @@ or removing keeps the category counting this cycle (sec's max rule), and
 a pause or resume that changes nothing is a 422.
 """
 import uuid
-from decimal import Decimal
 
 import pytest
 from sqlalchemy import func, select, text
 
 from app.models import AuditEntry, Budget, BudgetChange
 from tests.integration.test_budgets_api import API, World as BudgetsWorld
-from tests.clock import TODAY
 from tests.integration.test_oauth import READ, _bearer, _connect
-from tests.integration.test_transactions_endpoint import _tx
 
 BUDGETS_WRITE = "finance:budgets.write"
 PLANNING = "finance:planning.write"
@@ -184,16 +181,39 @@ def test_remove(w):
     assert w.get().json()["budgets"] == []
 
 
-def test_claudes_pause_and_remove_never_raise_the_figures(w):
-    """sec: the T-09-4 max rule covers Claude's pause and remove too."""
-    budget_id = w.create("Eating out", 300).json()["id"]
-    w.create("Groceries", 400)
-    headroom = Decimal(w.get().json()["reconciliation"]["headroom"])
+def _left(w):
+    return w.get().json()["summary_this_cycle"]["left"]
+
+
+def test_claudes_pause_and_remove_take_the_budget_out_of_the_line(w):
+    """T-09-14: paused and removed budgets don't count (sec)."""
+    budget_id = w.create("Eating out", 300).json()["id"]  # 40 spent: 260 left
+    w.create("Groceries", 400)                             # 80 spent: 320 left
+    assert _left(w) == "580.00"
     w.claude("pause", budget_id, dry_run=False)
-    assert Decimal(w.get().json()["reconciliation"]["headroom"]) <= headroom
+    assert _left(w) == "320.00"
     w.claude("resume", budget_id, dry_run=False)
     w.claude("remove", budget_id, dry_run=False)
-    assert Decimal(w.get().json()["reconciliation"]["headroom"]) <= headroom
+    assert _left(w) == "320.00"
+
+
+@pytest.mark.parametrize("action, effect", [
+    ("pause", "Eating out: Active → Paused. It no longer counts in the budget line."),
+    ("remove", "Eating out: Removed. It no longer counts in the budget line; it stays in History."),
+])
+def test_the_preview_says_the_effect(w, action, effect):
+    """sec on T-09-14: an honest preview."""
+    budget_id = w.create("Eating out", 300).json()["id"]
+    r = w.claude(action, budget_id)
+    assert r.status_code == 200, r.text
+    assert r.json()["effect"] == effect
+
+
+def test_the_resume_preview_says_the_effect(w):
+    budget_id = w.create("Eating out", 300).json()["id"]
+    w.patch(budget_id, paused=True)
+    assert w.claude("resume", budget_id).json()["effect"] == (
+        "Eating out: Paused → Active. It counts in the budget line again.")
 
 
 def test_another_users_budget_is_not_found_and_nothing_is_audited(client, db_session, w):
@@ -275,50 +295,26 @@ def test_every_claude_write_and_its_undo_records_the_change_log(w, action):
 
 
 
-# --- undo keeps the max rule (sec and eng-a on #162) ---------------------------------------
+# --- undo puts the line back as it was ----------------------------------------------------
 
-def _spend(w, amount, category="Eating out"):
-    def make():
-        _tx(w.db, w.current, amount, TODAY, merchant="Shop again", category=category)
-        w.db.commit()
-    w.as_user(make)
-
-
-def _headroom(w):
-    return Decimal(w.get().json()["reconciliation"]["headroom"])
-
-
-def test_undoing_claudes_resume_brings_back_the_same_hold(w):
+def test_undoing_claudes_resume_takes_the_budget_out_of_the_line_again(w):
     budget_id = w.create("Eating out", 300).json()["id"]
     w.create("Groceries", 400)
     w.patch(budget_id, paused=True)
-    before = _headroom(w)
+    before = _left(w)
     audit_id = w.claude("resume", budget_id, dry_run=False).json()["audit_id"]
+    assert _left(w) != before
     assert w.undo(audit_id).status_code == 200
     assert _limits(w)["Eating out"] == (300, True)
-    assert _headroom(w) == before
+    assert _left(w) == before
 
 
-def test_spending_between_the_pause_and_the_undo_doesnt_raise_headroom(w):
+def test_undoing_claudes_remove_puts_the_budget_back_in_the_line(w):
     budget_id = w.create("Eating out", 300).json()["id"]
-    w.create("Groceries", 400)
-    w.patch(budget_id, paused=True)
-    _spend(w, "100.00")
-    before = _headroom(w)
-    audit_id = w.claude("resume", budget_id, dry_run=False).json()["audit_id"]
-    assert w.undo(audit_id).status_code == 200
-    assert _headroom(w) == before
-
-
-def test_removing_again_after_an_undone_removal_keeps_the_first_hold(w):
-    budget_id = w.create("Eating out", 300).json()["id"]
-    w.create("Groceries", 400)
+    before = _left(w)
     audit_id = w.claude("remove", budget_id, dry_run=False).json()["audit_id"]
-    _spend(w, "100.00")
-    before = _headroom(w)
-    assert w.undo(audit_id).status_code == 200  # re-activated
-    assert w.claude("remove", budget_id, dry_run=False).status_code == 200
-    assert _headroom(w) == before
+    assert w.undo(audit_id).status_code == 200
+    assert _left(w) == before
 
 
 def test_an_unchanged_entry_in_a_set_writes_no_audit_or_change_row(w):

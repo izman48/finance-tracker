@@ -68,21 +68,6 @@ class NotCounted(BaseModel):
     financed: Decimal
 
 
-class Reconciliation(BaseModel):
-    """The one line under the list: safe_to_spend - budgets_left -
-    other_at_pace = headroom. All from this response, so the line can't
-    disagree with itself; T-09-4's payday strip uses the same computation.
-    safe_to_spend is the summary's figure, unchanged by budgets."""
-
-    safe_to_spend: Decimal
-    # Sum over active budgets of max(0, limit - spent). Paused or removed
-    # this cycle count at max(remaining limit at pause, spend at pace) (T-09-4).
-    budgets_left: Decimal
-    # Other spending projected to the end of the cycle at its pace so far.
-    other_at_pace: Decimal
-    headroom: Decimal
-
-
 class FirstOver(BaseModel):
     category: str
     over_by: Decimal
@@ -94,6 +79,19 @@ class BudgetSummary(BaseModel):
     budget_count: int        # active, unpaused budgets (paused ones leave the Home line, BM7)
     on_pace_count: int       # of those, under or on pace
     first_over: FirstOver | None  # the budget most over (ties by category)
+
+
+class CycleSummary(BaseModel):
+    """ux 12a, the Spending box: "Your budgets: £890 this cycle. Spent £631,
+    £259 left." Over active, unpaused budgets; `left` is each budget's
+    max(0, limit - spent) summed, the same number the Cashflow dotted line
+    takes off this cycle (T-09-14). The browser computes none of it."""
+
+    total_limit: Decimal
+    spent: Decimal
+    left: Decimal
+    first_over: FirstOver | None
+    paused_count: int
 
 
 class BudgetListResponse(BaseModel):
@@ -108,8 +106,9 @@ class BudgetListResponse(BaseModel):
     total_spent: Decimal
     not_counted: NotCounted
     summary: BudgetSummary
-    # Null when there's no active budget (the UI shows the empty state).
-    reconciliation: Reconciliation | None = None
+    # Null when there's no budget (the UI shows the empty state); present,
+    # with paused_count, when every budget is paused.
+    summary_this_cycle: CycleSummary | None = None
     # The categories a new budget can use: those on the user's purchases in
     # the last year, less those mostly commitments. Sorted. Text only. Only
     # with GET /budgets?include=categories (it reads a year of transactions);

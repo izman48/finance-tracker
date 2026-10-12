@@ -8,8 +8,8 @@ Sprint 08 framework: dry_run by default, idempotency, an encrypted audit row
 `active` change (`TARGETS["budget"]`). A budget is addressed by its id,
 never by its category (untrusted text). Each change also appends to the
 budget change log, as the app's own writes do (T-09-3). A limit Claude
-lowers applies at once (D6). Pausing or removing holds the category for the
-rest of the cycle (sec's max rule), as in the app.
+lowers applies at once (D6). A paused or removed budget leaves the budget
+line (T-09-14), and the pause, resume and remove previews say so (sec).
 """
 import uuid
 from decimal import Decimal
@@ -63,7 +63,8 @@ def set_budgets(body: ClaudeSetBudgetsRequest, caller: BudgetsWriter, db: Annota
     return run_batch(db, caller, reqs, body, batch_id=uuid.uuid4())
 
 
-def _action(budget_id: uuid.UUID, tool: str, body: ClaudeBudgetActionRequest, caller, db: Session, change) -> dict:
+def _action(budget_id: uuid.UUID, tool: str, body: ClaudeBudgetActionRequest, caller, db: Session, change,
+            effect: str) -> dict:
     budget = svc.owned_budget(db, caller.user, budget_id)  # another user's, or removed: 404
     change(budget, check=True)
 
@@ -74,7 +75,9 @@ def _action(budget_id: uuid.UUID, tool: str, body: ClaudeBudgetActionRequest, ca
         return target
 
     req = WriteRequest(tool=tool, target_kind="budget", target_id=budget_id, apply=apply)
-    return run_write(db, caller, req, body)
+    result = run_write(db, caller, req, body)
+    # An honest preview (sec on T-09-14): what the change does to the line.
+    return {**result, "effect": f"{budget.category}: {effect}"}
 
 
 def _refuse(detail: str) -> HTTPException:
@@ -84,42 +87,39 @@ def _refuse(detail: str) -> HTTPException:
 @router.post("/{budget_id}/pause")
 def pause_budget(budget_id: uuid.UUID, body: ClaudeBudgetActionRequest, caller: BudgetsWriter,
                  db: Annotated[Session, Depends(get_db)]) -> dict:
-    """Pause: its spending counts as other spending, and for the rest of this
-    cycle the category keeps counting at max(remaining limit, pace). Already
-    paused: 422."""
+    """Pause: its spending counts as other spending and it leaves the budget
+    line. Already paused: 422."""
     def change(budget: Budget, check: bool) -> None:
         if check:
             if budget.paused:
                 raise _refuse("That budget is already paused.")
             return
         budget.paused = True
-        svc.hold(db, caller.user, budget)
-    return _action(budget_id, "pause_budget", body, caller, db, change)
+    return _action(budget_id, "pause_budget", body, caller, db, change,
+                   "Active → Paused. It no longer counts in the budget line.")
 
 
 @router.post("/{budget_id}/resume")
 def resume_budget(budget_id: uuid.UUID, body: ClaudeBudgetActionRequest, caller: BudgetsWriter,
                   db: Annotated[Session, Depends(get_db)]) -> dict:
-    """Resume a paused budget. Not paused: 422. The hold stays, so undoing
-    the resume brings it back (sec on #162)."""
+    """Resume a paused budget. Not paused: 422."""
     def change(budget: Budget, check: bool) -> None:
         if check:
             if not budget.paused:
                 raise _refuse("That budget isn't paused.")
             return
-        budget.paused = False  # keeps the hold, for an undo (svc.hold)
-    return _action(budget_id, "resume_budget", body, caller, db, change)
+        budget.paused = False
+    return _action(budget_id, "resume_budget", body, caller, db, change,
+                   "Paused → Active. It counts in the budget line again.")
 
 
 @router.post("/{budget_id}/remove")
 def remove_budget(budget_id: uuid.UUID, body: ClaudeBudgetActionRequest, caller: BudgetsWriter,
                   db: Annotated[Session, Depends(get_db)]) -> dict:
-    """Remove (soft): kept for History; the category keeps counting for the
-    rest of this cycle (sec's max rule)."""
+    """Remove (soft): kept for History; it leaves the budget line."""
     def change(budget: Budget, check: bool) -> None:
         if check:
             return
-        if not budget.paused:
-            svc.hold(db, caller.user, budget)
         budget.active = False
-    return _action(budget_id, "remove_budget", body, caller, db, change)
+    return _action(budget_id, "remove_budget", body, caller, db, change,
+                   "Removed. It no longer counts in the budget line; it stays in History.")

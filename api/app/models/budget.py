@@ -40,10 +40,9 @@ class Budget(Base):
     paused: Mapped[bool] = mapped_column(Boolean, default=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_via: Mapped[str] = mapped_column(String(10), default=CREATED_VIA_WEB)
-    # Set when the budget is paused or removed: the remaining limit then. For
-    # the rest of that cycle the category counts at max(this, spend at pace),
-    # so pausing or removing never raises the budget figures (sec, T-09-4).
-    # Cleared on resume. Money, so encrypted.
+    # T-09-4's pause hold. Neither written nor read since T-09-14 (paused and
+    # removed budgets leave the budget line); kept, and still purged, until
+    # their own migration drops them (sec). Money, so encrypted.
     held_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     held_remaining: Mapped[Decimal | None] = mapped_column(UserEncryptedDecimal, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

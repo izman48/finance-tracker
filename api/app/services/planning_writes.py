@@ -57,9 +57,6 @@ class TargetSpec:
     # What a write may change and the diff shows, each with the parser that
     # turns its audited (JSON) form back into a column value for undo.
     fields: dict[str, Callable[[Any], Any]]
-    # Columns the server derives from an allow-listed change, never from the
-    # request (a budget's pause hold, T-09-4): the column guard lets them move.
-    derived: frozenset[str] = frozenset()
 
     @property
     def names(self) -> tuple[str, ...]:
@@ -83,11 +80,7 @@ TARGETS: dict[str, TargetSpec] = {
         "source": str, "match_key": str,
     }),
     # Claude's budget writes (T-09-5): the limit, pause and remove only (sec).
-    # The pause hold (held_from, held_remaining) follows a pause or remove,
-    # server-side, for sec's max rule.
-    "budget": TargetSpec(Budget, "category", {
-        "limit_pounds": Decimal, "paused": bool, "active": bool,
-    }, derived=frozenset({"held_from", "held_remaining"})),
+    "budget": TargetSpec(Budget, "category", {"limit_pounds": Decimal, "paused": bool, "active": bool}),
 }
 
 
@@ -234,7 +227,7 @@ def _change(db: Session, caller: Caller, spec: TargetSpec, req: WriteRequest):
     if req.target_id is not None:
         moved = {
             k for k, v in _all_columns(target).items()
-            if v != columns_before[k] and k not in spec.fields and k not in spec.derived
+            if v != columns_before[k] and k not in spec.fields
             and k not in _BOOKKEEPING_COLUMNS
         }
         if moved:

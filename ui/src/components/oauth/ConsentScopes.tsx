@@ -7,13 +7,18 @@ export const PLANNING_DESCRIPTION =
 export const SYNC_DESCRIPTION =
   "Ask nilu. to fetch new data from your connected banks. It can't connect, reconnect or disconnect a bank. Limited to once every 10 minutes, shared with the app."
 
+export const BUDGETS_DESCRIPTION =
+  "Set, change, pause, resume or remove your budgets. It's asked to show you a preview before each change. Changes take effect at once, and every one is listed under Changes made by Claude, where you can undo it. Budgets never change your safe to spend."
+
 type Props = {
   allowRules: boolean
   allowPlanning: boolean
   allowSync: boolean
+  allowBudgets: boolean
   onRulesChange: (allowed: boolean) => void
   onPlanningChange: (allowed: boolean) => void
   onSyncChange: (allowed: boolean) => void
+  onBudgetsChange: (allowed: boolean) => void
 }
 
 /** The permissions an MCP client asks for on the consent screen. Read is always granted. */
@@ -21,9 +26,11 @@ export default function ConsentScopes({
   allowRules,
   allowPlanning,
   allowSync,
+  allowBudgets,
   onRulesChange,
   onPlanningChange,
   onSyncChange,
+  onBudgetsChange,
 }: Props) {
   return (
     <ul className="space-y-3">
@@ -86,6 +93,25 @@ export default function ConsentScopes({
               Refresh your bank data
             </span>
             <span id="allow-sync-desc" className="block text-xs text-slate-400">{SYNC_DESCRIPTION}</span>
+          </span>
+        </label>
+      </li>
+      <li>
+        <label htmlFor="allow-budgets" className="flex gap-3 cursor-pointer">
+          <input
+            id="allow-budgets"
+            type="checkbox"
+            checked={allowBudgets}
+            onChange={(e) => onBudgetsChange(e.target.checked)}
+            aria-labelledby="allow-budgets-title"
+            aria-describedby="allow-budgets-desc"
+            className="mt-1 shrink-0 accent-accent"
+          />
+          <span className="min-w-0">
+            <span id="allow-budgets-title" className="block text-sm text-slate-100">
+              Set and manage your budgets
+            </span>
+            <span id="allow-budgets-desc" className="block text-xs text-slate-400">{BUDGETS_DESCRIPTION}</span>
           </span>
         </label>
       </li>

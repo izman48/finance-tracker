@@ -1,20 +1,22 @@
 import { describe, it, expect } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
-import ConsentScopes, { PLANNING_DESCRIPTION, RULES_DESCRIPTION, SYNC_DESCRIPTION } from './ConsentScopes'
+import ConsentScopes, { BUDGETS_DESCRIPTION, PLANNING_DESCRIPTION, RULES_DESCRIPTION, SYNC_DESCRIPTION } from './ConsentScopes'
 
-// docs/design/nilu-s08-claude-changes.md (HQ) section 5, K1, K3, K4.
+// docs/design/nilu-s08-claude-changes.md (HQ) section 5, K1, K3, K4, K9, K11.
 
 const noop = () => {}
 
-function render(allowRules = true, allowPlanning = false, allowSync = false) {
+function render(allowRules = true, allowPlanning = false, allowSync = false, allowBudgets = false) {
   return renderToStaticMarkup(
     <ConsentScopes
       allowRules={allowRules}
       allowPlanning={allowPlanning}
       allowSync={allowSync}
+      allowBudgets={allowBudgets}
       onRulesChange={noop}
       onPlanningChange={noop}
       onSyncChange={noop}
+      onBudgetsChange={noop}
     />,
   )
 }
@@ -94,5 +96,32 @@ describe('ConsentScopes', () => {
     expect(described).toBe(SYNC_DESCRIPTION)
     expect(SYNC_DESCRIPTION).toContain('once every 10 minutes')
     expect(SYNC_DESCRIPTION).not.toContain('a day')
+  })
+
+  it('K9: the budgets box exists, is unchecked and enabled by default, after the bank refresh box', () => {
+    const html = render()
+    const budgets = input(html, 'allow-budgets')
+    expect(budgets).not.toBe('')
+    expect(budgets).not.toMatch(/checked/)
+    expect(budgets).not.toMatch(/disabled/)
+    expect(html.indexOf('Set and manage your budgets')).toBeGreaterThan(html.indexOf('Refresh your bank data'))
+  })
+
+  it('reflects the ticked budgets state', () => {
+    expect(input(render(true, false, false, true), 'allow-budgets')).toMatch(/checked/)
+  })
+
+  it('K11: the budgets copy is exact, linked by aria-describedby, and the name is its title', () => {
+    const html = render()
+    expect(BUDGETS_DESCRIPTION).toBe(
+      "Set, change, pause, resume or remove your budgets. It's asked to show you a preview before each change. Changes take effect at once, and every one is listed under Changes made by Claude, where you can undo it. Budgets never change your safe to spend.",
+    )
+    expect(html).toMatch(/<label[^>]*for="allow-budgets"[^>]*>/)
+    const box = input(html, 'allow-budgets')
+    const described = box.match(/aria-describedby="([^"]+)"/)?.[1]
+    const named = box.match(/aria-labelledby="([^"]+)"/)?.[1]
+    const text = (id?: string) => (html.match(new RegExp(`id="${id}"[^>]*>([^<]*)<`))?.[1] ?? '').replace(/&#x27;/g, "'")
+    expect(text(described)).toBe(BUDGETS_DESCRIPTION)
+    expect(text(named)).toBe('Set and manage your budgets')
   })
 })

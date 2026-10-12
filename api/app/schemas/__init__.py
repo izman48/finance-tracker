@@ -790,6 +790,30 @@ class ForecastResponse(BaseModel):
     timeline: list[ForecastPoint]
     late_planned: list[LatePlanned] = []
     late_income: list[LateIncomeItem] = []
+    # Budgets on Cashflow (T-09-4): null with no budget counting this cycle
+    # or no payday. Never changes anything above.
+    budget_projection: "BudgetProjection | None" = None
+
+
+class BudgetLinePoint(BaseModel):
+    date: date
+    balance: Decimal
+
+
+class BudgetProjection(BaseModel):
+    """The payday strip and the dotted line (budgets concept section 12).
+    All to `payday`; balances are on the day before it, before the pay."""
+
+    payday: date
+    scheduled_balance: Decimal         # the solid line: bills and plans only
+    stick_to_budgets_balance: Decimal  # less remaining budgets and other spending at pace
+    current_pace_balance: Decimal      # less all spending at the pace so far
+    # ux BC4/BC12: the reconciliation line's headroom (safe to spend less the
+    # same deductions) and stick_to_budgets_balance - headroom, so the UI
+    # never computes either; they differ when money lands before payday.
+    headroom: Decimal
+    difference: Decimal
+    series: list[BudgetLinePoint]      # the dotted line, clipped to the chart's horizon
 
 
 class CategorySlice(BaseModel):
@@ -983,6 +1007,7 @@ class ClaudeMarker(BaseModel):
 
 
 PlannedItemResponse.model_rebuild()
+ForecastResponse.model_rebuild()
 CommitmentResponse.model_rebuild()
 
 PLANNED_EVENT_MAX_AMOUNT = Decimal("1000000")

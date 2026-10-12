@@ -5,10 +5,11 @@ user's id is a 404. Log lines carry ids only, never a category or a limit.
 """
 import logging
 import uuid
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -41,7 +42,11 @@ def _commit(db: Session) -> None:
 
 
 def _one(db: Session, user, budget_id: uuid.UUID) -> BudgetResponse:
-    return next(b for b in svc.budget_list(db, user).budgets if b.id == budget_id)
+    """The budget as GET /budgets shows it; 404 if it isn't there (sec)."""
+    found = next((b for b in svc.budget_list(db, user).budgets if b.id == budget_id), None)
+    if found is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Budget not found")
+    return found
 
 
 @router.get("", response_model=BudgetListResponse)
@@ -53,6 +58,7 @@ def list_budgets(current_user: CurrentUser, db: Annotated[Session, Depends(get_d
 def create_budget(
     body: CreateBudgetRequest, current_user: CurrentUser, db: Annotated[Session, Depends(get_db)],
 ) -> BudgetResponse:
+    svc.lock_user_budgets(db, current_user)
     svc.validate_categories(db, current_user, [body.category])
     existing = svc.active_budgets(db, current_user)
     if any(b.category == body.category for b in existing):
@@ -73,7 +79,11 @@ def update_budget(
     budget = svc.owned_budget(db, current_user, budget_id)
     if body.limit_pounds is not None:
         budget.limit_pounds = Decimal(body.limit_pounds)
-    if body.paused is not None:
+    if body.paused is not None and body.paused != budget.paused:
+        if body.paused:
+            _hold(db, current_user, budget)
+        else:
+            budget.held_from, budget.held_remaining = None, None
         budget.paused = body.paused
     db.commit()
     return _one(db, current_user, budget.id)
@@ -84,6 +94,8 @@ def remove_budget(
     budget_id: uuid.UUID, current_user: CurrentUser, db: Annotated[Session, Depends(get_db)],
 ) -> Response:
     budget = svc.owned_budget(db, current_user, budget_id)
+    if not budget.paused:
+        _hold(db, current_user, budget)
     budget.active = False  # kept for History
     db.commit()
     logger.info("Budget %s removed for user %s", budget.id, current_user.id)
@@ -96,10 +108,14 @@ def set_budgets(
 ) -> BudgetListResponse:
     """Create or update each listed category's budget, all or nothing: every
     entry is checked (categories, duplicates, the cap after the change)
-    before anything is written, then one commit writes them all."""
-    categories = [e.category for e in body.budgets]
-    svc.validate_categories(db, current_user, categories)
+    before anything is written, then one commit writes them all. A new
+    category must be the user's own and not mostly commitments; an existing
+    budget's limit can be changed even if its category has since become
+    mostly commitments. Budget writes are serialised per user (the user
+    row, FOR UPDATE), so the 20 cap holds under concurrency."""
+    svc.lock_user_budgets(db, current_user)
     existing = {b.category: b for b in svc.active_budgets(db, current_user)}
+    svc.validate_categories(db, current_user, [e.category for e in body.budgets], set(existing))
     new = [e for e in body.budgets if e.category not in existing]
     svc.check_cap(len(existing) + len(new))
     for entry in body.budgets:
@@ -109,6 +125,13 @@ def set_budgets(
             db.add(Budget(user_id=current_user.id, category=entry.category, limit_pounds=Decimal(entry.limit_pounds)))
     _commit(db)
     return svc.budget_list(db, current_user)
+
+
+def _hold(db: Session, user, budget: Budget) -> None:
+    """Paused or removed: for the rest of this cycle the category keeps
+    counting at max(the remaining limit now, its spend at pace) (sec, T-09-4)."""
+    budget.held_from = datetime.now(timezone.utc)
+    budget.held_remaining = svc.remaining_now(db, user, budget)
 
 
 @router.post("/suggest", response_model=BudgetSuggestResponse)

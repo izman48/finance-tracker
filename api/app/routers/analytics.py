@@ -147,8 +147,12 @@ def get_forecast(
     db: Annotated[Session, Depends(get_db)],
     horizon: str = "payday",
 ) -> ForecastResponse:
-    """Balance-over-time projection across the horizon (payday|month|30|60|90)."""
-    return ForecastResponse(**analytics_service.get_forecast(db, current_user, horizon))
+    """Balance-over-time projection across the horizon (payday|month|30|60|90).
+    `budget_projection` (T-09-4) is added alongside; nothing else changes."""
+    from app.services.budgets import budget_projection
+
+    forecast = analytics_service.get_forecast(db, current_user, horizon)
+    return ForecastResponse(**forecast, budget_projection=budget_projection(db, current_user, forecast))
 
 
 @router.get("/spending", response_model=SpendingResponse)

@@ -129,6 +129,10 @@
   .banner-err {
     @apply p-4 rounded-xl bg-neg/10 border border-neg/20 text-neg text-sm;
   }
+  /* Neutral information (e.g. "Nothing is saved until you press Save."). */
+  .banner-info {
+    @apply px-4 py-3 rounded-xl bg-sky2/10 border border-sky2/20 text-slate-200 text-sm;
+  }
 
   /* Decorative floating orbs (landing / auth) */
   .orb {

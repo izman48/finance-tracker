@@ -3,16 +3,24 @@ import { Link } from 'react-router-dom'
 import Sheet from '../ui/Sheet'
 import { useConfirm } from '../ui/ConfirmDialog'
 import ClaudeMarker from '../changes/ClaudeMarker'
+import { EditAllPanel, SuggestAgainPanel } from './ManageModes'
 import { categoryColor } from '../../lib/categoryColors'
 import {
   addOptions,
+  checkRows,
   claudeFooter,
+  editAllEntries,
+  editAllTotal,
   focusAfterWrite,
+  suggestDiff,
   limitError,
   manageSubtitle,
   money,
   type Budget,
+  type BudgetEntry,
   type BudgetsResponse,
+  type DiffRow,
+  type SuggestResponse,
 } from '../../lib/budgets'
 
 export type ManageSheetProps = {
@@ -27,7 +35,13 @@ export type ManageSheetProps = {
   onSaveLimit: (budget: Budget, limit: number) => Promise<void>
   onTogglePause: (budget: Budget) => Promise<void>
   onRemove: (budget: Budget) => Promise<void>
+  /** Edit all and Suggest again: one all-or-nothing PUT of these entries. */
+  onSaveAll: (entries: BudgetEntry[]) => Promise<void>
+  /** Suggest again: the dry proposal (writes nothing). */
+  onSuggest: () => Promise<SuggestResponse>
 }
+
+type SuggestLoad = { status: 'loading' } | { status: 'error' } | { status: 'ready'; diff: ReturnType<typeof suggestDiff> }
 
 const SMALL_BUTTON = 'btn-ghost !px-3 !py-1.5 text-sm min-h-[44px] sm:min-h-0'
 const LINK_BUTTON = 'btn-link text-xs min-h-[44px] sm:min-h-0'
@@ -38,12 +52,20 @@ const LINK_BUTTON = 'btn-link text-xs min-h-[44px] sm:min-h-0'
  * Nothing changes on screen until the API has answered (no optimism).
  */
 export default function ManageSheet(props: ManageSheetProps) {
-  const { data, categories, message, onClose, onAdd, onSaveLimit, onTogglePause, onRemove } = props
+  const { data, categories, message, onClose, onAdd, onSaveLimit, onTogglePause, onRemove, onSaveAll, onSuggest } = props
   const confirm = useConfirm()
   const [busy, setBusy] = useState<string | null>(null)
   const [editing, setEditing] = useState<{ id: string; value: string; error: string | null } | null>(null)
   const [adding, setAdding] = useState<{ category: string; value: string; error: string | null } | null>(null)
   const asking = useRef(false)
+  const [mode, setMode] = useState<'list' | 'editAll' | 'suggest'>('list')
+  const [values, setValues] = useState<Record<string, string>>({})
+  const [allErrors, setAllErrors] = useState<Record<string, string>>({})
+  const [announced, setAnnounced] = useState('')
+  const [suggest, setSuggest] = useState<SuggestLoad>({ status: 'loading' })
+  const [diffRows, setDiffRows] = useState<DiffRow[]>([])
+  const [suggestDirty, setSuggestDirty] = useState(false)
+  const [nothing, setNothing] = useState(false)
 
   const sheet = useRef<HTMLDivElement>(null)
 
@@ -77,14 +99,80 @@ export default function ManageSheet(props: ManageSheetProps) {
   const close = async () => {
     if (busy || asking.current) return
     const original = editing && data.budgets.find((b) => b.id === editing.id)
-    const dirty = (editing && original && editing.value !== String(original.limit_pounds)) || (adding && (adding.category || adding.value))
+    const editAllDirty = mode === 'editAll' && editAllEntries(data.budgets, values).budgets.length + Object.keys(editAllEntries(data.budgets, values).errors).length > 0
+    const dirty =
+      (editing && original && editing.value !== String(original.limit_pounds)) ||
+      (adding && (adding.category || adding.value)) ||
+      editAllDirty ||
+      (mode === 'suggest' && suggestDirty)
     if (dirty) {
       asking.current = true
       const discard = await confirm({ title: 'Discard your changes?', confirmLabel: 'Discard', cancelLabel: 'Keep editing' })
       asking.current = false
       if (!discard) return
     }
+    if (mode !== 'list') return backToList(mode === 'editAll' ? 'edit-all' : 'suggest-again')
     onClose()
+  }
+
+  const backToList = (focus: 'edit-all' | 'suggest-again') => {
+    setMode('list')
+    setAllErrors({})
+    setNothing(false)
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() =>
+        sheet.current?.closest('[role="dialog"]')?.querySelector<HTMLElement>(`[data-focus="${focus}"]`)?.focus(),
+      ),
+    )
+  }
+
+  const startEditAll = () => {
+    setValues({})
+    setAllErrors({})
+    setAnnounced(editAllTotal(data.budgets, {}))
+    setMode('editAll')
+  }
+
+  const saveAll = () => {
+    const checked = editAllEntries(data.budgets, values)
+    setAllErrors(checked.errors)
+    if (Object.keys(checked.errors).length) {
+      return requestAnimationFrame(() =>
+        sheet.current?.closest('[role="dialog"]')?.querySelector<HTMLInputElement>('input[aria-invalid="true"]')?.focus(),
+      )
+    }
+    if (checked.budgets.length === 0) return backToList('edit-all')
+    run('save-all', () => onSaveAll(checked.budgets), () => backToList('edit-all'))
+  }
+
+  const loadSuggest = async () => {
+    setSuggest({ status: 'loading' })
+    try {
+      const res = await onSuggest()
+      const diff = suggestDiff(res.suggestions, data.budgets)
+      setDiffRows(diff.rows)
+      setSuggest({ status: 'ready', diff })
+    } catch {
+      setSuggest({ status: 'error' })
+    }
+  }
+
+  const startSuggest = () => {
+    setSuggestDirty(false)
+    setNothing(false)
+    setAllErrors({})
+    setMode('suggest')
+    loadSuggest()
+  }
+
+  const saveSuggest = () => {
+    const checked = checkRows(diffRows)
+    setAllErrors(checked.errors)
+    setNothing(checked.nothingTicked)
+    const root = sheet.current?.closest('[role="dialog"]')
+    if (checked.nothingTicked) return requestAnimationFrame(() => root?.querySelector<HTMLElement>('input[type="checkbox"]')?.focus())
+    if (Object.keys(checked.errors).length) return requestAnimationFrame(() => root?.querySelector<HTMLElement>('input[aria-invalid="true"]')?.focus())
+    run('save-suggest', () => onSaveAll(checked.budgets), () => backToList('suggest-again'))
   }
 
   const saveEdit = (b: Budget) => {
@@ -122,9 +210,52 @@ export default function ManageSheet(props: ManageSheetProps) {
   const footer = claudeFooter(data.budgets)
 
   return (
-    <Sheet title="Manage budgets" onClose={close} wide>
+    <Sheet title={mode === 'editAll' ? 'Edit all budgets' : mode === 'suggest' ? 'Suggest budgets again' : 'Manage budgets'} onClose={close} wide>
       <p ref={sheet} className="text-xs text-slate-400 mb-3">{manageSubtitle(data.cycle)}</p>
+      {message && mode !== 'list' && (
+        <div role="alert" className="banner-err text-sm mb-2">
+          {message}
+        </div>
+      )}
+      {mode === 'editAll' && (
+        <EditAllPanel
+          budgets={data.budgets}
+          values={values}
+          errors={allErrors}
+          announced={announced}
+          saving={busy === 'save-all'}
+          onChange={(id, value) => setValues((v) => ({ ...v, [id]: value }))}
+          onBlur={() => setAnnounced(editAllTotal(data.budgets, values))}
+          onSave={saveAll}
+          onCancel={close}
+        />
+      )}
+      {mode === 'suggest' && (
+        <SuggestAgainPanel
+          load={suggest}
+          rows={diffRows}
+          errors={allErrors}
+          nothing={nothing}
+          saving={busy === 'save-suggest'}
+          onRow={(i, change) => {
+            setSuggestDirty(true)
+            setNothing(false)
+            setDiffRows((rows) => rows.map((r, j) => (j === i ? { ...r, ...change } : r)))
+          }}
+          onSave={saveSuggest}
+          onCancel={close}
+          onRetry={loadSuggest}
+        />
+      )}
+      {mode === 'list' && (
+      <>
       <div className="flex flex-wrap items-center gap-2 mb-2">
+        <button type="button" data-focus="suggest-again" className={SMALL_BUTTON} disabled={!!busy || !!adding || !!editing} onClick={startSuggest}>
+          Suggest again
+        </button>
+        <button type="button" data-focus="edit-all" className={SMALL_BUTTON} disabled={!!busy || !!adding || !!editing} onClick={startEditAll}>
+          Edit all
+        </button>
         <button
           type="button"
           data-focus="add"
@@ -272,6 +403,8 @@ export default function ManageSheet(props: ManageSheetProps) {
           Close
         </button>
       </div>
+      </>
+      )}
     </Sheet>
   )
 }

@@ -34,9 +34,15 @@ export interface HistorySlot {
   kept: boolean | null
 }
 
+/** One row per category (BH15): a removed and re-added category is one row. */
 export interface HistoryBudget {
+  /** The current budget, or the last one if the category was removed. */
   budget_id: string
   category: string
+  /** The current limit, or the last one if removed (BH15). */
+  limit_pounds?: number
+  /** No active budget for this category now: a "Removed" chip (BH15). */
+  removed?: boolean
   kept: number
   counted: number
   usually: Money | null
@@ -84,10 +90,10 @@ export function keptText(b: HistoryBudget): string {
   return b.counted === 0 ? 'Paused in these cycles' : `Kept ${b.kept} of ${b.counted}`
 }
 
-/** The limit in force at the latest cycle shown, and the server's "usually". */
+/** The server's current (or last) limit and its "usually". */
 export function budgetLimitText(b: HistoryBudget): string {
-  const latest = [...b.cycles].reverse().find((s) => s.existed && s.limit_pounds !== null)
-  const limit = latest ? `Limit ${money(latest.limit_pounds as number)}` : ''
+  const latest = b.limit_pounds ?? [...b.cycles].reverse().find((s) => s.existed && s.limit_pounds !== null)?.limit_pounds
+  const limit = latest != null ? `Limit ${money(latest)}` : ''
   return b.usually === null ? limit : `${limit} · usually ${money(b.usually)}`
 }
 

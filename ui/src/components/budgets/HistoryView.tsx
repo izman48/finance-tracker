@@ -108,22 +108,25 @@ export default function HistoryView(props: HistoryViewProps) {
         <p className="text-xs text-slate-400 mt-3">
           Dashed line = your limits. Outlined bar = went over. Each bar uses the limits that applied in that cycle.
         </p>
-        <table className="sr-only">
-          <caption>Your budgets in each completed pay cycle</caption>
-          <thead>
-            <tr><th scope="col">Cycle</th><th scope="col">Limit</th><th scope="col">Spent</th><th scope="col">Result</th></tr>
-          </thead>
-          <tbody>
-            {data.cycles.map((c) => (
-              <tr key={c.start}>
-                <th scope="row">{dateDayMonth(c.start)} to {dateDayMonth(c.end)}</th>
-                <td>{money(c.total_limit)}</td>
-                <td>{money(c.total_spent)}</td>
-                <td>{c.on_target === null ? 'Paused, not counted' : c.on_target ? 'Within' : 'Over'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {/* Wrapped: a table ignores sr-only's 1px width and would widen a 320px page. */}
+        <div className="sr-only">
+          <table>
+            <caption>Your budgets in each completed pay cycle</caption>
+            <thead>
+              <tr><th scope="col">Cycle</th><th scope="col">Limit</th><th scope="col">Spent</th><th scope="col">Result</th></tr>
+            </thead>
+            <tbody>
+              {data.cycles.map((c) => (
+                <tr key={c.start}>
+                  <th scope="row">{dateDayMonth(c.start)} to {dateDayMonth(c.end)}</th>
+                  <td>{money(c.total_limit)}</td>
+                  <td>{money(c.total_spent)}</td>
+                  <td>{c.on_target === null ? 'Paused, not counted' : c.on_target ? 'Within' : 'Over'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
         <div className="border-t border-white/[0.06] mt-4 pt-4 text-sm text-slate-300">
           <span className="chip-pos mr-2">Trend</span>
           {trendText(data.trend)}
@@ -139,6 +142,7 @@ export default function HistoryView(props: HistoryViewProps) {
                 <div className="flex items-center gap-2 min-w-0">
                   <span aria-hidden="true" className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: categoryColor(i) }} />
                   <span className="text-slate-200 font-medium truncate">{b.category}</span>
+                  {b.removed && <span className="chip shrink-0">Removed</span>}
                 </div>
                 <p className="text-xs text-slate-400 mt-0.5 ml-[18px]">{budgetLimitText(b)}</p>
               </div>

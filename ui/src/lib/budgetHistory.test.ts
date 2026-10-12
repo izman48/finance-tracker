@@ -85,6 +85,9 @@ describe('per budget (BH2, BH4, BH13)', () => {
     expect(budgetLimitText(b)).toBe('Limit £300 · usually £290.33')
     expect(budgetLimitText(budget({ usually: null }))).toBe('Limit £300')
   })
+  it('BH15: the row\'s own limit from the server when it sends one', () => {
+    expect(budgetLimitText(budget({ limit_pounds: 350, cycles: [slot({ limit_pounds: 300 })] }))).toBe('Limit £350 · usually £290.33')
+  })
 })
 
 describe('bar heights', () => {

@@ -2,18 +2,23 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import BudgetsView from './BudgetsView'
 import SuggestSheet, { type SuggestSheetProps } from './SuggestSheet'
 import ManageSheet from './ManageSheet'
+import BudgetsSegment, { type BudgetsPeriod } from './BudgetsSegment'
+import HistoryView from './HistoryView'
 import { useToast } from '../ui/Toast'
 import { budgetsAPI, syncStatusAPI } from '../../services/api'
 import { failureFromError, type UndoFailure } from '../../lib/changes'
 import { withTimeout } from '../../lib/forecastLoad'
 import { writeFailure, type Budget, type BudgetEntry, type BudgetsResponse } from '../../lib/budgets'
+import { HISTORY_MAX, HISTORY_PAGE, nowSpent, type HistoryResponse } from '../../lib/budgetHistory'
 
 /** A request that hasn't answered by then is shown as an error (or an unknown outcome for a save). */
 const TIMEOUT_MS = 10_000
 
 type Load = { status: 'loading' | 'error' | 'ready'; data: BudgetsResponse | null }
+type HistoryLoad = { status: 'loading' | 'error' | 'ready'; data: HistoryResponse | null }
 
-/** Spending > Budgets (T-09-6): loads the cycle, and runs the Suggest flow. */
+/** Spending > Budgets (T-09-6): loads the cycle, runs the Suggest flow, and
+ *  shows Past cycles (T-09-9), loaded the first time it's opened. */
 export default function BudgetsPanel({ onOpenCategory }: { onOpenCategory: (category: string) => void }) {
   const [load, setLoad] = useState<Load>({ status: 'loading', data: null })
   const [retrying, setRetrying] = useState(false)
@@ -24,6 +29,10 @@ export default function BudgetsPanel({ onOpenCategory }: { onOpenCategory: (cate
   const [managing, setManaging] = useState(false)
   const [categories, setCategories] = useState<string[]>([])
   const [manageMessage, setManageMessage] = useState<string | null>(null)
+  const [period, setPeriod] = useState<BudgetsPeriod>('cycle')
+  const [history, setHistory] = useState<HistoryLoad | null>(null)
+  const [historyRetrying, setHistoryRetrying] = useState(false)
+  const [more, setMore] = useState<'idle' | 'loading' | 'error'>('idle')
   const mounted = useRef(true)
   const toast = useToast()
 
@@ -55,6 +64,42 @@ export default function BudgetsPanel({ onOpenCategory }: { onOpenCategory: (cate
       mounted.current = false
     }
   }, [fetchBudgets])
+
+  const fetchHistory = async () => {
+    try {
+      const res = await withTimeout(budgetsAPI.history(HISTORY_PAGE), TIMEOUT_MS)
+      if (mounted.current) setHistory({ status: 'ready', data: res.data })
+    } catch {
+      if (mounted.current) setHistory({ status: 'error', data: null })
+    }
+  }
+
+  const choosePeriod = (next: BudgetsPeriod) => {
+    setPeriod(next)
+    if (next === 'past' && history === null) {
+      setHistory({ status: 'loading', data: null })
+      fetchHistory()
+    }
+  }
+
+  const retryHistory = async () => {
+    setHistoryRetrying(true)
+    await fetchHistory()
+    if (mounted.current) setHistoryRetrying(false)
+  }
+
+  /** BH10/BH14: the whole 12 again from the server, so every count stays its own. */
+  const showMoreCycles = async () => {
+    setMore('loading')
+    try {
+      const res = await withTimeout(budgetsAPI.history(HISTORY_MAX), TIMEOUT_MS)
+      if (!mounted.current) return
+      setHistory({ status: 'ready', data: res.data })
+      setMore('idle')
+    } catch {
+      if (mounted.current) setMore('error') // the loaded cycles stay
+    }
+  }
 
   const retry = async () => {
     setRetrying(true)
@@ -142,16 +187,29 @@ export default function BudgetsPanel({ onOpenCategory }: { onOpenCategory: (cate
           onSuggest={() => withTimeout(budgetsAPI.suggest(), TIMEOUT_MS).then((res) => res.data)}
         />
       )}
-      <BudgetsView
-        status={load.status}
-        data={load.data}
-        staleAccounts={stale}
-        retrying={retrying}
-        onRetry={retry}
-        onSuggest={openSuggest}
-        onManage={openManage}
-        onOpenCategory={onOpenCategory}
-      />
+      <BudgetsSegment value={period} onChange={choosePeriod} />
+      {period === 'past' ? (
+        <HistoryView
+          status={history?.status ?? 'loading'}
+          data={history?.data ?? null}
+          now={load.data ? { start: load.data.cycle.start, end: load.data.cycle.end, spent: nowSpent(load.data.budgets) } : null}
+          more={more}
+          retrying={historyRetrying}
+          onRetry={retryHistory}
+          onShowMore={showMoreCycles}
+        />
+      ) : (
+        <BudgetsView
+          status={load.status}
+          data={load.data}
+          staleAccounts={stale}
+          retrying={retrying}
+          onRetry={retry}
+          onSuggest={openSuggest}
+          onManage={openManage}
+          onOpenCategory={onOpenCategory}
+        />
+      )}
       {suggest && (
         <SuggestSheet
           load={suggest}

@@ -3,6 +3,7 @@ import { isAnonymized } from '../lib/anonymize'
 import { sampleResponse } from '../lib/sampleAccount'
 import type { AuditItem, AuditPage } from '../lib/changes'
 import type { BudgetEntry, BudgetsResponse, SuggestResponse } from '../lib/budgets'
+import type { HistoryResponse } from '../lib/budgetHistory'
 
 // Unset -> local dev default; empty string -> same-origin (production behind Caddy)
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
@@ -348,6 +349,8 @@ export const budgetsAPI = {
   remove: (id: string) => api.delete(`/budgets/${id}`),
   /** A budget nudge is dismissed on the server (it fires once per cycle; #158). */
   dismissNudge: (id: string) => api.post(`/budgets/nudges/${id}/dismiss`),
+  /** Completed cycles, oldest first; every count and verdict is the server's (T-09-9). */
+  history: (cycles: number) => api.get<HistoryResponse>('/budgets/history', { params: { cycles } }),
 }
 
 export interface SyncStatusConnection {

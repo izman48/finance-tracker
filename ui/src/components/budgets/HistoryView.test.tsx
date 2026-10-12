@@ -48,7 +48,7 @@ describe('HistoryView', () => {
 
   it('BH11: a visually hidden table is the full alternative', () => {
     const h = html()
-    expect(h).toMatch(/<table class="sr-only"/)
+    expect(h).toMatch(/<div class="sr-only"><table>/)
     expect(text(h)).toContain('5 Jul to 1 Aug £450 £480 Over')
   })
 
@@ -87,6 +87,11 @@ describe('HistoryView', () => {
     expect(t).toContain('Paused in these cycles')
     expect(t).not.toContain('Kept 0 of 0')
     expect(t).toContain('No cycles counted yet: your budgets were paused.')
+  })
+
+  it('BH15: a removed category gets a Removed chip; an active one does not', () => {
+    expect(text(html({ data: data({ budgets: [{ ...groceries, removed: true, limit_pounds: 300 }] }) }))).toMatch(/Groceries Removed/)
+    expect(text(html({ data: data({ budgets: [{ ...groceries, removed: false, limit_pounds: 300 }] }) }))).not.toContain('Removed')
   })
 
   it('BH12: a category with markup is text', () => {

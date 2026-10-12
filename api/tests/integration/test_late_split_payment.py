@@ -17,9 +17,9 @@ from app.models import CommitmentRule, Transaction
 from tests.integration.test_late_income import World as LateWorld
 from tests.integration.test_oauth import _bearer
 from tests.integration.test_transactions_endpoint import _tx
+from tests.clock import TODAY  # one day for the whole run (T-08-27)
 
 API = "/api/v1"
-TODAY = date.today()
 EXPECTED = TODAY - timedelta(days=5)
 ARRIVED = TODAY - timedelta(days=2)
 LABEL = "Payer X Parents and rent"

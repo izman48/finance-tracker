@@ -22,9 +22,9 @@ from app.services import analytics_service as svc
 from app.services.analytics.common import _add_months
 from tests.integration.test_oauth import READ, _bearer, _connect
 from tests.integration.test_transactions_endpoint import _account, _dek_from_token, _tx
+from tests.clock import TODAY  # one day for the whole run (T-08-27)
 
 API = "/api/v1"
-TODAY = date.today()
 KEY = "income:income a"
 
 

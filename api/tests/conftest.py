@@ -19,6 +19,18 @@ from app.core import user_crypto
 from app.core.database import Base, get_db
 from app.core.rate_limit import auth_rate_limiter, user_rate_limiter
 from app.main import app
+import sys as _sys
+
+from app.services.analytics import common as _common
+from tests.clock import TODAY as _RUN_TODAY
+
+# One "today" for the whole run (T-08-27): test modules build dates from
+# tests.clock.TODAY at import, so the app's `_today` returns that same day
+# wherever it was imported, even if the run crosses midnight UTC.
+_real_today = _common._today
+for _module in list(_sys.modules.values()):
+    if getattr(_module, "__name__", "").startswith("app.") and getattr(_module, "_today", None) is _real_today:
+        _module._today = lambda: _RUN_TODAY
 from app.core import security
 from passlib.context import CryptContext
 

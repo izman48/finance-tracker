@@ -2,6 +2,7 @@ import axios from 'axios'
 import { isAnonymized } from '../lib/anonymize'
 import { sampleResponse } from '../lib/sampleAccount'
 import type { AuditItem, AuditPage } from '../lib/changes'
+import type { BudgetEntry, BudgetsResponse, SuggestResponse } from '../lib/budgets'
 
 // Unset -> local dev default; empty string -> same-origin (production behind Caddy)
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
@@ -335,6 +336,25 @@ const listParams = (params: Record<string, unknown>) => {
 }
 
 // Banking endpoints
+// Budgets (T-09-2 / T-09-6). Web session; PUT upserts the listed categories, all or nothing.
+export const budgetsAPI = {
+  list: () => api.get<BudgetsResponse>('/budgets'),
+  suggest: () => api.post<SuggestResponse>('/budgets/suggest', {}),
+  saveAll: (budgets: BudgetEntry[]) => api.put<BudgetsResponse>('/budgets', { budgets }),
+}
+
+export interface SyncStatusConnection {
+  connection_id: string
+  provider: string
+  last_synced_at: string | null
+  consent: string
+  stale: boolean
+}
+
+export const syncStatusAPI = {
+  get: () => api.get<{ connections: SyncStatusConnection[] }>('/banking/sync-status'),
+}
+
 // "Changes made by Claude" (T-08-5). Web session only on the API side.
 export const auditAPI = {
   list: (cursor?: string) => api.get<AuditPage>('/audit', { params: cursor ? { cursor } : {} }),

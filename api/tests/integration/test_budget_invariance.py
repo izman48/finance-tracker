@@ -82,6 +82,12 @@ def _bulk_and_suggest(w, client, token):
     client.post(f"{API}/budgets/suggest", json={}, headers=_bearer(token))
 
 
+def _history_loaded(w, client, token):
+    """Loading History writes snapshots (T-09-3): still nothing moves."""
+    _create(client, token, "Eating out", 150)
+    client.get(f"{API}/budgets/history", headers=_bearer(token))
+
+
 # T-09-5 adds "budgets changed by Claude".
 SCENARIOS = {
     "budget spend computed": _spend_computed,
@@ -90,6 +96,7 @@ SCENARIOS = {
     "a removed budget": _removed,
     "an over-limit budget": _over_limit,
     "bulk set and suggest": _bulk_and_suggest,
+    "history loaded": _history_loaded,
 }
 
 

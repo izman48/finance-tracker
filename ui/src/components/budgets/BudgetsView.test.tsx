@@ -81,6 +81,8 @@ describe('BudgetsView', () => {
     const h = html({ data })
     expect(text(h)).toContain('£890 this cycle. Spent £631, £259 left. Eating out is £12 over.')
     expect(text(h)).toContain("2 paused budgets aren't counted.")
+    // ux on #169: the paused line comes after the bills line
+    expect(text(h).indexOf("2 paused budgets aren't counted.")).toBeGreaterThan(text(h).indexOf('Budgets are for your day-to-day spending.'))
     expect(h.slice(h.indexOf('id="budgets-box"'))).not.toMatch(/text-neg|text-warn/)
   })
 

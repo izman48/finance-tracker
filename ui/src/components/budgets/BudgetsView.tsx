@@ -192,8 +192,8 @@ function BudgetsBox({ data, summary, allPaused }: { data: BudgetsResponse; summa
       {box && (
         <div className="space-y-1.5">
           <p className="text-sm text-slate-200 tnum">{box.line1}</p>
-          {box.paused && <p className="text-xs text-slate-400">{box.paused}</p>}
           <p className="text-sm text-slate-400">{box.line2}</p>
+          {box.paused && <p className="text-xs text-slate-400">{box.paused}</p>}
         </div>
       )}
       <div>

@@ -40,3 +40,7 @@ coverage.xml
 
 # TypeScript incremental build caches
 *.tsbuildinfo
+
+# Emitted by `tsc -b` for tsconfig.node.json; never committed
+ui/vite.config.d.ts
+ui/devServer*.d.ts

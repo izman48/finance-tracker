@@ -155,7 +155,12 @@ def get_forecast(
     from app.services.budgets import budget_projection
 
     forecast = analytics_service.get_forecast(db, current_user, horizon)
-    projection, reason = budget_projection(db, current_user, forecast)
+    try:
+        projection, reason = budget_projection(db, current_user, forecast)
+    except Exception as exc:  # BC8: the forecast still answers, unchanged
+        # The type only: a message could carry a category or an amount.
+        logger.error("Budget projection failed for user %s (%s)", current_user.id, type(exc).__name__)
+        projection, reason = None, "unavailable"
     return ForecastResponse(**forecast, budget_projection=projection, budget_projection_reason=reason)
 
 

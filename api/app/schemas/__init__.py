@@ -794,8 +794,9 @@ class ForecastResponse(BaseModel):
     # or no payday. Never changes anything above.
     budget_projection: "BudgetProjection | None" = None
     # Why budget_projection is null (BC2/BC3): "no_budgets" (the chart is as
-    # it always was) or "no_payday" (ask for one); null when it's there.
-    budget_projection_reason: Literal["no_budgets", "no_payday"] | None = None
+    # it always was), "no_payday" (ask for one) or "unavailable" (it failed;
+    # BC8 says so, the rest of the forecast is untouched); null when it's there.
+    budget_projection_reason: Literal["no_budgets", "no_payday", "unavailable"] | None = None
 
 
 class BudgetLinePoint(BaseModel):

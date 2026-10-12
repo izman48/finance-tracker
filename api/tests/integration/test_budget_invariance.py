@@ -129,3 +129,27 @@ def test_the_harness_sees_a_real_change(client, db_session):
     w.as_user(bill)
     after = _money(client, token)
     assert after["summary"]["safe_to_spend"] != before["summary"]["safe_to_spend"]
+
+
+def test_a_failed_budget_projection_moves_nothing(client, db_session, monkeypatch, caplog):
+    """BC8: if the projection can't be computed, the forecast still answers
+    with every figure unchanged, says "unavailable", and the log names no
+    category or amount."""
+    from app.services import budgets as budgets_service
+
+    w = World(client, db_session)
+    w.seed()
+    token = _web_login(client, "budgets@example.com")
+    _create(client, token, "Eating out", 150)
+    before = _money(client, token)
+
+    def broken(*args, **kwargs):
+        raise ValueError("Eating out 150.00")
+    monkeypatch.setattr(budgets_service, "pace_inputs", broken)
+    caplog.set_level("INFO")
+    r = client.get(f"{API}/analytics/forecast", params={"horizon": "payday"}, headers=_bearer(token))
+    assert r.status_code == 200, r.text
+    assert r.json()["budget_projection"] is None
+    assert r.json()["budget_projection_reason"] == "unavailable"
+    assert _money(client, token) == before
+    assert "Eating out" not in caplog.text and "150" not in caplog.text

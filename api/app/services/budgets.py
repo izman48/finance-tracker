@@ -37,6 +37,7 @@ from app.services.budget_spend import UNCATEGORISED, budget_spend
 
 FALLBACK_DAYS = 30
 SUGGEST_CYCLES = 3
+SUGGEST_MAX = 8
 COVERED_LOOKBACK_DAYS = 90
 # Pace: within 10% of even spending is "on pace".
 PACE_BAND = Decimal("0.10")
@@ -184,8 +185,10 @@ def budget_list(db: Session, user, markers: dict | None = None) -> BudgetListRes
     other = sum((v for k, v in spend.by_category.items() if k not in tracked), Decimal(0))
     total = sum(spend.by_category.values(), Decimal(0))
 
+    # No payday, no reconciliation (eng-a on #150): the 30-day fallback window
+    # isn't the cycle safe-to-spend runs to.
     reconciliation = None
-    if any(not b.paused for b in budgets):
+    if any(not b.paused for b in budgets) and not cycle.fallback:
         safe = Decimal(get_summary(db, user)["safe_to_spend"])
         other_at_pace = (other / Decimal(elapsed) * Decimal(max(days_left, 0))).quantize(Decimal("0.01"))
         reconciliation = Reconciliation(
@@ -227,14 +230,17 @@ def suggest(db: Session, user) -> BudgetSuggestResponse:
     spends = [budget_spend(db, user, c.start, c.end) for c in cycles]
     this_cycle = budget_spend(db, user, cycle.start, today)
     covered = commitment_covered(db, user, today)
-    # Enough history: the user's transactions reach back into the oldest of
-    # the three cycles, so each of them is real data, not missing data.
+    # Enough history: the user's transactions reach back to the start of the
+    # oldest of the three cycles, so none of them is partly missing data
+    # (eng-a on #150: a partial cycle would pull the median down).
     first = _first_transaction_date(db, user)
-    enough = first is not None and first <= cycles[0].end
+    enough = first is not None and first <= cycles[0].start
     current = {b.category: int(Decimal(b.limit_pounds)) for b in active_budgets(db, user)}
 
-    seen = {c for s in (*spends, this_cycle) for c in s.by_category}
-    categories = sorted(seen - covered - {UNCATEGORISED})
+    seen = {c for s in (*spends, this_cycle) for c in s.by_category} - covered - {UNCATEGORISED}
+    # At most SUGGEST_MAX, the categories with the most spending (concept 4.1).
+    weight = {c: sum((s.by_category.get(c, Decimal(0)) for s in (*spends, this_cycle)), Decimal(0)) for c in seen}
+    categories = sorted(sorted(seen, key=lambda c: (-weight[c], c))[:SUGGEST_MAX])
     suggestions = []
     for cat in categories:
         figures = [CycleFigure(start=c.start, end=c.end, spent=s.by_category.get(cat, Decimal(0)))

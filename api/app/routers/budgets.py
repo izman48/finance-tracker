@@ -96,7 +96,15 @@ def set_budgets(
 ) -> BudgetListResponse:
     """Create or update each listed category's budget, all or nothing: every
     entry is checked (categories, duplicates, the cap after the change)
-    before anything is written, then one commit writes them all."""
+    before anything is written, then one commit writes them all. Every
+    listed category is checked, existing ones too, so a category that has
+    since become mostly commitments can't have its limit changed here (it
+    can still be paused or removed). PATCH changes a limit without checking
+    the category, which is fixed once created.
+
+    The 20 cap is counted from a read before the write, so two bulk requests
+    at once could each pass it; the per-category unique index still holds,
+    and the overshoot is bounded by one request's size (eng-a on #150)."""
     categories = [e.category for e in body.budgets]
     svc.validate_categories(db, current_user, categories)
     existing = {b.category: b for b in svc.active_budgets(db, current_user)}

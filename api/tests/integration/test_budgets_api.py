@@ -35,7 +35,7 @@ class World(SpendWorld):
         self.client = client
         self.web = _web_login(client, email)
 
-    def history(self, categories=("Eating out", "Groceries", "Shopping"), cycles=4):
+    def history(self, categories=("Eating out", "Groceries", "Shopping"), cycles=5):
         """Spending in each category for the last `cycles` months, plus rent."""
         def make():
             db, uid = self.db, self.user.id
@@ -304,3 +304,35 @@ def test_logs_carry_no_category_or_limit(w, caplog):
         w.suggest()
     text_ = "\n".join(r.getMessage() for r in caplog.records)
     assert "Eating out" not in text_ and "137" not in text_
+
+
+def test_a_partial_oldest_cycle_is_not_enough_history(client, db_session):
+    """eng-a on #150: transactions starting partway into the oldest of the
+    three cycles would pull the median down, so no suggestion yet."""
+    w = World(client, db_session)
+    w.history(cycles=4)  # the 4th month back is only partly inside the oldest cycle
+    by_cat = {s["category"]: s for s in w.suggest().json()["suggestions"]}
+    assert by_cat["Eating out"]["reason"] == "not_enough_history"
+
+
+def test_suggest_offers_at_most_8_categories(client, db_session):
+    w = World(client, db_session)
+    w.history(categories=[f"Cat {i}" for i in range(10)], cycles=5)
+    body = w.suggest().json()
+    assert len(body["suggestions"]) == 8
+    assert {"Cat 0", "Cat 1"}.isdisjoint({s["category"] for s in body["suggestions"]})  # the smallest two
+
+
+def test_no_payday_no_reconciliation(client, db_session):
+    from app.models import CommitmentRule
+
+    w = World(client, db_session)
+    w.history()
+
+    def drop_payday():
+        w.db.query(CommitmentRule).filter(CommitmentRule.direction == "income").delete()
+        w.db.commit()
+    w.as_user(drop_payday)
+    w.create("Eating out", 150)
+    body = w.get().json()
+    assert body["cycle"]["fallback"] is True and body["reconciliation"] is None

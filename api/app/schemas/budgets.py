@@ -83,6 +83,19 @@ class Reconciliation(BaseModel):
     headroom: Decimal
 
 
+class FirstOver(BaseModel):
+    category: str
+    over_by: Decimal
+
+
+class BudgetSummary(BaseModel):
+    """For the Home Spending card (concept 15.6)."""
+
+    budget_count: int        # active, unpaused budgets (paused ones leave the Home line, BM7)
+    on_pace_count: int       # of those, under or on pace
+    first_over: FirstOver | None  # the budget most over (ties by category)
+
+
 class BudgetListResponse(BaseModel):
     """GET /budgets (and PUT /budgets): the current cycle."""
 
@@ -94,6 +107,7 @@ class BudgetListResponse(BaseModel):
     # All purchases this cycle (= sum of budgets' spent + other_spending).
     total_spent: Decimal
     not_counted: NotCounted
+    summary: BudgetSummary
     # Null when there's no active budget (the UI shows the empty state).
     reconciliation: Reconciliation | None = None
     # The categories a new budget can use: those on the user's purchases in

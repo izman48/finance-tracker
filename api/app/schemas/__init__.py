@@ -793,6 +793,9 @@ class ForecastResponse(BaseModel):
     # Budgets on Cashflow (T-09-4): null with no budget counting this cycle
     # or no payday. Never changes anything above.
     budget_projection: "BudgetProjection | None" = None
+    # Why budget_projection is null (BC2/BC3): "no_budgets" (the chart is as
+    # it always was) or "no_payday" (ask for one); null when it's there.
+    budget_projection_reason: Literal["no_budgets", "no_payday"] | None = None
 
 
 class BudgetLinePoint(BaseModel):

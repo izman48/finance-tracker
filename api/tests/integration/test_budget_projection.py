@@ -190,3 +190,17 @@ def test_on_the_day_before_payday_the_line_ends_at_the_strip(client, db_session)
     assert strip["payday"] == (TODAY + timedelta(days=1)).isoformat()
     assert [p["date"] for p in strip["series"]] == [TODAY.isoformat()]
     assert Decimal(strip["series"][-1]["balance"]) == Decimal(strip["stick_to_budgets_balance"])
+
+
+def test_put_leaves_a_paused_budget_paused_and_held(w):
+    """ux on #157: Edit all and Suggest again (PUT /budgets) change the limit
+    only; a paused budget stays paused and keeps its hold (sec's max rule)."""
+    budget_id = w.create("Eating out", 300).json()["id"]
+    w.create("Groceries", 400)
+    w.patch(budget_id, paused=True)
+    held_before = w.get().json()["reconciliation"]["budgets_left"]
+    r = w.put([{"category": "Eating out", "limit_pounds": 120}, {"category": "Groceries", "limit_pounds": 400}])
+    assert r.status_code == 200, r.text
+    eating = next(b for b in r.json()["budgets"] if b["category"] == "Eating out")
+    assert (eating["paused"], eating["limit_pounds"], eating["status"]) == (True, 120, None)
+    assert w.get().json()["reconciliation"]["budgets_left"] == held_before

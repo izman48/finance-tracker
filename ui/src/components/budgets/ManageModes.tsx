@@ -144,7 +144,7 @@ export function SuggestAgainPanel({ load, rows, errors, nothing, saving, onRow, 
       )}
       <div className="flex justify-end gap-2 mt-4">
         <button type="button" className={`btn-ghost ${BUTTON}`} onClick={onCancel} disabled={saving}>
-          Cancel
+          {rows.length > 0 ? 'Cancel' : 'Close'}
         </button>
         {rows.length > 0 && (
           <button type="button" className={`btn-primary ${BUTTON}`} onClick={onSave} disabled={saving} aria-busy={saving}>

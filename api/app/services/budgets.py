@@ -30,10 +30,10 @@ from app.schemas.budgets import (
     BudgetSuggestion,
     BudgetSuggestResponse,
     BudgetSummary,
+    CycleSummary,
     FirstOver,
     CycleFigure,
     NotCounted,
-    Reconciliation,
 )
 from app.services.analytics.commitments import last_payday, next_payday
 from app.services.analytics.common import _today
@@ -175,8 +175,8 @@ def _status(spent: Decimal, pace: Decimal, limit: Decimal) -> str:
 
 @dataclass(frozen=True)
 class PaceInputs:
-    """Everything the reconciliation line (GET /budgets) and the payday strip
-    (the forecast's budget_projection) are computed from, so they agree."""
+    """This cycle's budgets and spend: GET /budgets and the forecast's
+    budget_projection both read them, so "left" is one number (T-09-14)."""
 
     cycle: Cycle
     days_total: int
@@ -184,97 +184,37 @@ class PaceInputs:
     days_left: int
     spend: BudgetSpend
     budgets: list[Budget]
-    # Remaining budgets: max(limit - spent, 0) over active budgets, plus each
-    # budget paused or removed this cycle at max(remaining then, its spend at
-    # pace) (sec's rule: pausing or removing never raises the figures).
-    budgets_left: Decimal
-    # Spending in categories with no budget counted above, at the pace so far
-    # for the rest of the cycle.
-    other_at_pace: Decimal
-    # All spending at the pace so far, for the rest of the cycle.
-    all_at_pace: Decimal
-    # True when any budget counts this cycle (active, or held).
-    any_budget: bool
-
-
-def _at_pace(amount: Decimal, elapsed: int, days_left: int) -> Decimal:
-    return (amount / Decimal(elapsed) * Decimal(max(days_left, 0))).quantize(Decimal("0.01"))
-
-
-def _held_this_cycle(budget: Budget, cycle: Cycle) -> bool:
-    if budget.held_from is None or (budget.active and not budget.paused):
-        return False
-    return _as_utc(budget.held_from).date() >= cycle.start
-
-
-def _as_utc(at: datetime) -> datetime:
-    return at if at.tzinfo else at.replace(tzinfo=timezone.utc)
+    # Active, unpaused budgets: the limits, their spend, and what's left
+    # (each max(0, limit - spent), so overspending never adds back).
+    total_limit: Decimal
+    spent: Decimal
+    left: Decimal
 
 
 def pace_inputs(db: Session, user, today: date) -> PaceInputs:
     cycle = current_cycle(db, user, today)
     spend = budget_spend(db, user, cycle.start, cycle.end)
     days_total = (cycle.end - cycle.start).days + 1
-    elapsed = min(days_total, (today - cycle.start).days + 1)
-    days_left = max((cycle.end - today).days, 0)
-
     budgets = active_budgets(db, user)
-    cycle_start = datetime.combine(cycle.start, datetime.min.time(), timezone.utc)
-    held = [
-        b for b in db.query(Budget).filter(Budget.user_id == user.id, Budget.held_from >= cycle_start)
-        if _held_this_cycle(b, cycle)
-    ]
-    counted: dict[str, Decimal] = {}  # category -> what it takes off the balance
-    for b in budgets:
-        if not b.paused:
-            spent = spend.by_category.get(b.category, Decimal(0))
-            counted[b.category] = max(counted.get(b.category, Decimal(0)), max(Decimal(0), Decimal(b.limit_pounds) - spent))
-    for b in held:
-        pace = _at_pace(spend.by_category.get(b.category, Decimal(0)), elapsed, days_left)
-        counted[b.category] = max(counted.get(b.category, Decimal(0)), Decimal(b.held_remaining or 0), pace)
-    other = sum((v for k, v in spend.by_category.items() if k not in counted), Decimal(0))
-    total = sum(spend.by_category.values(), Decimal(0))
+    counting = [b for b in budgets if not b.paused]
+    spent = [spend.by_category.get(b.category, Decimal(0)) for b in counting]
     return PaceInputs(
-        cycle=cycle, days_total=days_total, elapsed=elapsed, days_left=days_left, spend=spend, budgets=budgets,
-        budgets_left=sum(counted.values(), Decimal(0)),
-        other_at_pace=_at_pace(other, elapsed, days_left),
-        all_at_pace=_at_pace(total, elapsed, days_left),
-        any_budget=bool(counted),
+        cycle=cycle, days_total=days_total,
+        elapsed=min(days_total, (today - cycle.start).days + 1),
+        days_left=max((cycle.end - today).days, 0),
+        spend=spend, budgets=budgets,
+        total_limit=sum((Decimal(b.limit_pounds) for b in counting), Decimal(0)),
+        spent=sum(spent, Decimal(0)),
+        left=sum((max(Decimal(0), Decimal(b.limit_pounds) - x) for b, x in zip(counting, spent)), Decimal(0)),
     )
-
-
-def hold(db: Session, user, budget: Budget) -> None:
-    """Paused or removed (by the user or Claude): for the rest of this cycle
-    the category keeps counting at max(its remaining limit, its spend at
-    pace) (sec's max rule, T-09-4). The hold outlives a resume or an undone
-    removal (it's ignored while the budget is active and unpaused), so an
-    undo that pauses or removes it again brings the same hold back; and a
-    second hold in the same cycle never lowers the first (sec on #162)."""
-    cycle = current_cycle(db, user, _today())
-    remaining = remaining_now(db, user, budget)
-    if budget.held_from is not None and _as_utc(budget.held_from).date() >= cycle.start:
-        budget.held_remaining = max(Decimal(budget.held_remaining or 0), remaining)
-        return
-    budget.held_from = datetime.now(timezone.utc)
-    budget.held_remaining = remaining
-
-
-def remaining_now(db: Session, user, budget: Budget) -> Decimal:
-    """The budget's remaining limit this cycle, for the hold when it is
-    paused or removed."""
-    cycle = current_cycle(db, user, _today())
-    spent = budget_spend(db, user, cycle.start, cycle.end).by_category.get(budget.category, Decimal(0))
-    return max(Decimal(0), Decimal(budget.limit_pounds) - spent)
 
 
 def budget_list(db: Session, user, markers: dict | None = None,
                 include_categories: bool = False) -> BudgetListResponse:
     """GET /budgets: the current cycle, each budget's spend and pace, other
-    spending, what's not counted, and the reconciliation line. The
+    spending, what's not counted, and the cycle summary. The
     budgetable categories read a year of transactions (about 160 ms on 2,000
     of them), so they're only computed when asked for (eng-a on #156)."""
-    from app.services.analytics.summary import get_summary
-
     inputs = pace_inputs(db, user, _today())
     cycle, spend = inputs.cycle, inputs.spend
     share = Decimal(inputs.elapsed) / Decimal(inputs.days_total)
@@ -291,79 +231,99 @@ def budget_list(db: Session, user, markers: dict | None = None,
         ))
     tracked = {b.category for b in inputs.budgets if not b.paused}
     other = sum((v for k, v in spend.by_category.items() if k not in tracked), Decimal(0))
-
-    # No payday, no reconciliation (eng-a on #150): the 30-day fallback window
-    # isn't the cycle safe-to-spend runs to.
-    reconciliation = None
-    if inputs.any_budget and not cycle.fallback:
-        safe = Decimal(get_summary(db, user)["safe_to_spend"])
-        reconciliation = Reconciliation(
-            safe_to_spend=safe, budgets_left=inputs.budgets_left, other_at_pace=inputs.other_at_pace,
-            headroom=safe - inputs.budgets_left - inputs.other_at_pace,
-        )
     # The one most over (ties by category), for "Shopping is £20 over".
     over = sorted((r for r in rows if r.status == "over"), key=lambda r: (-r.over_by, r.category))
+    first_over = FirstOver(category=over[0].category, over_by=over[0].over_by) if over else None
     tracking = [r for r in rows if r.status is not None]  # paused budgets leave the Home line (BM7)
     summary = BudgetSummary(
         budget_count=len(tracking),
         on_pace_count=sum(r.status in ("under_pace", "on_pace") for r in rows),
-        first_over=FirstOver(category=over[0].category, over_by=over[0].over_by) if over else None,
+        first_over=first_over,
     )
+    # ux 12a: "Your budgets: £890 this cycle. Spent £631, £259 left."
+    this_cycle = CycleSummary(
+        total_limit=_pence(inputs.total_limit), spent=_pence(inputs.spent), left=_pence(inputs.left),
+        first_over=first_over, paused_count=sum(1 for b in inputs.budgets if b.paused),
+    ) if inputs.budgets else None
     return BudgetListResponse(
         cycle=BudgetCycle(start=cycle.start, end=cycle.end, days_total=inputs.days_total,
                           days_left=inputs.days_left, fallback=cycle.fallback),
         summary=summary,
         budgets=rows, other_spending=other, total_spent=sum(spend.by_category.values(), Decimal(0)),
-        not_counted=NotCounted(**spend.excluded), reconciliation=reconciliation,
+        not_counted=NotCounted(**spend.excluded), summary_this_cycle=this_cycle,
         budgetable_categories=sorted(budgetable_categories(db, user, _today())) if include_categories else None,
     )
 
 
 # --- the Cashflow projection (T-09-4) -----------------------------------------------
 
+def _pence(amount: Decimal) -> Decimal:
+    return Decimal(amount).quantize(Decimal("0.01"))
+
+
+def _later_cycles(db: Session, user, cycle: Cycle, until: date) -> list[Cycle]:
+    """The cycles after `cycle` that start by `until`, from the payday
+    commitment as `current_cycle` finds them."""
+    out, start = [], cycle.end + timedelta(days=1)
+    while start <= until and len(out) < 400:
+        nxt = next_payday(db, user, start + timedelta(days=1))
+        end = (nxt - timedelta(days=1)) if nxt and nxt > start else start + timedelta(days=FALLBACK_DAYS - 1)
+        out.append(Cycle(start, end, fallback=False))
+        start = end + timedelta(days=1)
+    return out
+
+
+def _spread(amount: Decimal, first: date, last: date, day: date) -> Decimal:
+    """How much of `amount`, spread evenly over first..last, is used by `day`
+    (all of it from `last` on; with no days to spread over, all at once)."""
+    if day >= last:
+        return amount
+    days = (last - first).days + 1
+    return amount * Decimal((day - first).days + 1) / Decimal(days)
+
+
 def budget_projection(db: Session, user, forecast: dict) -> tuple[dict | None, str | None]:
-    """The payday strip and dotted line for a forecast response (concept
-    section 12), from the same inputs as the reconciliation line, and why
-    it's missing when it is ("no_budgets" or "no_payday", BC2/BC3). Reads
-    the forecast; never changes it."""
+    """The payday strip and the dotted line for a forecast response (T-09-14,
+    the owner's rule): the solid line less the budgets, over the whole
+    horizon. This cycle, what's left (`PaceInputs.left`) spread evenly from
+    today to the day before payday; each later cycle, the full total of the
+    active, unpaused limits spread over its days, so the line rises with
+    income as the solid line does. Unbudgeted spending is never projected.
+    Null, with why: "no_budgets" (no active, unpaused budget) or
+    "no_payday". Reads the forecast; never changes it."""
     from app.services.analytics.forecast import get_forecast
 
     today = _today()
     inputs = pace_inputs(db, user, today)
-    if not inputs.any_budget:
+    if inputs.total_limit <= 0:
         return None, "no_budgets"
     if inputs.cycle.fallback:
         return None, "no_payday"
     eve = inputs.cycle.end  # the day before payday
-    timeline = forecast["timeline"]
+    timeline = [p for p in forecast["timeline"] if p["date"] >= today]
+    payday_timeline = timeline
     if forecast["horizon_end"] < eve:
-        timeline = get_forecast(db, user, "payday")["timeline"]
-    before = [p for p in timeline if p["date"] <= eve]
-    scheduled = Decimal(before[-1]["balance"])
+        payday_timeline = get_forecast(db, user, "payday")["timeline"]
+    scheduled = Decimal([p for p in payday_timeline if p["date"] <= eve][-1]["balance"])
 
-    stick_total = inputs.budgets_left + inputs.other_at_pace
-    span = (eve - today).days
+    horizon_end = timeline[-1]["date"] if timeline else today
+    later = _later_cycles(db, user, inputs.cycle, horizon_end)
 
-    def spent_by(day: date) -> Decimal:
-        """The stick-to-budgets total spread evenly from today, all of it by
-        the day before payday (eng-a on #154: on that day itself, all of it)."""
-        return stick_total if span <= 0 else stick_total * Decimal((day - today).days) / Decimal(span)
+    def used_by(day: date) -> Decimal:
+        # Today's point is on the solid line: the spread starts tomorrow,
+        # unless today is the day before payday (eng-a on #154).
+        used = Decimal(0) if day <= today < eve else _spread(inputs.left, today + timedelta(days=1), eve, day)
+        for c in later:
+            if day < c.start:
+                break
+            used += _spread(inputs.total_limit, c.start, c.end, day)
+        return used
 
-    series = [
-        {"date": p["date"], "balance": (Decimal(p["balance"]) - spent_by(p["date"])).quantize(Decimal("0.01"))}
-        for p in forecast["timeline"] if today <= p["date"] <= eve
-    ]
-    from app.services.analytics.summary import get_summary
-
-    headroom = Decimal(get_summary(db, user)["safe_to_spend"]) - stick_total  # the reconciliation line's
-    stick = scheduled - stick_total
+    series = [{"date": p["date"], "balance": _pence(Decimal(p["balance"]) - used_by(p["date"]))} for p in timeline]
     return {
         "payday": eve + timedelta(days=1),
         "scheduled_balance": scheduled,
-        "stick_to_budgets_balance": stick,
-        "current_pace_balance": scheduled - inputs.all_at_pace,
-        "headroom": headroom,
-        "difference": stick - headroom,
+        "after_budgets_balance": scheduled - inputs.left,
         "series": series,
     }, None
 

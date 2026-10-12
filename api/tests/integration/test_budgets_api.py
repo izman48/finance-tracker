@@ -11,7 +11,7 @@ PUT /budgets is all or nothing. Suggest writes nothing. Every route is web
 session only and scoped to the caller; another user's id is a 404.
 """
 import logging
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
@@ -110,19 +110,68 @@ def test_over_the_limit_says_by_how_much(w):
     assert (budget["status"], Decimal(budget["over_by"])) == ("over", Decimal("20.00"))
 
 
-def test_the_reconciliation_line_adds_up(w):
-    w.create("Eating out", 150)
-    rec = w.get().json()["reconciliation"]
-    summary = w.client.get(f"{API}/analytics/summary", headers=_bearer(w.web)).json()
-    assert Decimal(rec["safe_to_spend"]) == Decimal(summary["safe_to_spend"])
-    assert Decimal(rec["budgets_left"]) == Decimal("110.00")
-    assert Decimal(rec["headroom"]) == (
-        Decimal(rec["safe_to_spend"]) - Decimal(rec["budgets_left"]) - Decimal(rec["other_at_pace"])
-    )
+def _summary(w):
+    return w.get().json()["summary_this_cycle"]
 
 
-def test_no_budgets_no_reconciliation(w):
-    assert w.get().json()["reconciliation"] is None
+def test_the_cycle_summary_adds_up(w):
+    """ux 12a: "Your budgets: £890 this cycle. Spent £631, £259 left." The
+    server gives every figure; the browser computes none."""
+    w.create("Eating out", 200)   # 40 spent
+    w.create("Groceries", 100)    # 80 spent
+    w.create("Shopping", 100)     # 120 spent: 20 over, nothing left
+    assert _summary(w) == {"total_limit": "400.00", "spent": "240.00", "left": "180.00",
+                           "first_over": {"category": "Shopping", "over_by": "20.00"}, "paused_count": 0}
+
+
+def test_the_summary_leaves_out_paused_budgets_but_counts_them(w):
+    budget_id = w.create("Eating out", 200).json()["id"]
+    w.create("Groceries", 100)
+    w.patch(budget_id, paused=True)
+    assert _summary(w) == {"total_limit": "100.00", "spent": "80.00", "left": "20.00",
+                           "first_over": None, "paused_count": 1}
+
+
+def test_all_paused_still_has_a_summary(w):
+    budget_id = w.create("Eating out", 200).json()["id"]
+    w.patch(budget_id, paused=True)
+    assert _summary(w) == {"total_limit": "0.00", "spent": "0.00", "left": "0.00",
+                           "first_over": None, "paused_count": 1}
+
+
+def test_no_budgets_no_summary(w):
+    body = w.get().json()
+    assert body["summary_this_cycle"] is None and "reconciliation" not in body
+
+
+def test_left_is_the_number_the_dotted_line_uses(w):
+    from tests.integration.test_budget_projection import _drops, _eve, _forecast
+
+    w.create("Eating out", 200)
+    w.create("Groceries", 100)
+    body = _forecast(w)
+    payday = date.fromisoformat(body["budget_projection"]["payday"])
+    assert _drops(body)[_eve(payday)] == Decimal(_summary(w)["left"])
+
+
+def test_a_key_matched_commitment_in_a_budgeted_category_is_never_counted(w):
+    """T-09-13 AC2: key-matched commitment spending never enters a budget's
+    spend, so a part-commitment category can't count a scheduled payment
+    twice (it's already in the solid line)."""
+    from tests.integration.test_budget_projection import _spend
+
+    _spend(w, "100.00", "Bills")
+    w.create("Bills", 300)
+    spent = next(b for b in w.get().json()["budgets"] if b["category"] == "Bills")["spent"]
+
+    def octopus():
+        w.db.add(CommitmentRule(user_id=w.user.id, direction="expense", label="OCTOPUS ENERGY", amount=Decimal("40"),
+                                cadence="monthly", next_date=TODAY + timedelta(days=25), source="manual",
+                                status="confirmed"))
+        w.db.commit()
+        _tx(w.db, w.current, "40.00", TODAY - timedelta(days=4), merchant="OCTOPUS ENERGY", category="Bills")
+    w.as_user(octopus)
+    assert next(b for b in w.get().json()["budgets"] if b["category"] == "Bills")["spent"] == spent
 
 
 def test_the_limit_is_encrypted_at_rest(w):
@@ -332,7 +381,7 @@ def test_suggest_offers_at_most_8_categories(client, db_session):
     assert {"Cat 0", "Cat 1"}.isdisjoint({s["category"] for s in body["suggestions"]})  # the smallest two
 
 
-def test_no_payday_no_reconciliation(client, db_session):
+def test_no_payday_the_summary_uses_the_last_30_days(client, db_session):
     from app.models import CommitmentRule
 
     w = World(client, db_session)
@@ -344,7 +393,7 @@ def test_no_payday_no_reconciliation(client, db_session):
     w.as_user(drop_payday)
     w.create("Eating out", 150)
     body = w.get().json()
-    assert body["cycle"]["fallback"] is True and body["reconciliation"] is None
+    assert body["cycle"]["fallback"] is True and body["summary_this_cycle"]["total_limit"] == "150.00"
 
 
 def test_an_existing_budgets_limit_can_change_after_its_category_becomes_mostly_commitments(w):

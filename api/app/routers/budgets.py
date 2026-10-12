@@ -116,10 +116,8 @@ def update_budget(
     budget_history.ensure_baseline(db, budget)
     if body.limit_pounds is not None:
         budget.limit_pounds = Decimal(body.limit_pounds)
-    if body.paused is not None and body.paused != budget.paused:
-        if body.paused:
-            svc.hold(db, current_user, budget)
-        budget.paused = body.paused  # a resume keeps the hold (svc.hold)
+    if body.paused is not None:
+        budget.paused = body.paused
     budget_history.record_change(db, budget)
     db.commit()
     return _one(db, current_user, budget.id)
@@ -131,8 +129,6 @@ def remove_budget(
 ) -> Response:
     budget = svc.owned_budget(db, current_user, budget_id)
     budget_history.ensure_baseline(db, budget)
-    if not budget.paused:
-        svc.hold(db, current_user, budget)
     budget.active = False  # kept for History
     budget_history.record_change(db, budget)
     db.commit()

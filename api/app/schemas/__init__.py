@@ -790,8 +790,8 @@ class ForecastResponse(BaseModel):
     timeline: list[ForecastPoint]
     late_planned: list[LatePlanned] = []
     late_income: list[LateIncomeItem] = []
-    # Budgets on Cashflow (T-09-4): null with no budget counting this cycle
-    # or no payday. Never changes anything above.
+    # Budgets on Cashflow (T-09-14): null with no active, unpaused budget or
+    # no payday. Never changes anything above.
     budget_projection: "BudgetProjection | None" = None
     # Why budget_projection is null (BC2/BC3): "no_budgets" (the chart is as
     # it always was), "no_payday" (ask for one) or "unavailable" (it failed;
@@ -805,19 +805,16 @@ class BudgetLinePoint(BaseModel):
 
 
 class BudgetProjection(BaseModel):
-    """The payday strip and the dotted line (budgets concept section 12).
-    All to `payday`; balances are on the day before it, before the pay."""
+    """The payday strip and the dotted line (T-09-14, the owner's rule). The
+    balances are on the day before `payday`, before the pay."""
 
     payday: date
-    scheduled_balance: Decimal         # the solid line: bills and plans only
-    stick_to_budgets_balance: Decimal  # less remaining budgets and other spending at pace
-    current_pace_balance: Decimal      # less all spending at the pace so far
-    # ux BC4/BC12: the reconciliation line's headroom (safe to spend less the
-    # same deductions) and stick_to_budgets_balance - headroom, so the UI
-    # never computes either; they differ when money lands before payday.
-    headroom: Decimal
-    difference: Decimal
-    series: list[BudgetLinePoint]      # the dotted line, clipped to the chart's horizon
+    scheduled_balance: Decimal      # the solid line: bills and plans only
+    after_budgets_balance: Decimal  # less what's left of the budgets this cycle
+    # The dotted line, one point per timeline day from today (on the solid
+    # line) to the end of the horizon: this cycle less what's left, spread to
+    # payday; each later cycle less the full total of the limits.
+    series: list[BudgetLinePoint]
 
 
 class CategorySlice(BaseModel):

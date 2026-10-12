@@ -1,25 +1,23 @@
 /**
- * Budgets on Cashflow (T-09-8; concept sections 12 and 12a). The forecast's
- * `budget_projection` gives the payday strip and the dotted line. Every
- * figure, the headroom and the difference between the two are the API's:
- * the UI does no money arithmetic (BC4, BC12). Safe to spend, "Lowest
+ * Budgets on Cashflow, the simple rule (T-09-15; owner 2026-10-12). The
+ * forecast's `budget_projection` gives the dotted line: the scheduled line
+ * less what is left of the budgets this cycle, spread to payday, and less
+ * the full budget total each later cycle, over the whole chart. Every figure
+ * is the API's: the UI does no money arithmetic. Safe to spend, "Lowest
  * point" and the solid line never change.
  */
-import { dateDayMonth } from './format'
+import { dateDayMonth, gbp0 } from './format'
 import { money } from './budgets'
 
 type Money = number | string
 
 export interface BudgetProjection {
   payday: string
+  /** The solid line on the day before payday. */
   scheduled_balance: Money
-  stick_to_budgets_balance: Money
-  current_pace_balance: Money
-  /** The reconciliation line's headroom on Spending. */
-  headroom: Money
-  /** stick_to_budgets_balance − headroom (12a). */
-  difference: Money
-  /** The dotted line, to the day before payday, clipped to the chart. */
+  /** The dotted line on the day before payday. */
+  after_budgets_balance: Money
+  /** The dotted line: from today (at the solid line's value) to the end of the chart. */
   series: { date: string; balance: Money }[]
 }
 
@@ -32,51 +30,30 @@ const signed = (value: Money) => {
   return n < 0 ? `−${money(-n)}` : money(n)
 }
 
-export const stripTitle = (p: BudgetProjection) =>
-  `Your balance on payday (${dateDayMonth(p.payday)}), before your pay arrives`
+const figure = (value: Money) => ({ amount: signed(value), negative: Number(value) < 0 })
 
-export interface StripFigure {
-  label: string
-  explain: string
-  amount: string
-  /** `text-neg` only below £0, as elsewhere. */
-  negative: boolean
-  /** Its swatch: the solid line, the dotted line, or none (a number only). */
-  line: 'solid' | 'dotted' | 'none'
-}
-
-export function stripFigures(p: BudgetProjection): StripFigure[] {
-  const figure = (label: string, explain: string, value: Money, line: StripFigure['line']): StripFigure => ({
-    label, explain, amount: signed(value), negative: Number(value) < 0, line,
-  })
-  return [
-    figure('Scheduled only', 'Bills and plans, no day-to-day spending', p.scheduled_balance, 'solid'),
-    figure('If you stick to your budgets', 'Remaining budgets, other spending at your pace', p.stick_to_budgets_balance, 'dotted'),
-    figure('At your current pace', 'Everything at the rate so far', p.current_pace_balance, 'none'),
-  ]
-}
-
-export const STRIP_FOOTNOTE =
-  'The dotted line stops at payday: your next cycle’s budgets start then. Safe to spend and “Lowest point” use the solid line only and are unchanged.'
-
-/** BC12: said once when the two figures differ; never "wrong", never "the same". */
-export function differenceSentence(p: BudgetProjection): string | null {
-  const diff = Number(p.difference)
-  if (diff === 0) return null
-  return `Your headroom on Spending (${signed(p.headroom)}) starts from your safe to spend; this starts from your forecast balance, so they differ by ${money(Math.abs(diff))}.`
+/** The payday line's two figures, as the API sent them. */
+export function paydayFigures(p: BudgetProjection) {
+  return { scheduled: figure(p.scheduled_balance), afterBudgets: figure(p.after_budgets_balance) }
 }
 
 /** BC6: informational, only when the dotted line goes below £0. */
 export function dipSentence(p: BudgetProjection): string | null {
   const dip = p.series.find((pt) => Number(pt.balance) < 0)
   if (!dip) return null
-  return `If you spent every budget in full and kept your usual other spending, you would dip below £0 on ${dateDayMonth(dip.date)}.`
+  return `If you spend all your budgets, you'd dip below £0 on ${dateDayMonth(dip.date)}.`
 }
+
+const pounds = (n: number) => (n < 0 ? `−${gbp0(-n)}` : gbp0(n))
+
+/** The chart tooltip's budget line: both of the chart's values for that day. */
+export const budgetTooltip = (scheduled: number, afterBudgets: number) =>
+  `${pounds(scheduled)} scheduled · ${pounds(afterBudgets)} after budgets`
 
 /** BC3: the line in the footnote slot when budgets exist but no payday is set. */
 export function projectionNote(p: BudgetProjection | null | undefined, reason: ProjectionReason): string | null {
   if (p || reason !== 'no_payday') return null
-  return 'Set your payday on Commitments to see how your budgets affect your balance.'
+  return 'Set your payday on Commitments to see your budgets on this chart.'
 }
 
 /** BC8: our own line in the legend slot when the server couldn't compute it. */

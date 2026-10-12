@@ -6,7 +6,7 @@ import {
   limitError,
   money,
   paceFraction,
-  reconciliationParts,
+  budgetsBox,
   statusText,
   meterLabel,
   LIMIT_ERROR,
@@ -26,7 +26,7 @@ import {
   checkRows,
   suggestRows,
 } from './budgets'
-import { budget, budgetsResponse, reconciliation, suggestion } from './budgets.fixtures'
+import { budget, budgetsResponse, summaryThisCycle, suggestion } from './budgets.fixtures'
 
 // Spending > Budgets (concept sections 4.2, 5, 9; T-09-6).
 describe('money', () => {
@@ -82,20 +82,33 @@ describe('paceFraction', () => {
   })
 })
 
-describe('reconciliationParts (section 3)', () => {
-  it('shows the arithmetic as received', () => {
-    expect(reconciliationParts(reconciliation())).toEqual({
-      safe: '£480', left: '£268', other: '£160', headroom: '£52',
+describe('budgetsBox (concept 12a; BX1-BX4, BX6)', () => {
+  it('BX1: the total, spent and left, in whole pounds as received, and the bills line', () => {
+    expect(budgetsBox(summaryThisCycle())).toEqual({
+      line1: '£890 this cycle. Spent £631, £259 left.',
+      line2: 'Bills are already in your safe to spend. Budgets are for your day-to-day spending.',
+      paused: null,
     })
   })
-
-  it('a negative headroom keeps its sign', () => {
-    const r = reconciliation({ headroom: '-30.00' })
-    expect(reconciliationParts(r)?.headroom).toBe('−£30')
+  it('BX2: the first over budget is appended to line 1', () => {
+    const s = summaryThisCycle({ first_over: { category: 'Eating out', over_by: '12.40' } })
+    expect(budgetsBox(s).line1).toBe('£890 this cycle. Spent £631, £259 left. Eating out is £12 over.')
   })
-
-  it('nothing to show without a reconciliation (no payday)', () => {
-    expect(reconciliationParts(null)).toBeNull()
+  it('BX3: paused budgets, singular and plural', () => {
+    expect(budgetsBox(summaryThisCycle({ paused_count: 1 })).paused).toBe("1 paused budget isn't counted.")
+    expect(budgetsBox(summaryThisCycle({ paused_count: 2 })).paused).toBe("2 paused budgets aren't counted.")
+  })
+  it('BX4: every budget paused', () => {
+    const all = summaryThisCycle({ total_limit: '0', spent: '0', left: '0', paused_count: 3 })
+    expect(budgetsBox(all, true)).toEqual({
+      line1: 'All your budgets are paused, so none are counted.',
+      line2: 'Bills are already in your safe to spend. Budgets are for your day-to-day spending.',
+      paused: null,
+    })
+  })
+  it('BX6: no headroom, safe-to-spend amount or arithmetic', () => {
+    const t = Object.values(budgetsBox(summaryThisCycle({ paused_count: 2 }))).join(' ')
+    expect(t).not.toMatch(/headroom|[−=]/)
   })
 })
 

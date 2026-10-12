@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter } from 'react-router-dom'
 import BudgetsView, { type BudgetsViewProps } from './BudgetsView'
-import { budget, budgetsResponse } from '../../lib/budgets.fixtures'
+import { budget, budgetsResponse, summaryThisCycle } from '../../lib/budgets.fixtures'
 
 // Spending > Budgets, this cycle (concept 4.1-4.3, 5, 9; T-09-6). Node suite: static markup.
 const noop = () => {}
@@ -68,24 +68,41 @@ describe('BudgetsView', () => {
     expect(t).toContain('Set a budget')
   })
 
-  it('the reconciliation line shows the arithmetic and says nothing changes', () => {
+  it('BX1: the Your budgets box, exactly, in place of the old reconciliation', () => {
     const t = text(html({}))
-    expect(t).toContain('Safe to spend £480 − £268 left in your budgets − £160 other spending at your pace = £52 headroom')
-    expect(t).toContain('Information only. Your safe to spend is unchanged.')
-    expect(t).not.toMatch(/you can spend/i)
+    expect(t).toContain('Your budgets')
+    expect(t).toContain('£890 this cycle. Spent £631, £259 left.')
+    expect(t).toContain('Bills are already in your safe to spend. Budgets are for your day-to-day spending.')
+    expect(t).not.toContain('How this fits with safe to spend')
+  })
+
+  it('BX2/BX3: over appended without red; paused counted out', () => {
+    const data = budgetsResponse({ summary_this_cycle: summaryThisCycle({ first_over: { category: 'Eating out', over_by: '12' }, paused_count: 2 }) })
+    const h = html({ data })
+    expect(text(h)).toContain('£890 this cycle. Spent £631, £259 left. Eating out is £12 over.')
+    expect(text(h)).toContain("2 paused budgets aren't counted.")
+    // ux on #169: the paused line comes after the bills line
+    expect(text(h).indexOf("2 paused budgets aren't counted.")).toBeGreaterThan(text(h).indexOf('Budgets are for your day-to-day spending.'))
+    expect(h.slice(h.indexOf('id="budgets-box"'))).not.toMatch(/text-neg|text-warn/)
+  })
+
+  it('BX6: the box has no headroom, safe-to-spend amount or arithmetic', () => {
+    const h = html({})
+    const box = text(h.slice(h.indexOf('id="budgets-box"'), h.indexOf('Not counted here')))
+    expect(box).not.toMatch(/headroom|[−=]|at your pace/)
   })
 
   it('"Not counted here" is a collapsed disclosure button', () => {
     expect(html({})).toMatch(/<button[^>]*aria-expanded="false"[^>]*>Not counted here<\/button>/)
   })
 
-  it('no payday: the 30-day note, and no reconciliation line', () => {
+  it('no payday: the 30-day note, and the box still shows', () => {
     const data = budgetsResponse({ cycle: { ...budgetsResponse().cycle, fallback: true } })
     const t = text(html({ data }))
     expect(t).toContain(
       'Budgets follow your pay cycle. Set your payday on Commitments to line them up; until then this uses the last 30 days.',
     )
-    expect(t).toContain("Budgets can't be compared to safe to spend until a payday is set.")
+    expect(t).toContain('£890 this cycle. Spent £631, £259 left.')
     expect(t).not.toContain('headroom')
   })
 
@@ -110,13 +127,13 @@ describe('BudgetsView', () => {
     expect(html({})).not.toMatch(/text-slate-(500|600|700)/)
   })
 
-  it('without the budget projection yet, the line says it can\'t compare', () => {
-    expect(text(html({ data: budgetsResponse({ reconciliation: null }) }))).toContain("Budgets can't be compared to safe to spend until a payday is set.")
-  })
-
   it('all paused: not the setup card; says they are paused and shows Everything else', () => {
-    const data = budgetsResponse({ budgets: [budget({ paused: true, status: null })], reconciliation: null })
+    const data = budgetsResponse({
+      budgets: [budget({ paused: true, status: null })],
+      summary_this_cycle: summaryThisCycle({ total_limit: '0', spent: '0', left: '0', paused_count: 1 }),
+    })
     const t = text(html({ data }))
+    expect(t).toContain('All your budgets are paused, so none are counted.') // BX4
     expect(t).not.toContain('Set a limit for the things you want to keep an eye on.')
     expect(t).toContain('All your budgets are paused. Their spending counts under Everything else.')
     expect(t).toContain('Everything else £392 no budget')

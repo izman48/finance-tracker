@@ -239,3 +239,26 @@ def test_the_snapshot_amounts_decrypt_with_the_users_key(w):
     w.db.expire_all()
     snap = w.as_user(lambda: w.db.query(BudgetCycleSnapshot).order_by(BudgetCycleSnapshot.cycle_end.desc()).first())
     assert w.as_user(lambda: (Decimal(snap.limit_pounds), Decimal(snap.spent))) == (Decimal("50"), Decimal("45.00"))
+
+
+def test_a_failed_snapshot_write_never_hides_the_budgets(w, monkeypatch, caplog):
+    """If writing snapshots fails, GET /budgets still answers with the
+    budgets, logs no category or amount, and the next load retries."""
+    from app.services import budget_history
+
+    budget_id = w.create("Eating out", 50).json()["id"]
+    _backdate(w, budget_id)
+    real = budget_history.budget_spend
+
+    def broken(*args, **kwargs):
+        raise ValueError("Eating out 50.00")
+    monkeypatch.setattr(budget_history, "budget_spend", broken)
+    caplog.set_level("INFO")
+    r = w.get()
+    assert r.status_code == 200, r.text
+    assert [b["category"] for b in r.json()["budgets"]] == ["Eating out"]
+    assert _snapshots(w) == 0
+    assert "Eating out" not in caplog.text and "50.00" not in caplog.text
+    monkeypatch.setattr(budget_history, "budget_spend", real)
+    w.get()
+    assert _snapshots(w) > 0

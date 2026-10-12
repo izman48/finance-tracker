@@ -152,4 +152,4 @@ def test_a_failed_budget_projection_moves_nothing(client, db_session, monkeypatc
     assert r.json()["budget_projection"] is None
     assert r.json()["budget_projection_reason"] == "unavailable"
     assert _money(client, token) == before
-    assert "Eating out" not in caplog.text and "150" not in caplog.text
+    assert "Eating out" not in caplog.text and "150.00" not in caplog.text

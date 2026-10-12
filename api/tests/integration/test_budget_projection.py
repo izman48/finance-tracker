@@ -248,3 +248,23 @@ def test_the_single_budget_lookup_is_a_404_if_gone(w):
     with pytest.raises(Exception) as err:
         w.as_user(lambda: router._one(w.db, w.user, uuid.uuid4()))
     assert getattr(err.value, "status_code", None) == 404
+
+
+def test_a_longer_horizon_reads_the_paydays_no_more_often(w, monkeypatch):
+    """eng-a on #170: the later cycles come from one read of the payday
+    commitment, stepped in memory, not one lookup per cycle."""
+    from app.services.analytics import commitments
+
+    calls = []
+    real = commitments._payday_incomes
+
+    def counted(*args, **kwargs):
+        calls.append(1)
+        return real(*args, **kwargs)
+    monkeypatch.setattr(commitments, "_payday_incomes", counted)
+    w.create("Eating out", 200)
+    _forecast(w, "30")
+    short = len(calls)
+    calls.clear()
+    _forecast(w, "365")
+    assert len(calls) <= short

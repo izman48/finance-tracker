@@ -168,7 +168,7 @@ def test_a_failed_budget_projection_moves_nothing(client, db_session, monkeypatc
 
     def broken(*args, **kwargs):
         raise ValueError("Eating out 150.00")
-    monkeypatch.setattr(budgets_service, "pace_inputs", broken)
+    monkeypatch.setattr(budgets_service, "cycle_budgets", broken)
     caplog.set_level("INFO")
     r = client.get(f"{API}/analytics/forecast", params={"horizon": "payday"}, headers=_bearer(token))
     assert r.status_code == 200, r.text

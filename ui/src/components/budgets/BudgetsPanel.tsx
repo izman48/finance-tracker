@@ -82,6 +82,8 @@ export default function BudgetsPanel({ onOpenCategory }: { onOpenCategory: (cate
       setLoad({ status: 'ready', data: res.data }) // the server's list, never an optimistic one
       setSuggest(null)
       toast('Budgets set for this pay cycle.')
+      // The sheet's opener may be gone (the empty state): land on the list (BM18).
+      requestAnimationFrame(() => document.getElementById('budgets-heading')?.focus())
     } catch (err) {
       if (!mounted.current) return
       const kind = failureFromError(err)

@@ -14,6 +14,7 @@ import { useToast } from '../components/ui/Toast'
 import { EXPLAIN } from '../copy/statExplainers'
 import useReveal from '../components/ui/useReveal'
 import BudgetsPanel from '../components/budgets/BudgetsPanel'
+import { CATEGORY_COLORS } from '../lib/categoryColors'
 
 interface CategorySlice {
   category: string
@@ -81,7 +82,7 @@ const LENS_KEY = 'insights.lens'
 const longDate = (d: string) =>
   new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 
-const BAR_COLORS = ['#2DD4A7', '#38BDF8', '#A78BFA', '#FBBF24', '#FB7185', '#34D399', '#818CF8', '#F472B6']
+const BAR_COLORS = CATEGORY_COLORS
 
 const EXCLUDE_COMMITMENTS_KEY = 'insights.excludeCommitments'
 

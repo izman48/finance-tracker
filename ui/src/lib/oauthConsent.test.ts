@@ -5,23 +5,36 @@ import { consentScopes, cleanDisplayName } from './oauthConsent'
 
 describe('consentScopes (K2)', () => {
   it('sends read only when no optional box is ticked', () => {
-    expect(consentScopes({ rules: false, planning: false, sync: false })).toEqual(['finance:read'])
+    expect(consentScopes({ rules: false, planning: false, sync: false, budgets: false })).toEqual(['finance:read'])
   })
 
   it('adds planning.write only when its box is ticked', () => {
-    expect(consentScopes({ rules: false, planning: true, sync: false })).toEqual(['finance:read', 'finance:planning.write'])
+    expect(consentScopes({ rules: false, planning: true, sync: false, budgets: false })).toEqual(['finance:read', 'finance:planning.write'])
   })
 
   it('adds sync only when its box is ticked', () => {
-    expect(consentScopes({ rules: false, planning: false, sync: true })).toEqual(['finance:read', 'finance:sync'])
+    expect(consentScopes({ rules: false, planning: false, sync: true, budgets: false })).toEqual(['finance:read', 'finance:sync'])
   })
 
-  it('sends all four when every box is ticked', () => {
-    expect(consentScopes({ rules: true, planning: true, sync: true })).toEqual([
+  it('K10: adds budgets.write only when its box is ticked', () => {
+    expect(consentScopes({ rules: false, planning: false, sync: false, budgets: true })).toEqual([
+      'finance:read',
+      'finance:budgets.write',
+    ])
+  })
+
+  it('K10: planning never implies budgets, nor budgets planning', () => {
+    expect(consentScopes({ rules: false, planning: true, sync: false, budgets: false })).not.toContain('finance:budgets.write')
+    expect(consentScopes({ rules: false, planning: false, sync: false, budgets: true })).not.toContain('finance:planning.write')
+  })
+
+  it('K10: sends all five, each once, when every box is ticked', () => {
+    expect(consentScopes({ rules: true, planning: true, sync: true, budgets: true })).toEqual([
       'finance:read',
       'finance:rules.write',
       'finance:planning.write',
       'finance:sync',
+      'finance:budgets.write',
     ])
   })
 })

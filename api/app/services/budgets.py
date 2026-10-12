@@ -240,6 +240,18 @@ def pace_inputs(db: Session, user, today: date) -> PaceInputs:
     )
 
 
+def hold(db: Session, user, budget: Budget) -> None:
+    """Paused or removed (by the user or Claude): for the rest of this cycle
+    the category keeps counting at max(its remaining limit now, its spend at
+    pace) (sec's max rule, T-09-4)."""
+    budget.held_from = datetime.now(timezone.utc)
+    budget.held_remaining = remaining_now(db, user, budget)
+
+
+def release_hold(budget: Budget) -> None:
+    budget.held_from, budget.held_remaining = None, None
+
+
 def remaining_now(db: Session, user, budget: Budget) -> Decimal:
     """The budget's remaining limit this cycle, for the hold when it is
     paused or removed."""

@@ -14,7 +14,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 
-from app.schemas import ClaudeMarker
+from app.schemas import ClaudeMarker, PlanningWriteRequest
 
 BUDGET_LIMIT_MAX = 100_000
 BUDGETS_PER_USER_MAX = 20
@@ -229,3 +229,20 @@ class BudgetSuggestResponse(BaseModel):
     suggestions: list[BudgetSuggestion]
     # Categories left out because their spending is mostly commitments.
     commitment_covered: list[str]
+
+
+# --- Claude's budget writes (T-09-5) -----------------------------------------------------
+
+CLAUDE_SET_MAX = 8  # concept section 6
+
+
+class ClaudeSetBudgetsRequest(PlanningWriteRequest):
+    """POST /planning/budgets/set: create or update each listed category's
+    budget in one batch, all or nothing. Only a category and a whole-pound
+    limit per entry; pause and remove have their own routes."""
+
+    budgets: list[BudgetSetEntry] = Field(min_length=1, max_length=CLAUDE_SET_MAX)
+
+
+class ClaudeBudgetActionRequest(PlanningWriteRequest):
+    """POST /planning/budgets/{id}/pause|resume|remove: the flags only."""

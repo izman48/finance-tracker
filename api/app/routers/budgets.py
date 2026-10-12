@@ -5,7 +5,7 @@ user's id is a 404. Log lines carry ids only, never a category or a limit.
 """
 import logging
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date
 from decimal import Decimal
 from typing import Annotated, Literal
 
@@ -14,7 +14,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.oauth_tokens import CurrentUserOrMcpRead
 from app.core.security import CurrentUser
+from app.schemas import ClaudeMarker
+from app.services.planning_writes import claude_markers
 from app.models import Budget
 from app.schemas.budgets import (
     BudgetHistoryResponse,
@@ -53,10 +56,11 @@ def _one(db: Session, user, budget_id: uuid.UUID) -> BudgetResponse:
 
 @router.get("", response_model=BudgetListResponse)
 def list_budgets(
-    current_user: CurrentUser, db: Annotated[Session, Depends(get_db)],
+    current_user: CurrentUserOrMcpRead, db: Annotated[Session, Depends(get_db)],
     include: Literal["categories"] | None = None,
 ) -> BudgetListResponse:
-    """`?include=categories` adds budgetable_categories (for Add budget).
+    """Web, or an MCP token with finance:read (Claude's list_budgets).
+    `?include=categories` adds budgetable_categories (for Add budget).
     Writes any missing closed-cycle snapshots first (T-09-3). If that fails
     the budgets still load, and the next load retries."""
     user_id = current_user.id
@@ -66,7 +70,12 @@ def list_budgets(
         db.rollback()  # the list below needs a clean transaction
         # The type only: a message could carry a category or an amount.
         logger.error("Budget snapshots not written for user %s (%s)", user_id, type(exc).__name__)
-    return svc.budget_list(db, current_user, include_categories=include == "categories")
+    budgets = svc.active_budgets(db, current_user)
+    markers = {
+        bid: ClaudeMarker(**m) for bid, m in
+        claude_markers(db, current_user.id, "budget", [b.id for b in budgets]).items()
+    }
+    return svc.budget_list(db, current_user, markers=markers, include_categories=include == "categories")
 
 
 @router.get("/history", response_model=BudgetHistoryResponse)
@@ -108,9 +117,9 @@ def update_budget(
         budget.limit_pounds = Decimal(body.limit_pounds)
     if body.paused is not None and body.paused != budget.paused:
         if body.paused:
-            _hold(db, current_user, budget)
+            svc.hold(db, current_user, budget)
         else:
-            budget.held_from, budget.held_remaining = None, None
+            svc.release_hold(budget)
         budget.paused = body.paused
     budget_history.record_change(db, budget)
     db.commit()
@@ -123,7 +132,7 @@ def remove_budget(
 ) -> Response:
     budget = svc.owned_budget(db, current_user, budget_id)
     if not budget.paused:
-        _hold(db, current_user, budget)
+        svc.hold(db, current_user, budget)
     budget.active = False  # kept for History
     budget_history.record_change(db, budget)
     db.commit()
@@ -157,13 +166,6 @@ def set_budgets(
         budget_history.record_change(db, budget)
     _commit(db)
     return svc.budget_list(db, current_user)
-
-
-def _hold(db: Session, user, budget: Budget) -> None:
-    """Paused or removed: for the rest of this cycle the category keeps
-    counting at max(the remaining limit now, its spend at pace) (sec, T-09-4)."""
-    budget.held_from = datetime.now(timezone.utc)
-    budget.held_remaining = svc.remaining_now(db, user, budget)
 
 
 @router.post("/nudges/{nudge_id}/dismiss", status_code=status.HTTP_204_NO_CONTENT)

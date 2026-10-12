@@ -34,7 +34,11 @@ SCOPE_PLANNING_WRITE = "finance:planning.write"
 # Opt-in: lets a client ask the API to fetch fresh data from the user's banks
 # (POST /banking/sync). It never connects, reconnects or disconnects a bank.
 SCOPE_SYNC = "finance:sync"
-SUPPORTED_SCOPES = (SCOPE_READ, SCOPE_RULES_WRITE, SCOPE_PLANNING_WRITE, SCOPE_SYNC)
+# Claude's budget writes (T-09-5). Its own scope, not planning.write: those
+# grants were consented with copy naming planned events and commitments only
+# (sec). Existing grants don't gain it; refresh can't widen to it.
+SCOPE_BUDGETS_WRITE = "finance:budgets.write"
+SUPPORTED_SCOPES = (SCOPE_READ, SCOPE_RULES_WRITE, SCOPE_PLANNING_WRITE, SCOPE_SYNC, SCOPE_BUDGETS_WRITE)
 
 MCP_ACCESS_TOKEN_TTL = timedelta(hours=1)
 

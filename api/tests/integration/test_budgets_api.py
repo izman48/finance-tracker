@@ -205,10 +205,15 @@ def test_an_unknown_id_is_not_found(w):
     assert w.patch(uuid.uuid4(), limit_pounds=10).status_code == 404
 
 
-def test_the_routes_are_web_only(client, db_session):
+def test_the_write_routes_are_web_only(client, db_session):
+    """Reading is open to finance:read (Claude's list_budgets, T-09-5);
+    these write routes stay web only (Claude's writes are /planning/budgets)."""
     w = World(client, db_session, email="mcp@example.com")
+    w.history(cycles=1)
     _, _, tokens = _connect(client, scopes=(READ,), email="mcp@example.com")
-    assert w.get(token=tokens["access_token"]).status_code == 401
+    assert w.get(token=tokens["access_token"]).status_code == 200
+    assert w.create("Eating out", 150, token=tokens["access_token"]).status_code == 401
+    assert w.put([{"category": "Eating out", "limit_pounds": 150}], token=tokens["access_token"]).status_code == 401
 
 
 # --- bulk PUT: all or nothing --------------------------------------------------------

@@ -23,13 +23,17 @@ LEASE = timedelta(minutes=5)
 RETRY_AFTER_SECONDS = 30
 
 
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 class SyncBusy(Exception):
     """Another sync for this user holds the lease."""
 
 
 def acquire(db: Session, user_id: uuid.UUID, now: datetime | None = None) -> uuid.UUID | None:
     """Take the user's lease and commit; its token, or None if it's held."""
-    now = now or datetime.now(timezone.utc)
+    now = now or utcnow()
     _ensure_row(db, user_id)
     token = uuid.uuid4()
     taken = db.execute(
@@ -71,6 +75,29 @@ def sync_lease(db: Session, user_id: uuid.UUID) -> Iterator[None]:
         yield
     finally:
         release(db, user_id, token)
+
+
+def cooldown_left(db: Session, user_id: uuid.UUID, cooldown: timedelta = timedelta(minutes=10)) -> float:
+    """Seconds until the user's next sync may reach TrueLayer; 0 if now.
+    Read from the DB, so both workers and a restart see the same answer."""
+    row = db.get(UserSyncLock, user_id)
+    if row is not None:
+        db.refresh(row)  # another worker may have started one since
+    if row is None or row.cooldown_from is None:
+        return 0.0
+    started = row.cooldown_from if row.cooldown_from.tzinfo else row.cooldown_from.replace(tzinfo=timezone.utc)
+    return max(0.0, (started + cooldown - utcnow()).total_seconds())
+
+
+def start_cooldown(db: Session, user_id: uuid.UUID) -> None:
+    """A sync is about to reach TrueLayer: the cooldown runs from now. Called
+    only after every refusal check, so a refused call costs nothing."""
+    _ensure_row(db, user_id)
+    db.execute(
+        update(UserSyncLock).where(UserSyncLock.user_id == user_id).values(cooldown_from=utcnow())
+        .execution_options(synchronize_session=False)
+    )
+    db.commit()
 
 
 def _ensure_row(db: Session, user_id: uuid.UUID) -> None:

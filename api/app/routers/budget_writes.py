@@ -24,7 +24,7 @@ from app.models import Budget
 from app.models.budget import CREATED_VIA_MCP
 from app.schemas.budgets import ClaudeBudgetActionRequest, ClaudeSetBudgetsRequest
 from app.services import budgets as svc
-from app.services.budget_history import record_change
+from app.services.budget_history import ensure_baseline, record_change
 from app.services.planning_writes import WriteRequest, run_batch, run_write
 
 router = APIRouter(prefix="/planning/budgets", tags=["planning"])
@@ -50,6 +50,7 @@ def set_budgets(body: ClaudeSetBudgetsRequest, caller: BudgetsWriter, db: Annota
             elif Decimal(budget.limit_pounds) == Decimal(limit):
                 return budget  # unchanged: no change-log row and no audit row (sec)
             else:
+                ensure_baseline(db, budget)
                 budget.limit_pounds = Decimal(limit)
             record_change(db, budget)
             return budget
@@ -67,6 +68,7 @@ def _action(budget_id: uuid.UUID, tool: str, body: ClaudeBudgetActionRequest, ca
     change(budget, check=True)
 
     def apply(db: Session, target: Budget) -> Budget:
+        ensure_baseline(db, target)
         change(target, check=False)
         record_change(db, target)
         return target

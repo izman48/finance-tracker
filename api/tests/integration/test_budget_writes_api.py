@@ -331,3 +331,51 @@ def test_an_unchanged_entry_in_a_set_writes_no_audit_or_change_row(w):
     unchanged = next(e for e in r.json()["results"] if e["target_label"] == "Groceries")
     assert unchanged["unchanged"] is True and unchanged["audit_id"] is None
     assert (w.count(AuditEntry), w.count(BudgetChange)) == (before[0] + 1, before[1] + 1)
+
+
+# --- a budget from before the change log keeps its old limit (eng-a on #160) ---------------
+
+def _pre_log_budget(w, limit=50):
+    """A budget made long ago, before the change log existed (no rows)."""
+    from tests.integration.test_budget_history import _backdate
+    budget_id = w.create("Eating out", limit).json()["id"]
+    _backdate(w, budget_id)
+    w.db.execute(text("DELETE FROM budget_changes"))
+    w.db.commit()
+    return budget_id
+
+
+def _old_limits(w):
+    from tests.integration.test_budget_history import _budget, _history
+    return [s["limit_pounds"] for s in _budget(_history(w, cycles=3), "Eating out")["cycles"]]
+
+
+@pytest.mark.parametrize("write", ["set", "pause", "remove"])
+def test_claudes_first_write_to_a_pre_log_budget_keeps_its_old_limit(w, write):
+    budget_id = _pre_log_budget(w)
+    if write == "set":
+        r = w.claude_set([{"category": "Eating out", "limit_pounds": 40}], dry_run=False)
+    else:
+        r = w.claude(write, budget_id, dry_run=False)
+    assert r.status_code == 200, r.text
+    assert _old_limits(w) == [50, 50, 50]
+
+
+def test_claudes_resume_of_a_pre_log_budget_keeps_its_old_state(w):
+    budget_id = _pre_log_budget(w)
+    w.db.execute(text("UPDATE budgets SET paused = :t WHERE id = :id"), {"t": True, "id": budget_id.replace("-", "")})
+    w.db.commit()
+    assert w.claude("resume", budget_id, dry_run=False).status_code == 200
+    from tests.integration.test_budget_history import _budget, _history
+    slots = _budget(_history(w, cycles=3), "Eating out")["cycles"]
+    assert [s["paused"] for s in slots] == [True, True, True]
+
+
+def test_an_undo_on_a_budget_with_no_log_records_the_state_it_restores(w):
+    budget_id = _pre_log_budget(w)
+    audit_id = w.claude_set([{"category": "Eating out", "limit_pounds": 40}], dry_run=False).json()["results"][0]["audit_id"]
+    w.db.execute(text("DELETE FROM budget_changes"))
+    w.db.commit()
+    assert w.undo(audit_id).status_code == 200
+    assert _old_limits(w) == [50, 50, 50]
+    assert budget_id

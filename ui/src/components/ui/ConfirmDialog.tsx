@@ -4,6 +4,7 @@ interface ConfirmOptions {
   title: string
   body?: string
   confirmLabel?: string
+  cancelLabel?: string
   danger?: boolean
 }
 
@@ -45,7 +46,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
             )}
             <div className="flex justify-end gap-2 mt-2">
               <button onClick={() => close(false)} className="btn-ghost" autoFocus>
-                Cancel
+                {pending.options.cancelLabel ?? 'Cancel'}
               </button>
               <button
                 onClick={() => close(true)}

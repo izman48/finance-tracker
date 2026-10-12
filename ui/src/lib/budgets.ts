@@ -171,15 +171,18 @@ export function suggestRows(suggestions: BudgetSuggestion[]): SuggestRow[] {
   })
 }
 
-/** The budgets to save from the ticked rows, or an error per bad row. */
-export function checkRows(rows: SuggestRow[]): { errors: Record<string, string>; budgets: BudgetEntry[] } {
+export const NOTHING_TICKED = 'Tick at least one budget to save.'
+
+/** The budgets to save from the ticked rows, an error per bad row, or that nothing is ticked. */
+export function checkRows(rows: SuggestRow[]): { errors: Record<string, string>; budgets: BudgetEntry[]; nothingTicked: boolean } {
   const errors: Record<string, string> = {}
   const budgets: BudgetEntry[] = []
-  for (const row of rows) {
-    if (!row.checked || !row.available) continue
+  const ticked = rows.filter((r) => r.checked && r.available)
+  for (const row of ticked) {
     const error = limitError(row.limit)
     if (error) errors[row.category] = error
     else budgets.push({ category: row.category, limit_pounds: Number(row.limit.trim()) })
   }
-  return Object.keys(errors).length ? { errors, budgets: [] } : { errors, budgets }
+  const bad = Object.keys(errors).length > 0
+  return { errors, budgets: bad ? [] : budgets, nothingTicked: ticked.length === 0 }
 }

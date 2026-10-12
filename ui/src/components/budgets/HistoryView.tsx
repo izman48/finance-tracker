@@ -81,9 +81,11 @@ export default function HistoryView(props: HistoryViewProps) {
     return (
       <div className="card card-pad text-center py-8">
         <h2 className="font-display font-semibold text-slate-100 mb-1.5">History appears after your first full pay cycle</h2>
-        <p className="text-sm text-slate-400 max-w-md mx-auto">
-          When this cycle ends on {dateDayMonth(now?.end)} it will show here, and builds up to the last 6 cycles.
-        </p>
+        {now && (
+          <p className="text-sm text-slate-400 max-w-md mx-auto">
+            When this cycle ends on {dateDayMonth(now.end)} it will show here, and builds up to the last 6 cycles.
+          </p>
+        )}
       </div>
     )
   }
@@ -134,7 +136,7 @@ export default function HistoryView(props: HistoryViewProps) {
       </section>
 
       <section className="card card-pad" aria-labelledby="history-by-budget">
-        <h2 id="history-by-budget" className="font-display font-semibold text-slate-100">By budget</h2>
+        <h2 id="history-by-budget" tabIndex={-1} className="font-display font-semibold text-slate-100 outline-none">By budget</h2>
         <ul>
           {data.budgets.map((b, i) => (
             <li key={b.budget_id} className="py-3.5 border-t border-white/[0.06] first:border-t-0 sm:flex sm:items-center sm:gap-5">

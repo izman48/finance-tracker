@@ -36,7 +36,7 @@ describe('HistoryView', () => {
   it('BH2: per budget, the limit, usually and Kept k of n', () => {
     const t = text(html())
     expect(t).toContain('Groceries')
-    expect(t).toContain('Limit £300 · usually £290.33')
+    expect(t).toContain('Limit £300 · usually £290')
     expect(t).toContain('Kept 4 of 6')
   })
 
@@ -87,6 +87,17 @@ describe('HistoryView', () => {
     expect(t).toContain('Paused in these cycles')
     expect(t).not.toContain('Kept 0 of 0')
     expect(t).toContain('No cycles counted yet: your budgets were paused.')
+  })
+
+  it('ux on #165: the empty state drops the second sentence without the current cycle', () => {
+    const empty = data({ cycles: [], budgets: [], on_target: 0, counted: 0, trend: null, has_more: false })
+    const t = text(html({ data: empty, now: null }))
+    expect(t).toContain('History appears after your first full pay cycle')
+    expect(t).not.toContain('When this cycle ends')
+  })
+
+  it('ux on #165: the By budget heading can take focus (after Show more)', () => {
+    expect(html()).toMatch(/<h2 id="history-by-budget" tabindex="-1"/)
   })
 
   it('BH15: a removed category gets a Removed chip; an active one does not', () => {

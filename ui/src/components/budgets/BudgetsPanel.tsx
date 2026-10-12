@@ -96,6 +96,8 @@ export default function BudgetsPanel({ onOpenCategory }: { onOpenCategory: (cate
       if (!mounted.current) return
       setHistory({ status: 'ready', data: res.data })
       setMore('idle')
+      // The button is gone at the cap: keep focus in the list it opened (ux on #165).
+      requestAnimationFrame(() => document.getElementById('history-by-budget')?.focus())
     } catch {
       if (mounted.current) setMore('error') // the loaded cycles stay
     }

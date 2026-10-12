@@ -9,17 +9,17 @@ A change that brings in less counts at once. Undo works as normal.
 Safe-to-spend never counts income; the forecast may move (D1 = a).
 """
 import uuid
-from datetime import date, timedelta
+from datetime import timedelta
 from decimal import Decimal
 
 from app.core import user_crypto
 from app.models import CommitmentRule, User
 from tests.integration.test_oauth import READ, _bearer, _connect
 from tests.integration.test_transactions_endpoint import _account, _dek_from_token
+from tests.clock import TODAY  # one day for the whole run (T-08-27)
 
 API = "/api/v1"
 PLANNING = "finance:planning.write"
-TODAY = date.today()
 
 
 class World:

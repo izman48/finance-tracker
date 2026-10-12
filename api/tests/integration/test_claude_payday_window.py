@@ -10,15 +10,15 @@ Fix: while such a Claude change is pending (not kept), the committed window
 ends at the *later* of next payday as things are and next payday as they
 were before Claude (the T-08-20 pre-Claude view, dismissals included).
 """
-from datetime import date, timedelta
+from datetime import timedelta
 from decimal import Decimal
 
 from app.core import user_crypto
 from app.models import CommitmentRule
 from tests.integration.test_claude_income_parity import World as ParityWorld
+from tests.clock import TODAY  # one day for the whole run (T-08-27)
 
 API = "/api/v1"
-TODAY = date.today()
 
 
 class World(ParityWorld):

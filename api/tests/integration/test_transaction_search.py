@@ -18,6 +18,7 @@ from app.models import Account, BankConnection, OAuthGrant, Transaction, User
 from app.services import transaction_search as search
 from tests.integration.test_oauth import READ, WRITE, _bearer, _connect, _refresh
 from tests.integration.test_transactions_endpoint import _dek_from_token
+from tests.clock import TODAY  # one day for the whole run (T-08-27)
 
 URL = "/api/v1/banking/transactions/search"
 
@@ -63,7 +64,6 @@ def _at(d: date, hour=12, minute=0):
     return datetime(d.year, d.month, d.day, hour, minute, tzinfo=timezone.utc)
 
 
-TODAY = datetime.now(timezone.utc).date()
 DAY = TODAY - timedelta(days=5)
 
 

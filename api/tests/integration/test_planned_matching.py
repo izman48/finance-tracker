@@ -17,7 +17,7 @@ passed); an unmatched planned *income* stays expected only until its date + 7
 days, then is listed as late and leaves the balance line.
 """
 import uuid
-from datetime import date, timedelta
+from datetime import timedelta
 from decimal import Decimal
 
 import pytest
@@ -27,9 +27,9 @@ from app.core import user_crypto
 from app.models import CommitmentRule, PlannedItem, Transaction, User
 from tests.integration.test_oauth import READ, _bearer, _connect
 from tests.integration.test_transactions_endpoint import _account, _dek_from_token, _tx
+from tests.clock import TODAY  # one day for the whole run (T-08-27)
 
 API = "/api/v1"
-TODAY = date.today()
 
 
 class World:

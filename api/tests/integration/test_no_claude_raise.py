@@ -11,16 +11,16 @@ pending/keep state, keep endpoint and undo apply, with `keep_kind:
 "expense_cut"`. Raising or confirming a bill lowers safe-to-spend and
 applies at once (KP20).
 """
-from datetime import date, timedelta
+from datetime import timedelta
 from decimal import Decimal
 
 from app.models import CommitmentRule
 from tests.integration.test_claude_income_parity import _projection
 from tests.integration.test_claude_payday_window import World as PaydayWorld
 from tests.integration.test_oauth import _bearer
+from tests.clock import TODAY  # one day for the whole run (T-08-27)
 
 API = "/api/v1"
-TODAY = date.today()
 
 
 class World(PaydayWorld):

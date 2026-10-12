@@ -206,19 +206,25 @@ docker network create "$NET" >/dev/null
 # Upstreams that read the whole body, as uvicorn does for a form, then answer
 # 200: the cap only bites while a body is being read.
 UPSTREAM_IMAGE="python:3.12-alpine"
+# Each POST logs "<path> <body bytes received>", even when the connection is
+# cut mid-body, so the cap can be checked from the upstream's side.
 UPSTREAM_PY='
 import http.server, sys
 class H(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
-        if self.headers.get("Transfer-Encoding", "").lower() == "chunked":
-            while True:  # read every chunk, as uvicorn does
-                size = int(self.rfile.readline().split(b";")[0], 16)
-                self.rfile.read(size + 2)
-                if size == 0:
-                    break
-        else:
-            self.rfile.read(int(self.headers.get("Content-Length", 0)))
-        self.send_response(200); self.send_header("Content-Length", "2"); self.end_headers(); self.wfile.write(b"ok")
+        got = 0
+        try:
+            if self.headers.get("Transfer-Encoding", "").lower() == "chunked":
+                while True:  # read every chunk, as uvicorn does
+                    size = int(self.rfile.readline().split(b";")[0], 16)
+                    got += len(self.rfile.read(size + 2)) - 2
+                    if size == 0:
+                        break
+            else:
+                got = len(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+            self.send_response(200); self.send_header("Content-Length", "2"); self.end_headers(); self.wfile.write(b"ok")
+        finally:
+            print(self.path, max(got, 0), flush=True)
 http.server.ThreadingHTTPServer(("", int(sys.argv[1])), H).serve_forever()'
 docker pull -q "$UPSTREAM_IMAGE" >/dev/null
 docker run -d --name "${UPSTREAMS[0]}" --network "$NET" --network-alias api "$UPSTREAM_IMAGE" \
@@ -253,15 +259,29 @@ post_chunked_status() {
 }
 
 MB=1048576
+CAP=1000000  # Caddy's "1MB"
+# upstream_max <path>: the most body bytes the upstream received for <path>.
+upstream_max() {
+  local up="${UPSTREAMS[0]}"; [ "$1" = /mcp ] && up="${UPSTREAMS[1]}"
+  docker logs "$up" 2>/dev/null | awk -v p="$1" '$1 == p && $2 > m { m = $2 } END { print m + 0 }'
+}
+# refused <path> <status line>: the cap held. Either Caddy answered 413, or it
+# cut the connection while the client was still sending (curl/nc then see an
+# empty reply; a CI flake on #156): then the real property is checked instead,
+# that the upstream never received more than the cap.
+refused() {
+  [ "$2" = "HTTP/1.1 413 Request Entity Too Large" ] && return 0
+  [ -z "$2" ] && [ "$(upstream_max "$1")" -le "$CAP" ]
+}
 for path in /api/v1/auth/login /api/v1/oauth/token /mcp; do
   got="$(post_status "$path" $((2 * MB)))"
-  [ "$got" = "HTTP/1.1 413 Request Entity Too Large" ] \
-    && pass "a 2 MB POST to $path is refused with 413" || fail "2 MB POST to $path (got: '$got')"
+  refused "$path" "$got" \
+    && pass "a 2 MB POST to $path is refused (413, or cut with ≤ 1 MB upstream)" || fail "2 MB POST to $path (got: '$got', upstream max $(upstream_max "$path"))"
 done
 for path in /api/v1/auth/login /mcp; do
   got="$(post_chunked_status "$path" 32)"
-  [ "$got" = "HTTP/1.1 413 Request Entity Too Large" ] \
-    && pass "a 2 MiB chunked POST to $path is refused with 413" || fail "2 MiB chunked POST to $path (got: '$got')"
+  refused "$path" "$got" \
+    && pass "a 2 MiB chunked POST to $path is refused (413, or cut with ≤ 1 MB upstream)" || fail "2 MiB chunked POST to $path (got: '$got', upstream max $(upstream_max "$path"))"
 done
 got="$(post_chunked_status /api/v1/rules/packs/bulk 4)"
 [ "$got" = "HTTP/1.1 200 OK" ] \

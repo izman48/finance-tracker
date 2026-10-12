@@ -354,3 +354,46 @@ def test_an_existing_budgets_limit_can_change_after_its_category_becomes_mostly_
     assert r.status_code == 200, r.text
     r = w.put([{"category": "Eating out", "limit_pounds": 210}, {"category": "Rent", "limit_pounds": 10}])
     assert r.status_code == 422  # a new one still can't
+
+
+# --- only purchase categories can have a budget (eng-a's live-stack check) -----------
+
+def _income_and_transfers(w):
+    def make():
+        _tx(w.db, w.current, "2500.00", TODAY - timedelta(days=20), ttype="credit", merchant="Salary", category="Income")
+        saver = _account(w.db, w.user.id, atype="SAVINGS", name="Saver", balance="0")
+        day = TODAY - timedelta(days=3)
+        _tx(w.db, w.current, "100.00", day, merchant="To saver", category="Savings")
+        _tx(w.db, saver, "100.00", day, ttype="credit", merchant="From current", category="Savings")
+        w.db.commit()
+    w.as_user(make)
+
+
+def test_income_and_transfer_categories_cant_have_a_budget(w):
+    """A budget counts purchases only, so a category that only appears on
+    income or transfers could never track anything."""
+    _income_and_transfers(w)
+    assert w.create("Income", 100).status_code == 422
+    assert w.create("Savings", 100).status_code == 422
+    assert w.create("Eating out", 100).status_code == 201
+
+
+def test_get_budgets_lists_the_budgetable_categories_on_request(w):
+    """Only with ?include=categories: it reads a year of transactions."""
+    _income_and_transfers(w)
+    assert w.get().json()["budgetable_categories"] is None
+    r = w.client.get(f"{API}/budgets", params={"include": "categories"}, headers=_bearer(w.web))
+    categories = r.json()["budgetable_categories"]
+    assert {"Eating out", "Groceries", "Shopping"} <= set(categories)
+    assert not {"Income", "Savings", "Rent", "Uncategorized"} & set(categories)
+    assert categories == sorted(categories)
+
+
+def test_suggest_never_offers_income(w):
+    _income_and_transfers(w)
+    assert "Income" not in {s["category"] for s in w.suggest().json()["suggestions"]}
+
+
+def test_an_unknown_include_is_refused(w):
+    r = w.client.get(f"{API}/budgets", params={"include": "everything"}, headers=_bearer(w.web))
+    assert r.status_code == 422

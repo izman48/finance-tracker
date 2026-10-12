@@ -39,6 +39,7 @@ FALLBACK_DAYS = 30
 SUGGEST_CYCLES = 3
 SUGGEST_MAX = 8
 COVERED_LOOKBACK_DAYS = 90
+CATEGORY_LOOKBACK_DAYS = 365
 # Pace: within 10% of even spending is "on pace".
 PACE_BAND = Decimal("0.10")
 
@@ -73,16 +74,16 @@ def previous_cycles(db: Session, user, cycle: Cycle, n: int) -> list[Cycle]:
     return list(reversed(out))
 
 
-def user_categories(db: Session, user) -> set[str]:
-    """The categories on the user's own transactions (plain text column)."""
-    rows = (
-        db.query(Transaction.category)
-        .join(Account)
-        .filter(Account.user_id == user.id, Transaction.category.is_not(None))
-        .distinct()
-        .all()
-    )
-    return {c for (c,) in rows if c and c != UNCATEGORISED}
+def budgetable_categories(db: Session, user, today: date, covered: set[str] | None = None) -> set[str]:
+    """The categories a budget can track: those on the user's own purchases
+    over the last year, through the same `classify_purchase` lens as budget
+    spend, less those that are mostly commitments. Income, refunds and
+    transfers never count against a budget, so a category seen only on them
+    could never track anything (eng-a's live-stack check)."""
+    purchases = budget_spend(db, user, today - timedelta(days=CATEGORY_LOOKBACK_DAYS), today).by_category
+    if covered is None:
+        covered = commitment_covered(db, user, today)
+    return set(purchases) - covered - {UNCATEGORISED}
 
 
 def commitment_covered(db: Session, user, today: date) -> set[str]:
@@ -112,12 +113,13 @@ def validate_categories(db: Session, user, categories: list[str], budgeted: set[
     new = [c for c in categories if c not in budgeted]
     if not new:
         return
-    known = user_categories(db, user)
-    if any(c not in known for c in new):
-        raise _refuse("Budgets can only use your existing categories.")
-    covered = commitment_covered(db, user, _today())
+    today = _today()
+    covered = commitment_covered(db, user, today)
     if any(c in covered for c in new):
         raise _refuse("That category is mostly commitments, which are already counted in safe to spend.")
+    allowed = budgetable_categories(db, user, today, covered)
+    if any(c not in allowed for c in new):
+        raise _refuse("Budgets can only use categories you spend in.")
 
 
 def lock_user_budgets(db: Session, user) -> None:
@@ -242,9 +244,12 @@ def remaining_now(db: Session, user, budget: Budget) -> Decimal:
     return max(Decimal(0), Decimal(budget.limit_pounds) - spent)
 
 
-def budget_list(db: Session, user, markers: dict | None = None) -> BudgetListResponse:
+def budget_list(db: Session, user, markers: dict | None = None,
+                include_categories: bool = False) -> BudgetListResponse:
     """GET /budgets: the current cycle, each budget's spend and pace, other
-    spending, what's not counted, and the reconciliation line."""
+    spending, what's not counted, and the reconciliation line. The
+    budgetable categories read a year of transactions (about 160 ms on 2,000
+    of them), so they're only computed when asked for (eng-a on #156)."""
     from app.services.analytics.summary import get_summary
 
     inputs = pace_inputs(db, user, _today())
@@ -278,6 +283,7 @@ def budget_list(db: Session, user, markers: dict | None = None) -> BudgetListRes
                           days_left=inputs.days_left, fallback=cycle.fallback),
         budgets=rows, other_spending=other, total_spent=sum(spend.by_category.values(), Decimal(0)),
         not_counted=NotCounted(**spend.excluded), reconciliation=reconciliation,
+        budgetable_categories=sorted(budgetable_categories(db, user, _today())) if include_categories else None,
     )
 
 

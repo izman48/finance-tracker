@@ -7,7 +7,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.exc import IntegrityError
@@ -50,8 +50,12 @@ def _one(db: Session, user, budget_id: uuid.UUID) -> BudgetResponse:
 
 
 @router.get("", response_model=BudgetListResponse)
-def list_budgets(current_user: CurrentUser, db: Annotated[Session, Depends(get_db)]) -> BudgetListResponse:
-    return svc.budget_list(db, current_user)
+def list_budgets(
+    current_user: CurrentUser, db: Annotated[Session, Depends(get_db)],
+    include: Literal["categories"] | None = None,
+) -> BudgetListResponse:
+    """`?include=categories` adds budgetable_categories (for Add budget)."""
+    return svc.budget_list(db, current_user, include_categories=include == "categories")
 
 
 @router.post("", response_model=BudgetResponse, status_code=status.HTTP_201_CREATED)

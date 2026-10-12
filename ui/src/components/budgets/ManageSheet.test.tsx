@@ -26,6 +26,8 @@ const html = (props: Partial<ManageSheetProps> = {}) =>
         onSaveLimit={resolved}
         onTogglePause={resolved}
         onRemove={resolved}
+        onSaveAll={resolved}
+        onSuggest={() => Promise.resolve({ suggestions: [], commitment_covered: [] })}
         {...props}
       />
     </MemoryRouter>,
@@ -56,8 +58,11 @@ describe('ManageSheet', () => {
     }
   })
 
-  it('header action: + Add budget', () => {
-    expect(html()).toMatch(/<button[^>]*>\+ Add budget<\/button>/)
+  it('header actions: + Add budget, Suggest again, Edit all', () => {
+    const h = html()
+    expect(h).toMatch(/<button[^>]*>\+ Add budget<\/button>/)
+    expect(h).toMatch(/<button[^>]*>Suggest again<\/button>/)
+    expect(h).toMatch(/<button[^>]*>Edit all<\/button>/)
   })
 
   it('BM10: the Changed by Claude chip, and the footer link to the Changes screen; no Keep control', () => {

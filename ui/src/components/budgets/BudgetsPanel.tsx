@@ -3,7 +3,7 @@ import BudgetsView from './BudgetsView'
 import SuggestSheet, { type SuggestSheetProps } from './SuggestSheet'
 import ManageSheet from './ManageSheet'
 import { useToast } from '../ui/Toast'
-import { bankingAPI, budgetsAPI, syncStatusAPI } from '../../services/api'
+import { budgetsAPI, syncStatusAPI } from '../../services/api'
 import { failureFromError, type UndoFailure } from '../../lib/changes'
 import { withTimeout } from '../../lib/forecastLoad'
 import { writeFailure, type Budget, type BudgetEntry, type BudgetsResponse } from '../../lib/budgets'
@@ -102,9 +102,10 @@ export default function BudgetsPanel({ onOpenCategory }: { onOpenCategory: (cate
   const openManage = () => {
     setManageMessage(null)
     setManaging(true)
-    bankingAPI
-      .getTransactionFacets()
-      .then((res) => mounted.current && setCategories(res.data.categories))
+    // The categories a new budget may use: purchase categories, not commitment-covered (#156).
+    budgetsAPI
+      .listWithCategories()
+      .then((res) => mounted.current && setCategories(res.data.budgetable_categories ?? []))
       .catch(() => {}) // Add budget just offers nothing new
   }
 
@@ -137,6 +138,8 @@ export default function BudgetsPanel({ onOpenCategory }: { onOpenCategory: (cate
           onSaveLimit={(b: Budget, limit) => write(b.category, () => budgetsAPI.update(b.id, { limit_pounds: limit }))}
           onTogglePause={(b: Budget) => write(b.category, () => budgetsAPI.update(b.id, { paused: !b.paused }))}
           onRemove={(b: Budget) => write(b.category, () => budgetsAPI.remove(b.id))}
+          onSaveAll={(entries) => write('', () => budgetsAPI.saveAll(entries))}
+          onSuggest={() => withTimeout(budgetsAPI.suggest(), TIMEOUT_MS).then((res) => res.data)}
         />
       )}
       <BudgetsView

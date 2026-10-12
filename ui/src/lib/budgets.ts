@@ -57,6 +57,8 @@ export interface BudgetsResponse {
   not_counted: { commitments: Money; transfers: Money; card_payoffs: Money; financed: Money }
   /** Null when there's no active budget. */
   reconciliation: Reconciliation | null
+  /** Categories a new budget may use (on purchases, not commitment-covered); only with `?include=categories` (#156). */
+  budgetable_categories?: string[] | null
 }
 
 export interface BudgetSuggestion {
@@ -228,4 +230,65 @@ export function writeFailure(err: unknown, category: string): string {
 export function focusAfterWrite(kind: 'edit' | 'add' | 'remove', id: string | null, canAdd: boolean): string {
   if (kind === 'edit') return `[data-focus="edit-${id}"]`
   return canAdd ? '[data-focus="add"]' : '[role="dialog"]'
+}
+
+// --- Edit all and Suggest again (section 13; T-09-7b) -------------------------------
+
+const limitOf = (b: Budget, values: Record<string, string>) => {
+  const v = values[b.id] ?? String(b.limit_pounds)
+  return limitError(v) ? b.limit_pounds : Number(v.trim())
+}
+
+/** "Total per cycle £480 (was £450)"; an invalid field counts at its old limit. */
+export function editAllTotal(budgets: Budget[], values: Record<string, string>): string {
+  const was = budgets.reduce((sum, b) => sum + b.limit_pounds, 0)
+  const now = budgets.reduce((sum, b) => sum + limitOf(b, values), 0)
+  return `Total per cycle ${money(now)}${now === was ? '' : ` (was ${money(was)})`}`
+}
+
+/** The changed limits to send in one PUT, or an error per bad field (keyed by budget id). */
+export function editAllEntries(budgets: Budget[], values: Record<string, string>): { errors: Record<string, string>; budgets: BudgetEntry[] } {
+  const errors: Record<string, string> = {}
+  const entries: BudgetEntry[] = []
+  for (const b of budgets) {
+    const v = values[b.id] ?? String(b.limit_pounds)
+    const error = limitError(v)
+    if (error) errors[b.id] = error
+    else if (Number(v.trim()) !== b.limit_pounds) entries.push({ category: b.category, limit_pounds: Number(v.trim()) })
+  }
+  return Object.keys(errors).length ? { errors, budgets: [] } : { errors, budgets: entries }
+}
+
+export interface DiffRow extends SuggestRow {
+  /** "Now £300 → suggested £280", or "New". */
+  change: string
+  suggestion: BudgetSuggestion
+}
+
+/** Suggest again: what would change. Unchanged budgets are counted, not listed (BM6). */
+export function suggestDiff(suggestions: BudgetSuggestion[], budgets: Budget[]): { rows: DiffRow[]; unchanged: number; summary: string } {
+  const current = new Map(budgets.map((b) => [b.category, b.limit_pounds]))
+  const rows: DiffRow[] = []
+  let unchanged = 0
+  let changes = 0
+  let added = 0
+  for (const s of suggestions) {
+    if (s.suggested_limit === null) continue // never invent a figure
+    const now = current.get(s.category) ?? null
+    if (now === s.suggested_limit) {
+      unchanged += 1
+      continue
+    }
+    if (now === null) added += 1
+    else changes += 1
+    rows.push({
+      category: s.category, checked: true, limit: String(s.suggested_limit), available: true, suggestion: s,
+      change: now === null ? 'New' : `Now ${money(now)} → suggested ${money(s.suggested_limit)}`,
+    })
+  }
+  const parts = [changes ? plural(changes, 'change') : '', added ? `${added} new budget${added === 1 ? '' : 's'}` : ''].filter(Boolean)
+  const summary = parts.length
+    ? `${parts.join(' and ')}. Nothing is saved until you press Save.`
+    : 'Your budgets already match the suggestions.'
+  return { rows, unchanged, summary }
 }

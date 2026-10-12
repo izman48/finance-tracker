@@ -339,6 +339,8 @@ const listParams = (params: Record<string, unknown>) => {
 // Budgets (T-09-2 / T-09-6). Web session; PUT upserts the listed categories, all or nothing.
 export const budgetsAPI = {
   list: () => api.get<BudgetsResponse>('/budgets'),
+  /** The list plus the categories a new budget may use (heavier: only when Add budget needs it). */
+  listWithCategories: () => api.get<BudgetsResponse>('/budgets', { params: { include: 'categories' } }),
   suggest: () => api.post<SuggestResponse>('/budgets/suggest', {}),
   saveAll: (budgets: BudgetEntry[]) => api.put<BudgetsResponse>('/budgets', { budgets }),
   create: (entry: BudgetEntry) => api.post('/budgets', entry),

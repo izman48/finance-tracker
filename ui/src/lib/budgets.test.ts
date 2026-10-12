@@ -18,6 +18,9 @@ import {
   manageSubtitle,
   writeFailure,
   focusAfterWrite,
+  editAllEntries,
+  editAllTotal,
+  suggestDiff,
   checkRows,
   suggestRows,
 } from './budgets'
@@ -184,5 +187,63 @@ describe('focusAfterWrite (BM19: focus never falls to body)', () => {
   it('a remove returns to + Add budget, or the sheet itself when Add is disabled', () => {
     expect(focusAfterWrite('remove', 'b1', true)).toBe('[data-focus="add"]')
     expect(focusAfterWrite('remove', 'b1', false)).toBe('[role="dialog"]')
+  })
+})
+
+describe('Edit all (section 13, BM4)', () => {
+  const budgets = [budget({ id: 'b1', category: 'Groceries', limit_pounds: 300 }), budget({ id: 'b2', category: 'Eating out', limit_pounds: 150 })]
+
+  it('the running total, against the total before', () => {
+    expect(editAllTotal(budgets, { b1: '300', b2: '150' })).toBe('Total per cycle £450')
+    expect(editAllTotal(budgets, { b1: '320', b2: '160' })).toBe('Total per cycle £480 (was £450)')
+    // A field mid-edit (invalid) counts at its old limit until it's valid.
+    expect(editAllTotal(budgets, { b1: '3x', b2: '160' })).toBe('Total per cycle £460 (was £450)')
+  })
+
+  it('sends only the changed limits, all at once; any bad field blocks the save', () => {
+    expect(editAllEntries(budgets, { b1: '320', b2: '150' })).toEqual({
+      errors: {},
+      budgets: [{ category: 'Groceries', limit_pounds: 320 }],
+    })
+    expect(editAllEntries(budgets, { b1: '0', b2: '160' })).toEqual({ errors: { b1: LIMIT_ERROR }, budgets: [] })
+  })
+})
+
+describe('Suggest again (section 13, BM6)', () => {
+  const budgets = [
+    budget({ id: 'b1', category: 'Groceries', limit_pounds: 300 }),
+    budget({ id: 'b2', category: 'Eating out', limit_pounds: 150 }),
+    budget({ id: 'b3', category: 'Transport', limit_pounds: 80 }),
+  ]
+  const suggestions = [
+    suggestion({ category: 'Groceries', suggested_limit: 280, current_limit: 300 }),
+    suggestion({ category: 'Eating out', suggested_limit: 150, current_limit: 150 }),
+    suggestion({ category: 'Transport', suggested_limit: 80, current_limit: 80 }),
+    suggestion({ category: 'Health & beauty', suggested_limit: 40, current_limit: null }),
+    suggestion({ category: 'Dining', suggested_limit: null, reason: 'not_enough_history', current_limit: null }),
+  ]
+
+  it('changes and new budgets are shown; unchanged ones are counted, not listed', () => {
+    const diff = suggestDiff(suggestions, budgets)
+    expect(diff.rows.map((r) => [r.category, r.change])).toEqual([
+      ['Groceries', 'Now £300 → suggested £280'],
+      ['Health & beauty', 'New'],
+    ])
+    expect(diff.unchanged).toBe(2)
+    expect(diff.summary).toBe('1 change and 1 new budget. Nothing is saved until you press Save.')
+  })
+
+  it('rows start ticked with the suggested limit, and save as one upsert', () => {
+    const diff = suggestDiff(suggestions, budgets)
+    expect(checkRows(diff.rows)).toEqual({
+      errors: {},
+      budgets: [{ category: 'Groceries', limit_pounds: 280 }, { category: 'Health & beauty', limit_pounds: 40 }],
+      nothingTicked: false,
+    })
+  })
+
+  it('nothing to change: says so', () => {
+    const same = [suggestion({ category: 'Groceries', suggested_limit: 300, current_limit: 300 })]
+    expect(suggestDiff(same, budgets.slice(0, 1)).summary).toBe('Your budgets already match the suggestions.')
   })
 })

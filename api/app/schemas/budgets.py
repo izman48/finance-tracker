@@ -96,6 +96,9 @@ class BudgetListResponse(BaseModel):
     not_counted: NotCounted
     # Null when there's no active budget (the UI shows the empty state).
     reconciliation: Reconciliation | None = None
+    # The categories a new budget can use: those on the user's purchases in
+    # the last year, less those mostly commitments. Sorted. Text only.
+    budgetable_categories: list[str] = []
 
 
 class CreateBudgetRequest(BaseModel):

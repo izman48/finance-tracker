@@ -36,7 +36,7 @@ from app.services import transaction_search as search
 from app.services.balance_sign import credit_owed
 from app.services.sync_lock import RETRY_AFTER_SECONDS, SyncBusy, sync_lease
 from app.services.sync_status import freshness, sync_status
-from app.services.truelayer import ReauthRequired, truelayer_service
+from app.services.truelayer import ReauthRequired, TrueLayerError, truelayer_service
 from app.models import Account, AccountRole, Transaction, User, BankConnection
 
 logger = logging.getLogger(__name__)
@@ -50,6 +50,15 @@ def _sync_error(provider_name: str, exc: Exception) -> str:
     if isinstance(exc, ReauthRequired):
         return f"{provider_name}: bank access has expired, reconnect it on the Wealth tab"
     return f"{provider_name}: couldn't sync right now, try again later"
+
+
+def _log_detail(e: Exception) -> str:
+    """For a connection-level log line: the exception type, plus the HTTP
+    status and TrueLayer error code when known (T-08-27). Never its text."""
+    parts = [type(e).__name__]
+    if isinstance(e, TrueLayerError):
+        parts += [str(p) for p in (e.status, e.code) if p]
+    return " ".join(parts)
 
 
 def _busy() -> HTTPException:
@@ -303,7 +312,7 @@ async def _sync_all_accounts(current_user, db: Session) -> SyncAccountsResponse:
         except Exception as e:
             needs_reauth += isinstance(e, ReauthRequired)
             # The type only: the message can carry provider detail (as /sync does).
-            logger.error("Failed to sync accounts for %s: %s", connection.provider_name, type(e).__name__)
+            logger.error("Failed to sync accounts for %s: %s", connection.provider_name, _log_detail(e))
             errors.append(_sync_error(connection.provider_name, e))
 
     if errors and not all_accounts:
@@ -369,7 +378,7 @@ async def _sync_all_transactions(request: SyncTransactionsRequest, current_user,
             logger.info(f"Synced {count} transactions from {connection.provider_name}")
         except Exception as e:
             needs_reauth += isinstance(e, ReauthRequired)
-            logger.error("Failed to sync transactions for %s: %s", connection.provider_name, type(e).__name__)
+            logger.error("Failed to sync transactions for %s: %s", connection.provider_name, _log_detail(e))
             errors.append(_sync_error(connection.provider_name, e))
 
     if errors and total_count == 0:
@@ -394,12 +403,14 @@ SYNC_COOLDOWN_SECONDS = 10 * 60
 # POST /banking/sync starts a bank only while this much of its budget is
 # left, and a started bank runs to the end: cancelling one mid-sync could
 # lose a refresh token TrueLayer had just rotated (sec, eng-a on #138). Each
-# TrueLayer call times out at 10 s, but a bank makes one call per account,
-# so a started bank usually, not always, ends inside the margin. If it runs
+# TrueLayer call times out at 10 s and a transactions fetch at 25 s (T-08-27),
+# but a bank makes one call per account, so a started bank usually, not
+# always, ends inside the margin. If it runs
 # past the MCP client's wait, the API still finishes it safely, well inside
 # the 5-minute sync lease (T-08-22).
 SYNC_BUDGET_SECONDS = 45
-SYNC_START_MARGIN_SECONDS = 25
+# Enough for a token refresh and one transactions fetch (10 s + 25 s, T-08-27).
+SYNC_START_MARGIN_SECONDS = 35
 # Same window as the web sync; stored transactions are de-duplicated.
 SYNC_DAYS = 90
 
@@ -480,7 +491,7 @@ async def _sync_connection(connection: BankConnection, db: Session) -> BankSyncC
         outcome = "reconnect"
     except Exception as exc:
         # Log the type only: the message can carry provider detail.
-        logger.error("Bank sync failed for %s: %s", connection.provider_name, type(exc).__name__)
+        logger.error("Bank sync failed for %s: %s", connection.provider_name, _log_detail(exc))
         db.rollback()
         outcome = "failed"
     result = _result(connection, outcome, accounts, transactions)

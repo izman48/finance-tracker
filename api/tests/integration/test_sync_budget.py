@@ -3,7 +3,8 @@
 It runs inside the request (the DEK exists only there), so it must finish
 well inside the 5-minute sync lease, and usually inside the MCP client's
 wait (a bank with many accounts can run past that, which is safe): every
-TrueLayer call has an explicit timeout of at most 10 s, and `POST
+TrueLayer call has an explicit timeout (10 s; 25 s for a transactions
+fetch, T-08-27), and `POST
 /banking/sync` starts a bank only while at least SYNC_START_MARGIN_SECONDS
 of its 45 s budget remain. A started bank is never cancelled (that could
 lose a token TrueLayer had just rotated, sec on #138). A bank not started
@@ -42,10 +43,13 @@ def test_every_truelayer_call_has_an_explicit_timeout_of_10s_or_less(client, db_
 def test_the_budget_is_well_inside_the_lease():
     assert banking.SYNC_BUDGET_SECONDS <= 45
     # A bank is only started with this much budget left, enough for a token
-    # refresh and a data call at their timeouts.
-    assert banking.SYNC_START_MARGIN_SECONDS >= 2 * truelayer_module.TRUELAYER_TIMEOUT_SECONDS
-    # A started bank runs to the end (never cancelled): allow it a few calls past the budget.
-    worst = banking.SYNC_BUDGET_SECONDS + 3 * truelayer_module.TRUELAYER_TIMEOUT_SECONDS
+    # refresh and a transactions fetch at their timeouts (T-08-27).
+    assert banking.SYNC_START_MARGIN_SECONDS >= (
+        truelayer_module.TRUELAYER_TIMEOUT_SECONDS + truelayer_module.TRANSACTIONS_TIMEOUT_SECONDS
+    )
+    # A started bank runs to the end (never cancelled): allow it a refresh and a few fetches past the budget.
+    worst = (banking.SYNC_BUDGET_SECONDS + truelayer_module.TRUELAYER_TIMEOUT_SECONDS
+             + 3 * truelayer_module.TRANSACTIONS_TIMEOUT_SECONDS)
     assert worst < sync_lock.LEASE.total_seconds() / 2
 
 

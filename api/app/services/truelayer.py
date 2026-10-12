@@ -24,6 +24,10 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 # request, under the sync lease and the MCP client's wait.
 TRUELAYER_TIMEOUT_SECONDS = 10
 TRUELAYER_TIMEOUT = httpx.Timeout(TRUELAYER_TIMEOUT_SECONDS)
+# A transactions fetch can be slow (Amex took over 10 s, T-08-27): it alone
+# gets longer. The sync budget and start margin are sized for it (banking.py).
+TRANSACTIONS_TIMEOUT_SECONDS = 25
+TRANSACTIONS_TIMEOUT = httpx.Timeout(TRANSACTIONS_TIMEOUT_SECONDS)
 # The fallback window after a 403 on a longer fetch: Monzo serves only the
 # last 90 days of its own (UK) date once consent is a few minutes old.
 # Counted from the Europe/London date, with two days' margin (sec on #141:
@@ -57,6 +61,11 @@ def _describe(e: Exception) -> str:
     return _status_and_code(e) if isinstance(e, httpx.HTTPStatusError) else type(e).__name__
 
 
+def _not_offered(e: Exception) -> bool:
+    """501: the bank doesn't offer this endpoint via TrueLayer."""
+    return isinstance(e, httpx.HTTPStatusError) and e.response.status_code == 501
+
+
 def _log_skip(e: Exception, account) -> None:
     """One account skipped, by the caller's own internal ids only (sec,
     T-08-24). A 501 is the bank not offering it (Revolut card transactions
@@ -71,7 +80,12 @@ def _log_skip(e: Exception, account) -> None:
 
 class TrueLayerError(Exception):
     """A TrueLayer call failed. The message names TrueLayer's error code only;
-    it never carries tokens, secrets, or response bodies."""
+    it never carries tokens, secrets, or response bodies. `status` and `code`
+    (TrueLayer's `error`) are safe to log (T-08-27)."""
+
+    def __init__(self, message: str = "", status: int | None = None, code: str | None = None):
+        super().__init__(message)
+        self.status, self.code = status, code
 
 
 class ReauthRequired(TrueLayerError):
@@ -198,7 +212,8 @@ class TrueLayerService:
         if error_code == "invalid_grant" and grant["grant_type"] == "refresh_token":
             raise ReauthRequired("Bank consent has expired or was revoked")
         raise TrueLayerError(
-            f"TrueLayer token request failed ({response.status_code} {error_code})"
+            f"TrueLayer token request failed ({response.status_code} {error_code})",
+            status=response.status_code, code=error_code if error_code.isidentifier() else None,
         )
 
     async def _ensure_fresh_token(self, bank_connection: BankConnection, db: Session) -> None:
@@ -419,7 +434,7 @@ class TrueLayerService:
             "to": to_date.strftime("%Y-%m-%d"),
         }
 
-        async with httpx.AsyncClient(timeout=TRUELAYER_TIMEOUT) as client:
+        async with httpx.AsyncClient(timeout=TRANSACTIONS_TIMEOUT) as client:
             # Try account transactions first
             try:
                 response = await client.get(
@@ -582,6 +597,7 @@ class TrueLayerService:
         logger.info(f"Syncing transactions from {from_date.date()} to {to_date.date()} ({days} days)")
 
         skipped = 0
+        failures: list[Exception] = []
         for account in accounts:
             # One account's endpoint failing (Monzo cards 403, Revolut cards
             # 501, a timeout) must not stop the others (T-08-24).
@@ -590,6 +606,8 @@ class TrueLayerService:
             except Exception as e:
                 skipped += 1
                 _log_skip(e, account)
+                if not _not_offered(e):
+                    failures.append(e)
                 continue
 
             for tl_tx in tl_transactions:
@@ -635,9 +653,17 @@ class TrueLayerService:
 
             categorization.apply_rules(db, bank_connection.user_id, new_transactions)
 
-        if skipped == len(accounts):
+        # Every account failed: the connection failed. An account the bank
+        # doesn't offer transactions for (501, Revolut) isn't a failure, so a
+        # bank that offers none still syncs (T-08-27).
+        if skipped == len(accounts) and failures:
             db.rollback()
-            raise TrueLayerError("transactions failed for every account")
+            first = failures[0]
+            if isinstance(first, httpx.HTTPStatusError):
+                status, code = first.response.status_code, _status_and_code(first).partition(" ")[2] or None
+            else:
+                status, code = None, type(first).__name__
+            raise TrueLayerError("transactions failed for every account", status=status, code=code)
         bank_connection.last_synced_at = datetime.now(timezone.utc)
         db.commit()
         logger.info(f"Synced {new_count} new transactions for bank connection {bank_connection.id}")

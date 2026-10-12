@@ -306,11 +306,17 @@ def budget_projection(db: Session, user, forecast: dict) -> dict | None:
          .quantize(Decimal("0.01"))}
         for p in forecast["timeline"] if today <= p["date"] <= eve
     ]
+    from app.services.analytics.summary import get_summary
+
+    headroom = Decimal(get_summary(db, user)["safe_to_spend"]) - stick_total  # the reconciliation line's
+    stick = scheduled - stick_total
     return {
         "payday": eve + timedelta(days=1),
         "scheduled_balance": scheduled,
-        "stick_to_budgets_balance": scheduled - stick_total,
+        "stick_to_budgets_balance": stick,
         "current_pace_balance": scheduled - inputs.all_at_pace,
+        "headroom": headroom,
+        "difference": stick - headroom,
         "series": series,
     }
 

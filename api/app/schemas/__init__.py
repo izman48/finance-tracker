@@ -808,6 +808,11 @@ class BudgetProjection(BaseModel):
     scheduled_balance: Decimal         # the solid line: bills and plans only
     stick_to_budgets_balance: Decimal  # less remaining budgets and other spending at pace
     current_pace_balance: Decimal      # less all spending at the pace so far
+    # ux BC4/BC12: the reconciliation line's headroom (safe to spend less the
+    # same deductions) and stick_to_budgets_balance - headroom, so the UI
+    # never computes either; they differ when money lands before payday.
+    headroom: Decimal
+    difference: Decimal
     series: list[BudgetLinePoint]      # the dotted line, clipped to the chart's horizon
 
 

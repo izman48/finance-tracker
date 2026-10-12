@@ -160,3 +160,14 @@ def test_the_single_budget_lookup_is_a_404_if_gone(w):
     with pytest.raises(Exception) as err:
         w.as_user(lambda: router._one(w.db, w.user, uuid.uuid4()))
     assert getattr(err.value, "status_code", None) == 404
+
+
+def test_the_strip_carries_the_headroom_and_the_difference(w):
+    """ux BC4/BC12: both figures and their difference come from the API, so
+    the UI never computes one."""
+    w.create("Eating out", 150)
+    strip = _strip(w)
+    rec = w.get().json()["reconciliation"]
+    assert Decimal(strip["headroom"]) == Decimal(rec["headroom"])
+    assert Decimal(strip["difference"]) == (
+        Decimal(strip["stick_to_budgets_balance"]) - Decimal(strip["headroom"]))

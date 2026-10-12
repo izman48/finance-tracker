@@ -151,7 +151,9 @@ def run_batch(db: Session, caller: Caller, reqs: list[WriteRequest], body: Plann
     """Several writes as one: all applied in one transaction with one audit
     row each, sharing `batch_id`, or none (T-09-5 set_budgets). The caller
     validates every entry first. dry_run previews all and writes nothing.
-    One idempotency key covers the batch; a retry replays every row."""
+    One idempotency key covers the batch; a retry replays every audited
+    row. Entries that changed nothing have no audit row, so a replay lists
+    only the entries that changed."""
     if body.dry_run:
         savepoint = db.begin_nested()
         try:

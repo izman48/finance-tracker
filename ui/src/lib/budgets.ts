@@ -219,3 +219,13 @@ export function writeFailure(err: unknown, category: string): string {
   if (response.status === 422 && response.data?.detail === API_DUPLICATE) return `You already have a budget for ${category}.`
   return SAVE_ERROR
 }
+
+/**
+ * Where focus goes after a Manage write, so it never falls to `body` when the
+ * focused control unmounts (BM19): the row's Edit button after an edit,
+ * + Add budget after an add or a remove, or the sheet itself if Add is off.
+ */
+export function focusAfterWrite(kind: 'edit' | 'add' | 'remove', id: string | null, canAdd: boolean): string {
+  if (kind === 'edit') return `[data-focus="edit-${id}"]`
+  return canAdd ? '[data-focus="add"]' : '[role="dialog"]'
+}

@@ -7,6 +7,7 @@ import { categoryColor } from '../../lib/categoryColors'
 import {
   addOptions,
   claudeFooter,
+  focusAfterWrite,
   limitError,
   manageSubtitle,
   money,
@@ -44,6 +45,23 @@ export default function ManageSheet(props: ManageSheetProps) {
   const [adding, setAdding] = useState<{ category: string; value: string; error: string | null } | null>(null)
   const asking = useRef(false)
 
+  const sheet = useRef<HTMLDivElement>(null)
+
+  /** BM19: the focused control may have unmounted; land on one that still exists. */
+  const refocus = (kind: 'edit' | 'add' | 'remove', id: string | null) => {
+    const root = sheet.current?.closest<HTMLElement>('[role="dialog"]')
+    // Two frames: after the refetched list and the cleared busy state have rendered.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        const add = root?.querySelector<HTMLButtonElement>('[data-focus="add"]')
+        const target = root?.matches(focusAfterWrite(kind, id, !!add && !add.disabled))
+          ? root
+          : root?.querySelector<HTMLElement>(focusAfterWrite(kind, id, !!add && !add.disabled))
+        ;(target ?? root)?.focus()
+      }),
+    )
+  }
+
   const run = async (key: string, action: () => Promise<void>, done?: () => void) => {
     setBusy(key)
     try {
@@ -73,7 +91,10 @@ export default function ManageSheet(props: ManageSheetProps) {
     if (!editing) return
     const error = limitError(editing.value)
     if (error) return setEditing({ ...editing, error })
-    run(`edit-${b.id}`, () => onSaveLimit(b, Number(editing.value.trim())), () => setEditing(null))
+    run(`edit-${b.id}`, () => onSaveLimit(b, Number(editing.value.trim())), () => {
+      setEditing(null)
+      refocus('edit', b.id)
+    })
   }
 
   const saveAdd = () => {
@@ -81,7 +102,10 @@ export default function ManageSheet(props: ManageSheetProps) {
     if (!adding.category) return setAdding({ ...adding, error: 'Choose a category.' })
     const error = limitError(adding.value)
     if (error) return setAdding({ ...adding, error })
-    run('add', () => onAdd(adding.category, Number(adding.value.trim())), () => setAdding(null))
+    run('add', () => onAdd(adding.category, Number(adding.value.trim())), () => {
+      setAdding(null)
+      refocus('add', null)
+    })
   }
 
   const remove = async (b: Budget) => {
@@ -91,7 +115,7 @@ export default function ManageSheet(props: ManageSheetProps) {
       confirmLabel: 'Remove',
       danger: true,
     })
-    if (ok) run(`remove-${b.id}`, () => onRemove(b))
+    if (ok) run(`remove-${b.id}`, () => onRemove(b), () => refocus('remove', b.id))
   }
 
   const options = addOptions(categories, data.budgets)
@@ -99,16 +123,23 @@ export default function ManageSheet(props: ManageSheetProps) {
 
   return (
     <Sheet title="Manage budgets" onClose={close} wide>
-      <p className="text-xs text-slate-400 mb-3">{manageSubtitle(data.cycle)}</p>
-      <div className="flex flex-wrap gap-2 mb-2">
+      <p ref={sheet} className="text-xs text-slate-400 mb-3">{manageSubtitle(data.cycle)}</p>
+      <div className="flex flex-wrap items-center gap-2 mb-2">
         <button
           type="button"
+          data-focus="add"
           className={SMALL_BUTTON}
           disabled={!!busy || !!adding || options.length === 0}
+          aria-describedby={options.length === 0 ? 'manage-add-none' : undefined}
           onClick={() => setAdding({ category: '', value: '', error: null })}
         >
           + Add budget
         </button>
+        {options.length === 0 && (
+          <span id="manage-add-none" className="text-xs text-slate-400">
+            Every category you spend in already has a budget.
+          </span>
+        )}
       </div>
 
       {message && (
@@ -141,7 +172,10 @@ export default function ManageSheet(props: ManageSheetProps) {
             saveLabel="Save budget"
             onChange={(value) => setAdding({ ...adding, value, error: null })}
             onSave={saveAdd}
-            onCancel={() => setAdding(null)}
+            onCancel={() => {
+              setAdding(null)
+              refocus('add', null)
+            }}
           />
         </div>
       )}
@@ -172,6 +206,7 @@ export default function ManageSheet(props: ManageSheetProps) {
                   <span className="tnum font-semibold text-slate-100">{money(b.limit_pounds)}</span>
                   <button
                     type="button"
+                    data-focus={`edit-${b.id}`}
                     className={SMALL_BUTTON}
                     aria-label={`Edit ${b.category}`}
                     disabled={!!busy}
@@ -191,7 +226,10 @@ export default function ManageSheet(props: ManageSheetProps) {
                   saving={busy === `edit-${b.id}`}
                   onChange={(value) => setEditing({ ...editing, value, error: null })}
                   onSave={() => saveEdit(b)}
-                  onCancel={() => setEditing(null)}
+                  onCancel={() => {
+                    setEditing(null)
+                    refocus('edit', b.id)
+                  }}
                 />
               </div>
             )}
@@ -223,7 +261,7 @@ export default function ManageSheet(props: ManageSheetProps) {
 
       {footer && (
         <p className="text-xs text-slate-400 mt-3">
-          {footer}.{' '}
+          {footer}{' '}
           <Link to="/changes" className="btn-link">
             See changes made by Claude →
           </Link>

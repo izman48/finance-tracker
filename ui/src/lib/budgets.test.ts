@@ -17,6 +17,7 @@ import {
   claudeFooter,
   manageSubtitle,
   writeFailure,
+  focusAfterWrite,
   checkRows,
   suggestRows,
 } from './budgets'
@@ -170,5 +171,18 @@ describe('Manage budgets helpers (section 13)', () => {
     expect(writeFailure(fail(undefined), 'Groceries')).toBe(SAVE_UNKNOWN)
     expect(SAVE_ERROR).toBe("Couldn't save your budgets. Nothing was changed. Try again.")
     expect(SAVE_UNKNOWN).toBe("Couldn't confirm that. Your budgets may have been saved; check them before you try again.")
+  })
+})
+
+describe('focusAfterWrite (BM19: focus never falls to body)', () => {
+  it('an edit returns to that row\'s Edit button', () => {
+    expect(focusAfterWrite('edit', 'b1', true)).toBe('[data-focus="edit-b1"]')
+  })
+  it('an add returns to + Add budget', () => {
+    expect(focusAfterWrite('add', null, true)).toBe('[data-focus="add"]')
+  })
+  it('a remove returns to + Add budget, or the sheet itself when Add is disabled', () => {
+    expect(focusAfterWrite('remove', 'b1', true)).toBe('[data-focus="add"]')
+    expect(focusAfterWrite('remove', 'b1', false)).toBe('[role="dialog"]')
   })
 })

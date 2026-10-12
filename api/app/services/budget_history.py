@@ -48,23 +48,28 @@ def _aware(moment: datetime) -> datetime:
     return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
 
 
-def ensure_baseline(db: Session, budget: Budget) -> None:
+def ensure_baseline(db: Session, budget: Budget) -> bool:
     """A budget made before the change log existed has no rows: record its
     state from its creation. Call before changing it, so its older cycles
-    keep the old limit (eng-a on #160); `_changes` calls it too."""
+    keep the old limit (eng-a on #160); `_changes` calls it too. True when
+    it wrote a row."""
     if budget.id is None:
-        return
-    has_rows = db.query(BudgetChange.id).filter(BudgetChange.budget_id == budget.id).first() is not None
-    if not has_rows:
-        record_change(db, budget, at=_aware(budget.created_at) if budget.created_at else None)
+        return False
+    has_rows = db.query(BudgetChange.id).filter(
+        BudgetChange.user_id == budget.user_id, BudgetChange.budget_id == budget.id
+    ).first() is not None
+    if has_rows:
+        return False
+    record_change(db, budget, at=_aware(budget.created_at) if budget.created_at else None)
+    return True
 
 
 def _changes(db: Session, user, budget: Budget) -> list[BudgetChange]:
     """The budget's change log, oldest first. A budget made before the log
     existed gets a first row now, effective from its creation, with its
     current state (an encrypted limit can't be read by a migration)."""
-    ensure_baseline(db, budget)
-    db.commit()
+    if ensure_baseline(db, budget):
+        db.commit()
     return (
         db.query(BudgetChange)
         .filter(BudgetChange.user_id == user.id, BudgetChange.budget_id == budget.id)

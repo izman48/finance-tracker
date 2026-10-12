@@ -382,8 +382,12 @@ def undo_write(db: Session, user, audit_id: uuid.UUID) -> AuditEntry:
         parse = spec.fields[c["field"]]
         setattr(target, c["field"], None if c["after"] is None else parse(c["after"]))
     if entry.target_kind == "budget":
-        # The budget change log sees undos too (T-09-3, lead on #160).
-        from app.services.budget_history import record_change
+        # The budget change log sees undos too (T-09-3, lead on #160). A
+        # budget with no log yet gets the state the undo restores as its
+        # baseline: that state was in force from its creation (eng-a on #160).
+        from app.services.budget_history import ensure_baseline, record_change
+        if not entry.created_target:
+            ensure_baseline(db, target)
         record_change(db, target)
     db.add(AuditEntry(
         user_id=user.id, kind=AUDIT_KIND_UNDO, tool=entry.tool, target_kind=entry.target_kind,

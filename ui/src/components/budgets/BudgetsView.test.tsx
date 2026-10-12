@@ -131,6 +131,11 @@ describe('BudgetsView', () => {
     expect(html({})).toMatch(/<h2[^>]*id="budgets-heading"[^>]*tabindex="-1"/)
   })
 
+  it('Manage budgets opens the sheet from the list header (T-09-7)', () => {
+    expect(html({ onManage: noop })).toMatch(/<button[^>]*>Manage budgets<\/button>/)
+    expect(html({})).not.toContain('Manage budgets')
+  })
+
   it('a paused budget leaves the tracking list (its spending is in Everything else)', () => {
     const data = budgetsResponse({ budgets: [budget(), budget({ id: 'p', category: 'Hobbies', paused: true, status: null })] })
     expect(text(html({ data }))).not.toContain('Hobbies')

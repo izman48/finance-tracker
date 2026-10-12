@@ -23,6 +23,8 @@ export type BudgetsViewProps = {
   retrying?: boolean
   onRetry: () => void
   onSuggest: () => void
+  /** Opens Manage budgets (T-09-7); the button shows only when given. */
+  onManage?: () => void
   /** The existing drill-down to a category's transactions. */
   onOpenCategory: (category: string) => void
 }
@@ -37,7 +39,7 @@ const NO_RECONCILIATION = "Budgets can't be compared to safe to spend until a pa
  * information only. Every figure is shown as the API sent it.
  */
 export default function BudgetsView(props: BudgetsViewProps) {
-  const { status, data, staleAccounts = [], retrying = false, onRetry, onSuggest, onOpenCategory } = props
+  const { status, data, staleAccounts = [], retrying = false, onRetry, onSuggest, onManage, onOpenCategory } = props
   if (status === 'loading') {
     return (
       <div className="card card-pad">
@@ -90,9 +92,16 @@ export default function BudgetsView(props: BudgetsViewProps) {
       ))}
       <div className="grid grid-cols-1 lg:grid-cols-[1.35fr_1fr] gap-4 lg:gap-5 items-start">
         <div className="card card-pad">
-          <h2 id="budgets-heading" tabIndex={-1} className="font-display font-semibold text-slate-100 outline-none">
-            Budgets
-          </h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 id="budgets-heading" tabIndex={-1} className="font-display font-semibold text-slate-100 outline-none">
+              Budgets
+            </h2>
+            {onManage && (
+              <button type="button" className="btn-ghost !px-3 !py-1.5 text-sm min-h-[44px] sm:min-h-0" onClick={onManage}>
+                Manage budgets
+              </button>
+            )}
+          </div>
           <p className="text-xs text-slate-400 mt-1 mb-5">
             Measuring purchases. <span className="text-slate-300">Not counted here:</span> commitments, transfers, card
             payoffs.
@@ -101,8 +110,9 @@ export default function BudgetsView(props: BudgetsViewProps) {
             {tracked.length === 0 && (
               <li className="text-sm text-slate-400">All your budgets are paused. Their spending counts under Everything else.</li>
             )}
-            {tracked.map((b, i) => (
-              <BudgetRow key={b.id} budget={b} color={categoryColor(i)} daysLeft={data.cycle.days_left} onOpen={onOpenCategory} />
+            {tracked.map((b) => (
+              // Colour by position among all budgets, as in Manage, so a budget keeps its colour when another pauses.
+              <BudgetRow key={b.id} budget={b} color={categoryColor(data.budgets.indexOf(b))} daysLeft={data.cycle.days_left} onOpen={onOpenCategory} />
             ))}
             <li>
               <div className="flex justify-between gap-3 text-sm">

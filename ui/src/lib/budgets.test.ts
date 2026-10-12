@@ -11,6 +11,12 @@ import {
   meterLabel,
   LIMIT_ERROR,
   NOTHING_TICKED,
+  SAVE_ERROR,
+  SAVE_UNKNOWN,
+  addOptions,
+  claudeFooter,
+  manageSubtitle,
+  writeFailure,
   checkRows,
   suggestRows,
 } from './budgets'
@@ -125,5 +131,44 @@ describe('suggestRows and checkRows (section 4.1, BM3)', () => {
     expect(NOTHING_TICKED).toBe('Tick at least one budget to save.')
     const rows = [{ category: 'Groceries', checked: false, limit: '300', available: true }]
     expect(checkRows(rows)).toEqual({ errors: {}, budgets: [], nothingTicked: true })
+  })
+})
+
+describe('Manage budgets helpers (section 13)', () => {
+  it('the subtitle names the cycle', () => {
+    expect(manageSubtitle(budgetsResponse().cycle)).toBe(
+      'Pay cycle 14 Oct to 11 Nov. Changes apply to this cycle and the ones after.',
+    )
+  })
+
+  it('the Claude footer counts the budgets Claude changed, with the latest date', () => {
+    expect(claudeFooter([budget()])).toBeNull()
+    const marked = [
+      budget({ changed_by_claude: { audit_id: 'a1', at: '2026-10-10T09:00:00Z' } }),
+      budget({ id: 'b2', changed_by_claude: { audit_id: 'a2', at: '2026-10-12T09:00:00Z' } }),
+    ]
+    expect(claudeFooter(marked)).toBe('Claude changed 2 budgets on 12 Oct')
+    expect(claudeFooter(marked.slice(0, 1))).toBe('Claude changed 1 budget on 10 Oct')
+  })
+
+  it('Add budget offers only categories with no budget (paused counts as having one) (BM2)', () => {
+    const budgets = [budget({ category: 'Groceries' }), budget({ id: 'p', category: 'Hobbies', paused: true, status: null })]
+    expect(addOptions(['Transport', 'Groceries', 'Hobbies', 'Eating out', 'Uncategorized'], budgets)).toEqual([
+      'Eating out',
+      'Transport',
+    ])
+  })
+
+  it('write failures map to the spec copy, never the server text (BM2, BM11)', () => {
+    const fail = (status: number | undefined, detail?: string) =>
+      status === undefined ? new Error('timed out') : { response: { status, data: { detail } } }
+    expect(writeFailure(fail(422, 'That category already has a budget.'), 'Groceries')).toBe(
+      'You already have a budget for Groceries.',
+    )
+    expect(writeFailure(fail(422, 'Budgets can only use your existing categories.'), 'Groceries')).toBe(SAVE_ERROR)
+    expect(writeFailure(fail(500), 'Groceries')).toBe(SAVE_ERROR)
+    expect(writeFailure(fail(undefined), 'Groceries')).toBe(SAVE_UNKNOWN)
+    expect(SAVE_ERROR).toBe("Couldn't save your budgets. Nothing was changed. Try again.")
+    expect(SAVE_UNKNOWN).toBe("Couldn't confirm that. Your budgets may have been saved; check them before you try again.")
   })
 })

@@ -341,6 +341,9 @@ export const budgetsAPI = {
   list: () => api.get<BudgetsResponse>('/budgets'),
   suggest: () => api.post<SuggestResponse>('/budgets/suggest', {}),
   saveAll: (budgets: BudgetEntry[]) => api.put<BudgetsResponse>('/budgets', { budgets }),
+  create: (entry: BudgetEntry) => api.post('/budgets', entry),
+  update: (id: string, patch: { limit_pounds?: number; paused?: boolean }) => api.patch(`/budgets/${id}`, patch),
+  remove: (id: string) => api.delete(`/budgets/${id}`),
 }
 
 export interface SyncStatusConnection {

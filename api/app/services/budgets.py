@@ -284,8 +284,9 @@ def budget_list(db: Session, user, markers: dict | None = None,
         )
     # The one most over (ties by category), for "Shopping is £20 over".
     over = sorted((r for r in rows if r.status == "over"), key=lambda r: (-r.over_by, r.category))
+    tracking = [r for r in rows if r.status is not None]  # paused budgets leave the Home line (BM7)
     summary = BudgetSummary(
-        budget_count=len(rows),
+        budget_count=len(tracking),
         on_pace_count=sum(r.status in ("under_pace", "on_pace") for r in rows),
         first_over=FirstOver(category=over[0].category, over_by=over[0].over_by) if over else None,
     )
@@ -357,6 +358,12 @@ def _money(amount: Decimal) -> str:
     return f"£{amount:,.0f}" if amount == amount.to_integral_value() else f"£{amount:,.2f}"
 
 
+def _left(days: int) -> str:
+    if days <= 0:
+        return "on the last day of this pay cycle"
+    return f"with {days} day left" if days == 1 else f"with {days} days left"
+
+
 def budget_nudges(db: Session, user) -> list[dict]:
     """The in-app budget nudges for /analytics/nudges: at the limit, or ahead
     of pace in the first half of the cycle. Each fires at most once per
@@ -374,13 +381,13 @@ def budget_nudges(db: Session, user) -> list[dict]:
             kind = AT_LIMIT
             # Exactly at the limit is still "kept", so it never says "over" (lead on #158).
             body = (
-                f"{b.category} is {_money(b.spent - limit)} over its {_money(limit)} budget with {days_left} days left."
+                f"{b.category} is {_money(b.spent - limit)} over its {_money(limit)} budget {_left(days_left)}."
                 if b.spent > limit else
-                f"{b.category} has reached its {_money(limit)} budget with {days_left} days left."
+                f"{b.category} has reached its {_money(limit)} budget {_left(days_left)}."
             )
         elif b.status == "ahead_of_pace" and early:
             kind = PACE
-            body = f"{b.category} is ahead of pace: {_money(b.spent)} of {_money(limit)} with {days_left} days left."
+            body = f"{b.category} is ahead of pace: {_money(b.spent)} of {_money(limit)} {_left(days_left)}."
         else:
             continue
         nudge = _fire(db, user, b.id, cycle_start, kind)

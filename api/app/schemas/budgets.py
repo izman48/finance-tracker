@@ -91,8 +91,8 @@ class FirstOver(BaseModel):
 class BudgetSummary(BaseModel):
     """For the Home Spending card (concept 15.6)."""
 
-    budget_count: int        # active budgets, paused included
-    on_pace_count: int       # under or on pace
+    budget_count: int        # active, unpaused budgets (paused ones leave the Home line, BM7)
+    on_pace_count: int       # of those, under or on pace
     first_over: FirstOver | None  # the budget most over (ties by category)
 
 

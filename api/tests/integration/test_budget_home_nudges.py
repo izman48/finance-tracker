@@ -81,8 +81,7 @@ def test_no_payday_is_its_own_reason(w):
 def test_at_the_limit_a_nudge_with_the_figures(w):
     w.create("Shopping", 100)  # 120 spent
     [nudge] = _nudges(w)
-    assert nudge["body"].startswith("Shopping is £20 over its £100 budget with ")
-    assert nudge["body"].endswith(" days left.")
+    assert nudge["body"].startswith("Shopping is £20 over its £100 budget ")
     assert nudge["source"] is None
 
 
@@ -154,5 +153,21 @@ def test_exactly_at_the_limit_says_reached_not_over(w):
     the limit is never called "over"."""
     w.create("Shopping", 120)  # exactly 120 spent
     [nudge] = _nudges(w)
-    assert nudge["body"] == f"Shopping has reached its £120 budget with {w.get().json()['cycle']['days_left']} days left."
+    assert nudge["body"].startswith("Shopping has reached its £120 budget ")
     assert "over" not in nudge["body"]
+
+
+def test_a_paused_budget_leaves_the_home_line(w):
+    """eng-a on #158 (BM7): "1 of 1 on pace", not "1 of 2"."""
+    w.create("Eating out", 150)
+    paused = w.create("Groceries", 400).json()["id"]
+    w.patch(paused, paused=True)
+    summary = w.get().json()["summary"]
+    assert (summary["budget_count"], summary["on_pace_count"]) == (1, 1)
+
+
+@pytest.mark.parametrize("days,words", [(0, "on the last day of this pay cycle"), (1, "with 1 day left"),
+                                        (9, "with 9 days left")])
+def test_days_left_reads_naturally(days, words):
+    from app.services.budgets import _left
+    assert _left(days) == words

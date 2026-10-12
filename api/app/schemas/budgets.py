@@ -64,6 +64,23 @@ class NotCounted(BaseModel):
     commitments: Decimal
     transfers: Decimal
     card_payoffs: Decimal
+    # A purchase moved to a payment plan: counted through its instalments.
+    financed: Decimal
+
+
+class Reconciliation(BaseModel):
+    """The one line under the list: safe_to_spend - budgets_left -
+    other_at_pace = headroom. All from this response, so the line can't
+    disagree with itself; T-09-4's payday strip uses the same computation.
+    safe_to_spend is the summary's figure, unchanged by budgets."""
+
+    safe_to_spend: Decimal
+    # Sum over active budgets of max(0, limit - spent). Paused or removed
+    # this cycle count at max(remaining limit at pause, spend at pace) (T-09-4).
+    budgets_left: Decimal
+    # Other spending projected to the end of the cycle at its pace so far.
+    other_at_pace: Decimal
+    headroom: Decimal
 
 
 class BudgetListResponse(BaseModel):
@@ -77,6 +94,8 @@ class BudgetListResponse(BaseModel):
     # All purchases this cycle (= sum of budgets' spent + other_spending).
     total_spent: Decimal
     not_counted: NotCounted
+    # Null when there's no active budget (the UI shows the empty state).
+    reconciliation: Reconciliation | None = None
 
 
 class CreateBudgetRequest(BaseModel):

@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronRight, PieChart, Plug, RefreshCw, Sparkles, TrendingUp, Wallet } from 'lucide-react'
-import { analyticsAPI, bankingAPI, assetsAPI, NetWorthPosition } from '../services/api'
+import { analyticsAPI, bankingAPI, assetsAPI, budgetsAPI, NetWorthPosition } from '../services/api'
 import { BankStatus, CashflowSummary, Commitment, PlannedItem } from '../types'
 import { gbp0 as gbp, dateDayMonth, monthLabel, timeAgo, changeTone, signedGbp, signedPct } from '../lib/format'
 import { buildUpcoming, upcomingAmount, upcomingShowsDate } from '../lib/upcoming'
@@ -12,6 +12,7 @@ import InfoTip from '../components/ui/InfoTip'
 import { EXPLAIN } from '../copy/statExplainers'
 import useReveal from '../components/ui/useReveal'
 import { SafeToSpendNote } from '../components/changes/KeepControls'
+import { homeBudgetLine } from '../lib/budgets'
 
 interface SpendingSnapshot {
   total: number
@@ -91,6 +92,7 @@ export default function OverviewPage() {
   const [commitments, setCommitments] = useState<Commitment[]>([])
   const [planned, setPlanned] = useState<PlannedItem[]>([])
   const [spending, setSpending] = useState<SpendingSnapshot | null>(null)
+  const [budgetLine, setBudgetLine] = useState<ReturnType<typeof homeBudgetLine>>(null)
   const [position, setPosition] = useState<NetWorthPosition | null>(null)
   const [forecast, setForecast] = useState<ForecastSnapshot | null>(null)
   const [trend, setTrend] = useState<SparkPoint[]>([])
@@ -111,7 +113,7 @@ export default function OverviewPage() {
     const load = async () => {
       // Each source fails independently: a broken spending call shouldn't blank
       // the cash and wealth cards.
-      const [b, s, c, p, sp, prev, pos, fc, tr, hist] = await Promise.allSettled([
+      const [b, s, c, p, sp, prev, pos, fc, tr, hist, bud] = await Promise.allSettled([
         bankingAPI.getConnectionStatus(),
         analyticsAPI.getSummary(),
         analyticsAPI.getCommitments(),
@@ -124,6 +126,7 @@ export default function OverviewPage() {
         analyticsAPI.getForecast('30'),
         analyticsAPI.getSpendingTrend(6),
         assetsAPI.netWorthHistory(12),
+        budgetsAPI.list(),
       ])
       if (b.status === 'fulfilled') setBankStatus(b.value.data)
       if (s.status === 'fulfilled') setSummary(s.value.data)
@@ -141,6 +144,8 @@ export default function OverviewPage() {
         })
       }
       if (pos.status === 'fulfilled') setPosition(pos.value.data)
+      // The budgets line is a nicety: without it the card is as before.
+      if (bud.status === 'fulfilled') setBudgetLine(homeBudgetLine(bud.value.data.summary))
       if (fc.status === 'fulfilled') {
         const f = fc.value.data
         setForecast({
@@ -331,6 +336,15 @@ export default function OverviewPage() {
               ))
             ) : (
               <div className="text-slate-500">No spending recorded this month yet.</div>
+            )}
+            {budgetLine && (
+              // Plain text: the card is already a link into Spending (section 3).
+              <div className="flex items-start gap-2 pt-3 mt-1 border-t border-white/[0.06]">
+                <span className="chip-out shrink-0">Budgets</span>
+                <span className="text-slate-300">
+                  <b className="font-semibold text-slate-100">{budgetLine.count}</b> {budgetLine.rest}
+                </span>
+              </div>
             )}
           </SummaryCard>
 

@@ -21,6 +21,8 @@ import {
   editAllEntries,
   editAllTotal,
   suggestDiff,
+  budgetNudgeId,
+  homeBudgetLine,
   checkRows,
   suggestRows,
 } from './budgets'
@@ -245,5 +247,28 @@ describe('Suggest again (section 13, BM6)', () => {
   it('nothing to change: says so', () => {
     const same = [suggestion({ category: 'Groceries', suggested_limit: 300, current_limit: 300 })]
     expect(suggestDiff(same, budgets.slice(0, 1)).summary).toBe('Your budgets already match the suggestions.')
+  })
+})
+
+describe('the Home line (section 3, BM7)', () => {
+  it('"4 of 5 on pace · Eating out is £12 over", or without the over part', () => {
+    expect(homeBudgetLine({ budget_count: 5, on_pace_count: 4, first_over: { category: 'Eating out', over_by: '12.00' } })).toEqual({
+      count: '4 of 5',
+      rest: 'on pace · Eating out is £12 over',
+    })
+    expect(homeBudgetLine({ budget_count: 3, on_pace_count: 3, first_over: null })).toEqual({ count: '3 of 3', rest: 'on pace' })
+  })
+
+  it('no budgets: no line', () => {
+    expect(homeBudgetLine({ budget_count: 0, on_pace_count: 0, first_over: null })).toBeNull()
+    expect(homeBudgetLine(undefined)).toBeNull()
+  })
+})
+
+describe('budgetNudgeId', () => {
+  it('a budget nudge is dismissed on the server; others stay local', () => {
+    expect(budgetNudgeId('budget-1b0c2d3e-0000-4000-8000-000000000001')).toBe('1b0c2d3e-0000-4000-8000-000000000001')
+    expect(budgetNudgeId('cash_drag')).toBeNull()
+    expect(budgetNudgeId('budget-../../x')).toBeNull()
   })
 })

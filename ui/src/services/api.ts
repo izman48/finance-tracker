@@ -346,6 +346,8 @@ export const budgetsAPI = {
   create: (entry: BudgetEntry) => api.post('/budgets', entry),
   update: (id: string, patch: { limit_pounds?: number; paused?: boolean }) => api.patch(`/budgets/${id}`, patch),
   remove: (id: string) => api.delete(`/budgets/${id}`),
+  /** A budget nudge is dismissed on the server (it fires once per cycle; #158). */
+  dismissNudge: (id: string) => api.post(`/budgets/nudges/${id}/dismiss`),
 }
 
 export interface SyncStatusConnection {

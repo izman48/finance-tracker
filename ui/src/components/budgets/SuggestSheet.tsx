@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import Sheet from '../ui/Sheet'
-import { checkRows, lastCyclesText, suggestRows, type BudgetEntry, type SuggestResponse, type SuggestRow } from '../../lib/budgets'
+import { useConfirm } from '../ui/ConfirmDialog'
+import { checkRows, lastCyclesText, NOTHING_TICKED, suggestRows, type BudgetEntry, type SuggestResponse, type SuggestRow } from '../../lib/budgets'
 import type { UndoFailure } from '../../lib/changes'
 
 export type SuggestSheetProps = {
@@ -22,8 +23,24 @@ const SAVE_UNKNOWN = "Couldn't confirm that. Your budgets may have been saved; c
  * until Save budgets, and nothing is shown as saved before the API says so.
  */
 export default function SuggestSheet({ load, saving, failure, onCancel, onRetry, onSave }: SuggestSheetProps) {
+  const confirm = useConfirm()
+  const dirty = useRef(false)
+  const asking = useRef(false)
+
+  // Escape, the backdrop and Cancel all come here: edits are never dropped silently.
+  const close = async () => {
+    if (saving || asking.current) return
+    if (dirty.current) {
+      asking.current = true
+      const discard = await confirm({ title: 'Discard your changes?', confirmLabel: 'Discard', cancelLabel: 'Keep editing' })
+      asking.current = false
+      if (!discard) return
+    }
+    onCancel()
+  }
+
   return (
-    <Sheet title="Suggest budgets" onClose={() => !saving && onCancel()} wide>
+    <Sheet title="Suggest budgets" onClose={close} wide>
       <p className="text-sm text-slate-400 mb-3">
         Based on the middle of your last 3 pay cycles, so one big shop doesn&apos;t inflate it. Change anything you like.
       </p>
@@ -37,7 +54,14 @@ export default function SuggestSheet({ load, saving, failure, onCancel, onRetry,
         </div>
       )}
       {load.status === 'ready' && (
-        <SuggestForm data={load.data} saving={saving} failure={failure} onCancel={onCancel} onSave={onSave} />
+        <SuggestForm
+          data={load.data}
+          saving={saving}
+          failure={failure}
+          onCancel={close}
+          onSave={onSave}
+          onDirty={() => (dirty.current = true)}
+        />
       )}
       {load.status !== 'ready' && (
         <div className="flex justify-end mt-4">
@@ -50,23 +74,31 @@ export default function SuggestSheet({ load, saving, failure, onCancel, onRetry,
   )
 }
 
-function SuggestForm({ data, saving, failure, onCancel, onSave }: Omit<SuggestSheetProps, 'load' | 'onRetry'> & { data: SuggestResponse }) {
+type FormProps = Omit<SuggestSheetProps, 'load' | 'onRetry'> & { data: SuggestResponse; onDirty: () => void }
+
+function SuggestForm({ data, saving, failure, onCancel, onSave, onDirty }: FormProps) {
   const [rows, setRows] = useState<SuggestRow[]>(() => suggestRows(data.suggestions))
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [nothing, setNothing] = useState(false)
   const form = useRef<HTMLDivElement>(null)
 
-  const update = (i: number, change: Partial<SuggestRow>) =>
+  const update = (i: number, change: Partial<SuggestRow>) => {
+    onDirty()
+    setNothing(false)
     setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...change } : r)))
+  }
+
+  const focusFirst = (selector: string) =>
+    requestAnimationFrame(() => form.current?.querySelector<HTMLInputElement>(selector)?.focus())
 
   const save = () => {
     const checked = checkRows(rows)
     setErrors(checked.errors)
-    if (Object.keys(checked.errors).length) {
-      // Focus the first bad limit so its error is read out.
-      requestAnimationFrame(() => form.current?.querySelector<HTMLInputElement>('input[aria-invalid="true"]')?.focus())
-      return
-    }
-    if (checked.budgets.length) onSave(checked.budgets)
+    setNothing(checked.nothingTicked)
+    // Focus what needs fixing, so its message is read out.
+    if (checked.nothingTicked) return focusFirst('input[type="checkbox"]')
+    if (Object.keys(checked.errors).length) return focusFirst('input[aria-invalid="true"]')
+    onSave(checked.budgets)
   }
 
   return (
@@ -118,6 +150,9 @@ function SuggestForm({ data, saving, failure, onCancel, onSave }: Omit<SuggestSh
       </ul>
       {data.commitment_covered.length > 0 && (
         <p className="text-xs text-slate-400 mt-3">Bills and rent are left out because your commitments already cover them.</p>
+      )}
+      {nothing && (
+        <p role="alert" className="text-sm text-neg mt-3">{NOTHING_TICKED}</p>
       )}
       {failure && (
         <div role="alert" className="banner-err mt-3 text-sm">

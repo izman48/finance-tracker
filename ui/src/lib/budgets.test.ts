@@ -10,6 +10,7 @@ import {
   statusText,
   meterLabel,
   LIMIT_ERROR,
+  NOTHING_TICKED,
   checkRows,
   suggestRows,
 } from './budgets'
@@ -112,11 +113,17 @@ describe('suggestRows and checkRows (section 4.1, BM3)', () => {
       { category: 'Groceries', checked: true, limit: ' 300 ', available: true },
       { category: 'Transport', checked: false, limit: 'x', available: true },
     ]
-    expect(checkRows(rows)).toEqual({ errors: {}, budgets: [{ category: 'Groceries', limit_pounds: 300 }] })
+    expect(checkRows(rows)).toEqual({ errors: {}, budgets: [{ category: 'Groceries', limit_pounds: 300 }], nothingTicked: false })
   })
 
   it('a bad limit on a ticked row blocks the save and names the row', () => {
     const rows = [{ category: 'Groceries', checked: true, limit: '12.5', available: true }]
-    expect(checkRows(rows)).toEqual({ errors: { Groceries: LIMIT_ERROR }, budgets: [] })
+    expect(checkRows(rows)).toEqual({ errors: { Groceries: LIMIT_ERROR }, budgets: [], nothingTicked: false })
+  })
+
+  it('nothing ticked: says so instead of doing nothing (ux on #153)', () => {
+    expect(NOTHING_TICKED).toBe('Tick at least one budget to save.')
+    const rows = [{ category: 'Groceries', checked: false, limit: '300', available: true }]
+    expect(checkRows(rows)).toEqual({ errors: {}, budgets: [], nothingTicked: true })
   })
 })

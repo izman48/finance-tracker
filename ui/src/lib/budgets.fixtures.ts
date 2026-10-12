@@ -1,4 +1,4 @@
-import type { Budget, BudgetsResponse, BudgetSuggestion, Reconciliation } from './budgets'
+import type { Budget, BudgetsResponse, BudgetSuggestion, SummaryThisCycle } from './budgets'
 
 /** GET /budgets shaped like T-09-2's schemas (#150). */
 export function budget(over: Partial<Budget> = {}): Budget {
@@ -28,7 +28,7 @@ export function budgetsResponse(over: Partial<BudgetsResponse> = {}): BudgetsRes
     other_spending: '392.00',
     total_spent: '814.00',
     not_counted: { commitments: '1203.00', transfers: '600.00', card_payoffs: '340.00', financed: '0.00' },
-    reconciliation: reconciliation(),
+    summary_this_cycle: summaryThisCycle(),
     ...over,
   }
 }
@@ -47,6 +47,6 @@ export function suggestion(over: Partial<BudgetSuggestion> = {}): BudgetSuggesti
   }
 }
 
-export function reconciliation(over: Partial<Reconciliation> = {}): Reconciliation {
-  return { safe_to_spend: '480.00', budgets_left: '268.00', other_at_pace: '160.00', headroom: '52.00', ...over }
+export function summaryThisCycle(over: Partial<SummaryThisCycle> = {}): SummaryThisCycle {
+  return { total_limit: '890', spent: '631.20', left: '259.00', first_over: null, paused_count: 0, ...over }
 }

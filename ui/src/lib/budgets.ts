@@ -39,12 +39,14 @@ export interface BudgetCycle {
   fallback: boolean
 }
 
-/** headroom = safe_to_spend − budgets_left − other_at_pace (the same rule as Cashflow's payday strip). */
-export interface Reconciliation {
-  safe_to_spend: Money
-  budgets_left: Money
-  other_at_pace: Money
-  headroom: Money
+/** The Spending box's figures (concept 12a): active, unpaused budgets this cycle. */
+export interface SummaryThisCycle {
+  total_limit: Money
+  spent: Money
+  /** Σ max(limit − spent, 0): what the dotted line on Cashflow takes away. */
+  left: Money
+  first_over: { category: string; over_by: Money } | null
+  paused_count: number
 }
 
 export interface BudgetsResponse {
@@ -55,8 +57,8 @@ export interface BudgetsResponse {
   total_spent: Money
   /** What the purchases lens leaves out, named on screen. */
   not_counted: { commitments: Money; transfers: Money; card_payoffs: Money; financed: Money }
-  /** Null when there's no active budget. */
-  reconciliation: Reconciliation | null
+  /** Null when there are no budgets; present when all are paused. */
+  summary_this_cycle: SummaryThisCycle | null
   /** For the Home line (#158). */
   summary?: BudgetSummary
   /** Categories a new budget may use (on purchases, not commitment-covered); only with `?include=categories` (#156). */
@@ -123,19 +125,18 @@ export function paceFraction(b: Budget): number {
   return Math.min(Math.max(Number(b.pace_spent) / b.limit_pounds, 0), 1)
 }
 
-const signed = (value: Money) => {
-  const n = Number(value)
-  return n < 0 ? `−${money(-n)}` : money(n)
-}
+const BILLS_LINE = 'Bills are already in your safe to spend. Budgets are for your day-to-day spending.'
+const pounds = (value: Money) => gbp0(Number(value))
 
-/** The reconciliation line's figures, as the API sent them (section 3). */
-export function reconciliationParts(r: Reconciliation | null) {
-  if (!r) return null
+/** The Spending box "Your budgets" (concept 12a, BX1-BX6): whole pounds as received, no arithmetic. */
+export function budgetsBox(s: SummaryThisCycle, allPaused = false) {
+  if (allPaused) return { line1: 'All your budgets are paused, so none are counted.', line2: BILLS_LINE, paused: null }
+  const over = s.first_over ? ` ${s.first_over.category} is ${pounds(s.first_over.over_by)} over.` : ''
+  const n = s.paused_count
   return {
-    safe: signed(r.safe_to_spend),
-    left: signed(r.budgets_left),
-    other: signed(r.other_at_pace),
-    headroom: signed(r.headroom),
+    line1: `${pounds(s.total_limit)} this cycle. Spent ${pounds(s.spent)}, ${pounds(s.left)} left.${over}`,
+    line2: BILLS_LINE,
+    paused: n === 0 ? null : n === 1 ? "1 paused budget isn't counted." : `${n} paused budgets aren't counted.`,
   }
 }
 

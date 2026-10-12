@@ -99,6 +99,10 @@
   .chip-info {
     @apply inline-flex items-center px-2 py-0.5 text-xs rounded-md bg-sky2/15 text-sky2;
   }
+  /* Outlined, neutral: "£12 over" on a budget (never red; budgets concept 4.3). */
+  .chip-out {
+    @apply inline-flex items-center px-2 py-0.5 text-xs rounded-md border border-slate-300/45 text-slate-200;
+  }
 
   /* Modals */
   .modal-backdrop {

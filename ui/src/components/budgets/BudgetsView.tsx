@@ -8,11 +8,11 @@ import {
   meterLabel,
   money,
   paceFraction,
-  reconciliationParts,
+  budgetsBox,
   statusText,
   type Budget,
   type BudgetsResponse,
-  type Reconciliation as ReconciliationFigures,
+  type SummaryThisCycle,
 } from '../../lib/budgets'
 
 export type BudgetsViewProps = {
@@ -31,12 +31,11 @@ export type BudgetsViewProps = {
 
 const NO_PAYDAY =
   'Budgets follow your pay cycle. Set your payday on Commitments to line them up; until then this uses the last 30 days.'
-const NO_RECONCILIATION = "Budgets can't be compared to safe to spend until a payday is set."
 
 /**
  * Spending > Budgets, this cycle (concept 4.2, 5, 9). Budgets watch
- * purchases; they never change safe to spend, so the reconciliation line is
- * information only. Every figure is shown as the API sent it.
+ * purchases; they never change safe to spend, and the "Your budgets" box
+ * says so in plain words (12a). Every figure is shown as the API sent it.
  */
 export default function BudgetsView(props: BudgetsViewProps) {
   const { status, data, staleAccounts = [], retrying = false, onRetry, onSuggest, onManage, onOpenCategory } = props
@@ -127,7 +126,7 @@ export default function BudgetsView(props: BudgetsViewProps) {
             </li>
           </ul>
         </div>
-        <Reconciliation data={data} figures={data.cycle.fallback ? null : data.reconciliation} />
+        <BudgetsBox data={data} summary={data.summary_this_cycle} allPaused={tracked.length === 0} />
       </div>
     </div>
   )
@@ -183,24 +182,19 @@ function BudgetRow({ budget: b, color, daysLeft, onOpen }: { budget: Budget; col
   )
 }
 
-function Reconciliation({ data, figures }: { data: BudgetsResponse; figures: ReconciliationFigures | null }) {
+/** "Your budgets" (concept 12a, BX1-BX6): a plain summary, figures as received, no arithmetic. */
+function BudgetsBox({ data, summary, allPaused }: { data: BudgetsResponse; summary: SummaryThisCycle | null; allPaused: boolean }) {
   const [open, setOpen] = useState(false)
-  const parts = reconciliationParts(figures)
+  const box = summary ? budgetsBox(summary, allPaused) : null
   return (
-    <div className="card card-pad space-y-3">
-      <h2 className="font-display font-semibold text-slate-100">How this fits with safe to spend</h2>
-      {parts ? (
-        <>
-          <p className="text-sm text-slate-300 leading-relaxed">
-            Safe to spend <b className="tnum text-slate-100">{parts.safe}</b> <Op>−</Op>{' '}
-            <b className="tnum text-slate-100">{parts.left}</b> left in your budgets <Op>−</Op>{' '}
-            <b className="tnum text-slate-100">{parts.other}</b> other spending at your pace <Op>=</Op>{' '}
-            <b className="tnum text-accent">{parts.headroom}</b> headroom
-          </p>
-          <p className="text-xs text-slate-400">Information only. Your safe to spend is unchanged.</p>
-        </>
-      ) : (
-        <p className="text-xs text-slate-400">{NO_RECONCILIATION}</p>
+    <div id="budgets-box" className="card card-pad space-y-3">
+      <h2 className="font-display font-semibold text-slate-100">Your budgets</h2>
+      {box && (
+        <div className="space-y-1.5">
+          <p className="text-sm text-slate-200 tnum">{box.line1}</p>
+          <p className="text-sm text-slate-400">{box.line2}</p>
+          {box.paused && <p className="text-xs text-slate-400">{box.paused}</p>}
+        </div>
       )}
       <div>
         <button
@@ -226,8 +220,6 @@ function Reconciliation({ data, figures }: { data: BudgetsResponse; figures: Rec
     </div>
   )
 }
-
-const Op = ({ children }: { children: string }) => <span className="text-slate-400 mx-0.5">{children}</span>
 
 function NotCounted({ label, value }: { label: string; value: number | string }) {
   return (

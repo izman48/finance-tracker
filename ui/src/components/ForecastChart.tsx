@@ -17,7 +17,7 @@ import { EXPLAIN } from '../copy/statExplainers'
 import ForecastError from './forecast/ForecastError'
 import LateIncomeNote from './forecast/LateIncomeNote'
 import { BudgetLegend, BudgetStrip } from './forecast/BudgetStrip'
-import { projectionNote, projectionUnavailable, withBudgetLine, type BudgetProjection, type ProjectionReason } from '../lib/budgetProjection'
+import { budgetTooltip, projectionNote, projectionUnavailable, withBudgetLine, type BudgetProjection, type ProjectionReason } from '../lib/budgetProjection'
 import { FORECAST_TIMEOUT_MS, focusAfter, forecastReducer, withTimeout, type ForecastView } from '../lib/forecastLoad'
 
 interface ForecastEvent {
@@ -29,7 +29,7 @@ interface ForecastPoint {
   date: string
   balance: number
   events: ForecastEvent[]
-  /** The dotted budget line's value, where it runs (to the day before payday). */
+  /** The dotted budget line's value, where the API gives one (the whole chart). */
   budget?: number | null
 }
 interface Forecast {
@@ -66,8 +66,11 @@ function ForecastTooltip({ active, payload }: any) {
   return (
     <div className="bg-card2 border border-white/10 rounded-xl shadow-pop p-3 text-sm">
       <div className="font-medium text-slate-200">{shortDate(point.date)}</div>
-      <div className="text-slate-100 tnum">Balance: {gbp(point.balance)}</div>
-      {point.budget != null && <div className="text-slate-300 tnum">If you spend your budgets: {gbp(point.budget)}</div>}
+      {point.budget != null ? (
+        <div className="text-slate-100 tnum">{budgetTooltip(point.balance, point.budget)}</div>
+      ) : (
+        <div className="text-slate-100 tnum">Balance: {gbp(point.balance)}</div>
+      )}
       {point.events?.map((e, i) => (
         <div key={i} className={e.amount >= 0 ? 'text-pos' : 'text-neg'}>
           {e.amount >= 0 ? '+' : ''}{gbp(e.amount)} · {e.label}
@@ -190,7 +193,7 @@ export default function ForecastChart({ refreshKey }: { refreshKey?: number }) {
               )}
               <Area type="monotone" dataKey="balance" stroke="#2DD4A7" strokeWidth={2} fill="url(#balfill)" />
               {projection && (
-                // The budget line: dotted and a different colour, never filled; it stops at payday.
+                // The budget line: dotted and a different colour, never filled (T-09-15).
                 <Area
                   type="monotone"
                   dataKey="budget"
@@ -201,7 +204,7 @@ export default function ForecastChart({ refreshKey }: { refreshKey?: number }) {
                   fill="none"
                   connectNulls={false}
                   isAnimationActive={false}
-                  name="If you spend your budgets"
+                  name="After your budgets"
                 />
               )}
             </AreaChart>

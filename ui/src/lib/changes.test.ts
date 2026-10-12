@@ -187,3 +187,42 @@ describe('laterChange (ux 9.7, KP21)', () => {
     expect(laterChange(add, [other, { ...remove, undone_at: '2026-10-11T12:00:00Z' }, add])).toBeNull()
   })
 })
+
+// Budget writes by Claude (T-09-10; concept section 6, BM10, BM14).
+const budgetItem = (tool: string, changes: { field: string; before: unknown; after: unknown }[]) =>
+  item({ tool, target_kind: 'budget', target_label: 'Eating out', changes: changes as never })
+const created = budgetItem('set_budgets', [
+  { field: 'limit_pounds', before: null, after: '150' },
+  { field: 'paused', before: null, after: false },
+  { field: 'active', before: null, after: true },
+])
+const edited = budgetItem('set_budgets', [{ field: 'limit_pounds', before: '300', after: '260' }])
+const paused = budgetItem('pause_budget', [{ field: 'paused', before: false, after: true }])
+const resumed = budgetItem('resume_budget', [{ field: 'paused', before: true, after: false }])
+const removed = budgetItem('remove_budget', [{ field: 'active', before: true, after: false }])
+
+describe('budget rows (T-09-10)', () => {
+  it('titles: set, changed, paused, resumed, removed', () => {
+    expect(changeTitle(created)).toBe('Set a budget: “Eating out”')
+    expect(changeTitle(edited)).toBe('Changed the budget “Eating out”')
+    expect(changeTitle(paused)).toBe('Paused the budget “Eating out”')
+    expect(changeTitle(resumed)).toBe('Resumed the budget “Eating out”')
+    expect(changeTitle(removed)).toBe('Removed the budget “Eating out”')
+  })
+
+  it('lines: the limit for this pay cycle, and the status in plain words', () => {
+    expect(changeLines(created, {})).toEqual([{ label: 'Limit for this pay cycle', after: '£150' }])
+    expect(changeLines(edited, {})).toEqual([{ label: 'Limit for this pay cycle', before: '£300', after: '£260' }])
+    expect(changeLines(paused, {})).toEqual([{ label: 'Status', before: 'Active', after: 'Paused' }])
+    expect(changeLines(resumed, {})).toEqual([{ label: 'Status', before: 'Paused', after: 'Active' }])
+    expect(changeLines(removed, {})).toEqual([{ label: 'Status', before: 'Active', after: 'Removed' }])
+  })
+
+  it('undo toasts say what undoing did', () => {
+    expect(undoToast(created)).toBe('Removed the budget “Eating out”.')
+    expect(undoToast(edited)).toBe('Put the budget “Eating out” back to how it was.')
+    expect(undoToast(paused)).toBe('Resumed the budget “Eating out”.')
+    expect(undoToast(resumed)).toBe('Paused the budget “Eating out” again.')
+    expect(undoToast(removed)).toBe('Put the budget “Eating out” back.')
+  })
+})

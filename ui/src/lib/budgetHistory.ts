@@ -5,7 +5,7 @@
  * only put them into words. The one sum here, `nowSpent`, sizes the hatched
  * current-cycle bar and is never shown as a figure (BH14).
  */
-import { dateDayMonth } from './format'
+import { dateDayMonth, gbp0 } from './format'
 import { money, type Budget } from './budgets'
 
 type Money = number | string
@@ -62,7 +62,8 @@ const range = (start: string, end: string) => `${dateDayMonth(start)} to ${dateD
 
 export function headline(h: HistoryResponse): string {
   if (h.counted === 0) return 'No cycles counted yet: your budgets were paused.'
-  return `On target in ${h.on_target} of the last ${h.counted} cycle${h.counted === 1 ? '' : 's'}`
+  if (h.counted === 1) return `On target in ${h.on_target} of 1 cycle so far`
+  return `On target in ${h.on_target} of the last ${h.counted} cycles`
 }
 
 export function trendText(trend: HistoryResponse['trend']): string {
@@ -90,11 +91,11 @@ export function keptText(b: HistoryBudget): string {
   return b.counted === 0 ? 'Paused in these cycles' : `Kept ${b.kept} of ${b.counted}`
 }
 
-/** The server's current (or last) limit and its "usually". */
+/** The server's current (or last) limit and its "usually", in whole pounds (ux on #165). */
 export function budgetLimitText(b: HistoryBudget): string {
   const latest = b.limit_pounds ?? [...b.cycles].reverse().find((s) => s.existed && s.limit_pounds !== null)?.limit_pounds
   const limit = latest != null ? `Limit ${money(latest)}` : ''
-  return b.usually === null ? limit : `${limit} · usually ${money(b.usually)}`
+  return b.usually === null ? limit : `${limit} · usually ${gbp0(Number(b.usually))}`
 }
 
 /** The chart's top: the tallest bar or limit line, with a little room above. */

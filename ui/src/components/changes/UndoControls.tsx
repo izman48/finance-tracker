@@ -42,6 +42,13 @@ export function UndoButton({ item, state, onUndo }: { item: AuditItem; state: Un
   )
 }
 
+/** Where an item that changed since lives, to check it by hand (C8). */
+const OPEN_LINK: Record<string, { to: string; label: string }> = {
+  planned_event: { to: '/dashboard', label: 'Open planned events' },
+  commitment: { to: '/commitments', label: 'Open commitments' },
+  budget: { to: '/insights?section=budgets', label: 'Open budgets' },
+}
+
 /** The inline message after a failed undo. It never carries the server's text. */
 export function UndoNotice({ item, failure, later = false }: { item: AuditItem; failure: UndoFailure | null; later?: boolean }) {
   if (failure === null) return null
@@ -55,15 +62,15 @@ export function UndoNotice({ item, failure, later = false }: { item: AuditItem; 
     )
   }
   if (failure === 'changed') {
-    const commitments = item.target_kind === 'commitment'
+    const open = OPEN_LINK[item.target_kind] ?? OPEN_LINK.planned_event
     return (
       <div id={`change-${item.id}-alert`} role="alert" tabIndex={-1} className="banner-err mt-3 text-sm outline-none">
         <p>{CHANGED_SINCE_TEXT}</p>
         <Link
-          to={commitments ? '/commitments' : '/dashboard'}
+          to={open.to}
           className="btn-link mt-1 inline-flex items-center min-h-[44px] sm:min-h-0"
         >
-          {commitments ? 'Open commitments' : 'Open planned events'}
+          {open.label}
         </Link>
       </div>
     )

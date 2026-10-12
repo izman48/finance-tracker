@@ -114,8 +114,9 @@ export default function SpendingPage() {
     setDrillKind(null) // a drill from the old lens no longer applies
   }
   // Which section is shown; persisted so the layout choice sticks.
+  // `?section=budgets` (the Changes screen's "Open budgets") wins over the stored choice.
   const [section, setSectionState] = useState<Section>(() => {
-    const s = localStorage.getItem(SECTION_KEY)
+    const s = new URLSearchParams(window.location.search).get('section') ?? localStorage.getItem(SECTION_KEY)
     return s === 'overview' || s === 'history' || s === 'activity' || s === 'budgets' ? s : 'all'
   })
   const setSection = (s: Section) => {

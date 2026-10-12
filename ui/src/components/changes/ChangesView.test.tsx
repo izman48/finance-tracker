@@ -28,7 +28,7 @@ describe('ChangesView', () => {
     const html = render({})
     expect(html).toMatch(/<h1[^>]*tabindex="-1"[^>]*>Changes made by Claude<\/h1>/)
     expect(text(html)).toContain(
-      'Everything an AI assistant changed in your planned events and commitments. You can undo any change here.',
+      'Everything an AI assistant changed in your planned events, commitments and budgets. You can undo any change here.',
     )
     expect(text(html)).toContain('"via" names are chosen by the app that connected. nilu. doesn\'t check them.'.replace(/"/g, '&quot;'))
   })
@@ -46,7 +46,7 @@ describe('ChangesView', () => {
     const t = text(render({ items: [] }))
     expect(t).toContain("Claude hasn't changed anything yet")
     expect(t).toContain(
-      'When you let an AI assistant change your planned events or commitments, every change appears here and you can undo it.',
+      'When you let an AI assistant change your planned events, commitments or budgets, every change appears here and you can undo it.',
     )
     expect(t).not.toContain('Undo')
   })

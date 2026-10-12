@@ -36,7 +36,8 @@ const history = (over: Partial<HistoryResponse> = {}): HistoryResponse => ({
 describe('headline (BH1, BH13)', () => {
   it('k of n from the server', () => {
     expect(headline(history())).toBe('On target in 5 of the last 6 cycles')
-    expect(headline(history({ on_target: 1, counted: 1 }))).toBe('On target in 1 of the last 1 cycle')
+    expect(headline(history({ on_target: 1, counted: 1 }))).toBe('On target in 1 of 1 cycle so far')
+    expect(headline(history({ on_target: 0, counted: 1 }))).toBe('On target in 0 of 1 cycle so far')
   })
   it('every cycle shown had all budgets paused', () => {
     expect(headline(history({ on_target: 0, counted: 0 }))).toBe('No cycles counted yet: your budgets were paused.')
@@ -82,11 +83,12 @@ describe('per budget (BH2, BH4, BH13)', () => {
   })
   it('the latest limit shown and usually, when there is one', () => {
     const b = budget({ cycles: [slot({ limit_pounds: 250 }), slot({ limit_pounds: 300 }), slot({ existed: false, limit_pounds: null })] })
-    expect(budgetLimitText(b)).toBe('Limit £300 · usually £290.33')
+    expect(budgetLimitText(b)).toBe('Limit £300 · usually £290')
     expect(budgetLimitText(budget({ usually: null }))).toBe('Limit £300')
+    expect(budgetLimitText(budget({ usually: '290.50' }))).toBe('Limit £300 · usually £291') // whole pounds (ux on #165)
   })
   it('BH15: the row\'s own limit from the server when it sends one', () => {
-    expect(budgetLimitText(budget({ limit_pounds: 350, cycles: [slot({ limit_pounds: 300 })] }))).toBe('Limit £350 · usually £290.33')
+    expect(budgetLimitText(budget({ limit_pounds: 350, cycles: [slot({ limit_pounds: 300 })] }))).toBe('Limit £350 · usually £290')
   })
 })
 

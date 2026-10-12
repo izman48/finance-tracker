@@ -304,12 +304,15 @@ def test_suggest_writes_nothing(w):
 # --- logs (sec: only the caller's own ids) ------------------------------------------------
 
 def test_logs_carry_no_category_or_limit(w, caplog):
+    """Ids only. The limit is checked as money ("137.00", "£137"): a bare
+    "137" can turn up inside an id's hex and made this test flaky."""
     with caplog.at_level(logging.DEBUG):
         w.create("Eating out", 137)
         w.get()
         w.suggest()
     text_ = "\n".join(r.getMessage() for r in caplog.records)
-    assert "Eating out" not in text_ and "137" not in text_
+    assert "Eating out" not in text_
+    assert "137.00" not in text_ and "£137" not in text_ and "Decimal('137" not in text_
 
 
 def test_a_partial_oldest_cycle_is_not_enough_history(client, db_session):

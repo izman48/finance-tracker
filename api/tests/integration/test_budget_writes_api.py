@@ -21,7 +21,9 @@ from sqlalchemy import func, select, text
 
 from app.models import AuditEntry, Budget, BudgetChange
 from tests.integration.test_budgets_api import API, World as BudgetsWorld
+from tests.clock import TODAY
 from tests.integration.test_oauth import READ, _bearer, _connect
+from tests.integration.test_transactions_endpoint import _tx
 
 BUDGETS_WRITE = "finance:budgets.write"
 PLANNING = "finance:planning.write"
@@ -270,3 +272,62 @@ def test_every_claude_write_and_its_undo_records_the_change_log(w, action):
     last = (w.db.query(BudgetChange.paused, BudgetChange.active)
             .order_by(BudgetChange.effective_at.desc(), BudgetChange.id.desc()).first())
     assert tuple(last) == (False, True)  # the undo's state
+
+
+
+# --- undo keeps the max rule (sec and eng-a on #162) ---------------------------------------
+
+def _spend(w, amount, category="Eating out"):
+    def make():
+        _tx(w.db, w.current, amount, TODAY, merchant="Shop again", category=category)
+        w.db.commit()
+    w.as_user(make)
+
+
+def _headroom(w):
+    return Decimal(w.get().json()["reconciliation"]["headroom"])
+
+
+def test_undoing_claudes_resume_brings_back_the_same_hold(w):
+    budget_id = w.create("Eating out", 300).json()["id"]
+    w.create("Groceries", 400)
+    w.patch(budget_id, paused=True)
+    before = _headroom(w)
+    audit_id = w.claude("resume", budget_id, dry_run=False).json()["audit_id"]
+    assert w.undo(audit_id).status_code == 200
+    assert _limits(w)["Eating out"] == (300, True)
+    assert _headroom(w) == before
+
+
+def test_spending_between_the_pause_and_the_undo_doesnt_raise_headroom(w):
+    budget_id = w.create("Eating out", 300).json()["id"]
+    w.create("Groceries", 400)
+    w.patch(budget_id, paused=True)
+    _spend(w, "100.00")
+    before = _headroom(w)
+    audit_id = w.claude("resume", budget_id, dry_run=False).json()["audit_id"]
+    assert w.undo(audit_id).status_code == 200
+    assert _headroom(w) == before
+
+
+def test_removing_again_after_an_undone_removal_keeps_the_first_hold(w):
+    budget_id = w.create("Eating out", 300).json()["id"]
+    w.create("Groceries", 400)
+    audit_id = w.claude("remove", budget_id, dry_run=False).json()["audit_id"]
+    _spend(w, "100.00")
+    before = _headroom(w)
+    assert w.undo(audit_id).status_code == 200  # re-activated
+    assert w.claude("remove", budget_id, dry_run=False).status_code == 200
+    assert _headroom(w) == before
+
+
+def test_an_unchanged_entry_in_a_set_writes_no_audit_or_change_row(w):
+    """sec on #162 (low): only the entries that change anything are recorded."""
+    w.create("Groceries", 300)
+    before = (w.count(AuditEntry), w.count(BudgetChange))
+    r = w.claude_set([{"category": "Groceries", "limit_pounds": 300},
+                      {"category": "Eating out", "limit_pounds": 150}], dry_run=False)
+    assert r.status_code == 200, r.text
+    unchanged = next(e for e in r.json()["results"] if e["target_label"] == "Groceries")
+    assert unchanged["unchanged"] is True and unchanged["audit_id"] is None
+    assert (w.count(AuditEntry), w.count(BudgetChange)) == (before[0] + 1, before[1] + 1)

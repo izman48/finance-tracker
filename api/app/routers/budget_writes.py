@@ -47,6 +47,8 @@ def set_budgets(body: ClaudeSetBudgetsRequest, caller: BudgetsWriter, db: Annota
                 budget = Budget(user_id=user.id, category=category, limit_pounds=Decimal(limit),
                                 created_via=CREATED_VIA_MCP)
                 db.add(budget)
+            elif Decimal(budget.limit_pounds) == Decimal(limit):
+                return budget  # unchanged: no change-log row and no audit row (sec)
             else:
                 budget.limit_pounds = Decimal(limit)
             record_change(db, budget)
@@ -96,14 +98,14 @@ def pause_budget(budget_id: uuid.UUID, body: ClaudeBudgetActionRequest, caller: 
 @router.post("/{budget_id}/resume")
 def resume_budget(budget_id: uuid.UUID, body: ClaudeBudgetActionRequest, caller: BudgetsWriter,
                   db: Annotated[Session, Depends(get_db)]) -> dict:
-    """Resume a paused budget. Not paused: 422."""
+    """Resume a paused budget. Not paused: 422. The hold stays, so undoing
+    the resume brings it back (sec on #162)."""
     def change(budget: Budget, check: bool) -> None:
         if check:
             if not budget.paused:
                 raise _refuse("That budget isn't paused.")
             return
-        budget.paused = False
-        svc.release_hold(budget)
+        budget.paused = False  # keeps the hold, for an undo (svc.hold)
     return _action(budget_id, "resume_budget", body, caller, db, change)
 
 

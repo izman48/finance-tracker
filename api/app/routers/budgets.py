@@ -118,9 +118,7 @@ def update_budget(
     if body.paused is not None and body.paused != budget.paused:
         if body.paused:
             svc.hold(db, current_user, budget)
-        else:
-            svc.release_hold(budget)
-        budget.paused = body.paused
+        budget.paused = body.paused  # a resume keeps the hold (svc.hold)
     budget_history.record_change(db, budget)
     db.commit()
     return _one(db, current_user, budget.id)

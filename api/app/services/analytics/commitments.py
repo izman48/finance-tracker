@@ -473,6 +473,12 @@ def next_payday(db: Session, user, from_date: date) -> date | None:
     return _first_payday(_payday_incomes(db, user), from_date)
 
 
+def payday_dates(db: Session, user, start: date, end: date) -> list[date]:
+    """Every payday income date in [start, end], sorted, from one read of the
+    payday commitments (budget cycles over a long horizon, eng-a on #170)."""
+    return sorted({occ for r in _payday_incomes(db, user) for occ in commitment_occurrences(r, start, end)})
+
+
 def _first_payday(incomes, from_date: date) -> date | None:
     dates = [occ for r in incomes for occ in commitment_occurrences(r, from_date, from_date + timedelta(days=400))]
     return min(dates) if dates else None

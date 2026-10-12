@@ -35,11 +35,13 @@ from app.schemas.budgets import (
     CycleFigure,
     NotCounted,
 )
-from app.services.analytics.commitments import last_payday, next_payday
+from app.services.analytics.commitments import last_payday, next_payday, payday_dates
 from app.services.analytics.common import _today
 from app.services.budget_spend import UNCATEGORISED, BudgetSpend, budget_spend
 
 FALLBACK_DAYS = 30
+# How far past the horizon to look for the payday ending its last cycle (as next_payday does).
+PAYDAY_LOOKAHEAD_DAYS = 400
 SUGGEST_CYCLES = 3
 SUGGEST_MAX = 8
 COVERED_LOOKBACK_DAYS = 90
@@ -174,7 +176,7 @@ def _status(spent: Decimal, pace: Decimal, limit: Decimal) -> str:
 
 
 @dataclass(frozen=True)
-class PaceInputs:
+class CycleBudgets:
     """This cycle's budgets and spend: GET /budgets and the forecast's
     budget_projection both read them, so "left" is one number (T-09-14)."""
 
@@ -191,14 +193,14 @@ class PaceInputs:
     left: Decimal
 
 
-def pace_inputs(db: Session, user, today: date) -> PaceInputs:
+def cycle_budgets(db: Session, user, today: date) -> CycleBudgets:
     cycle = current_cycle(db, user, today)
     spend = budget_spend(db, user, cycle.start, cycle.end)
     days_total = (cycle.end - cycle.start).days + 1
     budgets = active_budgets(db, user)
     counting = [b for b in budgets if not b.paused]
     spent = [spend.by_category.get(b.category, Decimal(0)) for b in counting]
-    return PaceInputs(
+    return CycleBudgets(
         cycle=cycle, days_total=days_total,
         elapsed=min(days_total, (today - cycle.start).days + 1),
         days_left=max((cycle.end - today).days, 0),
@@ -215,7 +217,7 @@ def budget_list(db: Session, user, markers: dict | None = None,
     spending, what's not counted, and the cycle summary. The
     budgetable categories read a year of transactions (about 160 ms on 2,000
     of them), so they're only computed when asked for (eng-a on #156)."""
-    inputs = pace_inputs(db, user, _today())
+    inputs = cycle_budgets(db, user, _today())
     cycle, spend = inputs.cycle, inputs.spend
     share = Decimal(inputs.elapsed) / Decimal(inputs.days_total)
     rows = []
@@ -262,12 +264,15 @@ def _pence(amount: Decimal) -> Decimal:
 
 
 def _later_cycles(db: Session, user, cycle: Cycle, until: date) -> list[Cycle]:
-    """The cycles after `cycle` that start by `until`, from the payday
-    commitment as `current_cycle` finds them."""
-    out, start = [], cycle.end + timedelta(days=1)
+    """The cycles after `cycle` that start by `until`: payday to the day
+    before the next one, as `current_cycle` finds them, from one read of the
+    payday commitment."""
+    start = cycle.end + timedelta(days=1)
+    paydays = payday_dates(db, user, start + timedelta(days=1), until + timedelta(days=PAYDAY_LOOKAHEAD_DAYS))
+    out = []
     while start <= until and len(out) < 400:
-        nxt = next_payday(db, user, start + timedelta(days=1))
-        end = (nxt - timedelta(days=1)) if nxt and nxt > start else start + timedelta(days=FALLBACK_DAYS - 1)
+        nxt = next((p for p in paydays if p > start), None)
+        end = (nxt - timedelta(days=1)) if nxt else start + timedelta(days=FALLBACK_DAYS - 1)
         out.append(Cycle(start, end, fallback=False))
         start = end + timedelta(days=1)
     return out
@@ -285,7 +290,7 @@ def _spread(amount: Decimal, first: date, last: date, day: date) -> Decimal:
 def budget_projection(db: Session, user, forecast: dict) -> tuple[dict | None, str | None]:
     """The payday strip and the dotted line for a forecast response (T-09-14,
     the owner's rule): the solid line less the budgets, over the whole
-    horizon. This cycle, what's left (`PaceInputs.left`) spread evenly from
+    horizon. This cycle, what's left (`CycleBudgets.left`) spread evenly from
     today to the day before payday; each later cycle, the full total of the
     active, unpaused limits spread over its days, so the line rises with
     income as the solid line does. Unbudgeted spending is never projected.
@@ -294,7 +299,7 @@ def budget_projection(db: Session, user, forecast: dict) -> tuple[dict | None, s
     from app.services.analytics.forecast import get_forecast
 
     today = _today()
-    inputs = pace_inputs(db, user, today)
+    inputs = cycle_budgets(db, user, today)
     if inputs.total_limit <= 0:
         return None, "no_budgets"
     if inputs.cycle.fallback:

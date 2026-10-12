@@ -23,8 +23,9 @@ export interface BudgetProjection {
   series: { date: string; balance: Money }[]
 }
 
-/** Why there's no projection: BC2 shows nothing, BC3 asks for a payday. */
-export type ProjectionReason = 'no_budgets' | 'no_payday' | null | undefined
+/** Why there's no projection: BC2 shows nothing, BC3 asks for a payday,
+ *  BC8 says it couldn't be loaded. */
+export type ProjectionReason = 'no_budgets' | 'no_payday' | 'unavailable' | null | undefined
 
 const signed = (value: Money) => {
   const n = Number(value)
@@ -76,6 +77,11 @@ export function dipSentence(p: BudgetProjection): string | null {
 export function projectionNote(p: BudgetProjection | null | undefined, reason: ProjectionReason): string | null {
   if (p || reason !== 'no_payday') return null
   return 'Set your payday on Commitments to see how your budgets affect your balance.'
+}
+
+/** BC8: our own line in the legend slot when the server couldn't compute it. */
+export function projectionUnavailable(reason: ProjectionReason): string | null {
+  return reason === 'unavailable' ? "Couldn't load your budget line." : null
 }
 
 /** The chart's points with the dotted line's value where the series has one. */

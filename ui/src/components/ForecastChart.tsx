@@ -17,7 +17,7 @@ import { EXPLAIN } from '../copy/statExplainers'
 import ForecastError from './forecast/ForecastError'
 import LateIncomeNote from './forecast/LateIncomeNote'
 import { BudgetLegend, BudgetStrip } from './forecast/BudgetStrip'
-import { projectionNote, withBudgetLine, type BudgetProjection, type ProjectionReason } from '../lib/budgetProjection'
+import { projectionNote, projectionUnavailable, withBudgetLine, type BudgetProjection, type ProjectionReason } from '../lib/budgetProjection'
 import { FORECAST_TIMEOUT_MS, focusAfter, forecastReducer, withTimeout, type ForecastView } from '../lib/forecastLoad'
 
 interface ForecastEvent {
@@ -130,6 +130,7 @@ export default function ForecastChart({ refreshKey }: { refreshKey?: number }) {
   const hasOverdraft = (data?.overdraft_limit ?? 0) > 0
   const projection = data?.budget_projection ?? null
   const paydayNote = data ? projectionNote(projection, data.budget_projection_reason) : null
+  const unavailableNote = data ? projectionUnavailable(data.budget_projection_reason) : null
   const points = data ? (withBudgetLine(data.timeline, projection) as ForecastPoint[]) : []
 
   return (
@@ -165,6 +166,7 @@ export default function ForecastChart({ refreshKey }: { refreshKey?: number }) {
           <ForecastSummary data={data} />
           <LateIncomeNote items={[...(data.late_income ?? []), ...(data.late_planned ?? [])]} />
           {projection && <BudgetLegend />}
+          {unavailableNote && <p className="text-xs text-slate-400 mb-2">{unavailableNote}</p>}
           <ResponsiveContainer width="100%" height={260}>
             <AreaChart data={points} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
               <defs>

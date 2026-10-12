@@ -26,6 +26,7 @@ from app.models import (
     AssetValuation,
     AuditEntry,
     BankConnection,
+    Budget,
     CategoryRule,
     CommitmentRule,
     OAuthClient,
@@ -58,7 +59,7 @@ BYSTANDER = "bystander@example.com"
 ENCRYPTED_TYPES = (UserEncryptedString, UserEncryptedDecimal, UserEncryptedToken)
 KNOWN_ENCRYPTED_TABLES = {
     "accounts", "asset_flows", "asset_valuations", "assets", "audit_entries",
-    "bank_connections", "category_rules", "commitment_rules", "planned_items",
+    "bank_connections", "budgets", "category_rules", "commitment_rules", "planned_items",
     "repayment_schedule_items", "transactions",
 }
 
@@ -142,6 +143,7 @@ def _seed_everything(db, user_id, dek) -> None:
             AssetValuation(asset_id=asset.id, value=Decimal("1000"), valued_at=date(2026, 10, 1)),
             AssetFlow(asset_id=asset.id, amount=Decimal("50"), flow_date=date(2026, 10, 1)),
             CategoryRule(user_id=user_id, pack_id=pack.id, pattern="TESCO", category="Groceries"),
+            Budget(user_id=user_id, category="Groceries", limit_pounds=Decimal("300")),
             CommitmentRule(
                 user_id=user_id, direction="expense", label="Rent", amount=Decimal("950"), cadence="monthly",
                 next_date=date(2026, 11, 1), source="manual", status="confirmed", account_id=account.id,

@@ -271,29 +271,38 @@ def _money_out_amount(tx, roles, transfers, exclude_commitments, hide_transfers,
     return _d(tx.amount)
 
 
-def _iter_spending(txns, transfers, roles, financed, commitment_keys):
-    """Yield (tx, kind) for each transaction that counts as real spending.
+def classify_purchase(tx, transfers, roles, financed, commitment_keys) -> str | None:
+    """What a transaction is under the purchases lens: "credit" (a card
+    purchase) or "cash" (paid from a spending account) if it counts;
+    "card_payoff", "transfer", "financed" or "commitment" if it's a spending-
+    or card-account debit left out for that reason; None if it isn't
+    spending at all (income, refunds, savings or excluded accounts).
 
-    kind is "credit" (a card purchase) or "cash" (paid from a spending account).
-    Shared by the breakdown and the drill-down so the two can never disagree:
-    same exclusions (internal transfers, card repayments, financed purchases,
-    and — when requested — confirmed commitments).
+    The one predicate behind the Spending breakdown, its drill-down and the
+    budget-spend rule (T-09-1), so they can never disagree. A card payoff is
+    also an internal transfer (its legs pair up), so it's named first.
     """
+    role = roles.get(tx.account_id)
+    if tx.transaction_type != "debit" or role not in (AccountRole.CREDIT, AccountRole.SPENDING):
+        return None
+    if _is_card_repayment(tx, roles):
+        return "card_payoff"  # repayment, not new spending (override-aware)
+    if tx.id in transfers:
+        return "transfer"
+    if tx.id in financed:
+        return "financed"  # moved to a payment plan: counted via its instalments
+    if commitment_keys and transaction_match_key(tx) in commitment_keys:
+        return "commitment"
+    return "credit" if role == AccountRole.CREDIT else "cash"
+
+
+def _iter_spending(txns, transfers, roles, financed, commitment_keys):
+    """Yield (tx, kind) for each transaction that counts as real spending,
+    kind "credit" or "cash" (see classify_purchase)."""
     for tx in txns:
-        if tx.id in transfers or tx.transaction_type != "debit":
-            continue
-        if tx.id in financed:
-            continue  # moved to a payment plan — counted via its installments
-        if commitment_keys and transaction_match_key(tx) in commitment_keys:
-            continue
-        if _is_card_repayment(tx, roles):
-            continue  # repayment, not new spending (override-aware)
-        role = roles.get(tx.account_id)
-        if role == AccountRole.CREDIT:
-            yield tx, "credit"
-        elif role == AccountRole.SPENDING:
-            yield tx, "cash"
-        # savings / excluded accounts: not spending
+        kind = classify_purchase(tx, transfers, roles, financed, commitment_keys)
+        if kind in ("credit", "cash"):
+            yield tx, kind
 
 
 def spending_transactions(

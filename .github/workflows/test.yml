@@ -56,6 +56,7 @@ jobs:
             deploy:
               - '.github/**'
               - 'deploy/**'
+              - 'docker-compose.prod.yml'
 
   api:
     needs: changes

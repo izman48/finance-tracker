@@ -205,10 +205,15 @@ def test_an_unknown_id_is_not_found(w):
     assert w.patch(uuid.uuid4(), limit_pounds=10).status_code == 404
 
 
-def test_the_routes_are_web_only(client, db_session):
+def test_the_write_routes_are_web_only(client, db_session):
+    """Reading is open to finance:read (Claude's list_budgets, T-09-5);
+    these write routes stay web only (Claude's writes are /planning/budgets)."""
     w = World(client, db_session, email="mcp@example.com")
+    w.history(cycles=1)
     _, _, tokens = _connect(client, scopes=(READ,), email="mcp@example.com")
-    assert w.get(token=tokens["access_token"]).status_code == 401
+    assert w.get(token=tokens["access_token"]).status_code == 200
+    assert w.create("Eating out", 150, token=tokens["access_token"]).status_code == 401
+    assert w.put([{"category": "Eating out", "limit_pounds": 150}], token=tokens["access_token"]).status_code == 401
 
 
 # --- bulk PUT: all or nothing --------------------------------------------------------
@@ -299,12 +304,15 @@ def test_suggest_writes_nothing(w):
 # --- logs (sec: only the caller's own ids) ------------------------------------------------
 
 def test_logs_carry_no_category_or_limit(w, caplog):
+    """Ids only. The limit is checked as money ("137.00", "£137"): a bare
+    "137" can turn up inside an id's hex and made this test flaky."""
     with caplog.at_level(logging.DEBUG):
         w.create("Eating out", 137)
         w.get()
         w.suggest()
     text_ = "\n".join(r.getMessage() for r in caplog.records)
-    assert "Eating out" not in text_ and "137" not in text_
+    assert "Eating out" not in text_
+    assert "137.00" not in text_ and "£137" not in text_ and "Decimal('137" not in text_
 
 
 def test_a_partial_oldest_cycle_is_not_enough_history(client, db_session):

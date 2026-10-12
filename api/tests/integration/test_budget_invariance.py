@@ -9,8 +9,9 @@ comparison.
 
 Every scenario in SCENARIOS runs against the same seeded user and is
 compared with the no-budget run: computing budget spend (T-09-1); active,
-paused, removed and over-limit budgets, bulk set and suggest (T-09-2).
-T-09-5 adds budgets changed by Claude.
+paused, removed and over-limit budgets, bulk set and suggest (T-09-2);
+history loaded (T-09-3); budgets set, lowered, paused and removed by Claude
+(T-09-5).
 """
 from datetime import timedelta
 
@@ -88,7 +89,28 @@ def _history_loaded(w, client, token):
     client.get(f"{API}/budgets/history", headers=_bearer(token))
 
 
-# T-09-5 adds "budgets changed by Claude".
+def _changed_by_claude(w, client, token):
+    """Claude sets, lowers, pauses and removes budgets (T-09-5)."""
+    from tests.integration.test_oauth import READ, _connect
+
+    _, _, tokens = _connect(client, scopes=(READ, "finance:budgets.write"), email="budgets@example.com")
+    mcp = _bearer(tokens["access_token"])
+
+    keys = iter(f"invariance-key-{i:04d}" for i in range(100))
+
+    def post(path, **body):
+        r = client.post(f"{API}/planning/budgets{path}", json={"dry_run": False, "idempotency_key": next(keys), **body},
+                        headers=mcp)
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    body = post("/set", budgets=[{"category": "Eating out", "limit_pounds": 150},
+                                  {"category": "Groceries", "limit_pounds": 400}])
+    ids = [r["target_id"] for r in body["results"]]
+    post("/set", budgets=[{"category": "Groceries", "limit_pounds": 10}])  # lowered (D6)
+    post(f"/{ids[0]}/pause")
+    post(f"/{ids[1]}/remove")
+    client.get(f"{API}/budgets", headers=_bearer(token))
 SCENARIOS = {
     "budget spend computed": _spend_computed,
     "active budgets": _active,
@@ -97,6 +119,7 @@ SCENARIOS = {
     "an over-limit budget": _over_limit,
     "bulk set and suggest": _bulk_and_suggest,
     "history loaded": _history_loaded,
+    "budgets changed by Claude": _changed_by_claude,
 }
 
 

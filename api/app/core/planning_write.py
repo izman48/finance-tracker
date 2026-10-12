@@ -19,7 +19,7 @@ from typing import Annotated
 
 from fastapi import Depends, Request
 
-from app.core.oauth_tokens import SCOPE_PLANNING_WRITE, Caller, scoped_caller
+from app.core.oauth_tokens import SCOPE_BUDGETS_WRITE, SCOPE_PLANNING_WRITE, Caller, scoped_caller
 from app.core.rate_limit import user_rate_limiter
 
 WRITE_LIMIT = 30
@@ -46,10 +46,8 @@ async def _is_dry_run(request: Request) -> bool:
     return body.get("dry_run", True) is True
 
 
-def planning_writer(
-    caller: Annotated[Caller, Depends(scoped_caller(SCOPE_PLANNING_WRITE))],
-    dry_run: Annotated[bool, Depends(_is_dry_run)],
-) -> Caller:
+def _limited(caller: Caller, dry_run: bool) -> Caller:
+    """The per-user budgets, shared by every write scope."""
     if dry_run:
         user_rate_limiter.check_key(f"planning-dry-run:{caller.user.id}", DRY_RUN_LIMIT, WINDOW_SECONDS)
     else:
@@ -57,4 +55,21 @@ def planning_writer(
     return caller
 
 
+def planning_writer(
+    caller: Annotated[Caller, Depends(scoped_caller(SCOPE_PLANNING_WRITE))],
+    dry_run: Annotated[bool, Depends(_is_dry_run)],
+) -> Caller:
+    return _limited(caller, dry_run)
+
+
+def budgets_writer(
+    caller: Annotated[Caller, Depends(scoped_caller(SCOPE_BUDGETS_WRITE))],
+    dry_run: Annotated[bool, Depends(_is_dry_run)],
+) -> Caller:
+    """Claude's budget writes (T-09-5): their own scope, the same per-user
+    write and dry-run limits as planning writes (one shared 30/hour)."""
+    return _limited(caller, dry_run)
+
+
 PlanningWriter = Annotated[Caller, Depends(planning_writer)]
+BudgetsWriter = Annotated[Caller, Depends(budgets_writer)]

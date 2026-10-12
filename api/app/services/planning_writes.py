@@ -36,7 +36,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.oauth_tokens import Caller
-from app.models import AuditEntry, CommitmentRule, PlannedItem, WriteIdempotency
+from app.models import AuditEntry, Budget, CommitmentRule, PlannedItem, WriteIdempotency
 from app.models.audit import AUDIT_KIND_UNDO, AUDIT_KIND_WRITE
 from app.schemas import PlanningWriteRequest
 
@@ -57,6 +57,9 @@ class TargetSpec:
     # What a write may change and the diff shows, each with the parser that
     # turns its audited (JSON) form back into a column value for undo.
     fields: dict[str, Callable[[Any], Any]]
+    # Columns the server derives from an allow-listed change, never from the
+    # request (a budget's pause hold, T-09-4): the column guard lets them move.
+    derived: frozenset[str] = frozenset()
 
     @property
     def names(self) -> tuple[str, ...]:
@@ -79,6 +82,12 @@ TARGETS: dict[str, TargetSpec] = {
         # with no stored key gets the old label's, so its payments still match.
         "source": str, "match_key": str,
     }),
+    # Claude's budget writes (T-09-5): the limit, pause and remove only (sec).
+    # The pause hold (held_from, held_remaining) follows a pause or remove,
+    # server-side, for sec's max rule.
+    "budget": TargetSpec(Budget, "category", {
+        "limit_pounds": Decimal, "paused": bool, "active": bool,
+    }, derived=frozenset({"held_from", "held_remaining"})),
 }
 
 
@@ -137,6 +146,78 @@ def run_write(db: Session, caller: Caller, req: WriteRequest, body: PlanningWrit
     return _entry_result(entry)
 
 
+def run_batch(db: Session, caller: Caller, reqs: list[WriteRequest], body: PlanningWriteRequest,
+              batch_id: uuid.UUID) -> dict:
+    """Several writes as one: all applied in one transaction with one audit
+    row each, sharing `batch_id`, or none (T-09-5 set_budgets). The caller
+    validates every entry first. dry_run previews all and writes nothing.
+    One idempotency key covers the batch; a retry replays every audited
+    row. Entries that changed nothing have no audit row, so a replay lists
+    only the entries that changed."""
+    if body.dry_run:
+        savepoint = db.begin_nested()
+        try:
+            results = [_change(db, caller, TARGETS[r.target_kind], r) for r in reqs]
+        finally:
+            savepoint.rollback()
+        return _batch_result(None, [
+            _result(None, None, r.target_kind, label, changes, dry_run=True, unchanged=not _changes_anything(changes))
+            for r, (_, label, changes) in zip(reqs, results)
+        ], dry_run=True)
+
+    material = WriteRequest(tool=reqs[0].tool, target_kind=reqs[0].target_kind, target_id=None,
+                            apply=reqs[0].apply, batch_id=None)
+    replay = _claim_key(db, caller, body.idempotency_key, _request_hash(material, body), batch=True)
+    if replay is not None:
+        return replay
+    try:
+        results, first = [], None
+        for r in reqs:
+            target, label, changes = _change(db, caller, TARGETS[r.target_kind], r)
+            if not _changes_anything(changes):
+                results.append(_result(None, target.id, r.target_kind, label, [], dry_run=False, unchanged=True))
+                continue
+            entry = AuditEntry(
+                user_id=caller.user.id, kind=AUDIT_KIND_WRITE, tool=r.tool, target_kind=r.target_kind,
+                target_id=target.id, target_label=label, changes=json.dumps(changes),
+                created_target=r.target_id is None, grant_id=caller.grant_id, client_id=caller.client_id,
+                batch_id=batch_id,
+            )
+            db.add(entry)
+            db.flush()
+            first = first or entry
+            results.append(_entry_result(entry))
+        if first is None:
+            db.rollback()
+            return _batch_result(None, results, dry_run=False)
+        db.query(WriteIdempotency).filter(
+            WriteIdempotency.user_id == caller.user.id, WriteIdempotency.key == body.idempotency_key
+        ).update({WriteIdempotency.audit_id: first.id})
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return _batch_result(batch_id, results, dry_run=False)
+
+
+def _batch_result(batch_id, results: list[dict], *, dry_run: bool) -> dict:
+    return {
+        "dry_run": dry_run, "batch_id": str(batch_id) if batch_id else None,
+        "unchanged": all(r["unchanged"] for r in results), "results": results,
+    }
+
+
+def _replay_batch(db: Session, entry: AuditEntry) -> dict:
+    rows = (
+        db.query(AuditEntry)
+        .filter(AuditEntry.user_id == entry.user_id, AuditEntry.batch_id == entry.batch_id,
+                AuditEntry.kind == AUDIT_KIND_WRITE)
+        .order_by(AuditEntry.created_at, AuditEntry.id)
+        .all()
+    )
+    return _batch_result(entry.batch_id, [_entry_result(r) for r in rows], dry_run=False)
+
+
 def _change(db: Session, caller: Caller, spec: TargetSpec, req: WriteRequest):
     """Apply the change (uncommitted); return (target, label, changes)."""
     target = None
@@ -153,7 +234,8 @@ def _change(db: Session, caller: Caller, spec: TargetSpec, req: WriteRequest):
     if req.target_id is not None:
         moved = {
             k for k, v in _all_columns(target).items()
-            if v != columns_before[k] and k not in spec.fields and k not in _BOOKKEEPING_COLUMNS
+            if v != columns_before[k] and k not in spec.fields and k not in spec.derived
+            and k not in _BOOKKEEPING_COLUMNS
         }
         if moved:
             raise DisallowedChange(f"{req.tool} changed columns outside its allow-list: {sorted(moved)}")
@@ -164,7 +246,7 @@ def _change(db: Session, caller: Caller, spec: TargetSpec, req: WriteRequest):
     return target, getattr(target, spec.label_field), changes
 
 
-def _claim_key(db: Session, caller: Caller, key: str, request_hash: str) -> dict | None:
+def _claim_key(db: Session, caller: Caller, key: str, request_hash: str, batch: bool = False) -> dict | None:
     """Insert the (user, key) record, or return the earlier result for it.
 
     The insert happens before the change, so a concurrent request with the
@@ -194,7 +276,7 @@ def _claim_key(db: Session, caller: Caller, key: str, request_hash: str) -> dict
     entry = db.get(AuditEntry, existing.audit_id) if existing.audit_id else None
     if entry is None or entry.user_id != caller.user.id:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="That request is still being applied.")
-    return _entry_result(entry)
+    return _replay_batch(db, entry) if batch else _entry_result(entry)
 
 
 def _request_hash(req: WriteRequest, body: PlanningWriteRequest) -> str:
@@ -299,13 +381,22 @@ def undo_write(db: Session, user, audit_id: uuid.UUID) -> AuditEntry:
     for c in restore:
         parse = spec.fields[c["field"]]
         setattr(target, c["field"], None if c["after"] is None else parse(c["after"]))
+    if entry.target_kind == "budget":
+        # The budget change log sees undos too (T-09-3, lead on #160).
+        from app.services.budget_history import record_change
+        record_change(db, target)
     db.add(AuditEntry(
         user_id=user.id, kind=AUDIT_KIND_UNDO, tool=entry.tool, target_kind=entry.target_kind,
         target_id=entry.target_id, target_label=getattr(target, spec.label_field),
         changes=json.dumps(restore), undoes_id=entry.id,
     ))
     entry.undone_at = datetime.now(timezone.utc)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # e.g. undoing a budget's removal after a new one took its category.
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Can't undo: it has changed since.") from None
     db.refresh(entry)
     return entry
 

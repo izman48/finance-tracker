@@ -9,6 +9,7 @@ from app.routers.audit import router as audit_router
 from app.routers.planning import router as planning_router
 from app.routers.commitment_writes import router as commitment_writes_router
 from app.routers.budgets import router as budgets_router
+from app.routers.budget_writes import router as budget_writes_router
 
 __all__ = [
     "health_router",
@@ -23,4 +24,5 @@ __all__ = [
     "planning_router",
     "commitment_writes_router",
     "budgets_router",
+    "budget_writes_router",
 ]

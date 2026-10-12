@@ -204,8 +204,11 @@ def _at_pace(amount: Decimal, elapsed: int, days_left: int) -> Decimal:
 def _held_this_cycle(budget: Budget, cycle: Cycle) -> bool:
     if budget.held_from is None or (budget.active and not budget.paused):
         return False
-    held = budget.held_from if budget.held_from.tzinfo else budget.held_from.replace(tzinfo=timezone.utc)
-    return held.date() >= cycle.start
+    return _as_utc(budget.held_from).date() >= cycle.start
+
+
+def _as_utc(at: datetime) -> datetime:
+    return at if at.tzinfo else at.replace(tzinfo=timezone.utc)
 
 
 def pace_inputs(db: Session, user, today: date) -> PaceInputs:
@@ -238,6 +241,22 @@ def pace_inputs(db: Session, user, today: date) -> PaceInputs:
         all_at_pace=_at_pace(total, elapsed, days_left),
         any_budget=bool(counted),
     )
+
+
+def hold(db: Session, user, budget: Budget) -> None:
+    """Paused or removed (by the user or Claude): for the rest of this cycle
+    the category keeps counting at max(its remaining limit, its spend at
+    pace) (sec's max rule, T-09-4). The hold outlives a resume or an undone
+    removal (it's ignored while the budget is active and unpaused), so an
+    undo that pauses or removes it again brings the same hold back; and a
+    second hold in the same cycle never lowers the first (sec on #162)."""
+    cycle = current_cycle(db, user, _today())
+    remaining = remaining_now(db, user, budget)
+    if budget.held_from is not None and _as_utc(budget.held_from).date() >= cycle.start:
+        budget.held_remaining = max(Decimal(budget.held_remaining or 0), remaining)
+        return
+    budget.held_from = datetime.now(timezone.utc)
+    budget.held_remaining = remaining
 
 
 def remaining_now(db: Session, user, budget: Budget) -> Decimal:

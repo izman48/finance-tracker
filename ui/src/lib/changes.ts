@@ -9,7 +9,7 @@
  */
 import axios from 'axios'
 import { cadenceLabel } from './cadence'
-import { dateDayMonth, gbp } from './format'
+import { dateDayMonth, gbp, gbp0 } from './format'
 import { cleanDisplayName } from './oauthConsent'
 
 export type AuditValue = string | number | boolean | null
@@ -61,6 +61,10 @@ const isConfirmation = (item: AuditItem) => {
 
 const isIncome = (item: AuditItem) => changeOf(item, 'direction')?.after === 'income'
 
+/** set_budgets made the budget (its limit had no "before"), rather than changing it. */
+const isBudgetCreate = (item: AuditItem) =>
+  item.tool === 'set_budgets' && changeOf(item, 'limit_pounds')?.before === null
+
 export function changeTitle(item: AuditItem): string {
   const name = quoted(item.target_label)
   switch (item.tool) {
@@ -72,6 +76,14 @@ export function changeTitle(item: AuditItem): string {
       return `Dismissed the commitment ${name}`
     case 'update_commitment':
       return isConfirmation(item) ? `Confirmed ${name} as a commitment` : `Changed the commitment ${name}`
+    case 'set_budgets':
+      return isBudgetCreate(item) ? `Set a budget: ${name}` : `Changed the budget ${name}`
+    case 'pause_budget':
+      return `Paused the budget ${name}`
+    case 'resume_budget':
+      return `Resumed the budget ${name}`
+    case 'remove_budget':
+      return `Removed the budget ${name}`
     default:
       return `Changed ${name}`
   }
@@ -122,9 +134,31 @@ function formatValue(
   }
 }
 
+const LIMIT_LABEL = 'Limit for this pay cycle'
+const budgetStatus = (paused: boolean, active: boolean) => (!active ? 'Removed' : paused ? 'Paused' : 'Active')
+
+/** A budget row's lines (concept 6): the limit, and the status in plain words. */
+function budgetLines(item: AuditItem): ChangeLine[] {
+  const limit = changeOf(item, 'limit_pounds')
+  if (isBudgetCreate(item)) return [{ label: LIMIT_LABEL, after: gbp0(Number(limit?.after)) }]
+  const lines: ChangeLine[] = []
+  if (limit) lines.push({ label: LIMIT_LABEL, before: gbp0(Number(limit.before)), after: gbp0(Number(limit.after)) })
+  const paused = changeOf(item, 'paused')
+  const active = changeOf(item, 'active')
+  if (paused || active) {
+    // A field that didn't change isn't in the audit row: a pause was of an active budget, a removal of an unpaused one.
+    const before = budgetStatus(Boolean(paused?.before ?? false), Boolean(active?.before ?? true))
+    const after = budgetStatus(Boolean(paused?.after ?? false), Boolean(active?.after ?? true))
+    lines.push({ label: 'Status', before, after })
+  }
+  return lines
+}
+
 /** The lines under a row's title (1.4). Fields without a plain-words name are left out. */
 export function changeLines(item: AuditItem, accountNames: Record<string, string>): ChangeLine[] {
   const fmt = (field: string, v: AuditValue) => formatValue(field, v, accountNames, item.tool)
+
+  if (item.target_kind === 'budget') return budgetLines(item)
 
   if (item.tool === 'add_planned_event' || item.tool === 'remove_planned_event') {
     // Adds and removes have no before/after: one value per line (a remove's
@@ -192,6 +226,14 @@ export function undoToast(item: AuditItem): string {
       return `Put ${name} back in your planned events.`
     case 'dismiss_commitment':
       return `${name} is back in your commitments.`
+    case 'set_budgets':
+      return isBudgetCreate(item) ? `Removed the budget ${name}.` : `Put the budget ${name} back to how it was.`
+    case 'pause_budget':
+      return `Resumed the budget ${name}.`
+    case 'resume_budget':
+      return `Paused the budget ${name} again.`
+    case 'remove_budget':
+      return `Put the budget ${name} back.`
     default:
       return `Put ${name} back to how it was.`
   }

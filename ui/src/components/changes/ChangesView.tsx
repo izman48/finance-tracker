@@ -34,7 +34,7 @@ export default function ChangesView(props: ChangesViewProps) {
           Changes made by Claude
         </h1>
         <p className="text-sm text-slate-400 mt-1">
-          Everything an AI assistant changed in your planned events and commitments. You can undo any change here.
+          Everything an AI assistant changed in your planned events, commitments and budgets. You can undo any change here.
         </p>
         <p className="text-xs text-slate-400 mt-1">
           &quot;via&quot; names are chosen by the app that connected. nilu. doesn&apos;t check them.
@@ -68,7 +68,7 @@ export default function ChangesView(props: ChangesViewProps) {
                 Claude hasn&apos;t changed anything yet
               </h2>
               <p className="text-sm text-slate-400 mt-2 max-w-md mx-auto">
-                When you let an AI assistant change your planned events or commitments, every change appears here and
+                When you let an AI assistant change your planned events, commitments or budgets, every change appears here and
                 you can undo it.
               </p>
             </div>

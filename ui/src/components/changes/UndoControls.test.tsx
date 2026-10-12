@@ -77,6 +77,12 @@ describe('UndoNotice', () => {
     expect(html(<UndoNotice item={undone} failure="other" />)).toBe('')
   })
 
+  it('T-09-10: a budget that changed since links to Spending > Budgets', () => {
+    const h = html(<UndoNotice item={item({ target_kind: 'budget', tool: 'pause_budget' })} failure="changed" />)
+    expect(h).toContain('href="/insights?section=budgets"')
+    expect(text(h)).toContain('Open budgets')
+  })
+
   it('ux: the Open link is a 44px target on mobile', () => {
     expect(html(<UndoNotice item={item()} failure="changed" />)).toMatch(/<a[^>]*class="[^"]*min-h-\[44px\]/)
   })

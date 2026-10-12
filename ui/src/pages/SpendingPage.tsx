@@ -13,6 +13,8 @@ import InfoTip from '../components/ui/InfoTip'
 import { useToast } from '../components/ui/Toast'
 import { EXPLAIN } from '../copy/statExplainers'
 import useReveal from '../components/ui/useReveal'
+import BudgetsPanel from '../components/budgets/BudgetsPanel'
+import { CATEGORY_COLORS } from '../lib/categoryColors'
 
 interface CategorySlice {
   category: string
@@ -47,11 +49,12 @@ type SpendKind = 'spend' | 'cash' | 'credit' | 'money_out'
 // The page's sections, viewable together ("all") or one at a time — user
 // feedback: the stacked page is a lot to take in; sections read like their
 // own pages while staying ONE page, so figures still reconcile to the list.
-type Section = 'all' | 'overview' | 'history' | 'activity'
+type Section = 'all' | 'overview' | 'history' | 'activity' | 'budgets'
 
 const SECTIONS: { key: Section; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'overview', label: 'Overview' },
+  { key: 'budgets', label: 'Budgets' },
   { key: 'history', label: 'History' },
   { key: 'activity', label: 'Activity' },
 ]
@@ -79,7 +82,7 @@ const LENS_KEY = 'insights.lens'
 const longDate = (d: string) =>
   new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 
-const BAR_COLORS = ['#2DD4A7', '#38BDF8', '#A78BFA', '#FBBF24', '#FB7185', '#34D399', '#818CF8', '#F472B6']
+const BAR_COLORS = CATEGORY_COLORS
 
 const EXCLUDE_COMMITMENTS_KEY = 'insights.excludeCommitments'
 
@@ -113,7 +116,7 @@ export default function SpendingPage() {
   // Which section is shown; persisted so the layout choice sticks.
   const [section, setSectionState] = useState<Section>(() => {
     const s = localStorage.getItem(SECTION_KEY)
-    return s === 'overview' || s === 'history' || s === 'activity' ? s : 'all'
+    return s === 'overview' || s === 'history' || s === 'activity' || s === 'budgets' ? s : 'all'
   })
   const setSection = (s: Section) => {
     localStorage.setItem(SECTION_KEY, s)
@@ -567,19 +570,21 @@ export default function SpendingPage() {
           dropdown (it's set occasionally — it doesn't need four pills). */}
       <div className="flex items-center justify-between gap-3 mb-1">
         <h1 className="font-display font-bold text-2xl sm:text-3xl text-slate-50">Spending</h1>
-        <select
-          value={period}
-          onChange={(e) => setPeriod(e.target.value)}
-          className="input !w-auto !py-2 !text-sm"
-          aria-label="Time range"
-        >
-          {PERIODS.map((p) => (
-            <option key={p.key} value={p.key}>{p.label}</option>
-          ))}
-        </select>
+        {section !== 'budgets' && (
+          <select
+            value={period}
+            onChange={(e) => setPeriod(e.target.value)}
+            className="input !w-auto !py-2 !text-sm"
+            aria-label="Time range"
+          >
+            {PERIODS.map((p) => (
+              <option key={p.key} value={p.key}>{p.label}</option>
+            ))}
+          </select>
+        )}
       </div>
 
-      {period === 'custom' && (
+      {period === 'custom' && section !== 'budgets' && (
         <div className="flex flex-wrap justify-end gap-3 mt-2">
           <input type="date" value={frm} onChange={(e) => setFrm(e.target.value)} className="input !w-auto" />
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="input !w-auto" />
@@ -608,6 +613,12 @@ export default function SpendingPage() {
         </div>
       </div>
 
+      {section === 'budgets' ? (
+        // Budgets (T-09-6) follow the pay cycle, not the time range above;
+        // a row opens its transactions in Activity.
+        <BudgetsPanel onOpenCategory={(category) => drill({ category, merchant: '' })} />
+      ) : (
+      <>
       {/* Contextual: only exists while filters narrow the view. */}
       {chips.length > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3 mb-5 rounded-xl border border-accent/25 bg-accent/[0.06] px-4 py-3">
@@ -1285,6 +1296,8 @@ export default function SpendingPage() {
           )}
         </div>
       </div>
+      )}
+      </>
       )}
 
       {sheetTx && (

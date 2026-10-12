@@ -106,4 +106,4 @@ class BudgetCycleSnapshot(Base):
     limit_pounds: Mapped[Decimal] = mapped_column(UserEncryptedDecimal)  # in force at close
     spent: Mapped[Decimal] = mapped_column(UserEncryptedDecimal)
     paused: Mapped[bool] = mapped_column(Boolean)                        # at close
-    written_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    written_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

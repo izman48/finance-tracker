@@ -184,10 +184,16 @@ class HistorySlot(BaseModel):
 
 
 class HistoryBudget(BaseModel):
+    """One row per category (BH15): a category removed and re-added is one
+    row. budget_id and limit_pounds are the current budget's, or the last
+    one's when removed (no active budget)."""
+
     budget_id: uuid.UUID
     category: str
+    limit_pounds: int
+    removed: bool
     kept: int        # k in "Kept k of n"
-    counted: int     # n: cycles it existed in and wasn't paused
+    counted: int     # n: cycles one of its budgets existed in, not paused
     usually: Decimal | None  # mean final spend over the counted cycles
     cycles: list[HistorySlot]
 

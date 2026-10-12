@@ -113,6 +113,7 @@ def update_budget(
     db: Annotated[Session, Depends(get_db)],
 ) -> BudgetResponse:
     budget = svc.owned_budget(db, current_user, budget_id)
+    budget_history.ensure_baseline(db, budget)
     if body.limit_pounds is not None:
         budget.limit_pounds = Decimal(body.limit_pounds)
     if body.paused is not None and body.paused != budget.paused:
@@ -129,6 +130,7 @@ def remove_budget(
     budget_id: uuid.UUID, current_user: CurrentUser, db: Annotated[Session, Depends(get_db)],
 ) -> Response:
     budget = svc.owned_budget(db, current_user, budget_id)
+    budget_history.ensure_baseline(db, budget)
     if not budget.paused:
         svc.hold(db, current_user, budget)
     budget.active = False  # kept for History
@@ -157,6 +159,7 @@ def set_budgets(
     for entry in body.budgets:
         budget = existing.get(entry.category)
         if budget is not None:
+            budget_history.ensure_baseline(db, budget)
             budget.limit_pounds = Decimal(entry.limit_pounds)
         else:
             budget = Budget(user_id=current_user.id, category=entry.category, limit_pounds=Decimal(entry.limit_pounds))

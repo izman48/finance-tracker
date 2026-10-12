@@ -17,6 +17,7 @@ from __future__ import annotations
 from datetime import date, datetime, time, timezone
 from decimal import Decimal
 
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -47,21 +48,29 @@ def _aware(moment: datetime) -> datetime:
     return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
 
 
+def ensure_baseline(db: Session, budget: Budget) -> None:
+    """A budget made before the change log existed has no rows: record its
+    state from its creation. Call before changing it, so its older cycles
+    keep the old limit (eng-a on #160); `_changes` calls it too."""
+    if budget.id is None:
+        return
+    has_rows = db.query(BudgetChange.id).filter(BudgetChange.budget_id == budget.id).first() is not None
+    if not has_rows:
+        record_change(db, budget, at=_aware(budget.created_at) if budget.created_at else None)
+
+
 def _changes(db: Session, user, budget: Budget) -> list[BudgetChange]:
     """The budget's change log, oldest first. A budget made before the log
     existed gets a first row now, effective from its creation, with its
     current state (an encrypted limit can't be read by a migration)."""
-    rows = (
+    ensure_baseline(db, budget)
+    db.commit()
+    return (
         db.query(BudgetChange)
         .filter(BudgetChange.user_id == user.id, BudgetChange.budget_id == budget.id)
         .order_by(BudgetChange.effective_at, BudgetChange.id)
         .all()
     )
-    if not rows:
-        record_change(db, budget, at=_aware(budget.created_at) if budget.created_at else None)
-        db.commit()
-        return _changes(db, user, budget)
-    return rows
 
 
 def _state_at_close(changes: list[BudgetChange], cycle_end: date) -> BudgetChange | None:
@@ -78,8 +87,9 @@ def write_snapshots(db: Session, user) -> None:
     cycle = current_cycle(db, user, today)
     if cycle.fallback:
         return  # no payday: no cycles to close
-    stored = db.query(BudgetCycleSnapshot.cycle_end).filter(BudgetCycleSnapshot.user_id == user.id)
-    last_end = max((end for (end,) in stored), default=None)
+    last_end = (
+        db.query(func.max(BudgetCycleSnapshot.cycle_end)).filter(BudgetCycleSnapshot.user_id == user.id).scalar()
+    )
     closed = [c for c in previous_cycles(db, user, cycle, SNAPSHOT_LOOKBACK) if last_end is None or c.start > last_end]
     if not closed:
         return
@@ -115,60 +125,73 @@ def _snapshot_row(user, budget: Budget, cycle, state: BudgetChange, spend: dict)
 
 def history(db: Session, user, cycles: int, before: date | None) -> dict:
     """GET /budgets/history: up to `cycles` completed cycles ending before
-    `before` (newest first in storage, oldest first in the response)."""
+    `before`, oldest first, with one row per category (BH15): a category
+    removed and re-added is one row whose slots use each budget's own limit,
+    the cycles between are empty and not counted. The trend is over the
+    latest stored cycles, whatever the page."""
     write_snapshots(db, user)
-    categories = {b.id: b.category for b in db.query(Budget).filter(Budget.user_id == user.id)}
-    query = db.query(BudgetCycleSnapshot).filter(BudgetCycleSnapshot.user_id == user.id)
-    if before is not None:
-        query = query.filter(BudgetCycleSnapshot.cycle_end < before)
-    snaps = query.all()
-    ranges = sorted({(s.cycle_start, s.cycle_end) for s in snaps}, reverse=True)
-    shown, has_more = ranges[:cycles], len(ranges) > cycles
-    shown = list(reversed(shown))  # oldest first
-    by_range = {r: [s for s in snaps if (s.cycle_start, s.cycle_end) == r] for r in shown}
+    snaps = db.query(BudgetCycleSnapshot).filter(BudgetCycleSnapshot.user_id == user.id).all()
+    by_range: dict[tuple[date, date], list[BudgetCycleSnapshot]] = {}
+    for snap in snaps:
+        by_range.setdefault((snap.cycle_start, snap.cycle_end), []).append(snap)
+    ranges = sorted(by_range)  # oldest first
+    overall_all = [_overall(start, end, by_range[(start, end)]) for start, end in ranges]
 
-    overall = []
-    for start, end in shown:
-        counted = [s for s in by_range[(start, end)] if not s.paused]
-        limit = sum((Decimal(s.limit_pounds) for s in counted), Decimal(0))
-        spent = sum((Decimal(s.spent) for s in counted), Decimal(0))
-        overall.append({
-            "start": start, "end": end, "total_limit": limit, "total_spent": spent,
-            "on_target": (spent <= limit) if counted else None,
-        })
+    in_page = [r for r in ranges if before is None or r[1] < before]
+    shown, has_more = in_page[-cycles:], len(in_page) > cycles
+    overall = [o for o in overall_all if (o["start"], o["end"]) in set(shown)]
 
-    per_budget = []
-    for budget_id in sorted({s.budget_id for r in shown for s in by_range[r]}, key=lambda i: categories[i]):
-        slots, kept, counted_spend = [], 0, []
-        for start, end in shown:
-            snap = next((s for s in by_range[(start, end)] if s.budget_id == budget_id), None)
-            if snap is None:
-                slots.append({"start": start, "end": end, "existed": False, "paused": False,
-                              "limit_pounds": None, "spent": None, "kept": None})
-                continue
-            limit, spent = Decimal(snap.limit_pounds), Decimal(snap.spent)
-            is_kept = None if snap.paused else spent <= limit
-            if is_kept is not None:
-                kept += is_kept
-                counted_spend.append(spent)
-            slots.append({"start": start, "end": end, "existed": True, "paused": snap.paused,
-                          "limit_pounds": int(limit), "spent": spent, "kept": is_kept})
-        per_budget.append({
-            "budget_id": budget_id, "category": categories[budget_id],
-            "kept": kept, "counted": len(counted_spend),
-            "usually": (sum(counted_spend, Decimal(0)) / len(counted_spend)).quantize(Decimal("0.01"))
-            if counted_spend else None,
-            "cycles": slots,
-        })
-
+    budgets = db.query(Budget).filter(Budget.user_id == user.id).all()
+    category_of = {b.id: b.category for b in budgets}
+    shown_categories = sorted({category_of[s.budget_id] for r in shown for s in by_range[r]})
     return {
         "cycles": overall,
-        "budgets": per_budget,
+        "budgets": [_category_row(category, shown, by_range, budgets, category_of) for category in shown_categories],
         "on_target": sum(1 for c in overall if c["on_target"]),
         "counted": sum(1 for c in overall if c["on_target"] is not None),
-        "trend": _trend([c for c in overall if c["on_target"] is not None]),
+        "trend": _trend([c for c in overall_all if c["on_target"] is not None]),
         "has_more": has_more,
     }
+
+
+def _overall(start: date, end: date, snaps: list[BudgetCycleSnapshot]) -> dict:
+    counted = [s for s in snaps if not s.paused]
+    limit = sum((Decimal(s.limit_pounds) for s in counted), Decimal(0))
+    spent = sum((Decimal(s.spent) for s in counted), Decimal(0))
+    return {"start": start, "end": end, "total_limit": limit, "total_spent": spent,
+            "on_target": (spent <= limit) if counted else None}
+
+
+def _category_row(category: str, shown, by_range, budgets: list[Budget], category_of: dict) -> dict:
+    """One History row: every budget the category has had, one slot a cycle."""
+    slots, kept, counted_spend = [], 0, []
+    for start, end in shown:
+        snap = next((s for s in by_range[(start, end)] if category_of[s.budget_id] == category), None)
+        if snap is None:
+            slots.append({"start": start, "end": end, "existed": False, "paused": False,
+                          "limit_pounds": None, "spent": None, "kept": None})
+            continue
+        limit, spent = Decimal(snap.limit_pounds), Decimal(snap.spent)
+        is_kept = None if snap.paused else spent <= limit
+        if is_kept is not None:
+            kept += is_kept
+            counted_spend.append(spent)
+        slots.append({"start": start, "end": end, "existed": True, "paused": snap.paused,
+                      "limit_pounds": int(limit), "spent": spent, "kept": is_kept})
+    latest = _latest_budget([b for b in budgets if b.category == category])
+    return {
+        "budget_id": latest.id, "category": category,
+        "limit_pounds": int(latest.limit_pounds), "removed": not latest.active,
+        "kept": kept, "counted": len(counted_spend),
+        "usually": (sum(counted_spend, Decimal(0)) / len(counted_spend)).quantize(Decimal("0.01"))
+        if counted_spend else None,
+        "cycles": slots,
+    }
+
+
+def _latest_budget(budgets: list[Budget]) -> Budget:
+    """The category's active budget, or the one made last."""
+    return max(budgets, key=lambda b: (bool(b.active), _aware(b.created_at) if b.created_at else datetime.min.replace(tzinfo=timezone.utc)))
 
 
 def _trend(cycles: list[dict]) -> dict | None:

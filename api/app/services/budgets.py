@@ -210,8 +210,11 @@ def pace_inputs(db: Session, user, today: date) -> PaceInputs:
     days_left = max((cycle.end - today).days, 0)
 
     budgets = active_budgets(db, user)
-    held = [b for b in db.query(Budget).filter(Budget.user_id == user.id, Budget.held_from.is_not(None))
-            if _held_this_cycle(b, cycle)]
+    cycle_start = datetime.combine(cycle.start, datetime.min.time(), timezone.utc)
+    held = [
+        b for b in db.query(Budget).filter(Budget.user_id == user.id, Budget.held_from >= cycle_start)
+        if _held_this_cycle(b, cycle)
+    ]
     counted: dict[str, Decimal] = {}  # category -> what it takes off the balance
     for b in budgets:
         if not b.paused:
@@ -299,11 +302,15 @@ def budget_projection(db: Session, user, forecast: dict) -> dict | None:
     scheduled = Decimal(before[-1]["balance"])
 
     stick_total = inputs.budgets_left + inputs.other_at_pace
-    span = max((eve - today).days, 1)
+    span = (eve - today).days
+
+    def spent_by(day: date) -> Decimal:
+        """The stick-to-budgets total spread evenly from today, all of it by
+        the day before payday (eng-a on #154: on that day itself, all of it)."""
+        return stick_total if span <= 0 else stick_total * Decimal((day - today).days) / Decimal(span)
+
     series = [
-        {"date": p["date"],
-         "balance": (Decimal(p["balance"]) - stick_total * Decimal(min((p["date"] - today).days, span)) / Decimal(span))
-         .quantize(Decimal("0.01"))}
+        {"date": p["date"], "balance": (Decimal(p["balance"]) - spent_by(p["date"])).quantize(Decimal("0.01"))}
         for p in forecast["timeline"] if today <= p["date"] <= eve
     ]
     from app.services.analytics.summary import get_summary

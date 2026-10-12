@@ -171,3 +171,22 @@ def test_the_strip_carries_the_headroom_and_the_difference(w):
     assert Decimal(strip["headroom"]) == Decimal(rec["headroom"])
     assert Decimal(strip["difference"]) == (
         Decimal(strip["stick_to_budgets_balance"]) - Decimal(strip["headroom"]))
+
+
+def test_on_the_day_before_payday_the_line_ends_at_the_strip(client, db_session):
+    """eng-a on #154: with no days left, today's point is the full deduction."""
+    from app.models import CommitmentRule
+
+    w = World(client, db_session, email="eve@example.com")
+    w.history()
+
+    def payday_tomorrow():
+        rule = w.db.query(CommitmentRule).filter(CommitmentRule.is_payday.is_(True)).one()
+        rule.next_date = TODAY + timedelta(days=1)
+        w.db.commit()
+    w.as_user(payday_tomorrow)
+    w.create("Eating out", 150)
+    strip = _strip(w)
+    assert strip["payday"] == (TODAY + timedelta(days=1)).isoformat()
+    assert [p["date"] for p in strip["series"]] == [TODAY.isoformat()]
+    assert Decimal(strip["series"][-1]["balance"]) == Decimal(strip["stick_to_budgets_balance"])

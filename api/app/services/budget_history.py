@@ -91,17 +91,26 @@ def write_snapshots(db: Session, user) -> None:
         if not live:
             continue
         spend = budget_spend(db, user, c.start, c.end).by_category
-        for b in live:
-            state = states[b.id]
-            db.add(BudgetCycleSnapshot(
-                user_id=user.id, budget_id=b.id, cycle_start=c.start, cycle_end=c.end,
-                limit_pounds=Decimal(state.limit_pounds), spent=spend.get(b.category, Decimal(0)),
-                paused=state.paused,
-            ))
-            try:
-                db.commit()
-            except IntegrityError:  # another worker wrote it first
-                db.rollback()
+        # One transaction per cycle (sec on #160): a request that dies partway
+        # leaves none of this cycle's rows, never some, because a partial
+        # cycle would move "the last stored end" past budgets never written.
+        try:
+            for b in live:
+                db.add(_snapshot_row(user, b, c, states[b.id], spend))
+            db.commit()
+        except IntegrityError:  # another worker wrote this cycle first
+            db.rollback()
+        except Exception:
+            db.rollback()
+            raise
+
+
+def _snapshot_row(user, budget: Budget, cycle, state: BudgetChange, spend: dict) -> BudgetCycleSnapshot:
+    return BudgetCycleSnapshot(
+        user_id=user.id, budget_id=budget.id, cycle_start=cycle.start, cycle_end=cycle.end,
+        limit_pounds=Decimal(state.limit_pounds), spent=spend.get(budget.category, Decimal(0)),
+        paused=state.paused,
+    )
 
 
 def history(db: Session, user, cycles: int, before: date | None) -> dict:

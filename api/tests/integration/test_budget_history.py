@@ -199,3 +199,43 @@ def _not_a_number(value) -> bool:
     except InvalidOperation:
         return len(str(value)) > 40
     return False
+
+
+def test_a_request_that_dies_mid_cycle_leaves_no_gap(w, monkeypatch):
+    """sec on #160: snapshots are immutable, so a cycle written for one budget
+    but not another would be a permanent hole. A cycle is written whole or
+    not at all, and the next load fills it."""
+    from app.services import budget_history
+
+    a = w.create("Eating out", 50).json()["id"]
+    b = w.create("Groceries", 90).json()["id"]
+    _backdate(w, a)
+    _backdate(w, b)
+    real = budget_history._snapshot_row
+    calls = []
+
+    def dies_on_the_second(*args):
+        calls.append(1)
+        if len(calls) == 2:
+            raise RuntimeError("the request died")
+        return real(*args)
+
+    monkeypatch.setattr(budget_history, "_snapshot_row", dies_on_the_second)
+    with pytest.raises(RuntimeError):
+        w.as_user(lambda: budget_history.write_snapshots(w.db, w.user))
+    assert _snapshots(w) == 0  # nothing half-written
+    monkeypatch.setattr(budget_history, "_snapshot_row", real)
+    body = _history(w, cycles=3)
+    for category in ("Eating out", "Groceries"):
+        assert all(s["existed"] for s in _budget(body, category)["cycles"])
+
+
+def test_the_snapshot_amounts_decrypt_with_the_users_key(w):
+    from app.models import BudgetCycleSnapshot
+
+    budget_id = w.create("Eating out", 50).json()["id"]
+    _backdate(w, budget_id)
+    _history(w, cycles=1)
+    w.db.expire_all()
+    snap = w.as_user(lambda: w.db.query(BudgetCycleSnapshot).order_by(BudgetCycleSnapshot.cycle_end.desc()).first())
+    assert w.as_user(lambda: (Decimal(snap.limit_pounds), Decimal(snap.spent))) == (Decimal("50"), Decimal("45.00"))

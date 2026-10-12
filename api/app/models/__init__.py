@@ -22,13 +22,14 @@ from app.models.asset import Asset, AssetFlow, AssetValuation, ASSET_TYPES
 from app.models.oauth import OAuthAuthorizationCode, OAuthClient, OAuthGrant
 from app.models.audit import AuditEntry, WriteIdempotency
 from app.models.sync_lock import UserSyncLock
-from app.models.budget import Budget
+from app.models.budget import Budget, BudgetNudge
 
 __all__ = [
     "AuditEntry",
     "WriteIdempotency",
     "UserSyncLock",
     "Budget",
+    "BudgetNudge",
     "User",
     "BankConnection",
     "Account",

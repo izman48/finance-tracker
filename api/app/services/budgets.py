@@ -19,7 +19,9 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.display_text import has_hidden_characters
-from app.models import Account, Budget, Transaction
+from sqlalchemy.exc import IntegrityError
+
+from app.models import Account, Budget, BudgetNudge, Transaction
 from app.schemas.budgets import (
     BUDGETS_PER_USER_MAX,
     BudgetCycle,
@@ -27,6 +29,8 @@ from app.schemas.budgets import (
     BudgetResponse,
     BudgetSuggestion,
     BudgetSuggestResponse,
+    BudgetSummary,
+    FirstOver,
     CycleFigure,
     NotCounted,
     Reconciliation,
@@ -278,9 +282,17 @@ def budget_list(db: Session, user, markers: dict | None = None,
             safe_to_spend=safe, budgets_left=inputs.budgets_left, other_at_pace=inputs.other_at_pace,
             headroom=safe - inputs.budgets_left - inputs.other_at_pace,
         )
+    # The one most over (ties by category), for "Shopping is £20 over".
+    over = sorted((r for r in rows if r.status == "over"), key=lambda r: (-r.over_by, r.category))
+    summary = BudgetSummary(
+        budget_count=len(rows),
+        on_pace_count=sum(r.status in ("under_pace", "on_pace") for r in rows),
+        first_over=FirstOver(category=over[0].category, over_by=over[0].over_by) if over else None,
+    )
     return BudgetListResponse(
         cycle=BudgetCycle(start=cycle.start, end=cycle.end, days_total=inputs.days_total,
                           days_left=inputs.days_left, fallback=cycle.fallback),
+        summary=summary,
         budgets=rows, other_spending=other, total_spent=sum(spend.by_category.values(), Decimal(0)),
         not_counted=NotCounted(**spend.excluded), reconciliation=reconciliation,
         budgetable_categories=sorted(budgetable_categories(db, user, _today())) if include_categories else None,
@@ -289,17 +301,19 @@ def budget_list(db: Session, user, markers: dict | None = None,
 
 # --- the Cashflow projection (T-09-4) -----------------------------------------------
 
-def budget_projection(db: Session, user, forecast: dict) -> dict | None:
+def budget_projection(db: Session, user, forecast: dict) -> tuple[dict | None, str | None]:
     """The payday strip and dotted line for a forecast response (concept
-    section 12), from the same inputs as the reconciliation line. Reads the
-    forecast; never changes it. None with no budget counting this cycle or
-    no payday."""
+    section 12), from the same inputs as the reconciliation line, and why
+    it's missing when it is ("no_budgets" or "no_payday", BC2/BC3). Reads
+    the forecast; never changes it."""
     from app.services.analytics.forecast import get_forecast
 
     today = _today()
     inputs = pace_inputs(db, user, today)
-    if not inputs.any_budget or inputs.cycle.fallback:
-        return None
+    if not inputs.any_budget:
+        return None, "no_budgets"
+    if inputs.cycle.fallback:
+        return None, "no_payday"
     eve = inputs.cycle.end  # the day before payday
     timeline = forecast["timeline"]
     if forecast["horizon_end"] < eve:
@@ -331,7 +345,75 @@ def budget_projection(db: Session, user, forecast: dict) -> dict | None:
         "headroom": headroom,
         "difference": stick - headroom,
         "series": series,
-    }
+    }, None
+
+
+# --- nudges (T-09-4b) ------------------------------------------------------------------
+
+AT_LIMIT, PACE = "at_limit", "pace"
+
+
+def _money(amount: Decimal) -> str:
+    return f"£{amount:,.0f}" if amount == amount.to_integral_value() else f"£{amount:,.2f}"
+
+
+def budget_nudges(db: Session, user) -> list[dict]:
+    """The in-app budget nudges for /analytics/nudges: at the limit, or ahead
+    of pace in the first half of the cycle. Each fires at most once per
+    budget and cycle (stored; a unique key stops two loads both firing),
+    and stays dismissed. Fixed copy; the category is plain text."""
+    listing = budget_list(db, user)
+    cycle_start, days_left = listing.cycle.start, listing.cycle.days_left
+    early = days_left >= listing.cycle.days_total / 2
+    out = []
+    for b in listing.budgets:
+        if b.paused:
+            continue
+        limit = Decimal(b.limit_pounds)
+        if b.spent >= limit:
+            kind = AT_LIMIT
+            body = f"{b.category} is {_money(b.spent - limit)} over its {_money(limit)} budget with {days_left} days left."
+        elif b.status == "ahead_of_pace" and early:
+            kind = PACE
+            body = f"{b.category} is ahead of pace: {_money(b.spent)} of {_money(limit)} with {days_left} days left."
+        else:
+            continue
+        nudge = _fire(db, user, b.id, cycle_start, kind)
+        if nudge is None or nudge.dismissed_at is not None:
+            continue
+        out.append({
+            "id": f"budget-{nudge.id}", "rank": 10, "body": body,
+            "detail": f"Spent {_money(b.spent)} of {_money(limit)} this pay cycle, from {cycle_start:%-d %b}.",
+            "source": None, "as_of": cycle_start,
+        })
+    return out
+
+
+def _fire(db: Session, user, budget_id, cycle_start: date, kind: str) -> BudgetNudge | None:
+    """This budget's nudge of this kind for this cycle, made the first time."""
+    def find():
+        return (db.query(BudgetNudge)
+                .filter(BudgetNudge.user_id == user.id, BudgetNudge.budget_id == budget_id,
+                        BudgetNudge.cycle_start == cycle_start, BudgetNudge.kind == kind)
+                .first())
+    nudge = find()
+    if nudge is None:
+        db.add(BudgetNudge(user_id=user.id, budget_id=budget_id, cycle_start=cycle_start, kind=kind))
+        try:
+            db.commit()
+        except IntegrityError:  # another load fired it first
+            db.rollback()
+        nudge = find()
+    return nudge
+
+
+def dismiss_nudge(db: Session, user, nudge_id) -> None:
+    nudge = db.query(BudgetNudge).filter(BudgetNudge.id == nudge_id, BudgetNudge.user_id == user.id).first()
+    if nudge is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Nudge not found")
+    if nudge.dismissed_at is None:
+        nudge.dismissed_at = datetime.now(timezone.utc)
+        db.commit()
 
 
 # --- suggest (dry) ---------------------------------------------------------------------

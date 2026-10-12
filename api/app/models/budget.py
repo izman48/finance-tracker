@@ -10,10 +10,10 @@ category: a partial unique index enforces it, so two requests at once can't
 both create one.
 """
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, func, text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, String, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -50,3 +50,20 @@ class Budget(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class BudgetNudge(Base):
+    """An in-app budget nudge (T-09-4b): at most one per budget, cycle and
+    kind (`at_limit` or `pace`), so each fires once per cycle; dismissed
+    from the app only. Holds no figures: the text is built when shown."""
+
+    __tablename__ = "budget_nudges"
+    __table_args__ = (UniqueConstraint("budget_id", "cycle_start", "kind", name="uq_budget_nudges_once"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    budget_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("budgets.id", ondelete="CASCADE"), index=True)
+    cycle_start: Mapped[date] = mapped_column(Date)
+    kind: Mapped[str] = mapped_column(String(10))
+    fired_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    dismissed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

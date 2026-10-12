@@ -22,7 +22,7 @@ from tests.integration.test_budget_spend import START, World
 from tests.integration.test_oauth import _bearer, _web_login
 
 API = "/api/v1"
-NEW_KEYS = {"budget_projection"}
+NEW_KEYS = {"budget_projection", "budget_projection_reason"}
 
 
 def _money(client, token) -> dict:

@@ -27,6 +27,7 @@ from app.models import (
     AuditEntry,
     BankConnection,
     Budget,
+    BudgetNudge,
     CategoryRule,
     CommitmentRule,
     OAuthAuthorizationCode,
@@ -41,6 +42,7 @@ from app.models import (
 # Delete order matters: each model comes before anything it references.
 _OWNED_BY_USER = (
     WriteIdempotency,
+    BudgetNudge,
     Budget,
     AuditEntry,
     CategoryRule,

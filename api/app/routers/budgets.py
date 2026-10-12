@@ -138,6 +138,15 @@ def _hold(db: Session, user, budget: Budget) -> None:
     budget.held_remaining = svc.remaining_now(db, user, budget)
 
 
+@router.post("/nudges/{nudge_id}/dismiss", status_code=status.HTTP_204_NO_CONTENT)
+def dismiss_budget_nudge(
+    nudge_id: uuid.UUID, current_user: CurrentUser, db: Annotated[Session, Depends(get_db)],
+) -> Response:
+    """Web only. Another user's or an unknown nudge is a 404."""
+    svc.dismiss_nudge(db, current_user, nudge_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.post("/suggest", response_model=BudgetSuggestResponse)
 def suggest_budgets(current_user: CurrentUser, db: Annotated[Session, Depends(get_db)]) -> BudgetSuggestResponse:
     """Dry: reads only."""

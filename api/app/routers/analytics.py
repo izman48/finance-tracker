@@ -110,7 +110,10 @@ def get_nudges(
 ) -> list[NudgeResponse]:
     """Honest, dismissible observations (cash drag, FSCS exposure). Facts with
     their arithmetic and sources — never a recommendation."""
-    return [NudgeResponse(**n) for n in analytics_service.get_nudges(db, current_user)]
+    from app.services.budgets import budget_nudges
+
+    nudges = analytics_service.get_nudges(db, current_user) + budget_nudges(db, current_user)
+    return [NudgeResponse(**n) for n in nudges]
 
 
 @router.get("/net-worth-projection", response_model=ProjectionResponse)
@@ -152,7 +155,8 @@ def get_forecast(
     from app.services.budgets import budget_projection
 
     forecast = analytics_service.get_forecast(db, current_user, horizon)
-    return ForecastResponse(**forecast, budget_projection=budget_projection(db, current_user, forecast))
+    projection, reason = budget_projection(db, current_user, forecast)
+    return ForecastResponse(**forecast, budget_projection=projection, budget_projection_reason=reason)
 
 
 @router.get("/spending", response_model=SpendingResponse)

@@ -63,6 +63,8 @@ describe('ManageSheet', () => {
     expect(h).toMatch(/<button[^>]*>\+ Add budget<\/button>/)
     expect(h).toMatch(/<button[^>]*>Suggest again<\/button>/)
     expect(h).toMatch(/<button[^>]*>Edit all<\/button>/)
+    // + Add budget leads, as the primary action (ux on #157).
+    expect(h.indexOf('+ Add budget')).toBeLessThan(h.indexOf('>Suggest again<'))
   })
 
   it('BM10: the Changed by Claude chip, and the footer link to the Changes screen; no Keep control', () => {

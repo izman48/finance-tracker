@@ -57,6 +57,8 @@ export interface BudgetsResponse {
   not_counted: { commitments: Money; transfers: Money; card_payoffs: Money; financed: Money }
   /** Null when there's no active budget. */
   reconciliation: Reconciliation | null
+  /** For the Home line (#158). */
+  summary?: BudgetSummary
   /** Categories a new budget may use (on purchases, not commitment-covered); only with `?include=categories` (#156). */
   budgetable_categories?: string[] | null
 }
@@ -291,4 +293,29 @@ export function suggestDiff(suggestions: BudgetSuggestion[], budgets: Budget[]):
     ? `${parts.join(' and ')}. Nothing is saved until you press Save.`
     : 'Your budgets already match the suggestions.'
   return { rows, unchanged, summary }
+}
+
+// --- Home and nudges (T-09-8; section 3, 4.3) ---------------------------------------
+
+export interface BudgetSummary {
+  /** Tracked budgets (active, not paused). */
+  budget_count: number
+  on_pace_count: number
+  first_over: { category: string; over_by: Money } | null
+}
+
+/** Home's Spending card line: "4 of 5" bold, then the rest; null with no budgets. */
+export function homeBudgetLine(summary: BudgetSummary | undefined): { count: string; rest: string } | null {
+  if (!summary || summary.budget_count === 0) return null
+  const over = summary.first_over ? ` · ${summary.first_over.category} is ${money(summary.first_over.over_by)} over` : ''
+  return { count: `${summary.on_pace_count} of ${summary.budget_count}`, rest: `on pace${over}` }
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** A budget nudge's id for the dismiss route (`budget-<uuid>`), or null for other nudges. */
+export function budgetNudgeId(nudgeId: string): string | null {
+  if (!nudgeId.startsWith('budget-')) return null
+  const id = nudgeId.slice('budget-'.length)
+  return UUID.test(id) ? id : null
 }

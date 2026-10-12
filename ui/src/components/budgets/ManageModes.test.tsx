@@ -69,6 +69,16 @@ describe('SuggestAgainPanel', () => {
     expect(h).toMatch(/>Save budgets<\/button>/)
   })
 
+  it('already matching: the lone button says Close (ux on #157)', () => {
+    const same = suggestDiff([suggestion({ category: 'Groceries', suggested_limit: 300, current_limit: 300 })], budgets)
+    const h = renderToStaticMarkup(
+      <SuggestAgainPanel load={{ status: 'ready', diff: same }} rows={same.rows} errors={{}} nothing={false} saving={false} onRow={noop} onSave={noop} onCancel={noop} onRetry={noop} />,
+    )
+    expect(text(h)).toContain('Your budgets already match the suggestions.')
+    expect(h).toMatch(/>Close<\/button>/)
+    expect(h).not.toMatch(/>Cancel<\/button>|>Save budgets<\/button>/)
+  })
+
   it('loading and error', () => {
     expect(text(panel({ load: { status: 'loading' } }))).toContain('Working out suggestions…')
     expect(text(panel({ load: { status: 'error' } }))).toContain("Couldn't work out suggestions. Nothing was changed. Try again.")

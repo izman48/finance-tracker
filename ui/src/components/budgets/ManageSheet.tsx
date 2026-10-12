@@ -250,12 +250,6 @@ export default function ManageSheet(props: ManageSheetProps) {
       {mode === 'list' && (
       <>
       <div className="flex flex-wrap items-center gap-2 mb-2">
-        <button type="button" data-focus="suggest-again" className={SMALL_BUTTON} disabled={!!busy || !!adding || !!editing} onClick={startSuggest}>
-          Suggest again
-        </button>
-        <button type="button" data-focus="edit-all" className={SMALL_BUTTON} disabled={!!busy || !!adding || !!editing} onClick={startEditAll}>
-          Edit all
-        </button>
         <button
           type="button"
           data-focus="add"
@@ -265,6 +259,12 @@ export default function ManageSheet(props: ManageSheetProps) {
           onClick={() => setAdding({ category: '', value: '', error: null })}
         >
           + Add budget
+        </button>
+        <button type="button" data-focus="suggest-again" className={SMALL_BUTTON} disabled={!!busy || !!adding || !!editing} onClick={startSuggest}>
+          Suggest again
+        </button>
+        <button type="button" data-focus="edit-all" className={SMALL_BUTTON} disabled={!!busy || !!adding || !!editing} onClick={startEditAll}>
+          Edit all
         </button>
         {options.length === 0 && (
           <span id="manage-add-none" className="text-xs text-slate-400">

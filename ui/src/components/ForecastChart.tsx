@@ -16,6 +16,8 @@ import ForecastSummary, { OVERDRAFT_LINE_LABEL, type AccountBreach } from './For
 import { EXPLAIN } from '../copy/statExplainers'
 import ForecastError from './forecast/ForecastError'
 import LateIncomeNote from './forecast/LateIncomeNote'
+import { BudgetLegend, BudgetStrip } from './forecast/BudgetStrip'
+import { projectionNote, withBudgetLine, type BudgetProjection, type ProjectionReason } from '../lib/budgetProjection'
 import { FORECAST_TIMEOUT_MS, focusAfter, forecastReducer, withTimeout, type ForecastView } from '../lib/forecastLoad'
 
 interface ForecastEvent {
@@ -27,6 +29,8 @@ interface ForecastPoint {
   date: string
   balance: number
   events: ForecastEvent[]
+  /** The dotted budget line's value, where it runs (to the day before payday). */
+  budget?: number | null
 }
 interface Forecast {
   horizon: string
@@ -43,6 +47,9 @@ interface Forecast {
   // Expected income that hasn't arrived: shown, never in the line (T-08-7, T-08-10).
   late_income?: { amount: number | string }[]
   late_planned?: { amount: number | string }[]
+  // Budgets on the chart (T-09-8): null with no budget or no payday; the reason says which.
+  budget_projection?: BudgetProjection | null
+  budget_projection_reason?: ProjectionReason
 }
 
 const HORIZONS: { key: string; label: string }[] = [
@@ -60,6 +67,7 @@ function ForecastTooltip({ active, payload }: any) {
     <div className="bg-card2 border border-white/10 rounded-xl shadow-pop p-3 text-sm">
       <div className="font-medium text-slate-200">{shortDate(point.date)}</div>
       <div className="text-slate-100 tnum">Balance: {gbp(point.balance)}</div>
+      {point.budget != null && <div className="text-slate-300 tnum">If you spend your budgets: {gbp(point.budget)}</div>}
       {point.events?.map((e, i) => (
         <div key={i} className={e.amount >= 0 ? 'text-pos' : 'text-neg'}>
           {e.amount >= 0 ? '+' : ''}{gbp(e.amount)} · {e.label}
@@ -120,6 +128,9 @@ export default function ForecastChart({ refreshKey }: { refreshKey?: number }) {
 
   const data = view.status === 'ready' ? view.data : null
   const hasOverdraft = (data?.overdraft_limit ?? 0) > 0
+  const projection = data?.budget_projection ?? null
+  const paydayNote = data ? projectionNote(projection, data.budget_projection_reason) : null
+  const points = data ? (withBudgetLine(data.timeline, projection) as ForecastPoint[]) : []
 
   return (
     <div className="card-pad h-full">
@@ -153,8 +164,9 @@ export default function ForecastChart({ refreshKey }: { refreshKey?: number }) {
         <>
           <ForecastSummary data={data} />
           <LateIncomeNote items={[...(data.late_income ?? []), ...(data.late_planned ?? [])]} />
+          {projection && <BudgetLegend />}
           <ResponsiveContainer width="100%" height={260}>
-            <AreaChart data={data.timeline} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+            <AreaChart data={points} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
               <defs>
                 <linearGradient id="balfill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#2DD4A7" stopOpacity={0.3} />
@@ -175,8 +187,25 @@ export default function ForecastChart({ refreshKey }: { refreshKey?: number }) {
                 />
               )}
               <Area type="monotone" dataKey="balance" stroke="#2DD4A7" strokeWidth={2} fill="url(#balfill)" />
+              {projection && (
+                // The budget line: dotted and a different colour, never filled; it stops at payday.
+                <Area
+                  type="monotone"
+                  dataKey="budget"
+                  stroke="#38BDF8"
+                  strokeWidth={2.2}
+                  strokeDasharray="2 5"
+                  strokeLinecap="round"
+                  fill="none"
+                  connectNulls={false}
+                  isAnimationActive={false}
+                  name="If you spend your budgets"
+                />
+              )}
             </AreaChart>
           </ResponsiveContainer>
+          {projection && <BudgetStrip projection={projection} />}
+          {paydayNote && <p className="text-xs text-slate-400 mt-3">{paydayNote}</p>}
         </>
       )}
     </div>

@@ -38,6 +38,7 @@ from app.schemas.budgets import (
 from app.services.analytics.commitments import last_payday, next_payday
 from app.services.analytics.common import _today
 from app.services.budget_spend import UNCATEGORISED, BudgetSpend, budget_spend
+from app.services.pace_matching import commitment_payments
 
 FALLBACK_DAYS = 30
 SUGGEST_CYCLES = 3
@@ -189,10 +190,14 @@ class PaceInputs:
     # pace) (sec's rule: pausing or removing never raises the figures).
     budgets_left: Decimal
     # Spending in categories with no budget counted above, at the pace so far
-    # for the rest of the cycle.
+    # for the rest of the cycle, less commitment payments (T-09-13).
     other_at_pace: Decimal
-    # All spending at the pace so far, for the rest of the cycle.
+    # All spending at the pace so far, for the rest of the cycle, less
+    # commitment payments.
     all_at_pace: Decimal
+    # {category: purchases taken for a commitment occurrence this cycle}:
+    # monthly bills, never paced (app.services.pace_matching).
+    commitment_payments: dict[str, Decimal]
     # True when any budget counts this cycle (active, or held).
     any_budget: bool
 
@@ -232,13 +237,15 @@ def pace_inputs(db: Session, user, today: date) -> PaceInputs:
     for b in held:
         pace = _at_pace(spend.by_category.get(b.category, Decimal(0)), elapsed, days_left)
         counted[b.category] = max(counted.get(b.category, Decimal(0)), Decimal(b.held_remaining or 0), pace)
-    other = sum((v for k, v in spend.by_category.items() if k not in counted), Decimal(0))
-    total = sum(spend.by_category.values(), Decimal(0))
+    paid = commitment_payments(db, user, spend.purchases, cycle.start, today)
+    other = sum((v - paid.get(k, Decimal(0)) for k, v in spend.by_category.items() if k not in counted), Decimal(0))
+    total = sum(spend.by_category.values(), Decimal(0)) - sum(paid.values(), Decimal(0))
     return PaceInputs(
         cycle=cycle, days_total=days_total, elapsed=elapsed, days_left=days_left, spend=spend, budgets=budgets,
         budgets_left=sum(counted.values(), Decimal(0)),
         other_at_pace=_at_pace(other, elapsed, days_left),
         all_at_pace=_at_pace(total, elapsed, days_left),
+        commitment_payments=paid,
         any_budget=bool(counted),
     )
 
@@ -268,14 +275,14 @@ def remaining_now(db: Session, user, budget: Budget) -> Decimal:
 
 
 def budget_list(db: Session, user, markers: dict | None = None,
-                include_categories: bool = False) -> BudgetListResponse:
+                include_categories: bool = False, inputs: PaceInputs | None = None) -> BudgetListResponse:
     """GET /budgets: the current cycle, each budget's spend and pace, other
     spending, what's not counted, and the reconciliation line. The
     budgetable categories read a year of transactions (about 160 ms on 2,000
     of them), so they're only computed when asked for (eng-a on #156)."""
     from app.services.analytics.summary import get_summary
 
-    inputs = pace_inputs(db, user, _today())
+    inputs = inputs or pace_inputs(db, user, _today())
     cycle, spend = inputs.cycle, inputs.spend
     share = Decimal(inputs.elapsed) / Decimal(inputs.days_total)
     rows = []
@@ -388,7 +395,8 @@ def budget_nudges(db: Session, user) -> list[dict]:
     of pace in the first half of the cycle. Each fires at most once per
     budget and cycle (stored; a unique key stops two loads both firing),
     and stays dismissed. Fixed copy; the category is plain text."""
-    listing = budget_list(db, user)
+    inputs = pace_inputs(db, user, _today())
+    listing = budget_list(db, user, inputs=inputs)
     cycle_start, days_left = listing.cycle.start, listing.cycle.days_left
     early = days_left >= listing.cycle.days_total / 2
     out = []
@@ -404,7 +412,7 @@ def budget_nudges(db: Session, user) -> list[dict]:
                 if b.spent > limit else
                 f"{b.category} has reached its {_money(limit)} budget {_left(days_left)}."
             )
-        elif b.status == "ahead_of_pace" and early:
+        elif early and _ahead_without_bills(b, inputs):
             kind = PACE
             body = f"{b.category} is ahead of pace: {_money(b.spent)} of {_money(limit)} {_left(days_left)}."
         else:
@@ -418,6 +426,13 @@ def budget_nudges(db: Session, user) -> list[dict]:
             "source": None, "as_of": cycle_start,
         })
     return out
+
+
+def _ahead_without_bills(row, inputs: PaceInputs) -> bool:
+    """Ahead of pace on its everyday spending: commitment payments in the
+    category don't count towards the pace nudge (T-09-13 AC5)."""
+    everyday = row.spent - inputs.commitment_payments.get(row.category, Decimal(0))
+    return _status(everyday, row.pace_spent, Decimal(row.limit_pounds)) == "ahead_of_pace"
 
 
 def _fire(db: Session, user, budget_id, cycle_start: date, kind: str) -> BudgetNudge | None:

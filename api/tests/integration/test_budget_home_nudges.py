@@ -171,3 +171,23 @@ def test_a_paused_budget_leaves_the_home_line(w):
 def test_days_left_reads_naturally(days, words):
     from app.services.budgets import _left
     assert _left(days) == words
+
+
+def test_commitment_payments_never_make_a_pace_nudge(client, db_session):
+    """T-09-13 AC5: a payment taken for a commitment occurrence isn't paced,
+    so it can't put a budget ahead of pace."""
+    from tests.integration.test_budget_projection import _commitment, _paid
+
+    w = World(client, db_session, email="pace-commit@example.com")
+    w.history()
+
+    def payday_recent():
+        from app.models import CommitmentRule
+        rule = w.db.query(CommitmentRule).filter(CommitmentRule.is_payday.is_(True)).one()
+        rule.next_date = TODAY - timedelta(days=6)  # 7 days into a ~30-day cycle
+        w.db.commit()
+    w.as_user(payday_recent)
+    w.create("Groceries", 1000)  # 80 spent after 7 days: pace ~233, under
+    _commitment(w, "Ocado", "200", 3, match_key="expense:ocado retail 99887766 ddr")
+    _paid(w, "OCADO RETAIL 11223344 DDR", "200.00", 3, category="Groceries")
+    assert _nudges(w) == []

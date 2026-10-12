@@ -29,7 +29,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.models import Account, Transaction
-from app.services.analytics.commitments import commitment_match_keys
+from app.services.analytics.commitments import commitment_match_keys, transaction_match_key
 from app.services.analytics.common import _d, _load, resolve_roles
 from app.services.analytics.spending import _effective_transfers, classify_purchase, financed_transaction_ids
 
@@ -40,12 +40,25 @@ EXCLUDED = {"commitment": "commitments", "transfer": "transfers", "card_payoff":
 
 
 @dataclass(frozen=True)
+class Purchase:
+    """One counted purchase, for the pace's commitment-payment check
+    (T-09-13). Its match key is the one `classify_purchase` keys on."""
+
+    day: date
+    category: str
+    match_key: str
+    amount: Decimal
+
+
+@dataclass(frozen=True)
 class BudgetSpend:
     by_category: dict[str, Decimal]
     excluded: dict[str, Decimal] = field(default_factory=dict)
     # Commitment-matched spending by category: a category that is mostly
     # commitments can't have a budget (T-09-2).
     commitments_by_category: dict[str, Decimal] = field(default_factory=dict)
+    # Each counted purchase (the same ones as by_category), for the pace only.
+    purchases: tuple[Purchase, ...] = ()
 
 
 def budget_spend(db: Session, user, start: date, end: date) -> BudgetSpend:
@@ -69,12 +82,20 @@ def budget_spend(db: Session, user, start: date, end: date) -> BudgetSpend:
     by_category: dict[str, Decimal] = defaultdict(Decimal)
     excluded = {name: Decimal(0) for name in EXCLUDED.values()}
     commitments: dict[str, Decimal] = defaultdict(Decimal)
+    purchases: list[Purchase] = []
     for tx in txns:
         kind = classify_purchase(tx, transfers, roles, financed, commitment_keys)
         if kind in ("credit", "cash"):
             by_category[tx.category or UNCATEGORISED] += _d(tx.amount)
+            purchases.append(Purchase(day=_utc_date(tx.transaction_date), category=tx.category or UNCATEGORISED,
+                                      match_key=transaction_match_key(tx), amount=_d(tx.amount)))
         elif kind is not None:
             excluded[EXCLUDED[kind]] += _d(tx.amount)
             if kind == "commitment":
                 commitments[tx.category or UNCATEGORISED] += _d(tx.amount)
-    return BudgetSpend(by_category=dict(by_category), excluded=excluded, commitments_by_category=dict(commitments))
+    return BudgetSpend(by_category=dict(by_category), excluded=excluded, commitments_by_category=dict(commitments),
+                       purchases=tuple(purchases))
+
+
+def _utc_date(at: datetime) -> date:
+    return (at if at.tzinfo else at.replace(tzinfo=timezone.utc)).astimezone(timezone.utc).date()

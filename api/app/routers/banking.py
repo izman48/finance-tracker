@@ -267,7 +267,9 @@ async def oauth_callback(
             # NOTE: In sandbox/mock environment, banks may only return limited test data (~90 days)
             try:
                 logger.info(f"Attempting to sync 730 days of historical transactions for {provider_name}")
-                count = await truelayer_service.sync_transactions(bank_connection, db, days=730, skip_token_refresh=True)
+                count = await truelayer_service.sync_transactions(
+                    bank_connection, db, days=730, skip_token_refresh=True, history=True,
+                )
                 logger.info(f"Successfully synced {count} historical transactions for {provider_name}")
             except Exception as e:
                 if _not_offered(e) or isinstance(e, ValueError):  # ValueError: no accounts yet
@@ -386,6 +388,7 @@ async def _sync_all_transactions(request: SyncTransactionsRequest, current_user,
 
     total_count = 0
     skipped = 0
+    days = request.days  # the window actually asked for: at most FALLBACK_DAYS after the first sync (T-08-28)
     errors = []
     needs_reauth = 0
 
@@ -397,6 +400,7 @@ async def _sync_all_transactions(request: SyncTransactionsRequest, current_user,
                 connection, db, days=request.days, report=report
             )
             skipped += report.get("accounts_skipped", 0)
+            days = report.get("days", days)
             total_count += count
             logger.info(f"Synced {count} transactions from {connection.provider_name}")
         except Exception as e:
@@ -407,7 +411,7 @@ async def _sync_all_transactions(request: SyncTransactionsRequest, current_user,
     if errors and total_count == 0:
         raise _all_failed("transactions", errors, needs_reauth)
 
-    message = f"Successfully synced {total_count} new transaction(s) from {len(bank_connections)} bank(s) (last {request.days} days)"
+    message = f"Successfully synced {total_count} new transaction(s) from {len(bank_connections)} bank(s) (last {days} days)"
     if skipped:
         message += f". Skipped {skipped} account(s) whose transactions the bank wouldn't share right now"
     if errors:

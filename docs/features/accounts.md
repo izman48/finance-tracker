@@ -18,7 +18,7 @@ derives the amount still due and the spend since the statement (unbilled).
 | `GET /api/v1/analytics/accounts/{account_id}/repayments` | `CurrentUser` |
 | `POST /api/v1/analytics/accounts/{account_id}/repayments` | `CurrentUser` |
 | `DELETE /api/v1/analytics/accounts/{account_id}/repayments/{item_id}` | `CurrentUser` |
-| `GET /api/v1/analytics/accounts/{account_id}/statements` | `CurrentUser`; newest 24 statements plus `current` (amount still due, unbilled, paid), derived on read. |
+| `GET /api/v1/analytics/accounts/{account_id}/statements` | `CurrentUser`; newest 24 statements plus `current` (amount still due, unbilled, paid), `missing_statement` (the current one's due date has passed) and `next_payment` (amount, date, pay-from account name, from `repayment_events`, so it matches the forecast), derived on read. |
 | `POST /api/v1/analytics/accounts/{account_id}/statements` | `CurrentUser`; manual statement, credit accounts only (else 422); same card and date twice is 409. |
 | `PATCH /api/v1/analytics/accounts/{account_id}/statements/{statement_id}` | `CurrentUser` |
 | `DELETE /api/v1/analytics/accounts/{account_id}/statements/{statement_id}` | `CurrentUser`; the card goes back to its current balance. |
@@ -34,13 +34,24 @@ per card, statement date and source).
 money owed; unverified providers fall back to `abs()`),
 `services/analytics/common.py` (`default_role`, `resolve_roles`),
 `services/analytics/repayments.py` (strategies `full_balance`, `fixed`,
-`installments`, `minimum_percent`, `scheduled`; a card repayment and its
-linked commitment count once), `services/analytics/card_links.py`,
+`installments`, `minimum_percent`, `scheduled`, `statement_balance`; an
+unknown strategy pays the full balance; pay day is a cadence or
+`card_due_date`; a card repayment and its linked commitment count once), `services/analytics/card_links.py`,
 `services/analytics/statements.py` (current statement, amount still due,
 unbilled; only credits identified as payments reduce the amount due, and
 nothing naming a refund or reversal counts, so the full statement stays due:
-fail-safe). Statement dates are at most 400 days old and never in the future. Statements don't change any
-figure yet: no repayment strategy reads them (T-10-3 adds one).
+fail-safe). Statement dates are at most 400 days old and never in the future.
+
+**`statement_balance`** (opt-in; existing strategies are unchanged): the amount
+still due goes on the statement's pay day and the unbilled spend on the next
+one, so the total never falls below the full balance. With no statement, or
+once the current one's due date has passed with no newer one, the full
+current balance goes on the next pay day. **Pay day `card_due_date`** (any
+formula strategy; the default when `statement_balance` has no cadence): the
+current statement's due date, then monthly, rolled forward past dates
+already gone; with no statement, the card's `repayment_day`, else 30 days
+from today. Summary, forecast and projections all read these through
+`repayment_events` / `scheduled_outflows`.
 
 **UI**: `AccountSettingsModal` (opened from Wealth), `lib/credit.ts`; account
 filter on Spending.
@@ -51,7 +62,8 @@ filter on Spending.
 `test_account_ownership.py`; `api/tests/unit/test_credit_sign.py`,
 `test_card_link.py`, `test_card_installments.py`,
 `test_card_repayment_once.py`, `test_card_payment_indicators.py`,
-`test_card_statement_position.py`; `api/tests/integration/test_card_statements_api.py`.
+`test_card_statement_position.py`, `test_statement_balance_strategy.py`;
+`api/tests/integration/test_card_statements_api.py`, `test_statement_strategy_api.py`.
 
 ## Touchpoints
 

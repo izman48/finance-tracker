@@ -16,10 +16,13 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 
-from app.models import StatementSource
+from sqlalchemy.orm import Session
+
+from app.models import CardStatement, StatementSource, Transaction
+from app.services.balance_sign import credit_owed
 
 from .common import _d
 
@@ -85,6 +88,28 @@ def statement_position(statement, owed: Decimal, card_transactions) -> Statement
         amount_still_due=still_due,
         unbilled=unbilled,
     )
+
+
+def position_for(db: Session, account, statement) -> StatementPosition:
+    """The position of this card's statement, from the card's balance and its
+    transactions after the statement date (scoped by the owned account)."""
+    after = datetime.combine(statement.statement_date + timedelta(days=1), time.min, tzinfo=timezone.utc)
+    card_transactions = db.query(Transaction).filter(
+        Transaction.account_id == account.id, Transaction.transaction_date >= after,
+    ).all()
+    return statement_position(statement, credit_owed(account), card_transactions)
+
+
+def current_positions(db: Session, user, accounts) -> dict:
+    """{account id: StatementPosition} for each of these accounts that has a
+    statement (its current one)."""
+    by_card: dict = {}
+    for statement in db.query(CardStatement).filter(CardStatement.user_id == user.id).all():
+        by_card.setdefault(statement.account_id, []).append(statement)
+    return {
+        acc.id: position_for(db, acc, current_statement(by_card[acc.id]))
+        for acc in accounts if acc.id in by_card
+    }
 
 
 MAX_DAYS_TO_DUE = 60

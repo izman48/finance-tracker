@@ -6,7 +6,7 @@ statement by id AND card AND user, so a foreign or unknown id is the same 404
 and nothing is written. Web session only: Claude has no statement tools.
 """
 import uuid
-from datetime import datetime, time, timedelta, timezone
+from datetime import timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -16,21 +16,23 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.ownership import owned_account
 from app.core.security import CurrentUser
-from app.models import Account, AccountRole, AccountSetting, CardStatement, StatementSource, Transaction
+from app.models import Account, AccountRole, AccountSetting, CardStatement, StatementSource
 from app.schemas.card_statements import (
     CardStatementCreate,
     CardStatementPosition,
     CardStatementResponse,
     CardStatementsResponse,
     CardStatementUpdate,
+    NextCardPayment,
 )
 from app.services.analytics.common import _today, default_role
-from app.services.analytics.statements import check_statement, current_statement, statement_position
-from app.services.balance_sign import credit_owed
+from app.services.analytics.repayments import repayment_events
+from app.services.analytics.statements import check_statement, current_statement, position_for
 
 router = APIRouter(prefix="/analytics/accounts/{account_id}/statements", tags=["card statements"])
 
 MAX_STATEMENTS_LISTED = 24  # two years of monthly statements
+NEXT_PAYMENT_REACH = timedelta(days=400)
 
 
 @router.get("", response_model=CardStatementsResponse)
@@ -47,9 +49,12 @@ def list_statements(
         .limit(MAX_STATEMENTS_LISTED)
         .all()
     )
+    current = current_statement(statements)
     return CardStatementsResponse(
         statements=[CardStatementResponse.model_validate(s) for s in statements],
-        current=_position(db, account, current_statement(statements)),
+        current=_position(db, account, current),
+        missing_statement=current is not None and current.due_date < _today(),
+        next_payment=_next_payment(db, current_user, account),
     )
 
 
@@ -156,14 +161,31 @@ def _commit_or_409(db: Session) -> None:
         ) from None
 
 
+def _next_payment(db: Session, user, account: Account) -> NextCardPayment | None:
+    """The card's first repayment from today, as the summary lists it."""
+    today = _today()
+    events = repayment_events(db, user, today, today + NEXT_PAYMENT_REACH)
+    first = next((r for r in events if r["account_id"] == str(account.id)), None)
+    if first is None:
+        return None
+    setting = db.query(AccountSetting).filter(
+        AccountSetting.account_id == account.id, AccountSetting.user_id == user.id,
+    ).first()
+    pay_from = None
+    if setting and setting.pay_from_account_id:
+        pay_from = db.query(Account).filter(
+            Account.id == setting.pay_from_account_id, Account.user_id == user.id,
+        ).first()
+    return NextCardPayment(
+        amount=first["amount"], date=first["due_date"],
+        from_account_name=pay_from.display_name if pay_from else None,
+    )
+
+
 def _position(db: Session, account: Account, statement) -> CardStatementPosition | None:
     if statement is None:
         return None
-    after = datetime.combine(statement.statement_date + timedelta(days=1), time.min, tzinfo=timezone.utc)
-    card_transactions = db.query(Transaction).filter(
-        Transaction.account_id == account.id, Transaction.transaction_date >= after,
-    ).all()
-    position = statement_position(statement, credit_owed(account), card_transactions)
+    position = position_for(db, account, statement)
     return CardStatementPosition(
         statement_id=statement.id,
         source=statement.source,

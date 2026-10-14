@@ -30,6 +30,7 @@ class RepaymentCadence(str, Enum):
     END_OF_MONTH = "end_of_month"   # last day of each month (e.g. Amex)
     EVERY_N_MONTHS = "every_n_months"  # every repayment_interval_months (e.g. Flex)
     WEEKLY = "weekly"
+    CARD_DUE_DATE = "card_due_date"  # the latest statement's due date, then monthly
 
 
 class RepaymentStrategy(str, Enum):
@@ -40,6 +41,7 @@ class RepaymentStrategy(str, Enum):
     INSTALLMENTS = "installments"      # split the balance over N payments (e.g. Monzo Flex)
     MINIMUM_PERCENT = "minimum_percent"  # a percentage of the balance
     SCHEDULED = "scheduled"            # explicit user-listed amounts on specific dates
+    STATEMENT_BALANCE = "statement_balance"  # amount still due on the statement, then the unbilled
 
 
 class AccountSetting(Base):

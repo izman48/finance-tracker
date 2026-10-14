@@ -23,11 +23,25 @@ hold a high security bar — treat auth/crypto/banking/PII findings as
 ship-blockers and prefer fail-closed designs. Don't claim regulatory status for
 nilu. itself in UI/marketing (TrueLayer's FCA authorisation can be cited).
 
+## Feature docs (read first, update in the same PR)
+
+`docs/features/` maps every feature to its routes, tables, services, UI,
+MCP tools and tests, and answers a **touchpoints checklist** for each (purge,
+account deletion, demo mode, ownership, scopes, Claude tools and audit,
+sync, Home, routes, tests). Before changing a feature, read its doc; before
+adding one, walk the checklist in `docs/features/README.md` (budgets missed
+demo mode that way). Update the doc in the same PR.
+`.github/scripts/check_feature_docs.py` fails CI when a route, table, MCP
+tool or UI route isn't in a feature doc, and `ui/src/lib/sampleCoverage.test.ts`
+fails when a UI read isn't handled by demo mode. `docs/known-gaps.md` lists
+open gaps; delete a line when you fix it.
+
 ## Layout
 
 ```
 api/app/
-  routers/      auth, banking, analytics, assets, rules, health
+  routers/      auth, banking, analytics, assets, rules, health, oauth,
+                audit, planning, commitment_writes, budgets, budget_writes
   services/     analytics/ (domain package: cadence, commitments, repayments,
                 forecast, spending, net_worth, summary — analytics_service.py
                 is a compatibility shim), truelayer, categorization,

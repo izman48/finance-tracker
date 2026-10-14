@@ -66,6 +66,14 @@ release that contains a migration applies it on deploy.
   restores from that table. Test up, down, up on a fixture.
 - **Merge a migration on its own.** Don't put two migrations in one deploy, so a
   rollback is one `downgrade` step.
+- **A data migration logs counts only, and you read them after the deploy.**
+  It logs through alembic's logger (`alembic.runtime.migration`, INFO, set in
+  `api/alembic.ini`), never ids or values. The api container runs `alembic
+  upgrade head` before uvicorn starts, so the line lands in the **api container
+  logs**, not in the deploy job's output. After a deploy with a data migration:
+  `docker compose -f docker-compose.prod.yml --env-file .env.production logs api | grep -i "<the migration's
+  log text>"` (for T-10-4b: `Clearing repayment settings`). Record the counts
+  in the PR or the sprint file.
 
 ## Rollback
 

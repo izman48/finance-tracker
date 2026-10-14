@@ -209,3 +209,26 @@ def test_it_logs_counts_only(db_session, caplog):
                     "non_enum_rows=1 credit_rows_with_unknown_cadence_or_strategy=1")
     for account in (w.current, w.saver, w.card, w.scheduled):
         assert str(account.id) not in caplog.text and account.id.hex not in caplog.text
+
+
+def test_downgrade_survives_a_pay_from_account_deleted_since(db_session):
+    """sec on #180: with foreign keys enforced, restoring a pay-from account
+    the user has since disconnected must not fail the whole rollback. That
+    one field comes back empty; the rest is restored."""
+    w = World(db_session)
+    gone = _account(db_session, w.user, "TRANSACTION", "10", "Old bank", "spending")
+    w.setting(w.current).pay_from_account_id = gone.id
+    db_session.commit()
+    _run(db_session, migration.upgrade)
+    db_session.connection().exec_driver_sql("PRAGMA foreign_keys=ON")
+    try:
+        db_session.execute(text("DELETE FROM accounts WHERE id = :a"), {"a": gone.id.hex})
+        db_session.commit()
+
+        _run(db_session, migration.downgrade)
+
+        s = w.setting(w.current)
+        assert (s.repayment_cadence, s.repayment_installments, s.pay_from_account_id) == ("end_of_month", 3, None)
+    finally:
+        db_session.rollback()
+        db_session.connection().exec_driver_sql("PRAGMA foreign_keys=OFF")

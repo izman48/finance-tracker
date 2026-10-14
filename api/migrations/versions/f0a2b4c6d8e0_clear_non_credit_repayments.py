@@ -17,7 +17,8 @@ Rules (sec, T-10-4b):
 - Before clearing, the old values (account_id and the repayment columns, all
   plaintext) go to a backup table, to be dropped in a later sprint. The
   downgrade restores them on rows still in the cleared state (a setting the
-  user changed since is kept) and drops the table.
+  user changed since is kept; a pay-from account deleted since stays empty)
+  and drops the table.
 - Idempotent: a second run matches nothing. Alembic runs it in the boot
   transaction. Logs counts only, never ids.
 
@@ -69,12 +70,21 @@ _CLEAR = sa.text(
     "repayment_installments = NULL, pay_from_account_id = NULL, "
     f"repayment_strategy = 'full_balance', instalment_card = :no WHERE {_MATCH}"
 )
+def _restored(column: str) -> str:
+    """The backed-up value. A pay-from account deleted since (the user
+    disconnected that bank) comes back empty rather than failing the whole
+    rollback on the foreign key (sec, #180)."""
+    if column == "pay_from_account_id":
+        return (
+            f"(SELECT b.pay_from_account_id FROM {BACKUP_TABLE} b JOIN accounts a ON a.id = b.pay_from_account_id "
+            "WHERE b.account_id = account_settings.account_id)"
+        )
+    return f"(SELECT b.{column} FROM {BACKUP_TABLE} b WHERE b.account_id = account_settings.account_id)"
+
+
 _RESTORE = sa.text(
     "UPDATE account_settings SET "
-    + ", ".join(
-        f"{c} = (SELECT b.{c} FROM {BACKUP_TABLE} b WHERE b.account_id = account_settings.account_id)"
-        for c in REPAYMENT_COLUMNS
-    )
+    + ", ".join(f"{c} = {_restored(c)}" for c in REPAYMENT_COLUMNS)
     + f" WHERE account_id IN (SELECT account_id FROM {BACKUP_TABLE}) "
     f"AND role IN ('spending', 'savings') AND {_CLEARED}"
 )

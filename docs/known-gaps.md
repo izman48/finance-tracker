@@ -51,9 +51,7 @@ update the feature doc's touchpoints. Security-relevant items are marked 🔒.
   settings amounts, asset growth %, budget categories, rule packs and
   categories, commitment status and cadence).
 - No UI or API to list or revoke connected Claude clients.
-- Account `role`, `repayment_cadence`, `repayment_strategy` are free strings;
-  an invalid role likely 500s every read *(inferred)*. Transaction
-  `category`/`subcategory` have no length limit (column is 100).
+- Transaction `category`/`subcategory` have no length limit (column is 100).
   Commitment and planned-item web schemas don't validate enums or amounts.
 - A liability's `end_date` is stored but never compared with its schedule:
   a payoff date well after the lender's final payment usually means a wrong

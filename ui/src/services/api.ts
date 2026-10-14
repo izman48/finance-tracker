@@ -407,6 +407,7 @@ export interface AccountSettingUpdate {
   repayment_fixed_amount?: number | null
   repayment_installments?: number | null
   pay_from_account_id?: string | null
+  instalment_card?: boolean
 }
 
 export interface Nudge {

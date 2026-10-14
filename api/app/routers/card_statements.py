@@ -30,7 +30,7 @@ from app.schemas.card_statements import (
     CardStatementUpdate,
     NextCardPayment,
 )
-from app.services.analytics.common import _today, default_role
+from app.services.analytics.common import _today, account_role
 from app.services.analytics.repayments import repayment_events
 from app.services.analytics.statements import check_statement, current_statement, position_for
 
@@ -164,8 +164,7 @@ def _owned_credit_account(db: Session, user, account_id: uuid.UUID) -> Account:
     setting = db.query(AccountSetting).filter(
         AccountSetting.account_id == account.id, AccountSetting.user_id == user.id,
     ).first()
-    role = AccountRole(setting.role) if setting else default_role(account)
-    if role != AccountRole.CREDIT:
+    if account_role(account, setting) != AccountRole.CREDIT:
         raise HTTPException(status_code=422, detail="Statements are only for credit cards.")
     return account
 

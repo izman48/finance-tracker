@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { analyticsAPI, AccountSettingUpdate } from '../services/api'
 import { SummaryAccount } from '../types'
 import { gbp } from '../lib/format'
+import { settingsPayload } from '../lib/accountSettings'
 
 export default function AccountSettingsModal({
   account,
@@ -34,14 +35,8 @@ export default function AccountSettingsModal({
 
   const save = async () => {
     setSaving(true)
-    const payload: AccountSettingUpdate = { ...form }
-    if (form.role === 'credit' && form.repayment_strategy === 'installments') {
-      // Installments step monthly from the first-payment date.
-      payload.repayment_cadence = 'every_n_months'
-      payload.repayment_interval_months = 1
-    }
     try {
-      await analyticsAPI.updateAccountSettings(account.id, payload)
+      await analyticsAPI.updateAccountSettings(account.id, settingsPayload(form))
       onSaved()
     } catch (e) {
       console.error('Failed to save settings', e)

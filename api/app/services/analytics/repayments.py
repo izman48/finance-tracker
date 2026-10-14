@@ -238,6 +238,11 @@ def _pay_days(s: AccountSetting, position, start: date) -> Iterator[date]:
     never means a missing payment. Otherwise the configured cadence.
     """
     if not _pays_on_card_due_date(s):
+        if s.repayment_cadence not in _CADENCES:
+            # Legacy free text (cadence wasn't validated before T-10-4a): pay
+            # at each month-end rather than never (lead, fail-safe).
+            yield from _month_ends(start)
+            return
         due = next_repayment_date(s, start)
         while due is not None:
             yield due
@@ -255,6 +260,15 @@ def _pay_days(s: AccountSetting, position, start: date) -> Iterator[date]:
     while True:
         yield _add_months(anchor, months)
         months += 1
+
+
+def _month_ends(start: date) -> Iterator[date]:
+    month = start.replace(day=1)
+    while True:
+        end = date(month.year, month.month, calendar.monthrange(month.year, month.month)[1])
+        if end >= start:
+            yield end
+        month = _add_months(month, 1)
 
 
 def _statement_plan(s: AccountSetting, owed: Decimal, position, pay_days: Iterator[date]) -> list[tuple]:

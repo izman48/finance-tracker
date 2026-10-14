@@ -55,6 +55,9 @@ update the feature doc's touchpoints. Security-relevant items are marked 🔒.
   an invalid role likely 500s every read *(inferred)*. Transaction
   `category`/`subcategory` have no length limit (column is 100).
   Commitment and planned-item web schemas don't validate enums or amounts.
+- A liability's `end_date` is stored but never compared with its schedule:
+  a payoff date well after the lender's final payment usually means a wrong
+  APR or payment, and nothing flags it yet (T-10-7a review).
 - Health returns 200 when the database is down, so the deploy smoke test
   can't catch it.
 

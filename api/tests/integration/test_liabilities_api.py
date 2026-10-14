@@ -25,6 +25,8 @@ import pytest
 from sqlalchemy import func, select, text
 
 from app.models import Liability, User
+from app.routers import liabilities as liabilities_router
+from app.services import liabilities as liabilities_service
 from app.services.analytics.common import _add_months
 from tests.clock import TODAY
 from tests.integration.test_oauth import PASSWORD, _bearer, _web_login
@@ -123,6 +125,43 @@ def test_the_next_payment_is_the_first_on_the_start_dates_cycle_after_the_as_of_
     body = alice.create(start_date=start.isoformat(), balance_as_of=as_of.isoformat()).json()
     expected = next(d for d in (_add_months(start, n) for n in range(30)) if d > as_of)
     assert body["next_payment_date"] == expected.isoformat()
+
+
+def test_an_old_balance_never_shows_a_next_payment_in_the_past(alice):
+    # eng-a on #174: T-10-8 seeds the linked commitment from this date. The
+    # schedule runs from today's balance (the entered one until payments are
+    # linked), so payments_remaining and payoff date count from today too.
+    start = _add_months(TODAY, -14)
+    body = alice.create(start_date=start.isoformat(), balance_as_of=(TODAY - timedelta(days=40)).isoformat()).json()
+    expected = next(d for d in (_add_months(start, n) for n in range(30)) if d >= TODAY)
+    assert body["next_payment_date"] == expected.isoformat()
+    assert body["payments_remaining"] == 58
+    assert body["payoff_date"] == _add_months(expected, 57).isoformat()
+
+
+def test_a_row_whose_schedule_no_longer_clears_shows_null_figures_not_a_500(alice, db_session, monkeypatch):
+    alice.create(lender="A")
+    alice.create(lender="B")
+    # If the cap or rounding ever changes, a stored row could stop clearing.
+    monkeypatch.setattr(liabilities_service, "MAX_SCHEDULE_YEARS", 1)
+    res = alice.list()
+    assert res.status_code == 200
+    rows = res.json()
+    assert [r["payoff_date"] for r in rows] == [None, None]
+    assert all(Decimal(r["current_balance"]) == Decimal("9000.00") for r in rows)
+
+
+def test_creating_past_the_per_user_cap_is_409_and_writes_nothing(alice, db_session, monkeypatch):
+    monkeypatch.setattr(liabilities_router, "LIABILITIES_PER_USER_MAX", 2)
+    assert alice.create().status_code == 201
+    assert alice.create().status_code == 201
+    res = alice.create()
+    assert res.status_code == 409
+    assert _rows(db_session) == 2
+
+
+def test_the_per_user_cap_is_50():
+    assert liabilities_router.LIABILITIES_PER_USER_MAX == 50
 
 
 def test_irregular_repayment_needs_no_payment_and_has_no_schedule(alice):

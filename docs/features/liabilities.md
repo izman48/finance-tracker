@@ -16,9 +16,11 @@ net worth (T-10-7b), the commitment link (T-10-8) and the Wealth list
   is (1 + APR)^(1/n) − 1 for n payments a year (monthly: 12; every 4 weeks:
   13; every 2 weeks: 26; weekly: 52). Interest is charged each period on the
   balance, rounded half-up to the penny, then the payment is taken.
-- **The start date sets the payment day.** The entered balance already
-  reflects any payment due on the as-of date, so the next payment is the
-  first one after it.
+- **The start date sets the payment day.** The schedule runs from today's
+  balance: the next payment is the first on or after today, and after the
+  as-of date (that day's payment is already in the entered balance), so it is
+  never a past date. A stored row whose schedule no longer clears shows null
+  schedule figures rather than failing the list.
 - **Bounded**: a payment that doesn't cover the first period's interest, or
   doesn't clear the balance within 50 years (600 months), is a 422 with a
   plain message. Nothing is stored.
@@ -28,6 +30,8 @@ net worth (T-10-7b), the commitment link (T-10-8) and the Wealth list
   UI asks for an update.
 - Opted out: no schedule, so the schedule figures are null.
 - List order: APR high to low, then balance high to low, then lender A to Z.
+- At most 50 liabilities per user (409 past that), since every read
+  amortises each row.
 
 ## Code
 

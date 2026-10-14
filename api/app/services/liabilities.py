@@ -141,16 +141,22 @@ def current_balance(liability: Liability) -> Decimal:
     return liability.balance
 
 
-def next_payment_date(liability: Liability) -> date:
-    return first_payment_after(liability.start_date, liability.cadence, liability.balance_as_of)
+def next_payment_on(start: date, cadence: str, balance_as_of: date, today: date) -> date:
+    """The next payment: on or after today (never a past date), and after the
+    as-of date, whose balance already reflects that day's payment."""
+    return first_payment_after(start, cadence, max(balance_as_of, today - timedelta(days=1)))
 
 
 def derived_figures(liability: Liability, today: date) -> dict:
-    """The read-time figures for a stored liability. A liability repaid
-    irregularly has no schedule, so its payoff figures are null (they would
-    be guesses). Terms were checked on write, so a schedule always clears."""
-    figures = {
-        "current_balance": current_balance(liability),
+    """The read-time figures for a stored liability. The schedule runs from
+    today's balance and the next payment on or after today.
+
+    The schedule figures are null when the user repays irregularly (they
+    would be guesses), and also if a stored row's schedule no longer clears
+    (terms are checked on write, but one bad row must not 500 the list)."""
+    balance = current_balance(liability)
+    figures: dict = {
+        "current_balance": balance,
         "next_payment_date": None,
         "payments_remaining": None,
         "payoff_date": None,
@@ -160,8 +166,11 @@ def derived_figures(liability: Liability, today: date) -> dict:
     }
     if liability.opted_out or liability.payment is None:  # no payment only when opted out
         return figures
-    first = next_payment_date(liability)
-    schedule = amortise(liability.balance, liability.apr, liability.payment, first, liability.cadence)
+    first = next_payment_on(liability.start_date, liability.cadence, liability.balance_as_of, today)
+    try:
+        schedule = amortise(balance, liability.apr, liability.payment, first, liability.cadence)
+    except PaymentTooLow:
+        return figures
     return figures | {
         "next_payment_date": first,
         "payments_remaining": len(schedule.rows),

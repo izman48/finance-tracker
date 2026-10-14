@@ -28,6 +28,7 @@ from app.services.liabilities import (
     PaymentTooLow,
     amortise,
     first_payment_after,
+    next_payment_on,
     period_rate,
 )
 
@@ -134,3 +135,15 @@ def test_a_weekly_payment_that_never_clears_stops_at_the_cap():
 ])
 def test_first_payment_after_the_as_of_date(start, cadence, as_of, expected):
     assert first_payment_after(start, cadence, as_of) == expected
+
+
+# The schedule runs from today's balance: the next payment is on or after
+# today, and strictly after the as-of date (that day's payment is in the balance).
+@pytest.mark.parametrize("as_of, today, expected", [
+    (date(2026, 8, 25), date(2026, 10, 9), date(2026, 11, 1)),   # old balance: never a past date
+    (date(2026, 9, 20), date(2026, 10, 1), date(2026, 10, 1)),   # due today, not yet in the balance
+    (date(2026, 10, 1), date(2026, 10, 1), date(2026, 11, 1)),   # as-of today: today's payment is in it
+    (date(2026, 9, 20), date(2026, 9, 25), date(2026, 10, 1)),
+])
+def test_next_payment_is_on_or_after_today_and_after_the_as_of_date(as_of, today, expected):
+    assert next_payment_on(date(2025, 3, 1), "monthly", as_of, today) == expected

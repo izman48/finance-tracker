@@ -23,6 +23,8 @@ router = APIRouter(prefix="/liabilities", tags=["liabilities"])
 
 DB = Annotated[Session, Depends(get_db)]
 TERMS = tuple(LiabilityCreate.model_fields)
+# Every list read amortises each row, so the rows per user are bounded.
+LIABILITIES_PER_USER_MAX = 50
 
 
 def _own(db: Session, user_id: uuid.UUID, liability_id: uuid.UUID) -> Liability:
@@ -39,7 +41,7 @@ def _own(db: Session, user_id: uuid.UUID, liability_id: uuid.UUID) -> Liability:
 def _check_schedule_clears(terms: LiabilityCreate) -> None:
     if terms.opted_out or terms.payment is None:  # no payment only when opted out
         return
-    first = service.first_payment_after(terms.start_date, terms.cadence, terms.balance_as_of)
+    first = service.next_payment_on(terms.start_date, terms.cadence, terms.balance_as_of, common._today())
     try:
         service.amortise(terms.balance, terms.apr, terms.payment, first, terms.cadence)
     except service.PaymentTooLow as exc:
@@ -64,6 +66,12 @@ def list_liabilities(current_user: CurrentUser, db: DB) -> list[LiabilityRespons
 
 @router.post("", response_model=LiabilityResponse, status_code=status.HTTP_201_CREATED)
 def create_liability(body: LiabilityCreate, current_user: CurrentUser, db: DB) -> LiabilityResponse:
+    held = db.query(Liability).filter(Liability.user_id == current_user.id).count()
+    if held >= LIABILITIES_PER_USER_MAX:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"You can track up to {LIABILITIES_PER_USER_MAX} loans. Delete one to add another.",
+        )
     _check_schedule_clears(body)
     liability = Liability(user_id=current_user.id, **body.model_dump())
     db.add(liability)

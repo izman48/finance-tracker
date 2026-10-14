@@ -21,6 +21,11 @@ import { accountGroup, assetGroup, BALANCE_SHEET_GROUPS } from '../lib/balanceSh
 import CardRow from '../components/wealth/CardRow'
 import LiabilityRow, { BothCountedNotice, LoansLoadError } from '../components/wealth/LiabilityRow'
 import LiabilityForm from '../components/wealth/LiabilityForm'
+import SpendingChoice from '../components/wealth/SpendingChoice'
+import {
+  budgetsAvailable, evidenceLine, shownChoice, spendingParams, SPENDING_KEY, storedChoice,
+  type SpendingChoice as SpendingChoiceValue,
+} from '../lib/projectionSpending'
 import { focusAfterReload } from '../lib/liabilityForm'
 import { useToast } from '../components/ui/Toast'
 import AddAssetModal from '../components/AddAssetModal'
@@ -110,16 +115,29 @@ export default function NetWorthPage() {
   const [contribMode, setContribMode] = useState<'cashflow' | 'custom'>(
     () => (localStorage.getItem('wealth.contribMode') === 'custom' ? 'custom' : 'cashflow'),
   )
-  // Unticked = "all my future cashflow lands in my wealth": everyday spending
-  // is measured and shown, but not subtracted (matches the Cashflow chart).
-  const [subtractSpending, setSubtractSpending] = useState(
-    () => localStorage.getItem('wealth.subtractSpending') !== '0',
-  )
-  // The user's own everyday-spending estimate; empty = use the measured
-  // average from history. Their number, always visible and editable.
+  // "Everyday spending" (T-10-15b): the user's stored choice, mapped from the
+  // old checkbox keys; null = not chosen, so the default comes from the API
+  // (budgets when active budgets exist, else the average).
+  const [spendingChoice, setSpendingChoice] = useState<SpendingChoiceValue | null>(() => {
+    try {
+      return storedChoice((key) => localStorage.getItem(key))
+    } catch {
+      return null
+    }
+  })
+  // The user's own estimate, used only with Average; empty = measured.
   const [spendAmount, setSpendAmount] = useState(
     () => localStorage.getItem('wealth.monthlySpend') ?? '',
   )
+  const [projectionFailed, setProjectionFailed] = useState(false)
+  const chooseSpending = (choice: SpendingChoiceValue) => {
+    setSpendingChoice(choice)
+    try {
+      localStorage.setItem(SPENDING_KEY, choice)
+    } catch {
+      // storage unavailable: the choice still applies for this visit
+    }
+  }
   const [showTargetForm, setShowTargetForm] = useState(false)
   const [projection, setProjection] = useState<Projection | null>(null)
   const [decomp, setDecomp] = useState<AssetDecomposition | null>(null)
@@ -208,7 +226,6 @@ export default function NetWorthPage() {
     localStorage.setItem('wealth.monthly', monthly)
     localStorage.setItem('wealth.growth', growth)
     localStorage.setItem('wealth.contribMode', contribMode)
-    localStorage.setItem('wealth.subtractSpending', subtractSpending ? '1' : '0')
     localStorage.setItem('wealth.monthlySpend', spendAmount)
     const t = Number(target)
     if (!target || !Number.isFinite(t) || t <= 0) {
@@ -224,21 +241,25 @@ export default function NetWorthPage() {
           // bills − average spending and returns the working.
           monthly_contribution: contribMode === 'custom' ? Number(monthly) || 0 : undefined,
           annual_growth_pct: Number(growth) || 0,
-          subtract_spending: contribMode === 'cashflow' ? subtractSpending : undefined,
-          // The user's own estimate replaces the measured average entirely.
-          monthly_spending:
-            contribMode === 'cashflow' && subtractSpending && spendAmount !== ''
-              ? Math.max(0, Number(spendAmount) || 0)
-              : undefined,
+          // Budgets / average (with the estimate) / none; the API applies it
+          // and echoes what it used (T-10-15b).
+          ...(contribMode === 'cashflow' ? spendingParams(spendingChoice, spendAmount) : {}),
         })
-        .then((res) => !cancelled && setProjection(res.data))
-        .catch((e) => console.error('Failed to load projection', e))
+        .then((res) => {
+          if (cancelled) return
+          setProjection(res.data)
+          setProjectionFailed(false)
+        })
+        .catch((e) => {
+          console.error('Failed to load projection', e)
+          if (!cancelled) setProjectionFailed(true)
+        })
     }, 500)
     return () => {
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [target, monthly, growth, contribMode, subtractSpending, spendAmount])
+  }, [target, monthly, growth, contribMode, spendingChoice, spendAmount])
 
   const handleConnectBank = async () => {
     setConnecting(true)
@@ -523,48 +544,14 @@ export default function NetWorthPage() {
               </button>
             )}
             {contribMode === 'cashflow' && (
-              <div className="basis-full flex flex-wrap items-center gap-2 -mt-1">
-                <label className="flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={subtractSpending}
-                    onChange={(e) => setSubtractSpending(e.target.checked)}
-                    className="checkbox"
-                  />
-                  <span className="ml-2 text-sm text-slate-300">Subtract everyday spending of</span>
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="50"
-                  value={spendAmount}
-                  onChange={(e) => setSpendAmount(e.target.value)}
-                  disabled={!subtractSpending}
-                  placeholder={
-                    projection?.contribution_basis
-                      ? String(Math.round(Number(projection.contribution_basis.avg_spending_monthly)))
-                      : 'measured'
-                  }
-                  className="input !w-28 !py-1.5 disabled:opacity-40"
-                  aria-label="Everyday spending per month"
-                />
-                <span className="text-xs text-slate-500 flex items-center gap-1">
-                  /mo —{' '}
-                  {spendAmount !== ''
-                    ? <>your estimate (measured: {projection?.contribution_basis ? gbp(Number(projection.contribution_basis.avg_spending_monthly)) : '…'}/mo</>
-                    : <>blank = your measured average{projection?.contribution_basis ? ` of ${gbp(Number(projection.contribution_basis.avg_spending_monthly))}/mo` : ''}</>}
-                  {spendingEvidence && <InfoTip text={spendingEvidence} side="bottom" align="left" />}
-                  {spendAmount !== '' && (
-                    <>
-                      )
-                      <button onClick={() => setSpendAmount('')} className="text-accent hover:underline ml-1">
-                        use measured
-                      </button>
-                    </>
-                  )}
-                  {!subtractSpending && <span className="text-warn ml-1">— not subtracted (all cashflow lands in wealth)</span>}
-                </span>
-              </div>
+              <SpendingChoice
+                shown={shownChoice(spendingChoice, projection?.contribution_basis)}
+                budgetsAvailable={!projection?.contribution_basis || budgetsAvailable(projection.contribution_basis)}
+                estimate={spendAmount}
+                evidence={!projectionFailed && projection?.contribution_basis ? evidenceLine(projection.contribution_basis) : null}
+                onChoose={chooseSpending}
+                onEstimate={setSpendAmount}
+              />
             )}
           </div>
         )}
@@ -624,9 +611,11 @@ export default function NetWorthPage() {
                     {gbp(Number(projection.contribution_basis.income_monthly))} income −{' '}
                     {gbp(Number(projection.contribution_basis.bills_monthly))} bills −{' '}
                     {gbp(Number(projection.contribution_basis.spending_applied))}{' '}
-                    {projection.contribution_basis.spending_source === 'custom'
-                      ? 'everyday spending (your estimate)'
-                      : 'avg spending'}
+                    {projection.contribution_basis.spending_used === 'budgets'
+                      ? 'your budgets'
+                      : projection.contribution_basis.spending_source === 'custom'
+                        ? 'everyday spending (your estimate)'
+                        : 'avg spending'}
                   </span>
                   <span className="inline-flex align-middle ml-1">
                     <InfoTip text={spendingEvidence} side="bottom" align="left" />

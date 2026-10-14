@@ -250,6 +250,13 @@ export interface ContributionBasis {
   // What was actually subtracted and where it came from ('measured'|'custom').
   spending_applied: string
   spending_source: string
+  // T-10-15b, when the request sent spending_source: what was asked for,
+  // what was used, the active budget total a month, and whether budgets fell
+  // back to the average (no active budgets).
+  spending_choice?: 'budgets' | 'average' | 'none' | null
+  spending_used?: 'budgets' | 'average' | 'estimate' | 'none' | null
+  budgets_monthly?: string | null
+  budgets_fallback?: boolean
   // The evidence: each sampled month's measured spending (YYYY-MM).
   sampled_months: { month: string; total: string }[]
 }
@@ -355,7 +362,8 @@ export const assetsAPI = {
     monthly_contribution?: number
     annual_growth_pct?: number
     subtract_spending?: boolean
-    monthly_spending?: number
+    monthly_spending?: number | string
+    spending_source?: 'budgets' | 'average' | 'none'
   }) => api.get<Projection>('/analytics/net-worth-projection', { params }),
 }
 

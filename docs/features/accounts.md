@@ -62,7 +62,11 @@ strategy pays the full balance; an unknown cadence pays at each month-end
 `scheduled`; nothing is changed for the user).
 
 **UI**: `AccountSettingsModal` (opened from Wealth; its Statement block is `components/card/StatementBlock.tsx` + `StatementView.tsx`, with `StatementForm.tsx` for add/edit and `lib/statements.ts` for the rules and copy: the edit form sends every field, delete and "use this statement" each confirm first, naming the figure that changes; `lib/accountSettings.ts`
-sends repayment fields only for a credit card), `lib/credit.ts`; account
+sends repayment fields only for a credit card and lists the repayment options: statement balance
+(default when nothing is stored), full balance, fixed, instalments, scheduled only for an instalment
+card or a card already on it, a stored percent-of-balance; pay day card due date (default) or a day
+of the month, end of month and weekly only when already stored; the fix-this notice from
+`repayment_fix_needed`), `lib/credit.ts`; account
 filter on Spending.
 
 **MCP**: `accounts`.

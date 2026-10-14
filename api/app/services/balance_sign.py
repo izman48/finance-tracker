@@ -55,6 +55,12 @@ def _provider_key(account: Account) -> str:
 def credit_owed(account: Account) -> Decimal:
     """Money owed on this credit account (see the module docstring for the sign)."""
     raw = Decimal(str(account.current_balance)) if account.current_balance is not None else Decimal(0)
+    return owed_amount(account, raw)
+
+
+def owed_amount(account: Account, raw: Decimal) -> Decimal:
+    """A raw card amount from this account's provider (a balance, or a
+    statement balance) as money owed, with the same sign rules."""
     provider = _provider_key(account)
     if provider in _OWED_IS_NEGATIVE:
         return -raw

@@ -111,7 +111,8 @@ def test_adding_a_statement_stores_it_per_card(alice):
     assert body["source"] == "manual"
     listed = alice.get().json()["statements"]
     assert [s["id"] for s in listed] == [body["id"]]
-    assert alice.get(alice.other_card_id).json() == {"statements": [], "current": None, "missing_statement": False, "next_payment": None}
+    assert alice.get(alice.other_card_id).json() == {"statements": [], "current": None, "missing_statement": False, "conflict": False,
+                                  "next_payment": None}
 
 
 def test_statement_money_is_encrypted_at_rest(alice, db_session):
@@ -234,7 +235,8 @@ def test_deleting_the_last_statement_puts_the_card_back_on_its_current_balance(a
     res = alice.client.delete(alice.url(statement_id=statement_id), headers=alice.headers)
 
     assert res.status_code == 200
-    assert alice.get().json() == {"statements": [], "current": None, "missing_statement": False, "next_payment": None}
+    assert alice.get().json() == {"statements": [], "current": None, "missing_statement": False, "conflict": False,
+                                  "next_payment": None}
 
 
 def test_adding_a_statement_moves_no_figure(alice):

@@ -13,6 +13,7 @@ from app.core.psu_ip import current_psu_ip
 from app.core.security import create_oauth_state
 from app.models import User, Account, Transaction, BankConnection
 from app.services.categorization import category_from_provider
+from app.services.provider_statements import log_statement_field_coverage, store_provider_statement
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -569,10 +570,24 @@ class TrueLayerService:
                 )
                 db.add(account)
 
+            if balance_data is not None and account.account_type == "CREDIT_CARD":
+                self._keep_card_statement(db, bank_connection, account, balance_data)
             synced_accounts.append(account)
 
         db.commit()
         return synced_accounts
+
+    @staticmethod
+    def _keep_card_statement(db: Session, bank_connection: BankConnection, account: Account, balance: dict) -> None:
+        """Keep the statement the card balance response carries (T-10-2). A
+        failure here never stops the sync, and logs the exception type only."""
+        log_statement_field_coverage(bank_connection.provider_id, balance)
+        db.flush()  # a new card needs its id; outside the savepoint so it is kept
+        try:
+            with db.begin_nested():
+                store_provider_statement(db, account, balance)
+        except Exception as e:
+            logger.warning("Could not keep a card statement: %s", type(e).__name__)
 
     async def sync_transactions(
         self, bank_connection: BankConnection, db: Session, days: int = 90, skip_token_refresh: bool = False,

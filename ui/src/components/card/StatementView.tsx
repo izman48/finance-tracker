@@ -26,13 +26,16 @@ export interface StatementViewProps {
 }
 
 const pounds = (amount: string | number) => money(Number(amount))
+/** Only a card that owes money has a balance to plan (a card in credit
+ *  must never read "full current balance of -£x"). */
+const owes = (balance: string) => Number(balance) > 0
 
 export default function StatementView(props: StatementViewProps) {
   const { status, data } = props
   return (
-    <section aria-labelledby="statement-heading" className="mb-4">
+    <section aria-labelledby="statement-heading" aria-busy={status === 'loading' ? true : undefined} className="mb-4">
       <div className="flex items-center gap-2 mb-2">
-        <h4 id="statement-heading" className="label !mb-0">Statement</h4>
+        <h4 id="statement-heading" className="text-sm font-semibold text-slate-100">Statement</h4>
         {status === 'ready' && data?.current && (
           <span className="chip">{data.current.source === 'provider' ? `From ${props.providerName}` : 'Entered by you'}</span>
         )}
@@ -64,8 +67,10 @@ function Body(props: StatementViewProps) {
     return (
       <div>
         <p className="text-sm text-slate-300 mb-2">
-          No statement entered yet. Until you add one, nilu plans to pay your full current balance of{' '}
-          {pounds(props.currentBalance)} on the card's next payment date.
+          No statement entered yet.{' '}
+          {owes(props.currentBalance)
+            ? `Until you add one, nilu plans to pay your full current balance of ${pounds(props.currentBalance)} on the card's next payment date.`
+            : 'nilu has no balance to plan for this card yet.'}
         </p>
         {props.onAdd && <button type="button" onClick={props.onAdd} className="btn-ghost">Add statement</button>}
       </div>
@@ -78,7 +83,8 @@ function Body(props: StatementViewProps) {
       {data.missing_statement && (
         <div className="banner-info">
           Your statement due {dateLong(current.due_date)} has passed. Add your new statement so nilu plans the right
-          bill. Until then it plans your full current balance of {pounds(props.currentBalance)}.
+          bill.
+          {owes(props.currentBalance) && ` Until then it plans your full current balance of ${pounds(props.currentBalance)}.`}
           {props.onAdd && (
             <button type="button" onClick={props.onAdd} className="btn-primary mt-2">Add new statement</button>
           )}
@@ -128,8 +134,8 @@ function Conflict(props: StatementViewProps & { data: CardStatements }) {
   return (
     <div className="space-y-2">
       <div className="banner-info">
-        Your figures and {props.providerName}'s figures for this statement are different. Pick the one that matches
-        your paper or app statement.
+        Your figures and {props.providerName}'s figures for this statement are different.
+        {props.onUse && ' Pick the one that matches your paper or app statement.'}
       </div>
       {!props.onUse ? (
         <ul className="space-y-1 text-sm">
@@ -144,7 +150,7 @@ function Conflict(props: StatementViewProps & { data: CardStatements }) {
       <fieldset className="space-y-2">
         <legend className="label">Which statement is right?</legend>
         {pair.map((s) => (
-          <label key={s.id} className="flex items-start gap-2 rounded-lg border border-white/10 p-3 min-h-[44px]">
+          <label key={s.id} className="flex items-start gap-2 rounded-lg border border-white/10 p-3 min-h-[44px] focus-within:outline focus-within:outline-2 focus-within:outline-accent">
             <input
               type="radio"
               name="statement-choice"

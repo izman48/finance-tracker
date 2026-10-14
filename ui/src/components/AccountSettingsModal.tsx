@@ -50,8 +50,10 @@ export default function AccountSettingsModal({
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className={`modal-panel${form.role === 'credit' ? ' !max-w-lg' : ''}`} onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-lg font-semibold text-slate-50 mb-1">{account.display_name}</h3>
+      <div className={`modal-panel${form.role === 'credit' ? ' !max-w-lg' : ''}`} onClick={(e) => e.stopPropagation()}
+        role="dialog" aria-modal="true" aria-labelledby="account-settings-title"
+      >
+        <h3 id="account-settings-title" className="text-lg font-semibold text-slate-50 mb-1">{account.display_name}</h3>
         <p className="text-sm text-slate-400 mb-4">Configure how this account is treated.</p>
 
         <label className="label">Role</label>

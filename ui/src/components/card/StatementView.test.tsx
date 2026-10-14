@@ -108,4 +108,30 @@ describe('StatementView', () => {
     expect(readOnly).not.toContain('type="radio"')
     expect(text(readOnly)).toContain('From Test Bank £4,990.00 · statement')
   })
+
+  it('ux on #182: read-only conflict banner gives no instruction it cannot act on', () => {
+    const provider = { ...manual, id: 'p1', statement_balance: '4990.00', source: 'provider' as const }
+    const readOnly = renderToStaticMarkup(
+      <StatementView status="ready" data={data({ statements: [manual, provider], conflict: true })}
+        currentBalance="6000.00" providerName="Test Bank" onRetry={noop} />,
+    )
+    expect(text(readOnly)).toContain("Your figures and Test Bank's figures for this statement are different.")
+    expect(text(readOnly)).not.toContain('Pick the one')
+  })
+
+  it('ux on #182: aria-busy while loading, and the heading is not the muted label style', () => {
+    expect(html({ status: 'loading', data: null })).toMatch(/<section[^>]*aria-busy="true"/)
+    expect(html({})).not.toMatch(/<section[^>]*aria-busy="true"/)
+    expect(html({})).toMatch(/<h4 id="statement-heading" class="text-sm font-semibold text-slate-100"/)
+  })
+
+  it('ux on #182: a card that owes nothing never reads "full current balance of -£x"', () => {
+    for (const balance of ['0', '-25.00']) {
+      const empty = text(html({ data: data({ statements: [], current: null, next_payment: null }), currentBalance: balance }))
+      expect(empty).toContain('No statement entered yet. nilu has no balance to plan for this card yet.')
+      expect(empty).not.toContain('full current balance')
+      const missing = text(html({ data: data({ missing_statement: true }), currentBalance: balance }))
+      expect(missing).not.toContain('full current balance')
+    }
+  })
 })

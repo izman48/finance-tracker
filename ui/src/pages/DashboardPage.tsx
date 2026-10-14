@@ -14,8 +14,8 @@ import {
 import { bankingAPI, analyticsAPI, Nudge } from '../services/api'
 import { BankStatus, CashflowSummary, Commitment, PlannedItem } from '../types'
 import { money as formatCurrency, dateDayMonth as formatDate, timeAgo } from '../lib/format'
-import { cardsOwing, creditAmount, repaymentNotSetUp } from '../lib/credit'
-import { RepaymentNotSetUpLine } from '../components/card/RepaymentNotSetUp'
+import { heroSubline } from '../lib/cashflowGroups'
+import AccountGroups from '../components/cashflow/AccountGroups'
 import ForecastChart from '../components/ForecastChart'
 import NudgeFeed, { UiNudge } from '../components/NudgeFeed'
 import AnimatedNumber from '../components/ui/AnimatedNumber'
@@ -138,9 +138,6 @@ export default function DashboardPage() {
   // the cashflow picture, so they stay out of the total and the list.
   const listedAccounts = (summary?.accounts ?? []).filter((a) => a.role !== 'excluded')
   const cashAccounts = listedAccounts.filter((a) => a.role === 'spending' || a.role === 'savings')
-  // Only cards that owe money count toward "owed on N cards"; an overpaid
-  // card shows as in credit in the list below.
-  const creditAccounts = cardsOwing(listedAccounts)
   const totalCash = cashAccounts.reduce((sum, a) => sum + Number(a.current_balance ?? 0), 0)
   const suggestedCount = commitments.filter((c) => c.status === 'suggested').length
 
@@ -263,39 +260,11 @@ export default function DashboardPage() {
               <div className="stat-figure text-5xl sm:text-6xl text-slate-50">
                 <AnimatedNumber value={totalCash} />
               </div>
-              <div className="text-sm text-slate-400 mt-2">
-                across {cashAccounts.length} account{cashAccounts.length !== 1 ? 's' : ''}
-                {creditAccounts.length > 0 && (
-                  <> · {formatCurrency(summary.credit_owed)} owed on {creditAccounts.length} card{creditAccounts.length !== 1 ? 's' : ''}</>
-                )}
-              </div>
+              <div className="text-sm text-slate-400 mt-2">{heroSubline(cashAccounts.length)}</div>
 
-              {/* Every account and what's in it, so this doesn't need a trip to
-                  Wealth. Credit shows what's owed, in amber. */}
-              <div className="mt-6 -mx-2 divide-y divide-white/[0.06]">
-                {listedAccounts.map((a) => (
-                  <div key={a.id} className="flex items-center justify-between gap-3 px-2 py-2.5">
-                    <div className="min-w-0">
-                      <div className="text-sm text-slate-200 truncate">{a.display_name}</div>
-                      <div className="text-xs text-slate-400 truncate">
-                        {a.provider_name}
-                        {a.role === 'savings' && ' · Savings'}
-                        {a.role === 'credit' && ' · Credit'}
-                      </div>
-                      {repaymentNotSetUp(a) && <RepaymentNotSetUpLine account={a} />}
-                    </div>
-                    <div
-                      className={`font-semibold tnum shrink-0 ${
-                        a.role === 'credit' ? creditAmount(a.credit_owed).tone : 'text-slate-100'
-                      }`}
-                    >
-                      {a.role === 'credit'
-                        ? creditAmount(a.credit_owed).text
-                        : formatCurrency(Number(a.current_balance ?? 0))}
-                    </div>
-                  </div>
-                ))}
-              </div>
+              {/* Every account, in three families (ux T-10-13): current
+                  accounts, savings, then credit cards as what's owed. */}
+              <AccountGroups accounts={listedAccounts} creditOwed={summary.credit_owed} />
 
               <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-4">
                 {[

@@ -11,7 +11,7 @@ export function RepaymentNotSetUpLine({ account }: { account: SummaryAccount }) 
   return (
     <p className="text-xs text-warn mt-0.5">
       {REPAYMENT_NOT_SET_UP}.{' '}
-      <Link to={cardSettingsPath(account.id)} className="underline hover:text-accent">
+      <Link to={cardSettingsPath(account.id)} className="inline-flex items-center min-h-[44px] underline hover:text-accent">
         Set up repayment
       </Link>
     </p>

@@ -36,6 +36,8 @@ const MAX_DAYS_TO_DUE = 60
 const AMOUNT_ERROR = 'Enter an amount above £0 and up to £1,000,000, like 5584.00.'
 const MINIMUM_ERROR = 'Enter an amount above £0, or leave this blank.'
 const FUTURE_ERROR = "The statement date can't be in the future."
+const NO_STATEMENT_DATE = 'Enter the date on your statement.'
+const NO_DUE_DATE = 'Enter the due date on your statement.'
 const DUE_ERROR = 'The due date must be on or after the statement date, and no more than 60 days after it.'
 
 /** "nilu will pay …" under the statement rows, or null when there is no
@@ -67,9 +69,13 @@ function daysBetween(from: string, to: string): number {
 export function validateStatementForm(form: StatementForm, today: string): StatementErrors {
   const errors: StatementErrors = {}
   if (!amountOk(form.statement_balance.trim())) errors.statement_balance = AMOUNT_ERROR
-  if (!form.statement_date || form.statement_date > today) errors.statement_date = FUTURE_ERROR
-  const gap = form.due_date && form.statement_date ? daysBetween(form.statement_date, form.due_date) : -1
-  if (!errors.statement_date && (gap < 0 || gap > MAX_DAYS_TO_DUE)) errors.due_date = DUE_ERROR
+  if (!form.statement_date) errors.statement_date = NO_STATEMENT_DATE
+  else if (form.statement_date > today) errors.statement_date = FUTURE_ERROR
+  if (!form.due_date) errors.due_date = NO_DUE_DATE
+  else if (form.statement_date) {
+    const gap = daysBetween(form.statement_date, form.due_date)
+    if (gap < 0 || gap > MAX_DAYS_TO_DUE) errors.due_date = DUE_ERROR
+  }
   if (form.minimum_due.trim() && !amountOk(form.minimum_due.trim())) errors.minimum_due = MINIMUM_ERROR
   return errors
 }

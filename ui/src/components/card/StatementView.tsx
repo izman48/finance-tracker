@@ -77,7 +77,9 @@ function Body(props: StatementViewProps) {
             ? `Until you add one, nilu plans to pay your full current balance of ${pounds(props.currentBalance)} on the card's next payment date.`
             : 'nilu has no balance to plan for this card yet.'}
         </p>
-        {props.onAdd && <button type="button" onClick={props.onAdd} className="btn-ghost">Add statement</button>}
+        {props.onAdd && (
+          <button type="button" id="statement-add" onClick={props.onAdd} className="btn-ghost">Add statement</button>
+        )}
       </div>
     )
   }
@@ -91,7 +93,7 @@ function Body(props: StatementViewProps) {
           bill.
           {owes(props.currentBalance) && ` Until then it plans your full current balance of ${pounds(props.currentBalance)}.`}
           {props.onAdd && (
-            <button type="button" onClick={props.onAdd} className="btn-primary mt-2">Add new statement</button>
+            <button type="button" id="statement-add" onClick={props.onAdd} className="btn-primary mt-2">Add new statement</button>
           )}
         </div>
       )}
@@ -177,7 +179,7 @@ function Conflict(props: StatementViewProps & { data: CardStatements }) {
       </fieldset>
       )}
       {props.onUse && (
-        <button type="button" onClick={props.onUse} disabled={props.busy || choice === inUse} className="btn-primary">
+        <button type="button" id="statement-use" onClick={props.onUse} disabled={props.busy || choice === inUse} className="btn-primary">
           Use this statement
         </button>
       )}

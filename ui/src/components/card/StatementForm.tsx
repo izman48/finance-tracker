@@ -7,7 +7,7 @@ export interface StatementFormProps {
   mode: 'add' | 'edit'
   form: Form
   errors: StatementErrors
-  saveError: 'duplicate' | 'error' | null
+  saveError: 'duplicate' | 'error' | 'delete' | null
   saving: boolean
   deleting: boolean
   providerName: string
@@ -73,6 +73,11 @@ export default function StatementForm(props: StatementFormProps) {
           )}
         </div>
       )}
+      {props.saveError === 'delete' && (
+        <div role="alert" className="banner-err">
+          We could not delete this statement. Nothing was changed. Check your connection and try again.
+        </div>
+      )}
       {props.saveError === 'error' && (
         <div role="alert" className="banner-err">
           We could not save this statement. Nothing was changed. Check your connection and try again.
@@ -80,7 +85,7 @@ export default function StatementForm(props: StatementFormProps) {
       )}
       <div className="flex flex-wrap items-center gap-2">
         {props.onDelete && (
-          <button type="button" onClick={props.onDelete} disabled={props.deleting || props.saving} className="btn-danger mr-auto">
+          <button type="button" id="statement-delete" onClick={props.onDelete} disabled={props.deleting || props.saving} className="btn-danger mr-auto">
             {props.deleting ? 'Deleting…' : 'Delete statement'}
           </button>
         )}

@@ -23,7 +23,15 @@ type Editing = { mode: 'add' | 'edit'; statementId: string | null; replacingProv
 
 const EMPTY: Form = { statement_balance: '', statement_date: '', due_date: '', minimum_due: '' }
 const localToday = () => new Date().toLocaleDateString('en-CA') // YYYY-MM-DD, the user's own day
-const focusLater = (id: string) => window.setTimeout(() => document.getElementById(id)?.focus(), 0)
+/** Focus the first of these that is on screen, after React has rendered
+ *  (ux on #184: focus returns to the control that opened the form or confirm). */
+const focusLater = (...ids: string[]) =>
+  window.setTimeout(() => {
+    for (const id of ids) {
+      const el = document.getElementById(id)
+      if (el) return el.focus()
+    }
+  }, 0)
 
 export default function StatementBlock({
   accountId, savedAsCredit, currentBalance, providerName, onNotFound,
@@ -41,21 +49,25 @@ export default function StatementBlock({
   const [editing, setEditing] = useState<Editing | null>(null)
   const [form, setForm] = useState<Form>(EMPTY)
   const [errors, setErrors] = useState<StatementErrors>({})
-  const [saveError, setSaveError] = useState<'duplicate' | 'error' | null>(null)
+  const [saveError, setSaveError] = useState<'duplicate' | 'error' | 'delete' | null>(null)
   const [busy, setBusy] = useState<'saving' | 'deleting' | 'using' | null>(null)
   const [choice, setChoice] = useState<string | undefined>()
   const [useError, setUseError] = useState(false)
 
-  const load = useCallback(async () => {
+  /** True when fresh figures arrived. On failure the error banner replaces
+   *  the old figures, so nothing stale is shown. */
+  const load = useCallback(async (): Promise<boolean> => {
     setStatus((s) => (s === 'ready' ? s : 'loading'))
     try {
       const res = await analyticsAPI.getStatements(accountId)
       setData(res.data)
       setStatus('ready')
+      return true
     } catch (e) {
       const notFound = (e as { response?: { status?: number } })?.response?.status === 404
       setStatus(notFound ? 'notfound' : 'error')
       if (notFound) onNotFound()
+      return false
     }
   }, [accountId, onNotFound])
 
@@ -75,6 +87,11 @@ export default function StatementBlock({
     open({ mode: 'edit', statementId: statement.id, replacingProvider }, values)
   }
   const close = () => setEditing(null)
+  const cancel = () => {
+    const opener = editing?.mode === 'edit' ? 'statement-edit' : 'statement-add'
+    close()
+    focusLater(opener, 'statement-edit', 'statement-add')
+  }
 
   const submit = async () => {
     if (!editing) return
@@ -92,7 +109,7 @@ export default function StatementBlock({
       return
     }
     close()
-    await load()
+    if (!(await load())) return
     toast('Statement saved.')
     focusLater('statement-edit')
   }
@@ -105,14 +122,18 @@ export default function StatementBlock({
       currentBalance,
     })
     setBusy(null)
-    if (outcome === 'cancelled') return
+    if (outcome === 'cancelled') {
+      focusLater('statement-delete')
+      return
+    }
     if (outcome === 'error') {
-      setSaveError('error')
+      setSaveError('delete')
       return
     }
     close()
-    await load()
+    if (!(await load())) return
     toast('Statement deleted.')
+    focusLater('statement-add', 'statement-edit')
   }
 
   const use = async () => {
@@ -123,11 +144,15 @@ export default function StatementBlock({
     setUseError(false)
     const outcome = await pickStatement(analyticsAPI, confirm, accountId, choice, mine, providerName)
     setBusy(null)
-    if (outcome === 'error') setUseError(true)
-    if (outcome !== 'used') return
+    if (outcome !== 'used') {
+      if (outcome === 'error') setUseError(true)
+      focusLater('statement-use')
+      return
+    }
     setChoice(undefined)
-    await load()
+    if (!(await load())) return
     toast(`Now using the statement from ${providerName}.`)
+    focusLater('statement-edit')
   }
 
   const current = data?.current ?? null
@@ -144,7 +169,7 @@ export default function StatementBlock({
       replacingProvider={editing.replacingProvider}
       onChange={(patch) => setForm((f) => ({ ...f, ...patch }))}
       onSubmit={submit}
-      onCancel={close}
+      onCancel={cancel}
       onDelete={editing.mode === 'edit' && !editing.replacingProvider ? remove : undefined}
       onEditDuplicate={duplicate ? () => openEdit(duplicate) : undefined}
     />

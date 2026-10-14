@@ -58,6 +58,12 @@ describe('StatementForm', () => {
       'We could not save this statement. Nothing was changed. Check your connection and try again.')
   })
 
+  it('ux on #184: a failed delete says delete, and Delete has an id to return focus to', () => {
+    expect(text(html({ mode: 'edit', onDelete: noop, saveError: 'delete' }))).toContain(
+      'We could not delete this statement. Nothing was changed. Check your connection and try again.')
+    expect(html({ mode: 'edit', onDelete: noop })).toMatch(/<button[^>]*id="statement-delete"/)
+  })
+
   it('saving and deleting disable the buttons and say so', () => {
     expect(html({ saving: true })).toMatch(/<button[^>]*disabled=""[^>]*>Saving…<\/button>/)
     expect(html({ mode: 'edit', onDelete: noop, deleting: true })).toMatch(/<button[^>]*disabled=""[^>]*>Deleting…<\/button>/)

@@ -76,9 +76,18 @@ describe('validateStatementForm (C-4, C-5)', () => {
       .toEqual({ statement_date: "The statement date can't be in the future." })
   })
 
-  it.each(['2026-09-29', '2026-11-30', ''])('refuses a due date of %j', (due) => {
+  it.each(['2026-09-29', '2026-11-30'])('refuses a due date of %j', (due) => {
     expect(validateStatementForm({ ...valid, due_date: due }, TODAY)).toEqual({
       due_date: 'The due date must be on or after the statement date, and no more than 60 days after it.',
+    })
+  })
+
+  it('ux on #184: a blank date asks for the date, not the future or 60-day rule', () => {
+    expect(validateStatementForm({ ...valid, statement_date: '' }, TODAY)).toEqual({
+      statement_date: 'Enter the date on your statement.',
+    })
+    expect(validateStatementForm({ ...valid, due_date: '' }, TODAY)).toEqual({
+      due_date: 'Enter the due date on your statement.',
     })
   })
 

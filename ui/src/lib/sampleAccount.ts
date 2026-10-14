@@ -699,3 +699,29 @@ export function sampleResponse(url: string, params: unknown): unknown {
   if (is('/audit')) return { items: [], next_cursor: null }
   return {}
 }
+
+// --- coverage ledger -------------------------------------------------------- #
+// Every GET in services/api.ts must be served by sampleResponse above or be
+// listed in one of these, keyed by its path with ${...} written as ':param'.
+// sampleCoverage.test.ts enforces it, so a new read endpoint can't silently
+// render empty in demo mode. See docs/features/demo-mode.md.
+
+/** Reads that should NOT get sample data: they start real flows or aren't
+ *  data views. */
+export const UNSAMPLED_BY_DESIGN: Record<string, string> = {
+  '/health': 'Liveness probe, not a data view.',
+  '/banking/connect': 'Starts a real TrueLayer connection; nothing to fake.',
+  '/banking/connections/:param/reconnect': 'Starts a real TrueLayer re-consent; nothing to fake.',
+  '/oauth/authorize/details': 'OAuth consent for an MCP client; an auth flow, not a data view.',
+}
+
+/** Reads that SHOULD show sample data but don't yet: each renders empty or
+ *  errors in demo mode. Fix one by serving it from sampleResponse and
+ *  deleting its line here (the coverage test then insists it stays served). */
+export const KNOWN_DEMO_GAPS: Record<string, string> = {
+  '/budgets': 'Spending > Budgets gets {} and BudgetsView reads data.budgets.filter, so the section crashes (no error boundary); Home shows no budget line.',
+  '/budgets/history': 'Past cycles view gets {} and reads data.cycles, so it crashes the same way.',
+  '/banking/sync-status': 'Budget freshness line has no connections in demo mode.',
+  '/analytics/accounts/:param/repayments': 'Account settings shows no repayment schedule in demo mode.',
+  '/rules/shared/:param': 'Previewing a shared rule pack finds nothing in demo mode.',
+}

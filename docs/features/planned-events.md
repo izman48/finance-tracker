@@ -1,0 +1,61 @@
+# Planned events (one-offs and instalment plans)
+
+User-entered future money movements (one-off, recurring, instalment plan)
+that feed the forecast, safe to spend and the net-worth projection. A
+one-off is settled automatically by a matching transaction (±7 days, exact
+amount or ±max(£1, 2%) with a shared word). "Pay on finance" turns a purchase
+into an instalment plan and drops the lump from spending. Claude can add
+one-offs and soft-remove the ones it created; a removed expense keeps
+counting until the user keeps the change.
+
+## Code
+
+**API**:
+
+| Route | Auth |
+|---|---|
+| `GET /api/v1/analytics/planned-items` | `CurrentUser` |
+| `POST /api/v1/analytics/planned-items` | `CurrentUser` |
+| `DELETE /api/v1/analytics/planned-items/{item_id}` | `CurrentUser` (hard delete) |
+| `POST /api/v1/analytics/planned/from-transaction` | `CurrentUser` (pay on finance) |
+| `GET /api/v1/planning/planned-events` | `CurrentUserOrMcpRead` (limit 200) |
+| `POST /api/v1/planning/planned-events` | `PlanningWriter` (dry run, idempotency, 24 h duplicate guard) |
+| `POST /api/v1/planning/planned-events/{item_id}/remove` | `PlanningWriter` (soft remove) |
+
+**Tables**: `planned_items` (encrypted `name`, `amount`, `total_amount`,
+`apr`, `fee_amount`; `source_transaction_id` set null on delete;
+`created_via` web or mcp).
+
+**Services**: `services/analytics/planned.py`, `planned_matching.py`,
+`commitments.convert_transaction_to_plan`,
+`spending.financed_transaction_ids`, `services/claude_keep.py`,
+`routers/planning.py`.
+
+**UI**: `PlannedItems` (on `/commitments`), `AddCommitmentModal`,
+`PayOnFinanceModal` (on `/insights`), `lib/planned.ts`. The UI never calls
+`/planning/*`.
+
+**MCP**: `list_planned_events`, `add_planned_event`, `remove_planned_event`.
+
+**Tests**: `api/tests/integration/test_planned_events_api.py`,
+`test_planned_matching.py`, `test_planned_removal_hold.py`,
+`test_planning_writes.py`, `test_planning_write_auth.py`;
+`api/mcp/tests/test_planned_events_tools.py`; UI `PlannedItems.test.tsx`.
+
+## Touchpoints
+
+| # | Answer |
+|---|---|
+| 1 Tables | `planned_items`. |
+| 2 Purge | Yes. |
+| 3 Deletion | Cascade from `users`. |
+| 4 Demo mode | `/analytics/planned-items` served (one sample item). |
+| 5 Ownership | Yes (`account_id` on both POSTs). |
+| 6 Scopes | Read `finance:read`; Claude writes `finance:planning.write`. |
+| 7 Claude tools | listed above. |
+| 8 Audit | Yes, target `planned_event`. The web DELETE hard-deletes even Claude's items, which breaks their undo (gap). |
+| 9 Bank sync | Matching runs on read. |
+| 10 Home | Upcoming items on the Cashflow card. Owned by Cashflow. |
+| 11 UI routes | `/commitments`. |
+| 12 Tests | listed above. |
+| 13 Docs | this file. |

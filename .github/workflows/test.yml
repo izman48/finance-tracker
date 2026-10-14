@@ -168,6 +168,8 @@ jobs:
         run: python3 .github/scripts/test_audit_gate.py
       - name: Actions pinned to SHAs; the audit can't fail silently
         run: python3 .github/scripts/check_workflows.py .github/workflows
+      - name: Feature docs cover every route, table, MCP tool and UI route
+        run: python3 .github/scripts/test_check_feature_docs.py
 
   # One status for the whole run (T-08-26). It passes when every job
   # passed or, on a PR only, was skipped because its files didn't change.

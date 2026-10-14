@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { homeUpcomingLabel, owedRow } from './homeOwed'
+import { homeUpcomingLabel, loanPaymentLabel, owedRow } from './homeOwed'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { buildUpcoming } from './upcoming'
 import UpcomingLabel from '../components/UpcomingLabel'
@@ -64,5 +64,15 @@ describe('the lender in the loan label is plain text (sec on T-10-14d)', () => {
     const html = renderToStaticMarkup(<UpcomingLabel item={{ ...row, label }} linkMarker={false} />)
     expect(html).not.toContain('<b>')
     expect(html).toContain('&lt;b&gt;x&lt;/b&gt; loan payment')
+  })
+})
+
+describe('loanPaymentLabel (owner P2, one rule shared with Cashflow)', () => {
+  it('adds "loan payment" to a lender', () => {
+    expect(loanPaymentLabel('Lender A')).toBe('Lender A loan payment')
+  })
+  it('says only "payment" when the lender already contains "loan", in any case', () => {
+    expect(loanPaymentLabel('Personal loan')).toBe('Personal loan payment')
+    expect(loanPaymentLabel('LOANCO')).toBe('LOANCO payment')
   })
 })

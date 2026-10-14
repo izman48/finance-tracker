@@ -23,8 +23,13 @@ export function owedRow(summary: {
 export function homeUpcomingLabel(u: Upcoming, lenders: Map<string, string> = new Map()): string {
   if (u.cardBill) return `${u.label} bill`
   const lender = u.commitmentId ? lenders.get(u.commitmentId) : undefined
-  if (!lender) return u.label
-  // "Northgate Motor Loans loan payment" reads badly (ux T-10-15a note).
+  return lender ? loanPaymentLabel(lender) : u.label
+}
+
+/** A loan's linked repayment: "{lender} loan payment", or "{lender} payment"
+ *  when the lender already says "loan", so it never reads "loan loan payment"
+ *  (ux T-10-15a). Shared by Home and Cashflow so there is one rule. */
+export function loanPaymentLabel(lender: string): string {
   return /loan/i.test(lender) ? `${lender} payment` : `${lender} loan payment`
 }
 

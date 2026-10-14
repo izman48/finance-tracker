@@ -47,23 +47,52 @@ _DATE_TOKEN = re.compile(r"^\d{1,2}[/-]\d{1,2}([/-]\d{2,4})?$")  # 12/07, 12-07-
 _REFERENCE_RUN = re.compile(r"\d{6,}")
 
 
+# A bank's card-payment date phrase ("NETFLIX ON 30 SEP BCC"): it changes
+# every month and is never part of a name. Only a day and a month name after
+# ON count, so "SHOP ON 12 MAIN ST" keeps its address.
+_ON_DATE_PHRASE = re.compile(r"\bON \d{1,2} (JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\b")
+# "PAYPAL *SPOTIFY*P12A3B4" or "PP*NETFLIX ..." (T-10-9).
+_PAYPAL = re.compile(r"\bPAYPAL\b|^PP\s*\*")
+# Words in PayPal descriptors that aren't a merchant name.
+_PAYPAL_FILLER = frozenset({"PAYPAL", "PP", "PAYMENT", "EUROPE", "SARL", "ET", "CIE", "SCA", "S", "A", "R", "L", "C"})
+
+
 def _normalise_merchant(raw: str | None) -> str:
     """Collapse a bank description to a key that's stable across payments.
 
     Conservative: pure digit runs, dates, and alphanumeric tokens carrying a
     long digit run are dropped. Short mixed alphanumerics are left alone,
     because stripping those would eat real merchant names ("O2", "MONZO123")
-    and over-merge unrelated payments.
+    and over-merge unrelated payments. PayPal descriptors are the exception
+    (`_paypal_tokens`).
     """
-    text = re.sub(r"[^A-Z0-9/\- ]+", " ", (raw or "").upper())
+    upper = (raw or "").upper()
+    text = _ON_DATE_PHRASE.sub(" ", re.sub(r"[^A-Z0-9/\- ]+", " ", upper))
     tokens = [
         t for t in text.split()
         if not _DIGIT_RUN.match(t)
         and not _DATE_TOKEN.match(t)
         and not _REFERENCE_RUN.search(t)
     ]
+    if _PAYPAL.search(upper):
+        tokens = _paypal_tokens(tokens)
     # Fall back to the raw text if normalising left nothing (e.g. "123456").
     return " ".join(tokens).strip() or (raw or "").strip().upper()
+
+
+def _paypal_tokens(tokens: list[str]) -> list[str]:
+    """PAYPAL plus the merchant's words, without the per-payment reference.
+
+    PayPal glues a short reference that changes every month onto the merchant
+    ("PAYPAL *SPOTIFY*P12A3B4"): any token with a digit is dropped. If no
+    merchant word is left (a bare "PAYPAL" plus a reference, or only filler),
+    the tokens stay as they were: collapsing those into one "paypal" key
+    would merge unrelated payments and hide money.
+    """
+    merchant = [t for t in tokens if t not in _PAYPAL_FILLER and not any(c.isdigit() for c in t)]
+    if not merchant:
+        return tokens
+    return ["PAYPAL", *merchant]
 
 
 def _match_key(direction: str, merchant: str) -> str:
@@ -82,6 +111,25 @@ def merchant_match_key(direction: str, merchant: str | None) -> str | None:
     if not merchant or not merchant.strip():
         return None
     return _match_key(direction, merchant)
+
+
+def rule_match_keys(rule: CommitmentRule) -> set[str]:
+    """Every key a rule answers to: its stored key, that key re-normalised
+    with today's rules, and the key its label derives.
+
+    A manual rule's stored key is the user's own text (or one payment's
+    description) and is never rewritten, so after a normalisation change it
+    can go stale. Re-normalising it (T-10-9: "paypal spotify p12a3b4" becomes
+    "paypal spotify") and deriving from the label keep it matching its
+    payments and suppressing re-detection, without touching what was stored.
+    """
+    keys = {_match_key(rule.direction, rule.label)} if rule.label else set()
+    if rule.match_key:
+        keys.add(rule.match_key)
+        direction, _, merchant = rule.match_key.partition(":")
+        if merchant:
+            keys.add(_match_key(direction, merchant))
+    return keys
 
 
 def transaction_match_key(tx: Transaction) -> str:
@@ -110,9 +158,7 @@ def commitment_match_keys(db: Session, user) -> set[str]:
     )
     keys: set[str] = set()
     for r in rules:
-        if r.match_key:
-            keys.add(r.match_key)
-        keys.add(_match_key(r.direction, r.label))
+        keys |= rule_match_keys(r)
     return keys
 
 
@@ -369,16 +415,13 @@ def sync_suggestions(db: Session, user) -> None:
         if rule.match_key != expected:
             rule.match_key = expected
 
-    # Dedupe on the stored key *and* the key the label derives today. A manual
-    # rule's stored key is the user's own text and is deliberately never
-    # rewritten above, so after a normalisation change it can go stale — and a
-    # stale key suppresses nothing, letting detection re-add the very
-    # commitment the user already has. Deriving from the label as well closes
-    # that without touching what the user typed.
-    existing_keys = {rule.match_key for rule in existing_rules if rule.match_key}
-    existing_keys |= {
-        _match_key(rule.direction, rule.label) for rule in existing_rules if rule.label
-    }
+    # Dedupe on every key a rule answers to (stored, re-normalised, label):
+    # a manual rule's stored key is never rewritten above, so after a
+    # normalisation change it can go stale, and a stale key alone would let
+    # detection re-add the very commitment the user already has.
+    existing_keys: set[str] = set()
+    for rule in existing_rules:
+        existing_keys |= rule_match_keys(rule)
 
     # Maintenance: advance stale next_dates so the review list never shows a
     # "next" occurrence in the past. (Forecasting already rolls forward the

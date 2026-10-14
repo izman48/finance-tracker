@@ -6,6 +6,21 @@ edits, skips the next one or marks income as payday. Card-repayment
 commitments are linked to their card so money counts once. Claude can update
 or dismiss commitments; those changes are held until the user keeps them.
 
+## Match keys
+
+Detection groups payments by a key normalised from the description
+(`_normalise_merchant`): pure digit runs, dates and tokens with a 6+ digit
+reference are dropped; short mixed tokens (`O2`, `MONZO123`) are kept.
+Two more rules (T-10-9): the bank's "ON dd MON" date phrase is dropped from
+every descriptor, and inside a PayPal descriptor (`PAYPAL …`, `PP*…`) any
+token with a digit is dropped, so "PAYPAL *SPOTIFY*P12A3B4 …" keys as
+`paypal spotify` every month. A PayPal descriptor with no merchant word left
+keeps its reference, so unrelated PayPal payments never share one key.
+Changing normalisation is a two-part change: `sync_suggestions` heals
+detected rules from their label, and `rule_match_keys` (stored key, that key
+re-normalised, label key) is what dedupes detection and matches payments, so
+a rule keyed under old rules is never suggested again.
+
 ## Code
 
 **API**:
@@ -37,7 +52,8 @@ helpers), `cadence.py`, `card_links.py`, `late_income.py`,
 
 **MCP**: `commitments`, `update_commitment`, `dismiss_commitment`.
 
-**Tests**: `api/tests/unit/test_commitment_dedupe.py`, `test_card_link.py`,
+**Tests**: `api/tests/unit/test_commitment_dedupe.py`,
+`test_paypal_match_key.py`, `test_paypal_commitments.py`, `test_card_link.py`,
 `test_analytics_service.py`; `api/tests/integration/test_commitment_writes_api.py`,
 `test_keep_commitment_api.py`, `test_card_link_api.py`,
 `test_claude_payday_dismissal.py`, `test_claude_payday_window.py`,

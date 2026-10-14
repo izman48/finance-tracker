@@ -63,8 +63,14 @@ the API's numbers. Nothing is stored.
 `assets_total`, `liabilities_total`, `asset_decomposition`), `services/analytics/projections.py`
 (surplus from the cashflow engine, honours Claude holds).
 
-**UI**: `/networth` (`NetWorthPage`; the balance sheet's "Loans and finance"
-group lists liabilities, see [liabilities.md](liabilities.md)), `PositionStrip` (its breakdown line
+**UI**: `/networth` (`NetWorthPage`; the balance sheet's groups, in order,
+are in `lib/balanceSheet.ts`: "Current accounts", "Savings", …, "Credit
+cards", "Loans and finance", each a `section` labelled by its heading
+(T-10-14c). "Credit cards" holds credit-role bank accounts only; a manual
+asset worth less than nothing sits in "Loans and finance" (`assetGroup`). Card rows (`components/wealth/CardRow.tsx`) show the statement
+from the summary's `statement` via `lib/cardStatement.ts`, shared with
+Cashflow; "Add statement" / "Add new" open card settings. "Loans and finance"
+lists liabilities, see [liabilities.md](liabilities.md)), `PositionStrip` (its breakdown line
 subtracts what is owed on liabilities), `AddAssetModal`,
 `UpdateAssetValueModal`, `AddToBalanceSheetChooser`, `lib/assets.ts`. Home
 Wealth card.

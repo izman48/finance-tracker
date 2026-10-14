@@ -15,10 +15,12 @@ const daysFromNow = (n) => iso(new Date(today.getTime() + n * 86400000))
 const accounts = [
   { id: 'a1', display_name: 'Monzo Current', provider_name: 'Monzo', account_type: 'TRANSACTION', role: 'spending', current_balance: 2140.55, credit_owed: null, overdraft_limit: 500, repayment_cadence: null, repayment_day: null, repayment_interval_months: null, repayment_anchor_date: null, repayment_strategy: null, repayment_installments: null, pay_from_account_id: null },
   { id: 'a2', display_name: 'Marcus Savings', provider_name: 'Goldman Sachs', account_type: 'SAVINGS', role: 'savings', current_balance: 8800, credit_owed: null, overdraft_limit: null, repayment_cadence: null, repayment_day: null, repayment_interval_months: null, repayment_anchor_date: null, repayment_strategy: null, repayment_installments: null, pay_from_account_id: null },
-  { id: 'a3', display_name: 'Amex Gold', provider_name: 'American Express', account_type: 'CREDIT_CARD', role: 'credit', current_balance: 642.31, credit_owed: 642.31, overdraft_limit: null, repayment_cadence: 'end_of_month', repayment_day: null, repayment_interval_months: null, repayment_anchor_date: null, repayment_strategy: 'full_balance', repayment_installments: null, pay_from_account_id: 'a1' },
+  { id: 'a3', display_name: 'Amex Gold', provider_name: 'American Express', account_type: 'CREDIT_CARD', role: 'credit', current_balance: 642.31, credit_owed: 642.31, overdraft_limit: null, repayment_cadence: 'end_of_month', repayment_day: null, repayment_interval_months: null, repayment_anchor_date: null, repayment_strategy: 'full_balance', repayment_installments: null, pay_from_account_id: 'a1',
+    // T-10-14: the card's statement (statement £500.00 due in 9 days, synthetic).
+    statement: { statement_balance: '500.00', due_date: daysFromNow(9), paid: false, missing: false } },
   // No repayment set up: not in the forecast, so Home, Cashflow and its
-  // settings show the D8 notice (T-10-12).
-  { id: 'a4', display_name: 'Harbor Card', provider_name: 'Harbor Bank', account_type: 'CREDIT_CARD', role: 'credit', current_balance: 180, credit_owed: 180, overdraft_limit: null, repayment_cadence: null, repayment_day: null, repayment_interval_months: null, repayment_anchor_date: null, repayment_strategy: null, repayment_installments: null, pay_from_account_id: null },
+  // settings show the D8 notice (T-10-12). No statement entered either.
+  { id: 'a4', display_name: 'Harbor Card', provider_name: 'Harbor Bank', account_type: 'CREDIT_CARD', role: 'credit', current_balance: 180, credit_owed: 180, overdraft_limit: null, repayment_cadence: null, repayment_day: null, repayment_interval_months: null, repayment_anchor_date: null, repayment_strategy: null, repayment_installments: null, pay_from_account_id: null, statement: null },
 ]
 
 const summary = {

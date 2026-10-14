@@ -91,6 +91,15 @@ describe('sample account — internal reconciliation', () => {
     expect(near(Number(s.total_owed), Number(s.credit_owed) + Number(s.liabilities_total))).toBe(true)
   })
 
+  it("the sample card's statement is the same bill as its next repayment (T-10-14)", () => {
+    const s: any = sampleResponse('/api/v1/analytics/summary', {})
+    const card = s.accounts.find((a: any) => a.role === 'credit')
+    const bill = s.next_repayments.find((r: any) => r.account_id === card.id)
+    expect(Number(card.statement.statement_balance)).toBe(Number(bill.amount))
+    expect(card.statement.due_date).toBe(bill.due_date)
+    expect(s.accounts.filter((a: any) => a.role !== 'credit').every((a: any) => !('statement' in a))).toBe(true)
+  })
+
   it('per-account credit_owed is positive and sums to the headline credit owed', () => {
     const s: any = sampleResponse('/api/v1/analytics/summary', {})
     const cards = s.accounts.filter((a: any) => a.role === 'credit')

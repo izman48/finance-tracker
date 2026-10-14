@@ -78,7 +78,7 @@ filter on Spending.
 
 | # | Answer |
 |---|---|
-| 1 Tables | `accounts`, `account_settings`, `repayment_schedule_items`, `card_statements`. |
+| 1 Tables | `accounts`, `account_settings`, `repayment_schedule_items`, `card_statements`. Migration `f0a2b4c6d8e0` (T-10-4b) cleared repayment fields on `spending`/`savings` rows, with the old values in the plaintext backup table `account_repayment_backup_t10_4b` (drop in a later sprint; the downgrade restores from it). |
 | 2 Purge | Yes, all four. |
 | 3 Deletion | Cascade via `bank_connections` → `accounts`; `card_statements` also cascades from `users` (tested with SQLite foreign keys on). |
 | 4 Demo mode | `/banking/accounts` served (no balances). **Gap**: repayments are in `KNOWN_DEMO_GAPS`. Statements have no UI caller yet; the card settings UI (T-10-6) adds them to the sample account. |

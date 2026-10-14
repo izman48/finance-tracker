@@ -33,6 +33,7 @@ from app.models import (
     CardStatement,
     CategoryRule,
     CommitmentRule,
+    Liability,
     OAuthAuthorizationCode,
     OAuthGrant,
     PlannedItem,
@@ -52,6 +53,8 @@ _OWNED_BY_USER = (
     AuditEntry,
     CategoryRule,
     RulePack,
+    # Before commitment_rules: a liability will reference its commitment (T-10-8).
+    Liability,
     CommitmentRule,
     PlannedItem,
     RepaymentScheduleItem,

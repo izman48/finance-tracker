@@ -397,6 +397,8 @@ def test_preview_is_a_read(client):
         ("post", "/api/v1/rules/apply"),
         ("post", "/api/v1/rules/packs"),
         ("get", "/api/v1/assets"),
+        ("get", "/api/v1/liabilities"),
+        ("post", "/api/v1/liabilities"),
         ("get", "/api/v1/analytics/net-worth-position"),
     ],
 )

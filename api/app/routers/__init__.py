@@ -4,6 +4,7 @@ from app.routers.banking import router as banking_router
 from app.routers.analytics import router as analytics_router
 from app.routers.rules import router as rules_router
 from app.routers.assets import router as assets_router
+from app.routers.liabilities import router as liabilities_router
 from app.routers.oauth import router as oauth_router, well_known_router
 from app.routers.audit import router as audit_router
 from app.routers.planning import router as planning_router
@@ -19,6 +20,7 @@ __all__ = [
     "analytics_router",
     "rules_router",
     "assets_router",
+    "liabilities_router",
     "oauth_router",
     "well_known_router",
     "audit_router",

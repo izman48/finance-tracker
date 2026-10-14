@@ -32,6 +32,7 @@ from app.models import (
     CardStatement,
     CategoryRule,
     CommitmentRule,
+    Liability,
     OAuthClient,
     OAuthGrant,
     PlannedItem,
@@ -62,7 +63,8 @@ BYSTANDER = "bystander@example.com"
 ENCRYPTED_TYPES = (UserEncryptedString, UserEncryptedDecimal, UserEncryptedToken)
 KNOWN_ENCRYPTED_TABLES = {
     "accounts", "asset_flows", "asset_valuations", "assets", "audit_entries",
-    "bank_connections", "budget_changes", "card_statements", "budget_cycle_snapshots", "budgets", "category_rules", "commitment_rules", "planned_items",
+    "bank_connections", "budget_changes", "budget_cycle_snapshots", "budgets", "card_statements", "category_rules",
+    "commitment_rules", "liabilities", "planned_items",
     "repayment_schedule_items", "transactions",
 }
 
@@ -158,6 +160,11 @@ def _seed_everything(db, user_id, dek) -> None:
                 amount=Decimal("600"), account_id=account.id, source_transaction_id=tx.id,
             ),
             WriteIdempotency(user_id=user_id, key="k-1", request_hash="h", audit_id=audit.id),
+            Liability(
+                user_id=user_id, kind="loan", lender="Example Bank", balance=Decimal("9000"),
+                balance_as_of=date(2026, 10, 1), apr=Decimal("11"), payment=Decimal("200"),
+                start_date=date(2026, 11, 1),
+            ),
         ])
         db.flush()
         budget = db.query(Budget).filter(Budget.user_id == user_id).one()
@@ -267,7 +274,7 @@ def test_reset_message_says_exactly_what_was_cleared(client, db_session):
     assert res.status_code == 200
     assert res.json()["message"] == (
         "Password updated. We deleted your bank data, commitments, planned events, rules "
-        "(shared rule pack links no longer work), assets and the history of changes made by "
+        "(shared rule pack links no longer work), assets, debts and the history of changes made by "
         "Claude, and disconnected Claude (MCP) access. Reconnect your bank to start again, "
         "and reconnect Claude if you use it."
     )
@@ -296,6 +303,7 @@ WEB_READ_ROUTES = [
     "/banking/sync-status",
     "/banking/status",
     "/assets",
+    "/liabilities",
     "/rules",
     "/rules/impact",
     "/audit",

@@ -2,7 +2,9 @@
 
 Each is a code plus string values; the UI words them from fixed templates.
 They describe the card's next repayment exactly as the forecast plans it
-(`repayment_events`), so a warning can't disagree with the forecast:
+(`repayment_events`), so a warning can't disagree with the forecast. While a
+commitment is tied to the card there are none (the forecast may pay that
+bill instead):
 
 - interest_cost: the next payment is less than what is still due on the
   statement, so the card charges interest. With an APR (effective yearly
@@ -19,11 +21,11 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy.orm import Session
 
-from app.models import Account, AccountRole, AccountSetting
+from app.models import Account, AccountRole, AccountSetting, CommitmentRule, CommitmentStatus
 
 from .common import _today, account_role
 from .forecast import get_forecast
-from .repayments import repayment_events
+from .repayments import cards_with_linked_bills, repayment_events
 from .statements import current_positions
 
 PENNY = Decimal("0.01")
@@ -40,6 +42,8 @@ def card_warnings(db: Session, user, account: Account, setting: AccountSetting |
     if setting is None or account_role(account, setting) != AccountRole.CREDIT:
         return []
     today = _today()
+    if _has_linked_bill(db, user, account, today):
+        return []
     events = [r for r in repayment_events(db, user, today, today + REACH) if r["account_id"] == str(account.id)]
     if not events:
         return []
@@ -59,6 +63,17 @@ def card_warnings(db: Session, user, account: Account, setting: AccountSetting |
     if breach is not None:
         warnings.append(breach)
     return warnings
+
+
+def _has_linked_bill(db: Session, user, account: Account, today: date) -> bool:
+    """A confirmed commitment is tied to this card, so the forecast may pay
+    that bill instead of the repayment (eng-b on #188; the same rule hides
+    next_payment). A warning would then describe a payment that isn't
+    planned, so there are none."""
+    confirmed = db.query(CommitmentRule).filter(
+        CommitmentRule.user_id == user.id, CommitmentRule.status == CommitmentStatus.CONFIRMED.value,
+    ).all()
+    return str(account.id) in cards_with_linked_bills(db, user, confirmed, today)
 
 
 def _interest(unpaid: Decimal, apr) -> dict:

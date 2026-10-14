@@ -59,7 +59,7 @@ worded by the UI, about the card's next repayment as the forecast plans it: `int
 (the payment is less than what is still due on the statement; with `card_apr` the monthly
 estimate is the unpaid part times (1 + APR)^(1/12) − 1, otherwise no figure), `late_fee_risk`
 (the payment falls after the statement's due date) and `overdraft_breach` (the forecast's own
-breach on the pay-from account by the payment date: past its limit, or below £0 with none).
+breach on the pay-from account by the payment date: past its limit, or below £0 with none). None while a commitment is tied to the card (the forecast may pay that bill instead, the same rule that hides `next_payment`).
 
 **Legacy settings** (stored before T-10-4a validated them): an unknown role
 reads as the account type's default, so a card stays credit; an unknown

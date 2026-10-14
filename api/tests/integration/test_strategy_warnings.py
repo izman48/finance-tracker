@@ -189,3 +189,26 @@ def test_card_apr_is_encrypted_at_rest(alice, db_session):
     _settings(alice, role="credit", card_apr="19.90")
     raw = db_session.execute(text("SELECT card_apr FROM account_settings WHERE card_apr IS NOT NULL")).scalar()
     assert raw and "19.9" not in raw
+
+
+def test_no_warnings_while_a_linked_card_bill_is_counted_instead(alice, db_session):
+    """eng-b on #188: while a commitment is tied to the card, the forecast
+    may pay that bill instead of the repayment (same rule as next_payment),
+    so warnings about the repayment would describe a payment that isn't
+    planned. Repro: fixed £300 at 24% APR with a linked £5,500 card bill."""
+    from app.models import CommitmentRule
+
+    alice.add()
+    with alice.key():
+        db_session.add(CommitmentRule(
+            user_id=alice.user_id, direction="expense", label="Card bill", amount=Decimal("5500"),
+            cadence="monthly", next_date=DUE, source="manual", status="confirmed",
+            card_account_id=alice.card_id, card_link_source="user",
+        ))
+        db_session.commit()
+
+    warnings = _plan(alice, repayment_strategy="fixed", repayment_fixed_amount="300", repayment_cadence="card_due_date",
+                     card_apr="24.00")
+
+    assert warnings == []
+    assert alice.get().json()["warnings"] == []

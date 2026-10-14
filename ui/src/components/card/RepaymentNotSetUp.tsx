@@ -35,3 +35,30 @@ export function RepaymentNotSetUpBanner({ account }: { account: SummaryAccount }
     </Link>
   )
 }
+
+/** Home: one notice whatever the number of cards (ux on #193). One card is
+ *  the single row above; several share one card, each name its own link. */
+export function RepaymentNotSetUpNotice({ accounts }: { accounts: SummaryAccount[] }) {
+  if (accounts.length === 0) return null
+  if (accounts.length === 1) return <RepaymentNotSetUpBanner account={accounts[0]} />
+  return (
+    <div className="mb-6 card px-4 py-3 text-sm text-slate-200">
+      <p className="flex items-center gap-2">
+        <CircleAlert className="w-4 h-4 text-warn shrink-0" />
+        Repayment not set up on {accounts.length} cards, so they aren't in your forecast.
+      </p>
+      <ul className="mt-1 flex flex-wrap gap-x-4">
+        {accounts.map((a) => (
+          <li key={a.id} className="min-w-0">
+            <Link
+              to={cardSettingsPath(a.id)}
+              className="inline-flex items-center min-h-[44px] text-accent hover:underline break-words"
+            >
+              Set up {a.display_name}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}

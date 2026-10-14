@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Clock, Landmark, Plug, RefreshCw } from 'lucide-react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Area,
   AreaChart,
@@ -14,6 +15,7 @@ import { assetsAPI, analyticsAPI, bankingAPI, liabilitiesAPI, Asset, AssetDecomp
 import { BankStatus, CashflowSummary, SummaryAccount } from '../types'
 import { ASSET_TYPE_LABEL, latestValue, isLiabilityType } from '../lib/assets'
 import { gbp0 as gbp, timeAgo } from '../lib/format'
+import { settingsAccountFor } from '../lib/credit'
 import { bothCounted, LOANS_GROUP_LABEL } from '../lib/liabilities'
 import LiabilityRow, { BothCountedNotice, LoansLoadError } from '../components/wealth/LiabilityRow'
 import LiabilityForm from '../components/wealth/LiabilityForm'
@@ -152,6 +154,8 @@ export default function NetWorthPage() {
   const [updating, setUpdating] = useState<Asset | null>(null)
   const [settingsAccount, setSettingsAccount] = useState<SummaryAccount | null>(null)
   const confirm = useConfirm()
+  const location = useLocation()
+  const navigate = useNavigate()
 
   const revealRef = useReveal(!loading)
 
@@ -206,6 +210,16 @@ export default function NetWorthPage() {
     setMonths(m)
     await load(m)
   }
+
+  // A "Set up repayment" link (T-10-12) names a card in ?settings=: open its
+  // settings once the summary holds it, then drop the parameter so a reload
+  // or a save doesn't reopen it. An unknown id opens nothing.
+  useEffect(() => {
+    if (!summary || !new URLSearchParams(location.search).has('settings')) return
+    const linked = settingsAccountFor(location.search, summary.accounts)
+    if (linked) setSettingsAccount(linked)
+    navigate({ search: '' }, { replace: true })
+  }, [summary, location.search, navigate])
 
   // Default the contribution from "savable" once the summary lands, unless the
   // user has already set their own figure.

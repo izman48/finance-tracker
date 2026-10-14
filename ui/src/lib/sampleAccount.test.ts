@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { sampleResponse } from './sampleAccount'
+import { cardsWithoutRepayment } from './credit'
 
 // The sample account's whole value is that it looks like a REAL working app:
 // every headline reconciles to the transactions behind it. These guard that.
@@ -51,6 +52,12 @@ describe('sample account — internal reconciliation', () => {
     })
     const sum = list.items.reduce((s: number, t: any) => s + Math.abs(t.amount), 0)
     expect(near(sum, Number(purchases.total_spent))).toBe(true)
+  })
+
+  it('T-10-12: the sample card owes money and has a repayment set up, so no D8 notice shows', () => {
+    const s: any = sampleResponse('/api/v1/analytics/summary', {})
+    expect(s.accounts.some((a: any) => a.role === 'credit' && Number(a.credit_owed) > 0)).toBe(true)
+    expect(cardsWithoutRepayment(s.accounts)).toEqual([])
   })
 
   it('net worth = cash + savings + assets − credit owed − liabilities (balance sheet reconciles)', () => {

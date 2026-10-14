@@ -17,9 +17,9 @@ export const EXPLAIN = {
   overdraftCushion:
     'The total arranged overdraft across your spending accounts. Shown as a safety net only — it’s never added to “safe to spend”.',
   creditOwed:
-    'The combined balance across your credit cards. The repayments listed come from each card’s repayment schedule (full balance or installments — configurable per card).',
+    'What you owe across your credit cards. Each card is repaid the way its settings say: the statement balance, the full balance, a fixed amount or instalments. A card with no repayment set up isn’t in your forecast.',
   netWorth:
-    'Available cash + savings + other assets you’ve added manually, minus what you owe on credit.',
+    'Your cash, savings and the assets you’ve added, minus what you owe. What you owe is your credit cards plus your loans and finance.',
   spentSincePayday:
     'Everything spent since your last payday: money out of spending accounts plus new purchases on credit cards. Internal transfers and card repayments are excluded, so paying off a card never double-counts.',
   spentInPeriod:

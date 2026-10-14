@@ -14,7 +14,8 @@ import {
 import { bankingAPI, analyticsAPI, Nudge } from '../services/api'
 import { BankStatus, CashflowSummary, Commitment, PlannedItem } from '../types'
 import { money as formatCurrency, dateDayMonth as formatDate, timeAgo } from '../lib/format'
-import { cardsOwing, creditAmount } from '../lib/credit'
+import { cardsOwing, creditAmount, repaymentNotSetUp } from '../lib/credit'
+import { RepaymentNotSetUpLine } from '../components/card/RepaymentNotSetUp'
 import ForecastChart from '../components/ForecastChart'
 import NudgeFeed, { UiNudge } from '../components/NudgeFeed'
 import AnimatedNumber from '../components/ui/AnimatedNumber'
@@ -262,7 +263,7 @@ export default function DashboardPage() {
               <div className="stat-figure text-5xl sm:text-6xl text-slate-50">
                 <AnimatedNumber value={totalCash} />
               </div>
-              <div className="text-sm text-slate-500 mt-2">
+              <div className="text-sm text-slate-400 mt-2">
                 across {cashAccounts.length} account{cashAccounts.length !== 1 ? 's' : ''}
                 {creditAccounts.length > 0 && (
                   <> · {formatCurrency(summary.credit_owed)} owed on {creditAccounts.length} card{creditAccounts.length !== 1 ? 's' : ''}</>
@@ -276,11 +277,12 @@ export default function DashboardPage() {
                   <div key={a.id} className="flex items-center justify-between gap-3 px-2 py-2.5">
                     <div className="min-w-0">
                       <div className="text-sm text-slate-200 truncate">{a.display_name}</div>
-                      <div className="text-xs text-slate-500 truncate">
+                      <div className="text-xs text-slate-400 truncate">
                         {a.provider_name}
                         {a.role === 'savings' && ' · Savings'}
                         {a.role === 'credit' && ' · Credit'}
                       </div>
+                      {repaymentNotSetUp(a) && <RepaymentNotSetUpLine account={a} />}
                     </div>
                     <div
                       className={`font-semibold tnum shrink-0 ${

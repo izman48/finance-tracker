@@ -16,13 +16,16 @@ const accounts = [
   { id: 'a1', display_name: 'Monzo Current', provider_name: 'Monzo', account_type: 'TRANSACTION', role: 'spending', current_balance: 2140.55, credit_owed: null, overdraft_limit: 500, repayment_cadence: null, repayment_day: null, repayment_interval_months: null, repayment_anchor_date: null, repayment_strategy: null, repayment_installments: null, pay_from_account_id: null },
   { id: 'a2', display_name: 'Marcus Savings', provider_name: 'Goldman Sachs', account_type: 'SAVINGS', role: 'savings', current_balance: 8800, credit_owed: null, overdraft_limit: null, repayment_cadence: null, repayment_day: null, repayment_interval_months: null, repayment_anchor_date: null, repayment_strategy: null, repayment_installments: null, pay_from_account_id: null },
   { id: 'a3', display_name: 'Amex Gold', provider_name: 'American Express', account_type: 'CREDIT_CARD', role: 'credit', current_balance: 642.31, credit_owed: 642.31, overdraft_limit: null, repayment_cadence: 'end_of_month', repayment_day: null, repayment_interval_months: null, repayment_anchor_date: null, repayment_strategy: 'full_balance', repayment_installments: null, pay_from_account_id: 'a1' },
+  // No repayment set up: not in the forecast, so Home, Cashflow and its
+  // settings show the D8 notice (T-10-12).
+  { id: 'a4', display_name: 'Harbor Card', provider_name: 'Harbor Bank', account_type: 'CREDIT_CARD', role: 'credit', current_balance: 180, credit_owed: 180, overdraft_limit: null, repayment_cadence: null, repayment_day: null, repayment_interval_months: null, repayment_anchor_date: null, repayment_strategy: null, repayment_installments: null, pay_from_account_id: null },
 ]
 
 const summary = {
   available_cash: 2140.55,
   overdraft_cushion: 500,
-  credit_owed: 642.31,
-  net_worth: 10298.24,
+  credit_owed: 822.31,
+  net_worth: 10118.24,
   committed_before_payday: 893.4,
   safe_to_spend: 1247.15,
   savable: 410,
@@ -243,6 +246,7 @@ const routes = [
   ['**/api/v1/banking/sync/accounts', { synced: true, accounts: [] }],
   ['**/api/v1/banking/sync/transactions', { synced: true, count: 0 }],
   ['**/api/v1/rules', rules],
+  ['**/api/v1/analytics/accounts/a4/statements', statementStates.empty],
   ['**/api/v1/oauth/authorize/details*', { client_name: 'Claude Code', redirect_host: 'localhost:33418', requested_scopes: ['finance:read'] }],
 ]
 
@@ -313,6 +317,16 @@ for (const [vpName, viewport] of viewports) {
       console.log(`shot card-statement-${state}-${vpName}`)
       await page.unroute('**/api/v1/analytics/accounts/a3/statements')
     }
+  }
+  // T-10-12: Home's notice opens that card's settings on Wealth.
+  if (vpName === 'desktop' || vpName === 'mobile') {
+    await page.goto(`${BASE}/home`, { waitUntil: 'networkidle' })
+    await page.getByRole('link', { name: /Harbor Card/ }).click()
+    await page.getByRole('dialog', { name: 'Harbor Card' }).waitFor()
+    if (new URL(page.url()).search) errors.push(`[${vpName}] settings link left ${page.url()}`)
+    await page.waitForTimeout(400)
+    await page.screenshot({ path: `${OUT}/card-not-set-up-${vpName}.png`, fullPage: true })
+    console.log(`shot card-not-set-up-${vpName}`)
   }
   // The loan form (T-10-10b): edit a linked loan, add one, and the
   // "Which bill is this?" step after a 409 choose_commitment.

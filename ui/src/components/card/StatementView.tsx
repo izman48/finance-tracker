@@ -13,6 +13,8 @@ export interface StatementViewProps {
   data: CardStatements | null
   /** Money owed now (the API's credit_owed), for the empty and missing states. */
   currentBalance: string
+  /** No repayment set up (T-10-12): the forecast plans nothing for it. */
+  notInForecast?: boolean
   providerName: string
   /** The radio picked in the conflict pair (defaults to the one in use). */
   choice?: string
@@ -73,7 +75,9 @@ function Body(props: StatementViewProps) {
       <div>
         <p className="text-sm text-slate-300 mb-2">
           No statement entered yet.{' '}
-          {owes(props.currentBalance)
+          {props.notInForecast
+            ? ''
+            : owes(props.currentBalance)
             ? `Until you add one, nilu plans to pay your full current balance of ${pounds(props.currentBalance)} on the card's next payment date.`
             : 'nilu has no balance to plan for this card yet.'}
         </p>

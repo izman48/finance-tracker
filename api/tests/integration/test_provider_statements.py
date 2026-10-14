@@ -287,3 +287,17 @@ def test_the_coverage_line_is_emitted_in_production(bank):
     assert coverage_logger.isEnabledFor(logging.INFO)
     handlers = [h for h in coverage_logger.handlers if h.level <= logging.INFO]
     assert handlers, "the coverage logger needs its own handler"
+
+
+def test_a_failure_working_out_the_coverage_booleans_never_stops_the_sync(bank, monkeypatch, caplog):
+    """sec on #187: the coverage line must not be able to fail a sync."""
+    def boom(*args, **kwargs):
+        raise RuntimeError("injected")
+
+    caplog.set_level(logging.INFO)
+    monkeypatch.setattr("app.services.truelayer.statement_owes", boom)
+
+    account = bank.sync()
+
+    assert account.current_balance == Decimal("6000.00")
+    assert _coverage_line(caplog).endswith("statement_owes=False stored=True")

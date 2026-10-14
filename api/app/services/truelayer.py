@@ -582,15 +582,22 @@ class TrueLayerService:
         """Keep the statement the card balance response carries (T-10-2). A
         failure here never stops the sync, and logs the exception type only."""
         db.flush()  # a new card needs its id; outside the savepoint so it is kept
-        stored = False
+        stored = owes = False
         try:
             with db.begin_nested():
                 stored = store_provider_statement(db, account, balance)
         except Exception as e:
             logger.warning("Could not keep a card statement: %s", type(e).__name__)
-        log_statement_field_coverage(
-            bank_connection.provider_id, balance, statement_owes(account, balance), stored,
-        )
+        # The coverage line must never fail a sync (sec on #187): a failure
+        # working out a boolean reports it as False; the line still goes out.
+        try:
+            owes = statement_owes(account, balance)
+        except Exception as e:
+            logger.warning("Could not check the card statement's sign: %s", type(e).__name__)
+        try:
+            log_statement_field_coverage(bank_connection.provider_id, balance, owes, stored)
+        except Exception as e:
+            logger.warning("Could not log card statement coverage: %s", type(e).__name__)
 
     async def sync_transactions(
         self, bank_connection: BankConnection, db: Session, days: int = 90, skip_token_refresh: bool = False,

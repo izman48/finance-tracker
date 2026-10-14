@@ -18,7 +18,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.models import AuditEntry, CommitmentRule, Transaction
+from app.models import Account, AccountSetting, AuditEntry, BankConnection, CommitmentRule, Transaction
 from app.services.analytics.common import _add_months
 from tests.clock import TODAY
 from tests.integration.test_commitment_writes_api import World as ClaudeWorld
@@ -52,7 +52,26 @@ class World(ClaudeWorld):
 
     def snapshot(self, rule_id):
         r = self.rule(rule_id)
-        return (r.label, r.amount, r.cadence, r.interval_days, r.next_date, r.status, r.ends_on)
+        return (r.label, r.amount, r.cadence, r.interval_days, r.next_date, r.status, r.ends_on, r.card_account_id)
+
+    def amex_card(self, owed="1500.00") -> uuid.UUID:
+        """An Amex card with a full-balance repayment plan (Amex owed is positive)."""
+        with self.as_user():
+            conn = BankConnection(user_id=self.user.id, provider_id="ob-amex", provider_name="AMEX",
+                                  access_token="t", refresh_token="r")
+            self.db.add(conn)
+            self.db.flush()
+            card = Account(user_id=self.user.id, bank_connection_id=conn.id, external_id=f"amex-{uuid.uuid4()}",
+                           provider_name="AMEX", account_type="CREDIT_CARD", display_name="Amex Gold",
+                           current_balance=Decimal(owed))
+            self.db.add(card)
+            self.db.flush()
+            self.db.add(AccountSetting(user_id=self.user.id, account_id=card.id, role="credit",
+                                       repayment_strategy="full_balance", repayment_cadence="monthly",
+                                       repayment_day=NEXT.day))
+            card_id = card.id
+            self.db.commit()
+            return card_id
 
 
 @pytest.fixture
@@ -65,6 +84,7 @@ def world(client, db_session):
 # --------------------------------------------------------------------------- #
 @pytest.mark.parametrize("change", [
     {"amount": "150.00"},
+    {"card_account_id": "CARD"},
     {"cadence": "weekly"},
     {"interval_days": 14},
     {"next_date": (TODAY + timedelta(days=20)).isoformat()},
@@ -72,6 +92,8 @@ def world(client, db_session):
 ])
 def test_a_web_edit_of_a_linked_commitment_is_409_and_writes_nothing(world, change):
     bill = world.linked_bill()
+    if change.get("card_account_id") == "CARD":
+        change = {"card_account_id": str(world.amex_card())}
     before = world.snapshot(bill)
     res = world.patch(bill, **change)
     assert res.status_code == 409
@@ -126,10 +148,15 @@ def test_marking_a_payment_recurring_cannot_rewrite_a_linked_bill(world):
     {"cadence": "weekly"},
     {"next_date": (TODAY + timedelta(days=20)).isoformat()},
     {"status": "confirmed"},
+    # sec on #183: tying the loan's bill to a card would let the card's
+    # repayment replace it in safe-to-spend.
+    {"card_account_id": "CARD"},
 ])
 @pytest.mark.parametrize("dry_run", [True, False])
 def test_claude_cannot_change_a_linked_commitment(world, change, dry_run):
     bill = world.linked_bill()
+    if change.get("card_account_id") == "CARD":
+        change = {"card_account_id": str(world.amex_card())}
     before, audits = world.snapshot(bill), world.audit_count()
     res = world.update(bill, dry_run=dry_run, **change)
     assert res.status_code == 409
@@ -171,7 +198,7 @@ def test_detection_never_suggests_a_linked_repayment_again(world):
     with world.as_user():
         account = _account(world.db, world.user.id, name="Current")
         for n, months_back in enumerate((3, 2, 1)):
-            when = _add_months(TODAY, -months_back)
+            when = _add_months(NEXT, -months_back)  # the loan's own payment day
             world.db.add(Transaction(
                 account_id=account.id, external_id=f"tx-loan-{n}", transaction_type="debit",
                 amount=Decimal("200.00"), description="EXAMPLE BANK LOAN",
@@ -208,3 +235,52 @@ def test_nothing_is_counted_twice_after_the_guards(world):
     world.linked_bill()
     commitments = world.db.query(CommitmentRule).filter(CommitmentRule.user_id == world.user.id).count()
     assert commitments == 1
+
+
+def test_a_loan_from_american_express_still_counts_beside_the_amex_card(world):
+    # sec on #183: the bill a liability creates is labelled with the lender,
+    # and "American Express ..." is an Amex repayment descriptor. It must
+    # never be tied to the card, or the card's (larger) repayment would
+    # replace it in safe-to-spend and the forecast.
+    world.amex_card(owed="1500.00")
+    with world.as_user():
+        _account(world.db, world.user.id, name="Current", balance="5000")  # so safe-to-spend isn't floored at £0
+    before = world.summary()
+    bill = uuid.UUID(world.loan(lender="American Express")["linked_commitment"]["id"])
+    after = world.summary()
+
+    assert world.rule(bill).card_account_id is None
+    assert Decimal(after["committed_before_payday"]) - Decimal(before["committed_before_payday"]) == Decimal("200.00")
+    assert Decimal(before["safe_to_spend"]) - Decimal(after["safe_to_spend"]) == Decimal("200.00")
+    f = world.client.get(f"{API}/analytics/forecast?horizon=90", headers=_bearer(world.web)).json()
+    labels = [e["label"] for p in f["timeline"] for e in p["events"]]
+    assert labels.count("American Express") == 3 and "Amex Gold" in labels
+
+
+def test_a_linked_bill_tied_to_a_card_before_this_change_is_still_counted(world):
+    # Backstop: a stored tie (from before the guard) is ignored for a linked bill.
+    card_id = world.amex_card(owed="1500.00")
+    bill = world.linked_bill()
+    before = Decimal(world.summary()["committed_before_payday"])
+    with world.as_user():
+        rule = world.db.get(CommitmentRule, bill)
+        rule.card_account_id, rule.card_link_source = card_id, "user"
+        world.db.commit()
+    assert Decimal(world.summary()["committed_before_payday"]) == before
+
+
+def test_an_unrelated_bill_of_the_same_amount_is_still_suggested(world):
+    # sec on #183 (medium): only payments on the repayment's own day are the loan.
+    world.linked_bill()  # £200 a month, next payment on NEXT
+    with world.as_user():
+        account = _account(world.db, world.user.id, name="Current")
+        for n, months_back in enumerate((3, 2, 1)):
+            when = _add_months(TODAY, -months_back) - timedelta(days=12)  # a different day of the month
+            world.db.add(Transaction(
+                account_id=account.id, external_id=f"tx-nursery-{n}", transaction_type="debit",
+                amount=Decimal("200.00"), description="NURSERY FEES",
+                transaction_date=datetime(when.year, when.month, when.day, tzinfo=timezone.utc),
+            ))
+        world.db.commit()
+    rules = world.client.get(f"{API}/analytics/commitments", headers=_bearer(world.web)).json()
+    assert [r["label"] for r in rules if r["status"] == "suggested"] == ["NURSERY FEES"]

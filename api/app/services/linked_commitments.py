@@ -15,7 +15,11 @@ from sqlalchemy.orm import Session
 
 from app.models import Liability
 
-GUARDED_FIELDS = frozenset({"amount", "cadence", "interval_days", "interval_months", "next_date", "status"})
+# `card_account_id` too (sec on #183): tying the bill to a card would let the
+# card's larger repayment replace it in safe-to-spend and the forecast.
+GUARDED_FIELDS = frozenset({
+    "amount", "cadence", "interval_days", "interval_months", "next_date", "status", "card_account_id",
+})
 LINKED_DETAIL = {
     "code": "linked_to_liability",
     "message": "This payment follows your loan. Change it on Wealth, under Loans and finance.",

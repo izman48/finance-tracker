@@ -27,10 +27,15 @@ A commitment that carries a liability's repayment (`Liability.linked_commitment_
 changes only through the liability. The web `PATCH` and skip,
 mark-as-recurring, Claude's `update_commitment` and `dismiss_commitment`
 (dry run or not, nothing audited) and undoing an earlier Claude change
-return 409 `linked_to_liability` for amount, cadence, interval, next date and
-status (`services/linked_commitments.py`). Renaming stays open. The list
-marks such rows `linked_liability: true`. `sync_suggestions` never suggests
-an expense with the same amount and cadence as a linked repayment.
+return 409 `linked_to_liability` for amount, cadence, interval, next date,
+status and `card_account_id` (`services/linked_commitments.py`). Renaming
+stays open. A linked repayment is never tied to a card: `link_card_commitments`
+skips it (a lender named "American Express" is not an Amex repayment) and
+`_card_ties` ignores any stored link, so a card's repayment can never replace
+it in safe-to-spend. The list marks such rows `linked_liability: true`.
+`sync_suggestions` never suggests an expense with the same amount and
+cadence as a linked repayment *and* a payment date within 3 days of it; an
+unrelated bill of the same amount on another day is still suggested.
 
 ## Code
 

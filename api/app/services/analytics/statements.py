@@ -116,12 +116,16 @@ MAX_DAYS_TO_DUE = 60
 MAX_STATEMENT_AGE_DAYS = 400  # a little over a year of statements
 
 
-def check_statement(statement_balance, statement_date: date, due_date: date, minimum_due, today: date) -> None:
+def check_statement(
+    statement_balance, statement_date: date, due_date: date, minimum_due, today: date, *, new_date: bool = True,
+) -> None:
     """Rules that need today or the whole statement (S-5). Raises ValueError
-    with a message the user can act on."""
+    with a message the user can act on. The age limit applies only to a
+    statement date the user sends (`new_date`), so an old statement that has
+    aged past it stays editable."""
     if statement_date > today:
         raise ValueError("The statement date can't be in the future.")
-    if statement_date < today - timedelta(days=MAX_STATEMENT_AGE_DAYS):
+    if new_date and statement_date < today - timedelta(days=MAX_STATEMENT_AGE_DAYS):
         raise ValueError("The statement date can't be more than 400 days ago.")
     if not statement_date <= due_date <= statement_date + timedelta(days=MAX_DAYS_TO_DUE):
         raise ValueError("The due date must be on or after the statement date, and no more than 60 days after it.")

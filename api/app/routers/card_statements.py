@@ -98,7 +98,8 @@ def update_statement(
         raise HTTPException(status_code=422, detail="A statement needs a balance.")
     if merged["statement_date"] is None or merged["due_date"] is None:
         raise HTTPException(status_code=422, detail="A statement needs a statement date and a due date.")
-    _check(merged["statement_balance"], merged["statement_date"], merged["due_date"], merged["minimum_due"])
+    _check(merged["statement_balance"], merged["statement_date"], merged["due_date"], merged["minimum_due"],
+           new_date=merged["statement_date"] != statement.statement_date)
     for field, value in merged.items():
         setattr(statement, field, value)
     _commit_or_409(db)
@@ -142,9 +143,9 @@ def _owned_statement(db: Session, user, account: Account, statement_id: uuid.UUI
     return statement
 
 
-def _check(statement_balance, statement_date, due_date, minimum_due) -> None:
+def _check(statement_balance, statement_date, due_date, minimum_due, new_date: bool = True) -> None:
     try:
-        check_statement(statement_balance, statement_date, due_date, minimum_due, _today())
+        check_statement(statement_balance, statement_date, due_date, minimum_due, _today(), new_date=new_date)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
 

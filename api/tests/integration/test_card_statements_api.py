@@ -368,3 +368,25 @@ def test_delete_account_removes_the_users_statements_and_keeps_others(alice, bob
     db_session.expire_all()
     left = db_session.execute(text("SELECT user_id FROM card_statements")).scalars().all()
     assert [uuid.UUID(str(u)) for u in left] == [bob.user_id]
+
+
+def test_an_old_statement_stays_editable_but_cannot_be_moved_further_back(alice, db_session):
+    """The 400-day rule applies to the statement date the user sends, not to a
+    statement that has aged past it."""
+    old = TODAY - timedelta(days=450)
+    with alice.key():
+        statement = CardStatement(
+            user_id=alice.user_id, account_id=alice.card_id, statement_date=old,
+            due_date=old + timedelta(days=25), statement_balance=Decimal("100"), source="manual",
+        )
+        db_session.add(statement)
+        db_session.commit()
+        statement_id = statement.id
+
+    edited = alice.client.patch(alice.url(statement_id=statement_id), json={"statement_balance": "120.00"},
+                                headers=alice.headers)
+    moved = alice.client.patch(alice.url(statement_id=statement_id),
+                               json={"statement_date": (old - timedelta(days=1)).isoformat()}, headers=alice.headers)
+
+    assert edited.status_code == 200, edited.text
+    assert moved.status_code == 422

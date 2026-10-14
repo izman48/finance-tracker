@@ -37,6 +37,9 @@ const AMOUNT_ERROR = 'Enter an amount above £0 and up to £1,000,000, like 5584
 const MINIMUM_ERROR = 'Enter an amount above £0, or leave this blank.'
 const FUTURE_ERROR = "The statement date can't be in the future."
 const NO_STATEMENT_DATE = 'Enter the date on your statement.'
+const TOO_OLD = "The statement date can't be more than 400 days ago."
+const MINIMUM_OVER = "The minimum payment can't be more than the statement balance."
+const MAX_AGE_DAYS = 400
 const NO_DUE_DATE = 'Enter the due date on your statement.'
 const DUE_ERROR = 'The due date must be on or after the statement date, and no more than 60 days after it.'
 
@@ -65,18 +68,33 @@ function daysBetween(from: string, to: string): number {
   return Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000)
 }
 
-/** The same rules the API enforces (422), checked before anything is sent. */
-export function validateStatementForm(form: StatementForm, today: string): StatementErrors {
+/** Today as the API counts it (UTC), so a date the client accepts is never
+ *  refused by the API just after midnight in BST. */
+export function apiToday(now: Date = new Date()): string {
+  return now.toISOString().slice(0, 10)
+}
+
+/** The same rules the API enforces (422), checked before anything is sent.
+ *  `storedDate`: when editing, the 400-day rule applies only to a changed
+ *  statement date, as in the API. */
+export function validateStatementForm(form: StatementForm, today: string, storedDate?: string): StatementErrors {
   const errors: StatementErrors = {}
   if (!amountOk(form.statement_balance.trim())) errors.statement_balance = AMOUNT_ERROR
   if (!form.statement_date) errors.statement_date = NO_STATEMENT_DATE
   else if (form.statement_date > today) errors.statement_date = FUTURE_ERROR
+  else if (form.statement_date !== storedDate && daysBetween(form.statement_date, today) > MAX_AGE_DAYS) {
+    errors.statement_date = TOO_OLD
+  }
   if (!form.due_date) errors.due_date = NO_DUE_DATE
   else if (form.statement_date) {
     const gap = daysBetween(form.statement_date, form.due_date)
     if (gap < 0 || gap > MAX_DAYS_TO_DUE) errors.due_date = DUE_ERROR
   }
-  if (form.minimum_due.trim() && !amountOk(form.minimum_due.trim())) errors.minimum_due = MINIMUM_ERROR
+  const minimum = form.minimum_due.trim()
+  if (minimum && !amountOk(minimum)) errors.minimum_due = MINIMUM_ERROR
+  else if (minimum && !errors.statement_balance && Number(minimum) > Number(form.statement_balance)) {
+    errors.minimum_due = MINIMUM_OVER
+  }
   return errors
 }
 
@@ -106,8 +124,9 @@ export type SaveOutcome =
 /** Add, or edit `editingId`. Nothing is sent when the form is invalid. */
 export async function saveStatement(
   client: StatementClient, accountId: string, form: StatementForm, editingId: string | null, today: string,
+  storedDate?: string,
 ): Promise<SaveOutcome> {
-  const errors = validateStatementForm(form, today)
+  const errors = validateStatementForm(form, today, storedDate)
   if (Object.keys(errors).length) return { kind: 'invalid', errors }
   try {
     const body = statementBody(form)

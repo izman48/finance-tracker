@@ -9,6 +9,7 @@ import {
   statementBody,
   statementSentence,
   validateStatementForm,
+  apiToday,
   type StatementForm,
 } from './statements'
 import type { CardStatements } from '../services/api'
@@ -89,6 +90,22 @@ describe('validateStatementForm (C-4, C-5)', () => {
     expect(validateStatementForm({ ...valid, due_date: '' }, TODAY)).toEqual({
       due_date: 'Enter the due date on your statement.',
     })
+  })
+
+  it('eng-b on #184: mirrors the API on a minimum above the balance and a date over 400 days old', () => {
+    expect(validateStatementForm({ ...valid, minimum_due: '5000.01' }, TODAY)).toEqual({
+      minimum_due: "The minimum payment can't be more than the statement balance.",
+    })
+    const old = { ...valid, statement_date: '2025-09-01', due_date: '2025-09-25' }
+    expect(validateStatementForm(old, TODAY)).toEqual({
+      statement_date: "The statement date can't be more than 400 days ago.",
+    })
+    // An old statement stays editable while its date is unchanged (as the API).
+    expect(validateStatementForm(old, TODAY, '2025-09-01')).toEqual({})
+  })
+
+  it("uses the API's day (UTC), so the client never passes a date the API refuses", () => {
+    expect(apiToday(new Date('2026-10-14T23:30:00Z'))).toBe('2026-10-14')
   })
 
   it('refuses a bad minimum, but a blank one is fine', () => {

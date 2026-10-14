@@ -8,6 +8,7 @@ import {
   pickStatement,
   removeStatement,
   saveStatement,
+  apiToday,
   type StatementErrors,
   type StatementForm as Form,
 } from '../../lib/statements'
@@ -19,10 +20,9 @@ import StatementView, { type StatementStatus } from './StatementView'
  *  provider statements. The rules and copy live in lib/statements (tested);
  *  this wires them to the API, the confirm dialog, toasts and focus. A 404
  *  is reported up so the modal disables Save (C-21). */
-type Editing = { mode: 'add' | 'edit'; statementId: string | null; replacingProvider: boolean }
+type Editing = { mode: 'add' | 'edit'; statementId: string | null; replacingProvider: boolean; storedDate?: string }
 
 const EMPTY: Form = { statement_balance: '', statement_date: '', due_date: '', minimum_due: '' }
-const localToday = () => new Date().toLocaleDateString('en-CA') // YYYY-MM-DD, the user's own day
 /** Focus the first of these that is on screen, after React has rendered
  *  (ux on #184: focus returns to the control that opened the form or confirm). */
 const focusLater = (...ids: string[]) =>
@@ -84,7 +84,7 @@ export default function StatementBlock({
   }
   const openEdit = (statement: CardStatement) => {
     const { form: values, replacingProvider } = editFormFor(statement)
-    open({ mode: 'edit', statementId: statement.id, replacingProvider }, values)
+    open({ mode: 'edit', statementId: statement.id, replacingProvider, storedDate: statement.statement_date }, values)
   }
   const close = () => setEditing(null)
   const cancel = () => {
@@ -96,7 +96,7 @@ export default function StatementBlock({
   const submit = async () => {
     if (!editing) return
     setBusy('saving')
-    const outcome = await saveStatement(analyticsAPI, accountId, form, editing.statementId, localToday())
+    const outcome = await saveStatement(analyticsAPI, accountId, form, editing.statementId, apiToday(), editing.storedDate)
     setBusy(null)
     if (outcome.kind === 'invalid') {
       setErrors(outcome.errors)

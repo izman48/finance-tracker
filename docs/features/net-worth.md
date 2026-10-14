@@ -39,9 +39,9 @@ from one function, `net_worth.liabilities_total`: the summary
 balance from the earlier of its start date and its as-of date, so adding a
 loan that started earlier shifts the whole series instead of showing a drop
 that month. The projection carries it as its own `liabilities` component
-(`assets` stays the manual assets) and keeps it flat until the repayment is
-linked (T-10-8): nothing yet says the payment leaves the bank, so the debt
-isn't paid down either (overstates debt). The decomposition is
+(`assets` stays the manual assets). A linked liability follows its schedule
+(its repayment is in the cashflow as the commitment); an unlinked one stays
+flat, since nothing says a payment leaves the bank (overstates debt). The decomposition is
 manual-asset movement only, so a liability doesn't change it. A `loan` or
 `other_liability` asset is replaced only through the id the user picked
 (`replaces_asset_id` on `POST /api/v1/liabilities`, one transaction, the

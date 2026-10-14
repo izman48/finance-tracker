@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.models import AccountRole, Asset, AssetFlow, AssetValuation, Liability, Transaction
 
 from app.services.balance_sign import credit_owed
-from app.services.liabilities import current_balance
+from app.services.liabilities import confirmed_commitment_ids, current_balance, is_linked
 
 from .common import _add_months, _d, _load, _today, resolve_roles
 
@@ -39,9 +39,11 @@ def liabilities_total(db: Session, user, as_of: date | None = None) -> Decimal:
     that start later still count from the as-of date (the debt is real now).
     """
     liabilities = db.query(Liability).filter(Liability.user_id == user.id).all()
+    today = _today()
+    confirmed = confirmed_commitment_ids(db, user.id)
     return sum(
         (
-            current_balance(x) for x in liabilities
+            current_balance(x, today, is_linked(x, confirmed)) for x in liabilities
             if as_of is None or min(x.start_date, x.balance_as_of) <= as_of
         ),
         Decimal(0),

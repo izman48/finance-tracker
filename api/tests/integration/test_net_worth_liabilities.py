@@ -119,7 +119,7 @@ def test_net_worth_subtracts_liability_balance(world):
     assert world.add_liability().status_code == 201
     after = world.figures()
 
-    for surface in ("summary", "position", "history_today", "projection_now", "projection_next_month"):
+    for surface in ("summary", "position", "history_today", "projection_now"):
         assert after[surface] == before[surface] - Decimal("9000.00"), surface
 
 
@@ -155,8 +155,10 @@ def test_a_loan_whose_payments_start_later_counts_from_its_as_of_date(world):
 
 
 def test_nothing_but_net_worth_moves(world):
+    # A liability with a payment adds its repayment as a commitment (T-10-8);
+    # one repaid irregularly adds nothing to the cashflow.
     before = world.figures()
-    world.add_liability()
+    world.add_liability(payment=None, opted_out=True)
     after = world.figures()
     for unmoved in ("safe_to_spend", "forecast", "decomposition"):
         assert after[unmoved] == before[unmoved], unmoved
@@ -179,11 +181,12 @@ def test_a_liability_repaid_irregularly_still_counts(world):
     assert world.figures()["summary"] == before - Decimal("9000.00")
 
 
-def test_projection_keeps_the_debt_flat_and_separate_from_assets(world):
-    # Until T-10-8 links the repayment, nothing says the £200 leaves the bank
-    # in the forecast, so the projection doesn't pay the debt down either.
-    # The debt is its own component; `assets` never goes negative because of it.
-    world.add_liability()
+def test_projection_keeps_an_unlinked_debt_flat_and_separate_from_assets(world):
+    # Repaid irregularly, nothing says a payment leaves the bank, so the
+    # projection doesn't pay the debt down either. The debt is its own
+    # component; `assets` never goes negative because of it. (A linked
+    # repayment follows its schedule: test_liability_commitment_link.py.)
+    world.add_liability(payment=None, opted_out=True)
     timeline = world.get("/analytics/net-worth-projection")["timeline"]
     for m in (0, 1, 6):
         point = timeline[m]

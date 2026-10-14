@@ -25,10 +25,26 @@ list (T-10-10) build on it.
 - **Bounded**: a payment that doesn't cover the first period's interest, or
   doesn't clear the balance within 50 years (600 months), is a 422 with a
   plain message. Nothing is stored.
-- **Today's balance is the entered balance** until payments are linked
-  (T-10-8): assuming payments that may not have happened would understate
-  the debt. An as-of date more than 90 days old sets `balance_stale` so the
-  UI asks for an update.
+- **Linked repayment (T-10-8):** a liability with a payment carries its
+  repayment as one commitment, linked by the stored `linked_commitment_id`
+  (FK, `ON DELETE SET NULL`, unique; set only by the server). Rules: a new
+  liability creates a confirmed commitment (label = lender), or links the one
+  existing expense commitment with the same amount and cadence (more than
+  one: 409 `choose_commitment` with the candidates; the client resends
+  `commitment_choice` = a candidate id or `new`, and the server re-computes
+  the candidates and accepts nothing else). Editing the payment or cadence
+  updates it (and renames a bill the liability created when the lender is renamed). Opting out deletes the commitment only if the liability created it (`commitment_created`); a bill the user already had is only unlinked and kept with no end. Opting back in links again. A card repayment commitment (`card_account_id`) is never a candidate. Its
+  `ends_on` is the final scheduled payment, so a paid-off loan stops leaving
+  the forecast. Deleting the liability without opting out keeps the
+  commitment as an ordinary bill with no end (owner D4). Cadences map to
+  `monthly`, `weekly`, or `custom_days` 14/28.
+- **Today's balance:** linked to a *confirmed* commitment, it follows the schedule from the as-of
+  balance (payments due before today count as made, since they are in the
+  forecast), and `paid_off` is true once every payment is made. Not linked
+  (repaid irregularly, or its commitment was deleted or isn't confirmed), it is the entered
+  balance: assuming payments that may not have happened would understate the
+  debt. An as-of date more than 90 days old sets `balance_stale` so the UI
+  asks for an update.
 - Opted out: no schedule, so the schedule figures are null.
 - List order: APR high to low, then balance high to low, then lender A to Z.
 - At most 50 liabilities per user (409 past that), since every read
@@ -59,24 +75,28 @@ as-of date not in the future; start date at most a year ahead; final payment
 after the start date; kind and cadence are enums.
 
 **Tables**: `liabilities` (encrypted `lender`, `balance`, `apr`, `payment`;
-plaintext `kind`, `cadence`, dates, `opted_out`).
+plaintext `kind`, `cadence`, dates, `opted_out`, `linked_commitment_id`);
+`commitment_rules.ends_on` (migration `f0a2b4c6d8e1`).
 
 **Services**: `services/liabilities.py` (`amortise`, `period_rate`,
-`first_payment_after`, `derived_figures`, `current_balance`).
+`first_payment_after`, `remaining_schedule`, `derived_figures`,
+`current_balance`, `owed_on`), `services/liability_links.py` (`candidates`,
+`link`, `sync`, `remove`, `release`).
 
 **UI**: none yet (T-10-10).
 
 **Tests**: `api/tests/unit/test_amortisation.py` (hand-checked schedule for
 the synthetic £9,000 / £200 a month / 11% loan),
-`api/tests/integration/test_liabilities_api.py`, `test_reset_purge.py`,
+`api/tests/integration/test_liabilities_api.py`,
+`test_liability_commitment_link.py` (rules 1-6), `test_reset_purge.py`,
 `test_oauth.py` (Claude tokens refused).
 
 ## Touchpoints
 
 | # | Answer |
 |---|---|
-| 1 Tables | `liabilities`, migration `d8e0f2a4b6c8` (new table; downgrade drops it). |
-| 2 Purge | Yes, before `commitment_rules` in `_OWNED_BY_USER`. |
+| 1 Tables | `liabilities`, migrations `d8e0f2a4b6c8` (new table) and `f0a2b4c6d8e1` (link, `commitment_rules.ends_on`); downgrades drop them. |
+| 2 Purge | Yes, before `commitment_rules` in `_OWNED_BY_USER` (the reset seed links them, so the order is tested). |
 | 3 Deletion | Cascade from `users`; `test_liabilities_api.py` deletes an account with foreign keys on. |
 | 4 Demo mode | No UI reads yet; T-10-10 adds the sample data. |
 | 5 Ownership | No account ids. Liabilities load by id and user; another user's id is a 404 like an unknown one. |

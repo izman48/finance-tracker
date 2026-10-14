@@ -1,7 +1,7 @@
 """Cashflow analytics endpoints: summary, commitments review, account settings."""
 import logging
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -132,13 +132,16 @@ def get_net_worth_projection(
     annual_growth_pct: Decimal = Decimal("5"),
     subtract_spending: bool = True,
     monthly_spending: Decimal | None = None,
+    spending_source: Literal["budgets", "average", "none"] | None = None,
 ) -> ProjectionResponse:
     """Project net worth forward from stated assumptions (compound growth +
     monthly contributions). Omit monthly_contribution to derive it from the
     user's own cashflow (income − bills − average everyday spending); the
     basis is echoed back. subtract_spending=false is the "all my forecasted
     cashflow lands in my wealth" scenario (income − bills only, matching the
-    Cashflow chart). A factual calculation — an estimate, not advice."""
+    Cashflow chart). spending_source (budgets / average / none, T-10-15) picks
+    the spending figure and wins over subtract_spending; see
+    projections._spending_leg. A factual calculation — an estimate, not advice."""
     return ProjectionResponse(
         **analytics_service.net_worth_projection(
             db, current_user,
@@ -147,6 +150,7 @@ def get_net_worth_projection(
             annual_growth_pct=annual_growth_pct,
             subtract_spending=subtract_spending,
             monthly_spending=monthly_spending,
+            spending_source=spending_source,
         )
     )
 

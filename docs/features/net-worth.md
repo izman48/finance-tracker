@@ -16,7 +16,7 @@ compound projection with every assumption echoed back.
 | `GET /api/v1/analytics/net-worth-history` | `CurrentUser` (`months` 1–60) |
 | `GET /api/v1/analytics/net-worth-position` | `CurrentUser` |
 | `GET /api/v1/analytics/net-worth-decomposition` | `CurrentUser` |
-| `GET /api/v1/analytics/net-worth-projection` | `CurrentUser` |
+| `GET /api/v1/analytics/net-worth-projection` | `CurrentUser` (`spending_source` = budgets / average / none, T-10-15b) |
 | `GET /api/v1/assets` | `CurrentUser` |
 | `POST /api/v1/assets` | `CurrentUser` |
 | `PATCH /api/v1/assets/{asset_id}` | `CurrentUser` (growth %, monthly contribution) |
@@ -48,6 +48,17 @@ manual-asset movement only, so a liability doesn't change it. A `loan` or
 asset row locked). Until then both count, which overstates debt and never
 drops it silently. The "both counted" notice is UI (T-10-10).
 
+**Projection spending (T-10-15b)**: `spending_source` picks the monthly
+spending the projection subtracts: the total of active, unpaused budget
+limits (`budgets`, the same `cycle_budgets` figure as the Cashflow budget
+line), the measured average or the user's estimate (`average`), or nothing
+(`none`). Budgets with a £0 total fall back to the average
+(`budgets_fallback`), never to £0 spending. Sent, it wins over the old
+`subtract_spending`; `monthly_spending` applies only to `average`; omitted,
+the result is today's. The basis echoes `spending_choice`, `spending_used`,
+`budgets_monthly` and the figure applied, so the UI's evidence line prints
+the API's numbers. Nothing is stored.
+
 **Services**: `services/analytics/net_worth.py` (history, position,
 `assets_total`, `liabilities_total`, `asset_decomposition`), `services/analytics/projections.py`
 (surplus from the cashflow engine, honours Claude holds).
@@ -59,7 +70,7 @@ subtracts what is owed on liabilities), `AddAssetModal`,
 Wealth card.
 
 **Tests**: `api/tests/integration/test_net_worth_liabilities.py` (every
-surface, conversion), `api/tests/unit/test_net_worth.py`,
+surface, conversion), `test_projection_budgets.py` (T-10-15b), `api/tests/unit/test_net_worth.py`,
 `test_projection_counts_once.py`; `api/tests/integration/test_api.py`,
 `test_budget_invariance.py`, `test_reset_purge.py`; UI
 `sampleAccount.test.ts` (sample balance sheet).

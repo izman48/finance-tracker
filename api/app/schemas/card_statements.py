@@ -63,6 +63,19 @@ class CardStatementPosition(BaseModel):
     paid: bool
 
 
+class NextCardPayment(BaseModel):
+    """The card's next repayment, from the same function the forecast uses
+    (ux A4), so "nilu will pay ..." can't disagree with the forecast."""
+
+    amount: Decimal
+    date: date
+    from_account_name: str | None
+
+
 class CardStatementsResponse(BaseModel):
     statements: list[CardStatementResponse]
     current: CardStatementPosition | None
+    # The current statement's due date has passed and no newer one exists:
+    # ask for the new statement (until then the full balance is planned).
+    missing_statement: bool
+    next_payment: NextCardPayment | None

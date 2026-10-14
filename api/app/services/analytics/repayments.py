@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import calendar
+from collections.abc import Iterator
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -11,6 +12,7 @@ from app.models import (
     AccountRole,
     AccountSetting,
     CommitmentDirection,
+    RepaymentCadence,
     RepaymentScheduleItem,
     RepaymentStrategy,
 )
@@ -20,7 +22,8 @@ from app.services.balance_sign import credit_owed
 
 from .cadence import commitment_occurrences
 from .card_links import credit_card_ids, link_card_commitments
-from .common import _add_months, _d, _load, resolve_roles
+from .common import _add_months, _d, _load, _today, resolve_roles
+from .statements import current_positions
 
 
 DEFAULT_INTERVAL_MONTHS = 3
@@ -49,12 +52,7 @@ def next_repayment_date(setting: AccountSetting, from_date: date) -> date | None
         nxt = _add_months(from_date, 1)
         return date(nxt.year, nxt.month, calendar.monthrange(nxt.year, nxt.month)[1])
     if cadence == "monthly":
-        day = setting.repayment_day or 1
-        candidate = from_date.replace(day=min(day, calendar.monthrange(from_date.year, from_date.month)[1]))
-        if candidate < from_date:
-            nxt = _add_months(from_date, 1)
-            candidate = nxt.replace(day=min(day, calendar.monthrange(nxt.year, nxt.month)[1]))
-        return candidate
+        return _next_day_of_month(setting.repayment_day or 1, from_date)
     if cadence == "weekly":
         anchor = setting.repayment_anchor_date or from_date
         d = anchor
@@ -70,6 +68,16 @@ def next_repayment_date(setting: AccountSetting, from_date: date) -> date | None
             guard += 1
         return d
     return None
+
+
+def _next_day_of_month(day: int, from_date: date) -> date:
+    """First date on/after from_date falling on this day of the month
+    (clamped to the month's last day)."""
+    candidate = from_date.replace(day=min(day, calendar.monthrange(from_date.year, from_date.month)[1]))
+    if candidate < from_date:
+        nxt = _add_months(from_date, 1)
+        candidate = nxt.replace(day=min(day, calendar.monthrange(nxt.year, nxt.month)[1]))
+    return candidate
 
 
 def repayment_amount(setting: AccountSetting, balance: Decimal) -> Decimal:
@@ -166,6 +174,7 @@ def repayment_events(db: Session, user, start: date, end: date) -> list[dict]:
     roles = resolve_roles(accounts, settings)
     scheduled = _scheduled_repayments(db, user)
     out: list[dict] = []
+    positions = None  # loaded on first use
     for acc in accounts:
         if roles[acc.id] != AccountRole.CREDIT:
             continue
@@ -187,25 +196,94 @@ def repayment_events(db: Session, user, start: date, end: date) -> list[dict]:
                     })
             continue
 
-        if not s.repayment_cadence:
+        if not _pays_on_card_due_date(s) and not s.repayment_cadence:
             continue
-        balance = credit_owed(acc)
-        amounts = _repayment_schedule(s, balance)
-        if not amounts:
-            continue
-
-        # Walk the schedule from the first due date; emit those within [start, end].
-        due = next_repayment_date(s, start)
-        guard = 0
-        for amount in amounts:
-            if due is None or guard > 200:
-                break
+        if positions is None:
+            positions = current_positions(db, user, accounts)
+        position = positions.get(acc.id)
+        pay_days = _pay_days(s, position, start)
+        if s.repayment_strategy == RepaymentStrategy.STATEMENT_BALANCE.value:
+            plan = _statement_plan(s, credit_owed(acc), position, pay_days)
+        else:
+            # Walk the schedule over the pay days (at most 200 of them).
+            plan = list(zip(pay_days, _repayment_schedule(s, credit_owed(acc))[:201]))
+        for due, amount in plan:
             if start <= due <= end and amount > 0:
                 out.append({"account_id": str(acc.id), "label": acc.display_name, "amount": amount, "due_date": due})
-            due = _step_repayment(s, due)
-            guard += 1
     out.sort(key=lambda r: r["due_date"])
     return out
+
+
+_CADENCES = frozenset(c.value for c in RepaymentCadence)
+
+
+def _pays_on_card_due_date(s: AccountSetting) -> bool:
+    """Pay day "card due date": chosen, or implied by `statement_balance`
+    with no pay day set (its default) or one we don't know (cadence is free
+    text until it is validated on write): never a missing payment."""
+    if s.repayment_cadence == RepaymentCadence.CARD_DUE_DATE.value:
+        return True
+    return (
+        s.repayment_strategy == RepaymentStrategy.STATEMENT_BALANCE.value
+        and s.repayment_cadence not in _CADENCES
+    )
+
+
+def _pay_days(s: AccountSetting, position, start: date) -> Iterator[date]:
+    """The card's repayment dates from `start` on.
+
+    "Card due date": the current statement's due date, then the same day each
+    month, rolled forward past dates before `start`. With no statement, the
+    card's configured day of the month, or 30 days from today: a missing date
+    never means a missing payment. Otherwise the configured cadence.
+    """
+    if not _pays_on_card_due_date(s):
+        due = next_repayment_date(s, start)
+        while due is not None:
+            yield due
+            due = _step_repayment(s, due)
+        return
+    if position is not None:
+        anchor = position.statement.due_date
+    elif s.repayment_day:
+        anchor = _next_day_of_month(s.repayment_day, start)
+    else:
+        anchor = _today() + timedelta(days=30)
+    months = 0
+    while _add_months(anchor, months) < start:
+        months += 1
+    while True:
+        yield _add_months(anchor, months)
+        months += 1
+
+
+def _statement_plan(s: AccountSetting, owed: Decimal, position, pay_days: Iterator[date]) -> list[tuple]:
+    """(date, amount) payments under `statement_balance`.
+
+    The amount still due goes on the statement's pay day and the unbilled
+    spend on the one after, so the total is never below the full balance.
+    With no statement, or once its due date has passed with no newer one,
+    the full current balance goes on the next pay day (fail-safe).
+    """
+    if owed <= 0:
+        return []
+    if position is None or position.statement.due_date < _today():
+        return [(_next_pay_day(pay_days), owed)]
+    plan = []
+    # On a cadence, a paid statement's own payment day has already gone.
+    if _pays_on_card_due_date(s) or not position.paid:
+        statement_day = _next_pay_day(pay_days)
+        if not position.paid:
+            plan.append((statement_day, position.amount_still_due))
+    if position.unbilled > 0:
+        plan.append((_next_pay_day(pay_days), position.unbilled))
+    return plan
+
+
+def _next_pay_day(pay_days: Iterator[date]) -> date:
+    """The next pay day; if the days run out, 30 days from today (a missing
+    date must never mean a missing payment, or an error)."""
+    return next(pay_days, None) or _today() + timedelta(days=30)
 
 
 # Far enough to reach the end of any schedule (120 installments, or the

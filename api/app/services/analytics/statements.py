@@ -16,10 +16,14 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 
-from app.models import StatementSource
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
+from app.models import CardStatement, StatementSource, Transaction
+from app.services.balance_sign import credit_owed
 
 from .common import _d
 
@@ -87,16 +91,52 @@ def statement_position(statement, owed: Decimal, card_transactions) -> Statement
     )
 
 
+def position_for(db: Session, account, statement) -> StatementPosition:
+    """The position of this card's statement, from the card's balance and its
+    transactions after the statement date (scoped by the owned account)."""
+    after = datetime.combine(statement.statement_date + timedelta(days=1), time.min, tzinfo=timezone.utc)
+    card_transactions = db.query(Transaction).filter(
+        Transaction.account_id == account.id, Transaction.transaction_date >= after,
+    ).all()
+    return statement_position(statement, credit_owed(account), card_transactions)
+
+
+def current_positions(db: Session, user, accounts) -> dict:
+    """{account id: StatementPosition} for each of these accounts that has a
+    statement (its current one)."""
+    latest = (
+        db.query(CardStatement.account_id, func.max(CardStatement.statement_date).label("statement_date"))
+        .filter(CardStatement.user_id == user.id)
+        .group_by(CardStatement.account_id)
+        .subquery()
+    )
+    rows = db.query(CardStatement).join(
+        latest,
+        (CardStatement.account_id == latest.c.account_id) & (CardStatement.statement_date == latest.c.statement_date),
+    ).filter(CardStatement.user_id == user.id).all()
+    by_card: dict = {}
+    for statement in rows:
+        by_card.setdefault(statement.account_id, []).append(statement)
+    return {
+        acc.id: position_for(db, acc, current_statement(by_card[acc.id]))
+        for acc in accounts if acc.id in by_card
+    }
+
+
 MAX_DAYS_TO_DUE = 60
 MAX_STATEMENT_AGE_DAYS = 400  # a little over a year of statements
 
 
-def check_statement(statement_balance, statement_date: date, due_date: date, minimum_due, today: date) -> None:
+def check_statement(
+    statement_balance, statement_date: date, due_date: date, minimum_due, today: date, *, new_date: bool = True,
+) -> None:
     """Rules that need today or the whole statement (S-5). Raises ValueError
-    with a message the user can act on."""
+    with a message the user can act on. The age limit applies only to a
+    statement date the user sends (`new_date`), so an old statement that has
+    aged past it stays editable."""
     if statement_date > today:
         raise ValueError("The statement date can't be in the future.")
-    if statement_date < today - timedelta(days=MAX_STATEMENT_AGE_DAYS):
+    if new_date and statement_date < today - timedelta(days=MAX_STATEMENT_AGE_DAYS):
         raise ValueError("The statement date can't be more than 400 days ago.")
     if not statement_date <= due_date <= statement_date + timedelta(days=MAX_DAYS_TO_DUE):
         raise ValueError("The due date must be on or after the statement date, and no more than 60 days after it.")

@@ -39,7 +39,9 @@ Loads every summary in parallel (`Promise.allSettled`) and shows:
 - **Spending card** → `/insights`: money out this month vs last, 6-month
   sparkline, top 3 categories, budgets "X of Y on pace".
 - **Wealth card** → `/networth`: net worth and changes, 12-month sparkline,
-  credit owed.
+  and "Total owed" (cards plus loans, the API's `total_owed`, hidden at £0;
+  `lib/homeOwed.ts`). Coming up labels a card repayment "{card} bill" and a
+  loan's linked bill "{lender} loan payment" (T-10-14d).
 - "N recurring payments detected" banner → `/commitments`; first-run
   "Connect bank" panel.
 

@@ -23,6 +23,8 @@ export interface Upcoming {
   overdue?: { due: string; days: number }
   /** An unpaid one-off expense just past its date, inside the API's grace (O9): a normal row, still counted. */
   justDue?: { due: string }
+  /** A credit card's repayment (Home labels it "{card} bill", T-10-14d). */
+  cardBill?: boolean
 }
 
 /** How a row's amount reads: late income is not money you have, so no "+" and no green. */
@@ -97,6 +99,7 @@ export function buildUpcoming(
       amount: Number(r.amount),
       date: r.due_date,
       income: false,
+      cardBill: true,
     })),
     // A planned item its real transaction already paid is no longer coming (T-08-7).
     ...planned.filter((p) => !p.matched_transaction_id && !p.late && !(p.overdue && p.direction !== 'income') && !isJustDue(p, today)).flatMap((p) => {

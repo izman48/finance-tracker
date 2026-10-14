@@ -1,10 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronRight, PieChart, Plug, RefreshCw, Sparkles, TrendingUp, Wallet } from 'lucide-react'
-import { analyticsAPI, bankingAPI, assetsAPI, budgetsAPI, NetWorthPosition } from '../services/api'
+import { analyticsAPI, bankingAPI, assetsAPI, budgetsAPI, liabilitiesAPI, NetWorthPosition } from '../services/api'
 import { BankStatus, CashflowSummary, Commitment, PlannedItem } from '../types'
 import { gbp0 as gbp, dateDayMonth, monthLabel, timeAgo, changeTone, signedGbp, signedPct } from '../lib/format'
 import { buildUpcoming, upcomingAmount, upcomingShowsDate } from '../lib/upcoming'
+import { homeUpcomingLabel, loanLenders, owedRow } from '../lib/homeOwed'
 import UpcomingLabel from '../components/UpcomingLabel'
 import AnimatedNumber from '../components/ui/AnimatedNumber'
 import Sparkline, { SparkPoint } from '../components/ui/Sparkline'
@@ -96,6 +97,7 @@ export default function OverviewPage() {
   const [spending, setSpending] = useState<SpendingSnapshot | null>(null)
   const [budgetLine, setBudgetLine] = useState<ReturnType<typeof homeBudgetLine>>(null)
   const [position, setPosition] = useState<NetWorthPosition | null>(null)
+  const [lenders, setLenders] = useState<Map<string, string>>(new Map())
   const [forecast, setForecast] = useState<ForecastSnapshot | null>(null)
   const [trend, setTrend] = useState<SparkPoint[]>([])
   const [history, setHistory] = useState<SparkPoint[]>([])
@@ -115,7 +117,7 @@ export default function OverviewPage() {
     const load = async () => {
       // Each source fails independently: a broken spending call shouldn't blank
       // the cash and wealth cards.
-      const [b, s, c, p, sp, prev, pos, fc, tr, hist, bud] = await Promise.allSettled([
+      const [b, s, c, p, sp, prev, pos, fc, tr, hist, bud, li] = await Promise.allSettled([
         bankingAPI.getConnectionStatus(),
         analyticsAPI.getSummary(),
         analyticsAPI.getCommitments(),
@@ -129,6 +131,8 @@ export default function OverviewPage() {
         analyticsAPI.getSpendingTrend(6),
         assetsAPI.netWorthHistory(12),
         budgetsAPI.list(),
+        // Lenders, so a loan's linked bill reads "{lender} loan payment".
+        liabilitiesAPI.list(),
       ])
       if (b.status === 'fulfilled') setBankStatus(b.value.data)
       if (s.status === 'fulfilled') setSummary(s.value.data)
@@ -146,6 +150,7 @@ export default function OverviewPage() {
         })
       }
       if (pos.status === 'fulfilled') setPosition(pos.value.data)
+      if (li.status === 'fulfilled') setLenders(loanLenders(li.value.data))
       // The budgets line is a nicety: without it the card is as before.
       if (bud.status === 'fulfilled') setBudgetLine(homeBudgetLine(bud.value.data.summary))
       if (fc.status === 'fulfilled') {
@@ -201,6 +206,8 @@ export default function OverviewPage() {
   const suggestedCount = commitments.filter((c) => c.status === 'suggested').length
   const today = localIso(new Date())
   const upcoming = buildUpcoming(commitments, summary?.next_repayments ?? [], planned, today, 3)
+  // Cards plus loans, from the API's total_owed (ux T-10-13 H2); null hides the row.
+  const owed = summary ? owedRow(summary) : null
 
   const spendDelta = spending && spending.prevTotal !== null ? spending.total - spending.prevTotal : null
   const monthName = new Date().toLocaleDateString('en-GB', { month: 'long' })
@@ -301,7 +308,7 @@ export default function OverviewPage() {
             {upcoming.length > 0 ? (
               upcoming.map((u) => (
                 <div key={u.key} className="flex items-baseline justify-between gap-3">
-                  <UpcomingLabel item={u} linkMarker={false} />
+                  <UpcomingLabel item={{ ...u, label: homeUpcomingLabel(u, lenders) }} linkMarker={false} />
                   <span className={`tnum shrink-0 ${upcomingAmount(u).tone}`}>
                     {upcomingAmount(u).sign}{gbp(u.amount)}
                     {upcomingShowsDate(u) && <span className="text-slate-500"> · {dateDayMonth(u.date)}</span>}
@@ -393,10 +400,12 @@ export default function OverviewPage() {
                   )}
                 </div>
               ))}
-            <div className="flex items-baseline justify-between gap-3">
-              <span className="text-slate-300">Owed on credit</span>
-              <span className="tnum text-warn shrink-0">{gbp(Number(summary.credit_owed))}</span>
-            </div>
+            {owed && (
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-slate-300">{owed.label}</span>
+                <span className="tnum text-warn shrink-0">{gbp(owed.amount)}</span>
+              </div>
+            )}
           </SummaryCard>
         </div>
       )}

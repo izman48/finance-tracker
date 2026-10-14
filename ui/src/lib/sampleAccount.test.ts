@@ -86,6 +86,11 @@ describe('sample account — internal reconciliation', () => {
     expect(aprs).toEqual([...aprs].sort((a, b) => b - a))
   })
 
+  it('the sample total owed is the card owed plus the liabilities (T-10-14d)', () => {
+    const s: any = sampleResponse('/api/v1/analytics/summary', {})
+    expect(near(Number(s.total_owed), Number(s.credit_owed) + Number(s.liabilities_total))).toBe(true)
+  })
+
   it('per-account credit_owed is positive and sums to the headline credit owed', () => {
     const s: any = sampleResponse('/api/v1/analytics/summary', {})
     const cards = s.accounts.filter((a: any) => a.role === 'credit')

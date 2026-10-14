@@ -25,6 +25,8 @@ const summary = {
   available_cash: 2140.55,
   overdraft_cushion: 500,
   credit_owed: 822.31,
+  // T-10-14a: cards plus loans, from the server (822.31 + the liabilities below).
+  total_owed: '15322.31',
   net_worth: 10118.24,
   committed_before_payday: 893.4,
   safe_to_spend: 1247.15,

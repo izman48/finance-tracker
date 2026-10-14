@@ -1,5 +1,10 @@
-"""Card statements per credit card (T-10-1): list with the current position,
-manual add, edit and delete.
+"""Card statements per credit card (T-10-1, T-10-2): list with the current
+position, manual add, edit and delete, and the pick between a manual and a
+provider statement for the same period.
+
+Provider rows belong to sync: editing one saves the user's own (manual)
+statement for that period, deleting one is 409, and sync never changes a
+manual row, so "manual wins" survives the next sync.
 
 Every route loads the card by id AND user (`owned_account`) and each
 statement by id AND card AND user, so a foreign or unknown id is the same 404
@@ -54,6 +59,7 @@ def list_statements(
         statements=[CardStatementResponse.model_validate(s) for s in statements],
         current=_position(db, account, current),
         missing_statement=current is not None and current.due_date < _today(),
+        conflict=_conflict(statements, current),
         next_payment=_next_payment(db, current_user, account),
     )
 
@@ -100,11 +106,37 @@ def update_statement(
         raise HTTPException(status_code=422, detail="A statement needs a statement date and a due date.")
     _check(merged["statement_balance"], merged["statement_date"], merged["due_date"], merged["minimum_due"],
            new_date=merged["statement_date"] != statement.statement_date)
+    if statement.source == StatementSource.PROVIDER.value:
+        statement = _manual_for(db, current_user, account, merged["statement_date"])
     for field, value in merged.items():
         setattr(statement, field, value)
     _commit_or_409(db)
     db.refresh(statement)
     return statement
+
+
+@router.put("/{statement_id}/in-use")
+def use_statement(
+    account_id: uuid.UUID,
+    statement_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Use this statement for its period (ux A3). Only the id is sent; it must
+    be this user's statement on this card. Choosing the provider's removes
+    the user's own statement for that period (manual would win otherwise);
+    choosing the user's own changes nothing, since manual already wins."""
+    account = owned_account(db, current_user, account_id)
+    statement = _owned_statement(db, current_user, account, statement_id)
+    if statement.source == StatementSource.PROVIDER.value:
+        db.query(CardStatement).filter(
+            CardStatement.user_id == current_user.id,
+            CardStatement.account_id == account.id,
+            CardStatement.statement_date == statement.statement_date,
+            CardStatement.source == StatementSource.MANUAL.value,
+        ).delete(synchronize_session=False)
+        db.commit()
+    return {"success": True, "statement_id": str(statement.id)}
 
 
 @router.delete("/{statement_id}")
@@ -115,7 +147,13 @@ def delete_statement(
     db: Annotated[Session, Depends(get_db)],
 ) -> dict:
     account = owned_account(db, current_user, account_id)
-    db.delete(_owned_statement(db, current_user, account, statement_id))
+    statement = _owned_statement(db, current_user, account, statement_id)
+    if statement.source == StatementSource.PROVIDER.value:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This statement comes from your bank and would come back on the next sync. Edit it to use your own figures.",
+        )
+    db.delete(statement)
     db.commit()
     return {"success": True}
 
@@ -141,6 +179,31 @@ def _owned_statement(db: Session, user, account: Account, statement_id: uuid.UUI
     if not statement:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Statement not found")
     return statement
+
+
+def _manual_for(db: Session, user, account: Account, statement_date) -> CardStatement:
+    """The user's own statement for this period, new if there is none."""
+    manual = db.query(CardStatement).filter(
+        CardStatement.user_id == user.id,
+        CardStatement.account_id == account.id,
+        CardStatement.statement_date == statement_date,
+        CardStatement.source == StatementSource.MANUAL.value,
+    ).first()
+    if manual is None:
+        manual = CardStatement(user_id=user.id, account_id=account.id, source=StatementSource.MANUAL.value)
+        db.add(manual)
+    return manual
+
+
+def _conflict(statements, current) -> bool:
+    """A manual and a provider statement for the current period disagree."""
+    if current is None:
+        return False
+    figures = {
+        (s.statement_balance, s.due_date, s.minimum_due)
+        for s in statements if s.statement_date == current.statement_date
+    }
+    return len(figures) > 1
 
 
 def _check(statement_balance, statement_date, due_date, minimum_due, new_date: bool = True) -> None:

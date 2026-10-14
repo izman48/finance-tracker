@@ -188,6 +188,9 @@ CASES: dict[tuple[str, str, str], Case] = {
     ("DELETE", f"{API}/analytics/accounts/{{account_id}}/statements/{{statement_id}}", "account_id"): lambda w, acc: w.client.delete(
         f"{API}/analytics/accounts/{acc}/statements/{uuid.uuid4()}",
     ),
+    ("PUT", f"{API}/analytics/accounts/{{account_id}}/statements/{{statement_id}}/in-use", "account_id"): lambda w, acc: w.client.put(
+        f"{API}/analytics/accounts/{acc}/statements/{uuid.uuid4()}/in-use",
+    ),
     ("POST", f"{API}/planning/planned-events", "account_id"): lambda w, acc: w.client.post(
         f"{API}/planning/planned-events",
         json={"name": "Holiday", "amount": "500.00", "date": date.today().isoformat(), "direction": "expense",

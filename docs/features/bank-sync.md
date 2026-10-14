@@ -17,11 +17,13 @@ data key, which only exists inside a request.
 | `GET /api/v1/banking/sync-status` | `CurrentUserOrMcpRead` | Stored freshness only; stale after 48 h. |
 
 **Tables**: `user_sync_locks` (lease and cooldown, no user data). Writes
-`accounts`, `transactions`, `bank_connections.last_synced_at`.
+`accounts`, `transactions`, `bank_connections.last_synced_at`, `card_statements` (provider rows).
 
 **Services**: `services/truelayer.py` (`sync_accounts`, `sync_transactions`;
 per-account isolation, 403 → 88-day fallback, Revolut/Amex card fallbacks,
-balance fail-safe), `services/sync_lock.py`, `services/sync_status.py`,
+balance fail-safe; on a credit card it also keeps the provider statement
+from the same balance response, `services/provider_statements.py`, logging
+field-presence booleans per provider id only), `services/sync_lock.py`, `services/sync_status.py`,
 `core/rate_limit.py` (`user_in_flight`).
 
 **What runs on new transactions**: `categorization.apply_rules`. Everything

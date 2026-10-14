@@ -20,8 +20,9 @@ derives the amount still due and the spend since the statement (unbilled).
 | `DELETE /api/v1/analytics/accounts/{account_id}/repayments/{item_id}` | `CurrentUser` |
 | `GET /api/v1/analytics/accounts/{account_id}/statements` | `CurrentUser`; newest 24 statements plus `current` (amount still due, unbilled, paid), `missing_statement` (the current one's due date has passed) and `next_payment` (amount, date, pay-from account name, from `repayment_events`, so it matches the forecast), derived on read. |
 | `POST /api/v1/analytics/accounts/{account_id}/statements` | `CurrentUser`; manual statement, credit accounts only (else 422); same card and date twice is 409. |
-| `PATCH /api/v1/analytics/accounts/{account_id}/statements/{statement_id}` | `CurrentUser` |
-| `DELETE /api/v1/analytics/accounts/{account_id}/statements/{statement_id}` | `CurrentUser`; the card goes back to its current balance. |
+| `PATCH /api/v1/analytics/accounts/{account_id}/statements/{statement_id}` | `CurrentUser`; on a provider statement it saves the user's own (manual) one for that period and returns that row (a different `id`: reload the list). |
+| `DELETE /api/v1/analytics/accounts/{account_id}/statements/{statement_id}` | `CurrentUser`; the card goes back to its current balance. A provider statement is 409 (sync would bring it back). |
+| `PUT /api/v1/analytics/accounts/{account_id}/statements/{statement_id}/in-use` | `CurrentUser`; use this statement for its period (no body). Choosing the provider's removes the manual one for that period. |
 
 **Tables**: `accounts` (encrypted names and balances; plaintext
 `external_id`, `account_type`, `currency`), `account_settings` (kept apart
@@ -77,7 +78,7 @@ filter on Spending.
 | 6 Scopes | Accounts list `finance:read`; settings, repayments and statements web only. |
 | 7 Claude tools | `accounts` (read only). |
 | 8 Audit | Not audited (web-only writes). |
-| 9 Bank sync | Sync updates names, type, balances; settings and statements untouched. Amount still due and unbilled are computed on read from the card's balance and transactions. |
+| 9 Bank sync | Sync updates names, type, balances; settings and manual statements untouched. On a credit card, sync upserts the provider statement from the card balance response it already fetches (`services/provider_statements.py`); a bad or missing value stores nothing and never deletes a stored one. The GET reports `conflict` when manual and provider differ for the current period. Amount still due and unbilled are computed on read from the card's balance and transactions. |
 | 10 Home | Cash and credit owed on the Cashflow and Wealth cards. Owned by Wealth. |
 | 11 UI routes | Modal on `/networth`. |
 | 12 Tests | listed above. |

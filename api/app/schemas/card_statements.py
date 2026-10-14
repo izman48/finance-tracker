@@ -78,4 +78,7 @@ class CardStatementsResponse(BaseModel):
     # The current statement's due date has passed and no newer one exists:
     # ask for the new statement (until then the full balance is planned).
     missing_statement: bool
+    # A manual and a provider statement for the current period differ: the
+    # UI shows both and the user picks (PUT .../in-use). Manual is in use.
+    conflict: bool
     next_payment: NextCardPayment | None

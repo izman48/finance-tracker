@@ -73,7 +73,10 @@ sends repayment fields only for a credit card and lists the repayment options: s
 (default when nothing is stored), full balance, fixed, instalments, scheduled only for an instalment
 card or a card already on it, a stored percent-of-balance; pay day card due date (default) or a day
 of the month, end of month and weekly only when already stored; the fix-this notice from
-`repayment_fix_needed`), `lib/credit.ts`; account
+`repayment_fix_needed`; the API's `warnings` render under the control each is about via
+`components/card/RepaymentWarnings.tsx` and `lib/repaymentWarnings.ts`, in live regions; the optional
+Card APR input shows for fixed, percent and instalments; a save that returns warnings stays open with
+"Saved. Read the notes below." and Done), `lib/credit.ts`; account
 filter on Spending.
 
 **MCP**: `accounts`.

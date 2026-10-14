@@ -61,4 +61,17 @@ describe('AccountSettingsModal', () => {
     expect(chosen(selected(monthly, 'repayment-pay-day'))).toBe('monthly')
     expect(monthly).toMatch(/<label[^>]*for="repayment-day"[^>]*>Day \(1 to 31\)<\/label>/)
   })
+
+  it('T-10-5b: the card APR shows only when the payment can be below the statement, with its help', () => {
+    const fixed = render({ repayment_strategy: 'fixed' })
+    expect(fixed).toMatch(/<label[^>]*for="card-apr"[^>]*>Card APR \(%\)<\/label>/)
+    expect(fixed).toContain('Used to estimate the interest cost. Find it on your statement.')
+    expect(render({ repayment_strategy: 'statement_balance' })).not.toContain('id="card-apr"')
+    expect(render({ repayment_strategy: 'full_balance' })).not.toContain('id="card-apr"')
+  })
+
+  it('T-10-5b: a live region sits under the amount, the pay day and the pay-from controls', () => {
+    const h = render({ repayment_strategy: 'statement_balance', repayment_cadence: 'card_due_date' })
+    expect((h.match(/aria-live="polite"/g) ?? []).length).toBeGreaterThanOrEqual(3)
+  })
 })

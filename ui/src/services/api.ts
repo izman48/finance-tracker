@@ -1,3 +1,4 @@
+import type { RepaymentWarning } from '../lib/repaymentWarnings'
 import axios from 'axios'
 import { isAnonymized } from '../lib/anonymize'
 import { sampleResponse } from '../lib/sampleAccount'
@@ -439,6 +440,8 @@ export interface AccountSettingUpdate {
   repayment_installments?: number | null
   pay_from_account_id?: string | null
   instalment_card?: boolean
+  // Optional card APR in percent, a decimal string; null clears it (T-10-5).
+  card_apr?: string | null
 }
 
 // Card statements (T-10-1..T-10-3). Money is a decimal string; dates are ISO.
@@ -471,6 +474,9 @@ export interface CardStatements {
   missing_statement: boolean
   conflict: boolean
   next_payment: { amount: string; date: string; from_account_name: string | null } | null
+  // Card settings view (T-10-5): notes about the saved settings, and the stored APR.
+  warnings?: RepaymentWarning[]
+  card_apr?: string | null
 }
 
 /** Every field is sent on add and edit, so nothing is filled from another row. */

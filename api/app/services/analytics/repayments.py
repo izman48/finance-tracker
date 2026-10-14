@@ -214,12 +214,19 @@ def repayment_events(db: Session, user, start: date, end: date) -> list[dict]:
     return out
 
 
+_CADENCES = frozenset(c.value for c in RepaymentCadence)
+
+
 def _pays_on_card_due_date(s: AccountSetting) -> bool:
     """Pay day "card due date": chosen, or implied by `statement_balance`
-    with no pay day set (its default)."""
+    with no pay day set (its default) or one we don't know (cadence is free
+    text until it is validated on write): never a missing payment."""
     if s.repayment_cadence == RepaymentCadence.CARD_DUE_DATE.value:
         return True
-    return not s.repayment_cadence and s.repayment_strategy == RepaymentStrategy.STATEMENT_BALANCE.value
+    return (
+        s.repayment_strategy == RepaymentStrategy.STATEMENT_BALANCE.value
+        and s.repayment_cadence not in _CADENCES
+    )
 
 
 def _pay_days(s: AccountSetting, position, start: date) -> Iterator[date]:

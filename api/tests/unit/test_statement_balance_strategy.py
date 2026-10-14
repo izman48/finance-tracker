@@ -256,3 +256,16 @@ def test_linked_card_commitment_counts_once_and_the_larger_wins(db_session):
 
     assert committed == outflow == Decimal("5000")
     assert projected == []  # projections leave the card's repayment out too
+
+
+@pytest.mark.parametrize("cadence", ["fortnightly", "Monthly", "card due date"])
+def test_statement_balance_with_an_unknown_pay_day_uses_the_card_due_date(db_session, cadence):
+    """Cadence is still free text until T-10-4a: an unknown value must never
+    drop a payment or raise (eng-b, #175)."""
+    with_statement = World(db_session, cadence=cadence)
+    with_statement.statement()
+    without = World(db_session, cadence=cadence)
+
+    assert with_statement.repayments() == [(DUE, Decimal("5000")), (NEXT_DUE, Decimal("1000"))]
+    assert without.repayments() == [(TODAY + timedelta(days=30), Decimal("6000"))]
+    assert svc.get_summary(db_session, with_statement.user)["committed_before_payday"] == Decimal("5000")

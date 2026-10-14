@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models import CardStatement, StatementSource, Transaction
@@ -103,8 +104,18 @@ def position_for(db: Session, account, statement) -> StatementPosition:
 def current_positions(db: Session, user, accounts) -> dict:
     """{account id: StatementPosition} for each of these accounts that has a
     statement (its current one)."""
+    latest = (
+        db.query(CardStatement.account_id, func.max(CardStatement.statement_date).label("statement_date"))
+        .filter(CardStatement.user_id == user.id)
+        .group_by(CardStatement.account_id)
+        .subquery()
+    )
+    rows = db.query(CardStatement).join(
+        latest,
+        (CardStatement.account_id == latest.c.account_id) & (CardStatement.statement_date == latest.c.statement_date),
+    ).filter(CardStatement.user_id == user.id).all()
     by_card: dict = {}
-    for statement in db.query(CardStatement).filter(CardStatement.user_id == user.id).all():
+    for statement in rows:
         by_card.setdefault(statement.account_id, []).append(statement)
     return {
         acc.id: position_for(db, acc, current_statement(by_card[acc.id]))

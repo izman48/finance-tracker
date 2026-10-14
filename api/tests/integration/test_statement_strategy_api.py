@@ -79,3 +79,15 @@ def test_with_no_statement_next_payment_is_the_full_balance(alice):
 
 def test_a_card_with_no_repayment_plan_has_no_next_payment(alice, db_session):
     assert alice.get(alice.other_card_id).json()["next_payment"] is None
+
+
+def test_an_unknown_pay_day_still_answers_on_every_money_surface(alice, db_session):
+    with alice.key():
+        db_session.query(AccountSetting).filter(AccountSetting.account_id == alice.card_id).update(
+            {AccountSetting.repayment_cadence: "fortnightly"})
+        db_session.commit()
+    alice.add()
+
+    for path in ("/analytics/summary", "/analytics/forecast", "/analytics/net-worth-projection"):
+        assert alice.client.get(f"{API}{path}", headers=alice.headers).status_code == 200, path
+    assert Decimal(alice.get().json()["next_payment"]["amount"]) == Decimal("5000.00")

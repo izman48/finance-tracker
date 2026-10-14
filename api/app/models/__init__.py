@@ -17,6 +17,7 @@ from app.models.commitment_rule import (
 )
 from app.models.planned_item import PlannedItem, PlannedKind
 from app.models.repayment_schedule_item import RepaymentScheduleItem
+from app.models.card_statement import CardStatement, StatementSource
 from app.models.category_rule import CategoryRule, RulePack, merchant_match_key
 from app.models.asset import Asset, AssetFlow, AssetValuation, ASSET_TYPES
 from app.models.oauth import OAuthAuthorizationCode, OAuthClient, OAuthGrant
@@ -50,6 +51,8 @@ __all__ = [
     "PlannedItem",
     "PlannedKind",
     "RepaymentScheduleItem",
+    "CardStatement",
+    "StatementSource",
     "CategoryRule",
     "RulePack",
     "merchant_match_key",

@@ -29,6 +29,7 @@ from app.models import (
     Budget,
     BudgetChange,
     BudgetCycleSnapshot,
+    CardStatement,
     CategoryRule,
     CommitmentRule,
     OAuthClient,
@@ -61,7 +62,7 @@ BYSTANDER = "bystander@example.com"
 ENCRYPTED_TYPES = (UserEncryptedString, UserEncryptedDecimal, UserEncryptedToken)
 KNOWN_ENCRYPTED_TABLES = {
     "accounts", "asset_flows", "asset_valuations", "assets", "audit_entries",
-    "bank_connections", "budget_changes", "budget_cycle_snapshots", "budgets", "category_rules", "commitment_rules", "planned_items",
+    "bank_connections", "budget_changes", "card_statements", "budget_cycle_snapshots", "budgets", "category_rules", "commitment_rules", "planned_items",
     "repayment_schedule_items", "transactions",
 }
 
@@ -142,6 +143,8 @@ def _seed_everything(db, user_id, dek) -> None:
         db.add_all([
             AccountSetting(user_id=user_id, account_id=account.id),
             RepaymentScheduleItem(user_id=user_id, account_id=account.id, due_date=date(2026, 11, 1), amount=Decimal("20")),
+            CardStatement(user_id=user_id, account_id=account.id, statement_date=date(2026, 10, 3),
+                          due_date=date(2026, 10, 31), statement_balance=Decimal("5000"), minimum_due=Decimal("150")),
             AssetValuation(asset_id=asset.id, value=Decimal("1000"), valued_at=date(2026, 10, 1)),
             AssetFlow(asset_id=asset.id, amount=Decimal("50"), flow_date=date(2026, 10, 1)),
             CategoryRule(user_id=user_id, pack_id=pack.id, pattern="TESCO", category="Groceries"),
@@ -375,3 +378,16 @@ def test_a_failed_reset_purges_nothing_and_keeps_the_old_password(client, db_ses
     old = _login(client, VICTIM, PASSWORD)
     commitments = client.get(f"{API}/analytics/commitments", headers=_bearer(old))
     assert commitments.status_code == 200 and len(commitments.json()) == 1
+
+
+def test_statements_of_a_purged_card_are_404_not_500_after_reset(client, db_session, two_seeded_users):
+    """The card and its statements are purged together, so reading them is a
+    plain not-found, never an undecryptable row."""
+    victim_id = _user(db_session, VICTIM).id
+    card_id = db_session.query(CardStatement.account_id).filter(CardStatement.user_id == victim_id).scalar()
+    assert _reset(client, db_session).status_code == 200
+
+    res = client.get(f"{API}/analytics/accounts/{card_id}/statements",
+                     headers=_bearer(_login(client, VICTIM, NEW_PASSWORD)))
+
+    assert res.status_code == 404

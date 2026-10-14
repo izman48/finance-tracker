@@ -127,7 +127,7 @@ class World:
         """Raw rows (ciphertext included) of every table these routes write."""
         tables = [
             "commitment_rules", "planned_items", "account_settings",
-            "repayment_schedule_items", "accounts", "audit_entries", "write_idempotency",
+            "repayment_schedule_items", "card_statements", "accounts", "audit_entries", "write_idempotency",
         ]
         return {
             t: sorted(map(tuple, self.db.execute(text(f"SELECT * FROM {t}")).fetchall()), key=str)
@@ -176,6 +176,17 @@ CASES: dict[tuple[str, str, str], Case] = {
     ),
     ("DELETE", f"{API}/analytics/accounts/{{account_id}}/repayments/{{item_id}}", "account_id"): lambda w, acc: w.client.delete(
         f"{API}/analytics/accounts/{acc}/repayments/{uuid.uuid4()}",
+    ),
+    ("POST", f"{API}/analytics/accounts/{{account_id}}/statements", "account_id"): lambda w, acc: w.client.post(
+        f"{API}/analytics/accounts/{acc}/statements",
+        json={"statement_balance": "5000.00", "statement_date": date.today().isoformat(),
+              "due_date": date.today().isoformat()},
+    ),
+    ("PATCH", f"{API}/analytics/accounts/{{account_id}}/statements/{{statement_id}}", "account_id"): lambda w, acc: w.client.patch(
+        f"{API}/analytics/accounts/{acc}/statements/{uuid.uuid4()}", json={"statement_balance": "1.00"},
+    ),
+    ("DELETE", f"{API}/analytics/accounts/{{account_id}}/statements/{{statement_id}}", "account_id"): lambda w, acc: w.client.delete(
+        f"{API}/analytics/accounts/{acc}/statements/{uuid.uuid4()}",
     ),
     ("POST", f"{API}/planning/planned-events", "account_id"): lambda w, acc: w.client.post(
         f"{API}/planning/planned-events",

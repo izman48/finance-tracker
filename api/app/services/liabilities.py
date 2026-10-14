@@ -264,7 +264,9 @@ def overpayment(liability: Liability, today: date, linked: bool, lump_sum: Decim
     left = balance - lump_sum
     after = amortise(left, liability.apr, liability.payment, rows[0].due_date, liability.cadence).rows if left > 0 else []
     interest_before = sum((r.interest for r in rows), Decimal("0.00"))
-    interest_after = sum((r.interest for r in after), Decimal("0.00"))
+    # Clearing the loan today: anything above the balance is the settlement
+    # interest, paid rather than saved (eng-a on #191).
+    interest_after = sum((r.interest for r in after), Decimal("0.00")) if left > 0 else -left
     return {
         "lump_sum": lump_sum,
         "settlement_figure": settlement,

@@ -67,11 +67,22 @@ def test_settlement_figure_includes_up_to_58_days_interest(client, user):
 
 
 def test_paying_the_settlement_figure_clears_the_loan(client, user):
+    # eng-a on #191: the settlement interest is paid, not saved, so the
+    # saving is £2,483.22 − £150.49 = £2,332.73.
     token, lid = user
     body = _overpay(client, token, lid, "9150.49").json()
     assert body["payments_after"] == 0
-    assert Decimal(body["interest_saved"]) == Decimal("2483.22")
+    assert Decimal(body["interest_after"]) == Decimal("150.49")
+    assert Decimal(body["interest_saved"]) == Decimal("2332.73")
     assert body["payoff_date_after"] is None
+
+
+def test_a_lump_sum_just_over_the_balance_counts_the_extra_as_interest_paid(client, user):
+    token, lid = user
+    body = _overpay(client, token, lid, "9050.00").json()
+    assert body["payments_after"] == 0
+    assert Decimal(body["interest_after"]) == Decimal("50.00")
+    assert Decimal(body["interest_saved"]) == Decimal("2433.22")
 
 
 @pytest.mark.parametrize("lump_sum", ["0", "-5.00", "9150.50", "100.001", "abc"])

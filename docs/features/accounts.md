@@ -14,11 +14,11 @@ derives the amount still due and the spend since the statement (unbilled).
 | Route | Auth |
 |---|---|
 | `GET /api/v1/banking/accounts` | `CurrentUserOrMcpRead`; adds `credit_owed`, `last_synced_at`, `sync_stale`. |
-| `PATCH /api/v1/analytics/accounts/{account_id}/settings` | `CurrentUser`; role, overdraft, repayment config, `pay_from_account_id`, `instalment_card`. Role, strategy and cadence are enums (422). Repayment fields only on a credit account (the role after the patch). `scheduled` only on a card marked `instalment_card`; a card already on it can still be edited, but switching to it or unmarking the card is 422. |
+| `PATCH /api/v1/analytics/accounts/{account_id}/settings` | `CurrentUser`; role, overdraft, repayment config, `pay_from_account_id`, `instalment_card`, `card_apr` (0-100, encrypted, credit only). Returns `warnings` (see below). Role, strategy and cadence are enums (422). Repayment fields only on a credit account (the role after the patch). `scheduled` only on a card marked `instalment_card`; a card already on it can still be edited, but switching to it or unmarking the card is 422. |
 | `GET /api/v1/analytics/accounts/{account_id}/repayments` | `CurrentUser` |
 | `POST /api/v1/analytics/accounts/{account_id}/repayments` | `CurrentUser` |
 | `DELETE /api/v1/analytics/accounts/{account_id}/repayments/{item_id}` | `CurrentUser` |
-| `GET /api/v1/analytics/accounts/{account_id}/statements` | `CurrentUser`; newest 24 statements plus `current` (amount still due, unbilled, paid), `missing_statement` (the current one's due date has passed) and `next_payment` (amount, date, pay-from account name, from `repayment_events`; null while a commitment is tied to the card (which of the two the forecast counts depends on its window), so it never disagrees with the forecast), derived on read. |
+| `GET /api/v1/analytics/accounts/{account_id}/statements` | `CurrentUser`; newest 24 statements plus `current` (amount still due, unbilled, paid), `missing_statement` (the current one's due date has passed), `warnings` and `card_apr` and `next_payment` (amount, date, pay-from account name, from `repayment_events`; null while a commitment is tied to the card (which of the two the forecast counts depends on its window), so it never disagrees with the forecast), derived on read. |
 | `POST /api/v1/analytics/accounts/{account_id}/statements` | `CurrentUser`; manual statement, credit accounts only (else 422); same card and date twice is 409. |
 | `PATCH /api/v1/analytics/accounts/{account_id}/statements/{statement_id}` | `CurrentUser`; on a provider statement it saves the user's own (manual) one for that period and returns that row (a different `id`: reload the list). |
 | `DELETE /api/v1/analytics/accounts/{account_id}/statements/{statement_id}` | `CurrentUser`; the card goes back to its current balance. A provider statement is 409 (sync would bring it back). |
@@ -53,6 +53,13 @@ current statement's due date, then monthly, rolled forward past dates
 already gone; with no statement, the card's `repayment_day`, else 30 days
 from today. Summary, forecast and projections all read these through
 `repayment_events` / `scheduled_outflows`.
+
+**Warnings** (`services/analytics/repayment_warnings.py`, T-10-5): codes plus string values,
+worded by the UI, about the card's next repayment as the forecast plans it: `interest_cost`
+(the payment is less than what is still due on the statement; with `card_apr` the monthly
+estimate is the unpaid part times (1 + APR)^(1/12) − 1, otherwise no figure), `late_fee_risk`
+(the payment falls after the statement's due date) and `overdraft_breach` (the forecast's own
+breach on the pay-from account by the payment date: past its limit, or below £0 with none).
 
 **Legacy settings** (stored before T-10-4a validated them): an unknown role
 reads as the account type's default, so a card stays credit; an unknown

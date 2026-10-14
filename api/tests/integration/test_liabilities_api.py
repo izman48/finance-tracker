@@ -421,3 +421,11 @@ def test_deleting_the_account_removes_its_liabilities_and_keeps_other_users(clie
     finally:
         db_session.commit()
         db_session.connection().exec_driver_sql("PRAGMA foreign_keys=OFF")
+
+
+def test_wealth_view_orders_liabilities_by_apr_desc(alice):
+    # ux L-1 fixture: A 11% loan, B 20% retail finance, C 5% loan repaid irregularly.
+    alice.create(lender="Lender A", apr="11.00")
+    alice.create(lender="Lender B", kind="finance", balance="1500.00", apr="20.00", payment="100.00")
+    alice.create(lender="Lender C", balance="4000.00", apr="5.00", payment=None, opted_out=True)
+    assert [x["lender"] for x in alice.list().json()] == ["Lender B", "Lender A", "Lender C"]

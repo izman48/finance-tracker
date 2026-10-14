@@ -10,10 +10,12 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { assetsAPI, analyticsAPI, bankingAPI, Asset, AssetDecomposition, NetWorthPoint, NetWorthPosition, Projection } from '../services/api'
+import { assetsAPI, analyticsAPI, bankingAPI, liabilitiesAPI, Asset, AssetDecomposition, Liability, NetWorthPoint, NetWorthPosition, Projection } from '../services/api'
 import { BankStatus, CashflowSummary, SummaryAccount } from '../types'
 import { ASSET_TYPE_LABEL, latestValue, isLiabilityType } from '../lib/assets'
 import { gbp0 as gbp, timeAgo } from '../lib/format'
+import { bothCounted, LOANS_GROUP_LABEL } from '../lib/liabilities'
+import LiabilityRow, { BothCountedNotice, LoansLoadError } from '../components/wealth/LiabilityRow'
 import AddAssetModal from '../components/AddAssetModal'
 import UpdateAssetValueModal from '../components/UpdateAssetValueModal'
 import AccountSettingsModal from '../components/AccountSettingsModal'
@@ -40,7 +42,7 @@ const GROUPS = [
   { key: 'property', label: 'Property' },
   { key: 'other', label: 'Other' },
   { key: 'owed', label: 'Owed' },
-  { key: 'liabilities', label: 'Loans & mortgages' },
+  { key: 'liabilities', label: LOANS_GROUP_LABEL },
   { key: 'excluded', label: 'Excluded' },
 ] as const
 
@@ -99,6 +101,10 @@ function NetWorthTooltip({ active, payload, label }: any) {
 export default function NetWorthPage() {
   const [history, setHistory] = useState<NetWorthPoint[]>([])
   const [assets, setAssets] = useState<Asset[]>([])
+  // Liabilities load on their own, so a failure shows in their group and
+  // never blanks the page (ux B.2); null = not loaded yet.
+  const [liabilities, setLiabilities] = useState<Liability[] | null>(null)
+  const [liabilitiesFailed, setLiabilitiesFailed] = useState(false)
   const [summary, setSummary] = useState<CashflowSummary | null>(null)
   const [bankStatus, setBankStatus] = useState<BankStatus | null>(null)
   const [months, setMonths] = useState(12)
@@ -162,8 +168,19 @@ export default function NetWorthPage() {
     }
   }
 
+  const loadLiabilities = async () => {
+    setLiabilitiesFailed(false)
+    try {
+      setLiabilities((await liabilitiesAPI.list()).data)
+    } catch (e) {
+      console.error('Failed to load loans and finance', e)
+      setLiabilitiesFailed(true)
+    }
+  }
+
   useEffect(() => {
     load()
+    loadLiabilities()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -368,7 +385,10 @@ export default function NetWorthPage() {
   }
 
   const providers = Array.from(new Set((bankStatus?.connections ?? []).map((c) => c.provider_name)))
-  const hasAnything = rows.length > 0
+  const loans = liabilities ?? []
+  const hasAnything = rows.length > 0 || loans.length > 0 || liabilitiesFailed
+  // What the API says is owed on liabilities: the page never sums them.
+  const liabilitiesTotal = Number(position?.liabilities ?? summary?.liabilities_total ?? 0)
 
   return (
     <div ref={revealRef} className="max-w-5xl mx-auto px-4 py-6 sm:py-10">
@@ -681,9 +701,14 @@ export default function NetWorthPage() {
         <div className="card overflow-hidden mb-6" data-reveal>
           {GROUPS.map(({ key, label }) => {
             const groupRows = rows.filter((r) => r.group === key)
-            if (groupRows.length === 0) return null
+            const isLoans = key === 'liabilities'
+            const loanRows = isLoans ? loans : []
+            const loansFailed = isLoans && liabilitiesFailed
+            if (groupRows.length === 0 && loanRows.length === 0 && !loansFailed) return null
             const excluded = key === 'excluded'
-            const subtotal = groupRows.reduce((s, r) => s + r.value, 0)
+            // Loans and finance: the asset rows plus the API's liabilities
+            // total, shown once; no subtotal while the liabilities failed (L-5, L-7).
+            const subtotal = groupRows.reduce((s, r) => s + r.value, 0) - (isLoans ? liabilitiesTotal : 0)
             return (
               <div key={key}>
                 <div className="px-4 pt-4 pb-1.5 flex items-baseline justify-between">
@@ -693,12 +718,17 @@ export default function NetWorthPage() {
                       <span className="ml-2 normal-case tracking-normal">not counted in net worth</span>
                     )}
                   </span>
-                  {!excluded && (
+                  {!excluded && !loansFailed && (
                     <span className={`text-sm tnum ${subtotal < 0 ? 'text-warn' : 'text-slate-400'}`}>
                       {subtotal < 0 ? '−' : ''}{gbp(Math.abs(subtotal))}
                     </span>
                   )}
                 </div>
+                {isLoans && bothCounted(assets, loans) && <BothCountedNotice />}
+                {loansFailed && <LoansLoadError onRetry={loadLiabilities} />}
+                {loanRows.map((l) => (
+                  <LiabilityRow key={`liability-${l.id}`} liability={l} />
+                ))}
                 {groupRows.map((row) => (
                   <button
                     key={row.key}

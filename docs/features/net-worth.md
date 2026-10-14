@@ -52,7 +52,8 @@ drops it silently. The "both counted" notice is UI (T-10-10).
 `assets_total`, `liabilities_total`, `asset_decomposition`), `services/analytics/projections.py`
 (surplus from the cashflow engine, honours Claude holds).
 
-**UI**: `/networth` (`NetWorthPage`), `PositionStrip` (its breakdown line
+**UI**: `/networth` (`NetWorthPage`; the balance sheet's "Loans and finance"
+group lists liabilities, see [liabilities.md](liabilities.md)), `PositionStrip` (its breakdown line
 subtracts what is owed on liabilities), `AddAssetModal`,
 `UpdateAssetValueModal`, `AddToBalanceSheetChooser`, `lib/assets.ts`. Home
 Wealth card.

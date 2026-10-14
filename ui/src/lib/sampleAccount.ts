@@ -63,9 +63,21 @@ const ASSETS = [
   // per-asset contribution leg of the unified projection.
   { id: 'sas1', name: 'Meridian S&S ISA', asset_type: 'isa', value: 18500, monthly: 400 },
   { id: 'sas2', name: 'Sterling Pension', asset_type: 'pension', value: 24000, monthly: 0 },
-  // A liability: stored as a negative valuation (amount owed), subtracts from net worth.
-  { id: 'sas3', name: 'Car loan', asset_type: 'loan', value: -6800, monthly: 0 },
 ]
+
+// Loans and finance (T-10-10): entered terms plus the API's derived figures,
+// fixed so the sample reconciles (net worth subtracts LIABILITIES_TOTAL).
+const LIABILITIES = [
+  {
+    id: 'sl1', kind: 'finance', lender: 'Willow Home Finance', balance: '1500.00', apr: '19.90', payment: '100.00',
+    cadence: 'monthly', interest_remaining: '139.41', payments_remaining: 17, end_date: null, payoff_days: 480,
+  },
+  {
+    id: 'sl2', kind: 'loan', lender: 'Northgate Motor Loans', balance: '6800.00', apr: '8.90', payment: '240.00',
+    cadence: 'monthly', interest_remaining: '882.20', payments_remaining: 32, end_date: null, payoff_days: 960,
+  },
+] as const
+const LIABILITIES_TOTAL = LIABILITIES.reduce((s, l) => s + Number(l.balance), 0)
 
 // One authored ledger everything else is computed from. Spans ~6 months (a
 // repeating monthly pattern + slight per-month variation) so the period/date
@@ -321,8 +333,8 @@ function spendingResponse(q: {
 const AVAILABLE_CASH = 2480.55 + 940.2 // spending accounts
 const SAVINGS_TOTAL = 12000
 const CREDIT_OWED = 640.3
-const ASSETS_TOTAL = ASSETS.reduce((s, a) => s + a.value, 0) // ISA + pension − car loan
-const NET_WORTH = AVAILABLE_CASH + SAVINGS_TOTAL + ASSETS_TOTAL - CREDIT_OWED
+const ASSETS_TOTAL = ASSETS.reduce((s, a) => s + a.value, 0) // ISA + pension
+const NET_WORTH = AVAILABLE_CASH + SAVINGS_TOTAL + ASSETS_TOTAL - CREDIT_OWED - LIABILITIES_TOTAL
 
 function summaryResponse() {
   const committed = 1100 + 20 + 12.99 + 11.99 + 32 // rent + phone + subs + gym
@@ -332,6 +344,7 @@ function summaryResponse() {
     credit_owed: CREDIT_OWED,
     savings_total: SAVINGS_TOTAL,
     assets_total: ASSETS_TOTAL,
+    liabilities_total: LIABILITIES_TOTAL,
     net_worth: NET_WORTH,
     committed_before_payday: committed,
     safe_to_spend: Math.round((AVAILABLE_CASH - committed) * 100) / 100,
@@ -425,7 +438,10 @@ function netWorthHistory(months: number) {
     const d = i === 0 ? now : new Date(now.getFullYear(), now.getMonth() - i + 1, 0)
     const nw = Math.round((NET_WORTH - i * 520 - (i % 2) * 140) * 100) / 100
     const assets = Math.round((ASSETS_TOTAL - i * 300) * 100) / 100
-    out.push({ date: isoDate(d), bank: String(Math.round((nw - assets) * 100) / 100), assets: String(assets), net_worth: String(nw) })
+    out.push({
+      date: isoDate(d), bank: String(Math.round((nw - assets + LIABILITIES_TOTAL) * 100) / 100),
+      assets: String(assets), liabilities: String(LIABILITIES_TOTAL), net_worth: String(nw),
+    })
   }
   return out
 }
@@ -441,8 +457,9 @@ function positionResponse() {
   return {
     as_of: isoDate(now),
     net_worth: String(NET_WORTH),
-    bank: String(Math.round((NET_WORTH - ASSETS_TOTAL) * 100) / 100),
+    bank: String(Math.round((NET_WORTH - ASSETS_TOTAL + LIABILITIES_TOTAL) * 100) / 100),
     assets: String(ASSETS_TOTAL),
+    liabilities: String(LIABILITIES_TOTAL),
     since: isoDate(since),
     changes: horizons.map(([key, label, months]) => {
       const m = months ?? 22
@@ -549,8 +566,11 @@ function projectionResponse(q: Record<string, any>) {
     isLiability: a.value < 0,
   }))
   const assetsAt0 = components.reduce((s, c) => s + c.value, 0)
-  const timeline: { date: string; value: string; cash: string; invested: string; assets: string }[] = [
-    { date: addM(0), value: String(round(NET_WORTH)), cash: String(round(BANK)), invested: '0.00', assets: String(round(assetsAt0)) },
+  // Liabilities kept flat in the sample projection (as the API does for an
+  // unlinked one), as their own component.
+  const owed = String(round(LIABILITIES_TOTAL))
+  const timeline: { date: string; value: string; cash: string; invested: string; assets: string; liabilities: string }[] = [
+    { date: addM(0), value: String(round(NET_WORTH)), cash: String(round(BANK)), invested: '0.00', assets: String(round(assetsAt0)), liabilities: owed },
   ]
   // Surplus waterfall (mirrors backend): positive months invest; negative
   // months drain cash first, then investments; shortfall never compounds.
@@ -579,7 +599,7 @@ function projectionResponse(q: Record<string, any>) {
       if (c.isLiability && c.value > 0) c.value = 0 // paid off — stop at zero
       assetsValue += c.value
     }
-    const value = cash + invested + assetsValue
+    const value = cash + invested + assetsValue - LIABILITIES_TOTAL
     if (target != null && !target_date && value >= target) {
       target_date = addM(m)
       monthsWanted = Math.min(600, m + 6)
@@ -591,6 +611,7 @@ function projectionResponse(q: Record<string, any>) {
         cash: String(round(cash)),
         invested: String(round(invested)),
         assets: String(round(assetsValue)),
+        liabilities: owed,
       })
     else if (target == null || target_date) break
   }
@@ -611,6 +632,19 @@ function projectionResponse(q: Record<string, any>) {
     as_of: addM(0),
     timeline,
   }
+}
+
+function liabilitiesResponse() {
+  const asOf = isoDate(nowMinus(20))
+  return LIABILITIES.map((l) => ({
+    id: l.id, kind: l.kind, lender: l.lender, balance: l.balance, balance_as_of: asOf, apr: l.apr,
+    payment: l.payment, cadence: l.cadence, start_date: isoDate(nowMinus(400)), end_date: l.end_date,
+    opted_out: false, current_balance: l.balance, next_payment_date: isoDate(nowPlus(10)),
+    payments_remaining: l.payments_remaining, payoff_date: isoDate(nowPlus(l.payoff_days)),
+    interest_remaining: l.interest_remaining,
+    total_cost: (Number(l.balance) + Number(l.interest_remaining)).toFixed(2),
+    paid_off: false, balance_stale: false, linked_commitment: null, link_result: null,
+  }))
 }
 
 function assetsResponse() {
@@ -720,6 +754,7 @@ export function sampleResponse(url: string, params: unknown): unknown {
   if (path.includes('/analytics/net-worth-position')) return positionResponse()
   if (is('/statements')) return statementsResponse(path)
   if (is('/assets')) return assetsResponse()
+  if (is('/liabilities')) return liabilitiesResponse()
   if (is('/rules')) return { packs: [], personal: [] }
   if (is('/audit')) return { items: [], next_cursor: null }
   return {}

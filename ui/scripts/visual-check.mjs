@@ -143,6 +143,7 @@ const position = {
   net_worth: '12400',
   bank: '8420',
   assets: '3980',
+  liabilities: '10500',
   since: iso(new Date(today.getFullYear() - 1, today.getMonth() - 2, 1)),
   changes: [
     { key: '1m', label: '1 month', from_date: iso(new Date(today.getFullYear(), today.getMonth() - 1, today.getDate())), available: true, from_value: '12000', change: '400', change_pct: '3.3' },
@@ -156,6 +157,21 @@ const position = {
 const assets = [
   { id: 'as1', name: 'Vanguard S&S ISA', asset_type: 'isa', valuations: [{ id: 'v1', value: '4200', valued_at: daysFromNow(-200) }, { id: 'v2', value: '4650', valued_at: daysFromNow(-10) }] },
   { id: 'as2', name: 'Workplace pension', asset_type: 'pension', valuations: [{ id: 'v3', value: '5400', valued_at: daysFromNow(-30) }] },
+]
+
+// Loans and finance (T-10-10): a linked loan, a stale finance balance and an
+// irregular loan, to show every row shape. Synthetic figures only.
+const liability = (over) => ({
+  id: 'li1', kind: 'loan', lender: 'Lender A', balance: '9000.00', balance_as_of: daysFromNow(-5), apr: '11.00',
+  payment: '200.00', cadence: 'monthly', start_date: daysFromNow(10), end_date: null, opted_out: false,
+  current_balance: '9000.00', next_payment_date: daysFromNow(10), payments_remaining: 58, payoff_date: daysFromNow(1735),
+  interest_remaining: '2483.22', total_cost: '11483.22', paid_off: false, balance_stale: false,
+  linked_commitment: { id: 'c-li1', label: 'Lender A' }, link_result: null, ...over,
+})
+const liabilities = [
+  liability({ id: 'li2', kind: 'finance', lender: 'Lender B with a rather long trading name', balance: '1500.00', current_balance: '1500.00', apr: '20.00', payment: '100.00', interest_remaining: '139.41', balance_stale: true, balance_as_of: daysFromNow(-120) }),
+  liability({}),
+  liability({ id: 'li3', lender: 'Lender C', balance: '4000.00', current_balance: '4000.00', apr: '5.00', payment: null, opted_out: true, payoff_date: null, interest_remaining: null, total_cost: null, payments_remaining: null, next_payment_date: null, linked_commitment: null }),
 ]
 
 const rules = {
@@ -218,6 +234,7 @@ const routes = [
   ['**/api/v1/analytics/net-worth-decomposition*', { start_date: iso(new Date(today.getFullYear() - 1, today.getMonth(), today.getDate())), end_date: iso(today), assets_start: '2000', assets_end: '3980', assets_delta: '1980', contributions: '1500', growth: '480', flows_recorded: 3 }],
   ['**/api/v1/analytics/nudges', []],
   ['**/api/v1/assets', assets],
+  ['**/api/v1/liabilities', liabilities],
   ['**/api/v1/banking/accounts', accounts.map(({ id, display_name, provider_name, account_type }) => ({ id, display_name, provider_name, account_type }))],
   ['**/api/v1/banking/transactions*', { items: transactions, total: transactions.length, page: 1, page_size: 100 }],
   // Registered after transactions* — Playwright checks later routes first.

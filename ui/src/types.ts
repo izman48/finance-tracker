@@ -84,6 +84,8 @@ export interface CashflowSummary {
   available_cash: number
   overdraft_cushion: number
   credit_owed: number
+  // Owed on liabilities (loans, finance, BNPL), subtracted in net_worth (T-10-7b).
+  liabilities_total?: number | string
   net_worth: number
   committed_before_payday: number
   safe_to_spend: number

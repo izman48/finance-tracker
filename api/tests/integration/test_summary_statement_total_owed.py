@@ -102,8 +102,23 @@ def test_a_card_switched_to_another_role_has_no_statement_key(alice, db_session)
 def test_another_users_statement_never_shows(alice, client, db_session):
     alice.add()
     bob = Person(client, db_session, "owed-bob@example.com")
-    for row in _summary(bob)["accounts"]:
-        assert row.get("statement") is None
+    cards = [row for row in _summary(bob)["accounts"] if row["role"] == "credit"]
+    assert len(cards) == 2
+    for row in cards:
+        assert "statement" in row and row["statement"] is None
+
+
+def test_a_paid_statement_past_its_due_date_is_both_paid_and_missing(alice):
+    alice.add({
+        "statement_balance": "5000.00",
+        "statement_date": (TODAY - timedelta(days=40)).isoformat(),
+        "due_date": (TODAY - timedelta(days=15)).isoformat(),
+    })
+    alice.card_payment("5000.00", days_ago=20)
+    card = _account_row(_summary(alice), alice.card_id)
+    assert (card["statement"]["paid"], card["statement"]["missing"]) == (True, True)
+    route = alice.get().json()
+    assert (route["current"]["paid"], route["missing_statement"]) == (True, True)
 
 
 # --------------------------------------------------------------------------- #

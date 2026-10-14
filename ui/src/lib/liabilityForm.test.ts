@@ -151,3 +151,30 @@ describe('confirmations (B.5)', () => {
     })
   })
 })
+
+describe('where focus goes (ux on #190)', () => {
+  it('every failed save focuses the top alert; the picker focuses its heading; a save leaves it to the page', async () => {
+    const { focusAfter } = await import('./liabilityForm')
+    for (const kind of ['invalid', 'message', 'not_found', 'error'] as const) expect(focusAfter(kind)).toBe('liability-errors')
+    expect(focusAfter('choose')).toBe('liability-form-title')
+    expect(focusAfter('saved')).toBeNull()
+  })
+
+  it('the stable ids the form and page focus exist as constants', async () => {
+    const { FOCUS } = await import('./liabilityForm')
+    expect(FOCUS).toEqual({
+      errors: 'liability-errors', title: 'liability-form-title', lender: 'liability-lender', balance: 'liability-balance',
+      save: 'liability-save', delete: 'liability-delete', pageAdd: 'wealth-add',
+    })
+  })
+
+  it('a successful pick toasts the linked bill', async () => {
+    const candidates = [{ id: 'c1', label: 'LOAN DD', amount: '200.00', cadence: 'monthly', interval_days: null, next_date: '2026-11-28' }]
+    const linked = loan({ link_result: 'linked', linked_commitment: { id: 'c1', label: 'LOAN DD' } })
+    const c = client({ create: vi.fn().mockReturnValueOnce(fail(409, { code: 'choose_commitment', candidates })).mockReturnValueOnce(Promise.resolve({ data: linked })) })
+    expect((await saveLiability(c, filled(), null)).kind).toBe('choose')
+    const out = await saveLiability(c, filled(), null, { commitmentChoice: 'c1' })
+    expect(out.kind).toBe('saved')
+    expect(addedToast((out as { liability: Liability }).liability)).toBe('Loan added. Linked to your existing bill "LOAN DD".')
+  })
+})

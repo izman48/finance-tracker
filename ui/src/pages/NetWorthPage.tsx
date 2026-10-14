@@ -109,6 +109,9 @@ export default function NetWorthPage() {
   const [liabilitiesFailed, setLiabilitiesFailed] = useState(false)
   // The loan form: 'add', a liability to edit, or closed.
   const [loanForm, setLoanForm] = useState<'add' | Liability | null>(null)
+  const [loanFormFromChip, setLoanFormFromChip] = useState(false)
+  // A row to focus once it has rendered (after an add or an edit, ux L-10).
+  const [focusRowId, setFocusRowId] = useState<string | null>(null)
   const toast = useToast()
   const [summary, setSummary] = useState<CashflowSummary | null>(null)
   const [bankStatus, setBankStatus] = useState<BankStatus | null>(null)
@@ -172,6 +175,14 @@ export default function NetWorthPage() {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (!focusRowId) return
+    const row = document.getElementById(`liability-row-${focusRowId}`)
+    if (!row) return
+    row.focus()
+    setFocusRowId(null)
+  }, [focusRowId, liabilities])
 
   const loadLiabilities = async () => {
     setLiabilitiesFailed(false)
@@ -399,7 +410,7 @@ export default function NetWorthPage() {
     <div ref={revealRef} className="max-w-5xl mx-auto px-4 py-6 sm:py-10">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
         <h1 className="font-display font-bold text-2xl sm:text-3xl text-slate-50">Wealth</h1>
-        <button onClick={() => setShowChooser(true)} className="btn-primary">
+        <button id="wealth-add" onClick={() => setShowChooser(true)} className="btn-primary">
           Add
         </button>
       </div>
@@ -732,7 +743,7 @@ export default function NetWorthPage() {
                 {isLoans && bothCounted(assets, loans) && <BothCountedNotice onReplace={() => setLoanForm('add')} />}
                 {loansFailed && <LoansLoadError onRetry={loadLiabilities} />}
                 {loanRows.map((l) => (
-                  <LiabilityRow key={`liability-${l.id}`} liability={l} onOpen={() => setLoanForm(l)} />
+                  <LiabilityRow key={`liability-${l.id}`} liability={l} onOpen={(fromChip) => { setLoanFormFromChip(fromChip); setLoanForm(l) }} />
                 ))}
                 {groupRows.map((row) => (
                   <button
@@ -871,6 +882,7 @@ export default function NetWorthPage() {
           liability={loanForm === 'add' ? null : loanForm}
           replaceable={assets.filter((a) => a.asset_type === 'loan' || a.asset_type === 'other_liability')}
           today={new Date().toLocaleDateString('en-CA')}
+          focusBalance={loanForm !== 'add' && loanFormFromChip}
           onClose={() => setLoanForm(null)}
           onOtherDebt={() => {
             // "Mortgage or another debt?": today's balance-sheet item, in liability mode.
@@ -882,7 +894,7 @@ export default function NetWorthPage() {
             setLoanForm(null)
             toast(message)
             await Promise.all([load(), loadLiabilities()])
-            if (saved) document.getElementById(`liability-row-${saved.id}`)?.focus()
+            if (saved) setFocusRowId(saved.id)
           }}
         />
       )}

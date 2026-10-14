@@ -3,8 +3,8 @@ import { liabilitiesAPI, type Asset, type ChooseCandidate, type Liability } from
 import { dateLong, gbp0, money } from '../../lib/format'
 import { latestValue } from '../../lib/assets'
 import {
-  addedToast, blankForm, deleteConfirm, formFor, NOT_FOUND, optOutConfirm, replaceConfirm, SAVE_ERROR,
-  saveLiability, type FieldErrors, type FieldName, type LiabilityFormState,
+  addedToast, blankForm, deleteConfirm, FOCUS, focusAfter, formFor, NOT_FOUND, optOutConfirm, replaceConfirm,
+  SAVE_ERROR, saveLiability, type FieldErrors, type FieldName, type LiabilityFormState,
 } from '../../lib/liabilityForm'
 import { useConfirm } from '../ui/ConfirmDialog'
 import { useToast } from '../ui/Toast'
@@ -45,7 +45,7 @@ export function LiabilityFormView(p: LiabilityFormViewProps) {
   return (
     <div className="modal-backdrop">
       <div id="liability-form" className="modal-panel max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="liability-form-title">
-        <h3 id="liability-form-title" className="text-lg font-semibold text-slate-50 mb-1">
+        <h3 id="liability-form-title" tabIndex={-1} className="text-lg font-semibold text-slate-50 mb-1 focus:outline-none">
           {p.candidates ? 'Which bill is this loan?' : title}
         </h3>
         {p.candidates ? <BillPicker {...p} candidates={p.candidates} /> : <FormBody {...p} />}
@@ -76,8 +76,11 @@ function FormBody(p: LiabilityFormViewProps) {
           Your balance is from {dateLong(p.form.balance_as_of)}. Enter today&apos;s balance from your lender so the figures stay right.
         </div>
       )}
-      {p.notFound && <div className="banner-err mb-3" role="alert">{NOT_FOUND}</div>}
-      {p.message && !p.notFound && <div className="banner-err mb-3" role="alert" tabIndex={-1} id="liability-errors">{p.message}</div>}
+      {(p.notFound || p.message) && (
+        <div className="banner-err mb-3" role="alert" tabIndex={-1} id="liability-errors">
+          {p.notFound ? NOT_FOUND : p.message}
+        </div>
+      )}
 
       <div className="space-y-3">
         {p.mode === 'add' && p.replaceable.length > 0 && (
@@ -154,11 +157,11 @@ function FormBody(p: LiabilityFormViewProps) {
 
       <div className="flex flex-wrap items-center gap-2 mt-5">
         {p.mode === 'edit' && (
-          <button type="button" className="btn-danger" disabled={p.saving} onClick={p.onDelete}>Delete loan</button>
+          <button id="liability-delete" type="button" className="btn-danger" disabled={p.saving} onClick={p.onDelete}>Delete loan</button>
         )}
         <span className="flex-1" />
         <button type="button" className="btn-ghost" onClick={p.onCancel}>Cancel</button>
-        <button type="submit" className="btn-primary" disabled={disabled}>
+        <button id="liability-save" type="submit" className="btn-primary" disabled={disabled}>
           {p.saving ? 'Saving…' : p.mode === 'add' ? 'Add loan' : 'Save'}
         </button>
       </div>
@@ -173,7 +176,7 @@ function BillPicker(p: LiabilityFormViewProps & { candidates: ChooseCandidate[] 
         You already have more than one bill for {money(Number(p.form.payment))} {p.form.cadence === 'monthly' ? 'a month' : 'each time'}.
         Choose the one that pays this loan, so it only counts once.
       </p>
-      {p.message && <div className="banner-err mb-3" role="alert">{p.message}</div>}
+      {p.message && <div className="banner-err mb-3" role="alert" tabIndex={-1} id="liability-errors">{p.message}</div>}
       <fieldset className="space-y-2">
         <legend className="sr-only">Which bill is this loan?</legend>
         {p.candidates.map((c) => (
@@ -200,6 +203,11 @@ function BillPicker(p: LiabilityFormViewProps & { candidates: ChooseCandidate[] 
       </div>
     </div>
   )
+}
+
+/** Focus an element once React has rendered the state change that shows it. */
+function focusSoon(id: string) {
+  window.setTimeout(() => document.getElementById(id)?.focus(), 0)
 }
 
 /** Keep Tab and Shift+Tab inside the dialog (ux Accessibility). */
@@ -230,10 +238,12 @@ function Field({ label, htmlFor, error, help, children }: {
 
 /** Add or edit a liability (ux T-10-0 B.3-B.5): owns the form state, the
  *  confirmations and the server round trips. */
-export default function LiabilityForm({ liability, replaceable, today, onClose, onSaved, onOtherDebt }: {
+export default function LiabilityForm({ liability, replaceable, today, focusBalance = false, onClose, onSaved, onOtherDebt }: {
   liability: Liability | null
   replaceable: Asset[]
   today: string
+  /** Opened from the "Update balance" chip: start on Balance (ux B.3). */
+  focusBalance?: boolean
   onClose: () => void
   onSaved: (saved: Liability | null, toast: string) => void
   onOtherDebt: () => void
@@ -252,7 +262,8 @@ export default function LiabilityForm({ liability, replaceable, today, onClose, 
 
   useEffect(() => {
     opener.current = document.activeElement
-    document.getElementById(replaceable.length && !liability ? 'liability-replace' : 'liability-kind')?.focus()
+    const first = focusBalance ? FOCUS.balance : replaceable.length && !liability ? 'liability-replace' : 'liability-kind'
+    document.getElementById(first)?.focus()
     const onKey = (e: KeyboardEvent) => {
       if (document.querySelector('[role="alertdialog"]')) return  // a confirm is the top layer
       if (e.key === 'Escape') onClose()
@@ -261,7 +272,11 @@ export default function LiabilityForm({ liability, replaceable, today, onClose, 
     document.addEventListener('keydown', onKey)
     return () => {
       document.removeEventListener('keydown', onKey)
-      ;(opener.current as HTMLElement | null)?.focus?.()
+      // Back to the opener, or, when it has gone (the chooser closed, the
+      // row was deleted), to the page's Add button (ux on #190).
+      const back = opener.current as HTMLElement | null
+      if (back && document.contains(back)) back.focus()
+      else document.getElementById(FOCUS.pageAdd)?.focus()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -271,6 +286,7 @@ export default function LiabilityForm({ liability, replaceable, today, onClose, 
     if (liability && liability.linked_commitment && form.opted_out && !liability.opted_out) {
       if (!(await confirm(optOutConfirm(liability)))) {
         setForm({ ...form, opted_out: false })
+        focusSoon(FOCUS.save)
         return
       }
     }
@@ -281,18 +297,23 @@ export default function LiabilityForm({ liability, replaceable, today, onClose, 
     setSaving(false)
     setErrors(out.kind === 'invalid' ? out.errors : {})
     setMessage(null)
+    const target = focusAfter(out.kind)
+    if (target) focusSoon(target)
     if (out.kind === 'saved') onSaved(out.liability, liability ? 'Loan saved.' : addedToast(out.liability))
     else if (out.kind === 'choose') { setCandidates(out.candidates); setChoice(null) }
     else if (out.kind === 'invalid') {
       setMessage('Some details are not valid. Check the fields marked below and try again.')
-      window.setTimeout(() => document.getElementById('liability-errors')?.focus(), 0)
     } else if (out.kind === 'message') setMessage(out.message)
     else if (out.kind === 'not_found') setNotFound(true)
     else setMessage(SAVE_ERROR)
   }
 
   const remove = async () => {
-    if (!liability || !(await confirm(deleteConfirm(liability)))) return
+    if (!liability) return
+    if (!(await confirm(deleteConfirm(liability)))) {
+      focusSoon(FOCUS.delete)
+      return
+    }
     try {
       await liabilitiesAPI.remove(liability.id)
       onSaved(null, `${liability.lender} deleted.`)
@@ -307,7 +328,7 @@ export default function LiabilityForm({ liability, replaceable, today, onClose, 
       replaceable={replaceable} candidates={candidates} choice={choice}
       linkedLabel={liability?.linked_commitment?.label ?? null} stale={!!liability?.balance_stale}
       onChange={(patch) => setForm({ ...form, ...patch })} onChoose={setChoice}
-      onBack={() => setCandidates(null)} onSubmit={submit} onCancel={onClose} onDelete={remove} onOtherDebt={onOtherDebt}
+      onBack={() => { setCandidates(null); focusSoon(FOCUS.lender) }} onSubmit={submit} onCancel={onClose} onDelete={remove} onOtherDebt={onOtherDebt}
     />
   )
 }

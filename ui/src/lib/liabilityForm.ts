@@ -210,3 +210,23 @@ export function replaceConfirm(asset: Asset): ConfirmCopy {
     confirmLabel: 'Replace it', cancelLabel: 'Cancel',
   }
 }
+
+
+/** Ids the form and the page move focus to (ux Accessibility; ux on #190). */
+export const FOCUS = {
+  errors: 'liability-errors',
+  title: 'liability-form-title',
+  lender: 'liability-lender',
+  balance: 'liability-balance',
+  save: 'liability-save',
+  delete: 'liability-delete',
+  pageAdd: 'wealth-add',
+} as const
+
+/** Where focus goes after a save attempt: the top alert for any failure,
+ *  the picker's heading for a choice, and nothing for a save (the page
+ *  focuses the saved row once it has rendered). */
+export function focusAfter(kind: SaveOutcome['kind']): string | null {
+  if (kind === 'saved') return null
+  return kind === 'choose' ? FOCUS.title : FOCUS.errors
+}

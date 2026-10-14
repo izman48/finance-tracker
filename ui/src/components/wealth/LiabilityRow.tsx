@@ -5,27 +5,31 @@ import { liabilityDetail } from '../../lib/liabilities'
 /** One loan, finance or BNPL row in the balance sheet's "Loans and finance"
  *  group (ux T-10-0 B.1). Every figure is the API's, only formatted; the
  *  lender renders as text. A button: its text is its accessible name. */
-export default function LiabilityRow({ liability, onOpen }: { liability: Liability; onOpen?: () => void }) {
+export default function LiabilityRow({ liability, onOpen }: {
+  liability: Liability
+  /** `fromChip`: the "Update balance" chip was pressed, so start on Balance. */
+  onOpen?: (fromChip: boolean) => void
+}) {
   const owed = Number(liability.current_balance)
   const chip = liability.paid_off
-    ? { className: 'chip-pos', text: 'Paid off' }
+    ? { className: 'chip-pos', text: 'Paid off', kind: 'paid' }
     : liability.balance_stale
-      ? { className: 'chip-warn', text: 'Update balance' }
+      ? { className: 'chip-warn', text: 'Update balance', kind: 'stale' }
       : null
   return (
     <button
       type="button"
       id={`liability-row-${liability.id}`}
-      onClick={onOpen}
+      onClick={(e) => onOpen?.(Boolean((e.target as HTMLElement).closest?.('[data-chip="stale"]')))}
       className="w-full min-h-[44px] flex items-center gap-3 px-4 py-3 border-t border-white/[0.06] text-left hover:bg-white/[0.03] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
     >
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-medium text-slate-100 truncate">{liability.lender}</span>
         <span className="block text-xs text-slate-400">{liabilityDetail(liability)}</span>
         {/* Narrow widths: the chip gets its own line so the lender keeps its room (ux on #185). */}
-        {chip && <span className={`${chip.className} mt-1 inline-block sm:hidden`}>{chip.text}</span>}
+        {chip && <span data-chip={chip.kind} className={`${chip.className} mt-1 inline-block sm:hidden`}>{chip.text}</span>}
       </span>
-      {chip && <span className={`${chip.className} shrink-0 hidden sm:inline-flex`}>{chip.text}</span>}
+      {chip && <span data-chip={chip.kind} className={`${chip.className} shrink-0 hidden sm:inline-flex`}>{chip.text}</span>}
       <span className={`shrink-0 text-sm font-semibold tnum ${owed > 0 ? 'text-warn' : 'text-slate-100'}`}>
         {owed > 0 ? '−' : ''}
         {gbp0(owed)}

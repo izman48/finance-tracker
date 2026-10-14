@@ -40,6 +40,16 @@ describe('AccountSettingsModal', () => {
     expect(render({})).not.toContain('This card uses scheduled payments')
   })
 
+  it('ux on #186: no help line (and no aria-describedby) where there is no help; no due-date help before the statement loads', () => {
+    const fixed = render({ repayment_strategy: 'fixed' })
+    expect(selected(fixed, 'repayment-strategy')).not.toContain('aria-describedby')
+    expect(fixed).not.toContain('id="repayment-strategy-help"')
+    const blank = render({ repayment_strategy: null, repayment_cadence: null })
+    expect(selected(blank, 'repayment-strategy')).toContain('aria-describedby="repayment-strategy-help"')
+    expect(blank).not.toContain('No due date yet')
+    expect(selected(blank, 'repayment-pay-day')).not.toContain('aria-describedby')
+  })
+
   it('the instalment checkbox is labelled, and a day of the month shows the Day input', () => {
     const h = render({ instalment_card: true })
     const box = h.match(/<input[^>]*id="instalment-card"[^>]*>/)![0]

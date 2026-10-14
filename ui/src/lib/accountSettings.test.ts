@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { initialRepayment, payDayOptions, saveErrorMessage, settingsPayload, strategyOptions, validateRepayment } from './accountSettings'
+import { amountInput, initialRepayment, payDayOptions, saveErrorMessage, settingsPayload, strategyOptions, validateRepayment } from './accountSettings'
 import type { AccountSettingUpdate } from '../services/api'
 
 // T-10-4a: the API refuses repayment fields on an account that isn't credit,
@@ -82,5 +82,28 @@ describe('repayment controls (T-10-6b, ux A.5; lead: existing strategies only)',
       'We could not save these settings. Nothing was changed. Check your connection and try again.')
     expect(saveErrorMessage(new Error('offline'), 'scheduled')).toBe(
       'We could not save these settings. Nothing was changed. Check your connection and try again.')
+  })
+})
+
+describe('review fixes on #186', () => {
+  const values = (opts: { value: string }[]) => opts.map((o) => o.value)
+
+  it('eng-b: a legacy value shows what the forecast computes, so display and payload agree', () => {
+    // Unknown strategy computes as full balance; unknown cadence as month-end (T-10-4a).
+    expect(initialRepayment({ repayment_strategy: 'weird', repayment_cadence: 'fortnightly' }))
+      .toMatchObject({ repayment_strategy: 'full_balance', repayment_cadence: 'end_of_month' })
+    expect(initialRepayment({ repayment_strategy: 'scheduled', repayment_cadence: 'every_n_months' }))
+      .toMatchObject({ repayment_strategy: 'scheduled', repayment_cadence: 'every_n_months' })
+  })
+
+  it('a pay day is listed while it is the selection, and every few months stays for a card on it', () => {
+    expect(values(payDayOptions('fortnightly', 'end_of_month'))).toContain('end_of_month')
+    expect(values(payDayOptions('every_n_months'))).toContain('every_n_months')
+  })
+
+  it('eng-b: amounts go to the API as decimal strings, never floats', () => {
+    expect(amountInput('300')).toBe('300')
+    expect(amountInput('0.10')).toBe('0.10')
+    expect(amountInput('')).toBeNull()
   })
 })

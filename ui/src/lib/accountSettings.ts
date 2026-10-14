@@ -56,30 +56,46 @@ export function strategyOptions(
   return options
 }
 
-/** Pay day options. End of month and weekly stay only for a card already
- *  using them (their behaviour is unchanged). */
-export function payDayOptions(stored: string | null | undefined): Option[] {
+/** Pay day options. End of month, weekly and every few months stay only for
+ *  a card already using them, or while one is the selection (a legacy value
+ *  shows as end of month), so the select always shows what is saved. */
+export function payDayOptions(stored: string | null | undefined, selected?: string | null): Option[] {
   const options: Option[] = [
     { value: 'card_due_date', label: 'Card due date (default)' },
     { value: 'monthly', label: 'A day of the month' },
   ]
-  if (stored === 'end_of_month') options.push({ value: 'end_of_month', label: 'End of month' })
-  if (stored === 'weekly') options.push({ value: 'weekly', label: 'Every week' })
+  const kept = (value: string) => stored === value || selected === value
+  if (kept('end_of_month')) options.push({ value: 'end_of_month', label: 'End of month' })
+  if (kept('weekly')) options.push({ value: 'weekly', label: 'Every week' })
+  if (kept('every_n_months')) options.push({ value: 'every_n_months', label: 'Every few months' })
   return options
 }
 
+const STRATEGIES = ['full_balance', 'fixed', 'installments', 'minimum_percent', 'scheduled', 'statement_balance']
+const CADENCES = ['monthly', 'end_of_month', 'every_n_months', 'weekly', 'card_due_date']
+
 /** A card with nothing stored starts on statement balance and the card due
- *  date (ux A10, C-13). Nothing is written until the user saves. */
+ *  date (ux A10, C-13). A legacy free-text value shows as what the forecast
+ *  computes for it (T-10-4a: full balance, month-end), so the form saves what
+ *  it shows. Nothing is written until the user saves. */
 export function initialRepayment(account: {
   repayment_strategy: string | null
   repayment_cadence: string | null
   instalment_card?: boolean
 }): Pick<AccountSettingUpdate, 'repayment_strategy' | 'repayment_cadence' | 'instalment_card'> {
+  const strategy = account.repayment_strategy
+  const cadence = account.repayment_cadence
   return {
-    repayment_strategy: account.repayment_strategy ?? 'statement_balance',
-    repayment_cadence: account.repayment_cadence ?? 'card_due_date',
+    repayment_strategy: strategy == null ? 'statement_balance' : STRATEGIES.includes(strategy) ? strategy : 'full_balance',
+    repayment_cadence: cadence == null ? 'card_due_date' : CADENCES.includes(cadence) ? cadence : 'end_of_month',
     instalment_card: account.instalment_card ?? false,
   }
+}
+
+/** An amount field's text as the API wants it: a decimal string (never a
+ *  JSON float), or null when blank. */
+export function amountInput(text: string): string | null {
+  return text.trim() === '' ? null : text.trim()
 }
 
 const DAY_ERROR = 'Enter a day from 1 to 31.'

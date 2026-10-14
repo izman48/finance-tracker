@@ -3,9 +3,11 @@ import { analyticsAPI, AccountSettingUpdate, type CardStatements } from '../serv
 import { SummaryAccount } from '../types'
 import { gbp } from '../lib/format'
 import {
-  initialRepayment, payDayOptions, saveErrorMessage, settingsPayload, strategyOptions, validateRepayment,
+  amountInput, initialRepayment, payDayOptions, saveErrorMessage, settingsPayload, strategyOptions, validateRepayment,
 } from '../lib/accountSettings'
 import StatementBlock from './card/StatementBlock'
+
+const focusLater = (id: string) => window.setTimeout(() => document.getElementById(id)?.focus(), 0)
 
 // Help under "How is it repaid?" (ux A.5).
 const STRATEGY_HELP: Record<string, string> = {
@@ -41,7 +43,8 @@ export default function AccountSettingsModal({
   const [saveError, setSaveError] = useState<string | null>(null)
   const [dayError, setDayError] = useState<string | null>(null)
   // Whether the card has a statement, for the "Card due date" help text.
-  const [hasDueDate, setHasDueDate] = useState(false)
+  // null until the statements load succeeds: no due-date help is shown before then.
+  const [hasDueDate, setHasDueDate] = useState<boolean | null>(null)
   const onStatementsLoaded = useCallback((data: CardStatements) => setHasDueDate(data.current !== null), [])
   // The statement load said this card isn't the user's (404): nothing to save (C-21).
   const [cardMissing, setCardMissing] = useState(false)
@@ -50,11 +53,20 @@ export default function AccountSettingsModal({
   const owed = Number(account.credit_owed ?? 0)
 
   const set = (patch: Partial<AccountSettingUpdate>) => setForm((f) => ({ ...f, ...patch }))
+  const strategyHelp = STRATEGY_HELP[form.repayment_strategy ?? '']
+  const payDayHelp = form.repayment_cadence !== 'card_due_date' || hasDueDate === null
+    ? null
+    : hasDueDate
+      ? 'Uses the due date on your statement.'
+      : "No due date yet. nilu uses the card's usual payment date, or 30 days from today."
 
   const save = async () => {
     const invalid = validateRepayment(form)
     setDayError(invalid.repayment_day ?? null)
-    if (invalid.repayment_day) return
+    if (invalid.repayment_day) {
+      focusLater('repayment-day')
+      return
+    }
     setSaving(true)
     setSaveError(null)
     try {
@@ -63,6 +75,7 @@ export default function AccountSettingsModal({
     } catch (e) {
       setSaveError(saveErrorMessage(e, form.repayment_strategy))
       setSaving(false)
+      focusLater('settings-save-error')
     }
   }
 
@@ -124,16 +137,16 @@ export default function AccountSettingsModal({
                 id="repayment-strategy"
                 value={form.repayment_strategy ?? 'statement_balance'}
                 onChange={(e) => set({ repayment_strategy: e.target.value })}
-                aria-describedby="repayment-strategy-help"
+                aria-describedby={strategyHelp ? 'repayment-strategy-help' : undefined}
                 className="input"
               >
                 {strategyOptions(account.repayment_strategy, Boolean(form.instalment_card), form.repayment_strategy).map((o) => (
                   <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
               </select>
-              <p id="repayment-strategy-help" className="text-xs text-slate-400 mt-1">
-                {STRATEGY_HELP[form.repayment_strategy ?? ''] ?? ''}
-              </p>
+              {strategyHelp && (
+                <p id="repayment-strategy-help" className="text-xs text-slate-400 mt-1">{strategyHelp}</p>
+              )}
             </div>
 
             <label htmlFor="instalment-card" className="flex items-center gap-2 text-sm text-slate-300 min-h-[44px]">
@@ -153,14 +166,14 @@ export default function AccountSettingsModal({
                   id="repayment-amount"
                   type="number" min={0} step="0.01"
                   value={form.repayment_fixed_amount ?? ''}
-                  onChange={(e) => set({ repayment_fixed_amount: e.target.value === '' ? null : Number(e.target.value) })}
+                  onChange={(e) => set({ repayment_fixed_amount: amountInput(e.target.value) })}
                   className="input"
                   placeholder="e.g. 200"
                 />
                 {owed > 0 && form.repayment_fixed_amount ? (
                   <p className="text-xs text-slate-500 mt-1">
                     {(() => {
-                      const months = Math.ceil(owed / Math.max(form.repayment_fixed_amount, 1))
+                      const months = Math.ceil(owed / Math.max(Number(form.repayment_fixed_amount), 1))
                       return `≈ ${months} month${months !== 1 ? 's' : ''} to clear the current ${gbp(owed)} balance`
                     })()}
                   </p>
@@ -175,7 +188,7 @@ export default function AccountSettingsModal({
                   id="repayment-percent"
                   type="number" min={1} max={100}
                   value={form.repayment_fixed_amount ?? ''}
-                  onChange={(e) => set({ repayment_fixed_amount: e.target.value === '' ? null : Number(e.target.value) })}
+                  onChange={(e) => set({ repayment_fixed_amount: amountInput(e.target.value) })}
                   className="input"
                 />
               </div>
@@ -189,19 +202,15 @@ export default function AccountSettingsModal({
                     id="repayment-pay-day"
                     value={form.repayment_cadence ?? 'card_due_date'}
                     onChange={(e) => set({ repayment_cadence: e.target.value })}
-                    aria-describedby="repayment-pay-day-help"
+                    aria-describedby={payDayHelp ? 'repayment-pay-day-help' : undefined}
                     className="input"
                   >
-                    {payDayOptions(account.repayment_cadence).map((o) => (
+                    {payDayOptions(account.repayment_cadence, form.repayment_cadence).map((o) => (
                       <option key={o.value} value={o.value}>{o.label}</option>
                     ))}
                   </select>
-                  {form.repayment_cadence === 'card_due_date' && (
-                    <p id="repayment-pay-day-help" className="text-xs text-slate-400 mt-1">
-                      {hasDueDate
-                        ? 'Uses the due date on your statement.'
-                        : "No due date yet. nilu uses the card's usual payment date, or 30 days from today."}
-                    </p>
+                  {payDayHelp && (
+                    <p id="repayment-pay-day-help" className="text-xs text-slate-400 mt-1">{payDayHelp}</p>
                   )}
                 </div>
                 {form.repayment_cadence === 'monthly' && (
@@ -272,7 +281,9 @@ export default function AccountSettingsModal({
           </div>
         )}
 
-        {saveError && <div role="alert" className="banner-err mb-3">{saveError}</div>}
+        {saveError && (
+          <div id="settings-save-error" role="alert" tabIndex={-1} className="banner-err mb-3">{saveError}</div>
+        )}
 
         <div className="flex justify-end gap-2 mt-2">
           <button onClick={onClose} className="btn-ghost">

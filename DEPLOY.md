@@ -135,15 +135,18 @@ cd ~/finance-tracker
 DC="docker compose -f docker-compose.prod.yml --env-file .env.production exec -T db"
 $DC sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB" -c "SELECT
   count(*) FILTER (WHERE repayment_strategy = '"'"'statement_balance'"'"') AS statement_balance,
-  count(*) FILTER (WHERE repayment_cadence = '"'"'card_due_date'"'"') AS card_due_date
+  count(*) FILTER (WHERE repayment_cadence = '"'"'card_due_date'"'"') AS card_due_date,
+  count(*) FILTER (WHERE repayment_strategy = '"'"'statement_balance'"'"' AND repayment_cadence IS NULL) AS statement_balance_no_pay_day
   FROM account_settings"'
 $DC sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB" -c "BEGIN;
-  UPDATE account_settings SET repayment_strategy = '"'"'full_balance'"'"' WHERE repayment_strategy = '"'"'statement_balance'"'"';
+  UPDATE account_settings SET repayment_strategy = '"'"'full_balance'"'"', repayment_cadence = COALESCE(repayment_cadence, '"'"'end_of_month'"'"') WHERE repayment_strategy = '"'"'statement_balance'"'"';
   UPDATE account_settings SET repayment_cadence = '"'"'end_of_month'"'"' WHERE repayment_cadence = '"'"'card_due_date'"'"';
   COMMIT;"'
 ```
 
-Record the two counts with the revert. Full balance at month end pays at
+Record the three counts with the revert. A `statement_balance` card with no
+pay day stored means "card due date"; old code would read it as no cadence,
+so the first update also gives it month-end. Full balance at month end pays at
 least as much as the statement plan did (fail-safe). Users choose again
 after the next forward release.
 

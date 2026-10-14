@@ -404,7 +404,8 @@ export interface AccountSettingUpdate {
   repayment_day?: number | null
   repayment_anchor_date?: string | null
   repayment_strategy?: string | null
-  repayment_fixed_amount?: number | null
+  // A decimal string from the form (never a float); numbers only from older code paths.
+  repayment_fixed_amount?: number | string | null
   repayment_installments?: number | null
   pay_from_account_id?: string | null
   instalment_card?: boolean

@@ -12,6 +12,7 @@ const REPAYMENT_FIELDS = [
   'repayment_installments',
   'pay_from_account_id',
   'instalment_card',
+  'card_apr',
 ] as const
 
 /** The request body for saving the account settings form. */

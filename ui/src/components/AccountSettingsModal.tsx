@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { analyticsAPI, AccountSettingUpdate, type CardStatements } from '../services/api'
 import { SummaryAccount } from '../types'
 import { gbp } from '../lib/format'
@@ -6,6 +6,9 @@ import {
   amountInput, initialRepayment, payDayOptions, saveErrorMessage, settingsPayload, strategyOptions, validateRepayment,
 } from '../lib/accountSettings'
 import StatementBlock from './card/StatementBlock'
+import RepaymentWarnings from './card/RepaymentWarnings'
+import { useToast } from './ui/Toast'
+import { aprTyping, validateApr, type RepaymentWarning } from '../lib/repaymentWarnings'
 
 const focusLater = (id: string) => window.setTimeout(() => document.getElementById(id)?.focus(), 0)
 
@@ -16,6 +19,8 @@ const STRATEGY_HELP: Record<string, string> = {
 }
 // Strategies that pay on a pay day (instalments and scheduled set their own dates).
 const PAY_DAY_STRATEGIES = new Set(['statement_balance', 'full_balance', 'fixed', 'minimum_percent'])
+// Strategies that can pay less than the statement: the card APR estimates the interest (ux A2).
+const APR_STRATEGIES = new Set(['fixed', 'minimum_percent', 'installments'])
 
 export default function AccountSettingsModal({
   account,
@@ -39,20 +44,39 @@ export default function AccountSettingsModal({
     pay_from_account_id: account.pay_from_account_id ?? undefined,
     ...initialRepayment(account),
   })
+  const toast = useToast()
   const [saving, setSaving] = useState(false)
+  const [warnings, setWarnings] = useState<RepaymentWarning[]>([])
+  const [savedWithNotes, setSavedWithNotes] = useState(false)
+  const [aprError, setAprError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [dayError, setDayError] = useState<string | null>(null)
   // Whether the card has a statement, for the "Card due date" help text.
   // null until the statements load succeeds: no due-date help is shown before then.
   const [hasDueDate, setHasDueDate] = useState<boolean | null>(null)
-  const onStatementsLoaded = useCallback((data: CardStatements) => setHasDueDate(data.current !== null), [])
+  const onStatementsLoaded = useCallback((data: CardStatements) => {
+    setHasDueDate(data.current !== null)
+    setWarnings(data.warnings ?? [])
+    // Show the stored APR, unless the user has already typed one.
+    setForm((f) => (f.card_apr === undefined ? { ...f, card_apr: data.card_apr ?? null } : f))
+  }, [])
   // The statement load said this card isn't the user's (404): nothing to save (C-21).
   const [cardMissing, setCardMissing] = useState(false)
   const onCardMissing = useCallback(() => setCardMissing(true), [])
   // Money owed, positive on every provider (the server normalises the sign).
   const owed = Number(account.credit_owed ?? 0)
 
-  const set = (patch: Partial<AccountSettingUpdate>) => setForm((f) => ({ ...f, ...patch }))
+  // Warnings describe the saved settings: once the user edits, they are
+  // hidden until the next save brings fresh ones (ux on #189).
+  const [edited, setEdited] = useState(false)
+  const set = (patch: Partial<AccountSettingUpdate>) => {
+    setEdited(true)
+    setForm((f) => ({ ...f, ...patch }))
+  }
+  const shown = edited ? [] : warnings
+  // Focus goes back to the control that opened the modal when it closes.
+  const opener = useRef<Element | null>(typeof document === 'undefined' ? null : document.activeElement)
+  useEffect(() => () => (opener.current as HTMLElement | null)?.focus?.(), [])
   const strategyHelp = STRATEGY_HELP[form.repayment_strategy ?? '']
   const payDayHelp = form.repayment_cadence !== 'card_due_date' || hasDueDate === null
     ? null
@@ -67,10 +91,29 @@ export default function AccountSettingsModal({
       focusLater('repayment-day')
       return
     }
+    const badApr = form.role === 'credit' && APR_STRATEGIES.has(form.repayment_strategy ?? '')
+      ? validateApr(String(form.card_apr ?? ''))
+      : null
+    setAprError(badApr)
+    if (badApr) {
+      focusLater('card-apr')
+      return
+    }
     setSaving(true)
     setSaveError(null)
     try {
-      await analyticsAPI.updateAccountSettings(account.id, settingsPayload(form))
+      const res = await analyticsAPI.updateAccountSettings(account.id, settingsPayload(form))
+      const notes: RepaymentWarning[] = res.data?.warnings ?? []
+      if (notes.length) {
+        // C-18: stay open so the notes can be read; the button becomes Done.
+        setWarnings(notes)
+        setEdited(false)
+        setSavedWithNotes(true)
+        setSaving(false)
+        focusLater('settings-saved')
+        return
+      }
+      toast('Repayment settings saved.')
       onSaved()
     } catch (e) {
       setSaveError(saveErrorMessage(e, form.repayment_strategy))
@@ -124,7 +167,9 @@ export default function AccountSettingsModal({
         )}
 
         {form.role === 'credit' && (
-          <div className="space-y-3 mb-4">
+          // Locked once saved with notes: only Done is offered, so an edit
+          // made then would be lost (ux on #189).
+          <fieldset disabled={savedWithNotes} className="space-y-3 mb-4 min-w-0">
             {account.repayment_fix_needed && (
               <div className="banner-info">
                 This card uses scheduled payments, which are meant for instalment cards like Monzo Flex. Nothing has
@@ -148,6 +193,8 @@ export default function AccountSettingsModal({
                 <p id="repayment-strategy-help" className="text-xs text-slate-400 mt-1">{strategyHelp}</p>
               )}
             </div>
+
+            <RepaymentWarnings warnings={shown} codes={['interest_cost']} providerName={account.provider_name} />
 
             <label htmlFor="instalment-card" className="flex items-center gap-2 text-sm text-slate-300 min-h-[44px]">
               <input
@@ -194,6 +241,25 @@ export default function AccountSettingsModal({
               </div>
             )}
 
+            {APR_STRATEGIES.has(form.repayment_strategy ?? '') && (
+              <div>
+                <label htmlFor="card-apr" className="label">Card APR (%)</label>
+                <input
+                  id="card-apr"
+                  type="text" inputMode="decimal"
+                  value={form.card_apr ?? ''}
+                  onChange={(e) => set({ card_apr: amountInput(aprTyping(e.target.value)) })}
+                  aria-invalid={aprError ? true : undefined}
+                  aria-describedby={aprError ? 'card-apr-help card-apr-error' : 'card-apr-help'}
+                  className="input"
+                />
+                <p id="card-apr-help" className="text-xs text-slate-400 mt-1">
+                  Used to estimate the interest cost. Find it on your statement.
+                </p>
+                {aprError && <p id="card-apr-error" className="text-xs text-neg mt-1">{aprError}</p>}
+              </div>
+            )}
+
             {PAY_DAY_STRATEGIES.has(form.repayment_strategy ?? '') && (
               <>
                 <div>
@@ -212,6 +278,7 @@ export default function AccountSettingsModal({
                   {payDayHelp && (
                     <p id="repayment-pay-day-help" className="text-xs text-slate-400 mt-1">{payDayHelp}</p>
                   )}
+                  <RepaymentWarnings warnings={shown} codes={['late_fee_risk']} providerName={account.provider_name} />
                 </div>
                 {form.repayment_cadence === 'monthly' && (
                   <div>
@@ -277,10 +344,14 @@ export default function AccountSettingsModal({
                   <option key={a.id} value={a.id}>{a.display_name}</option>
                 ))}
               </select>
+              <RepaymentWarnings warnings={shown} codes={['overdraft_breach']} providerName={account.provider_name} />
             </div>
-          </div>
+          </fieldset>
         )}
 
+        {savedWithNotes && (
+          <div id="settings-saved" role="status" tabIndex={-1} className="banner-ok mb-3">Saved. Read the notes below.</div>
+        )}
         {saveError && (
           <div id="settings-save-error" role="alert" tabIndex={-1} className="banner-err mb-3">{saveError}</div>
         )}
@@ -289,9 +360,13 @@ export default function AccountSettingsModal({
           <button onClick={onClose} className="btn-ghost">
             Cancel
           </button>
-          <button onClick={save} disabled={saving || cardMissing} className="btn-primary">
-            {saving ? 'Saving…' : 'Save'}
-          </button>
+          {savedWithNotes ? (
+            <button onClick={onSaved} className="btn-primary">Done</button>
+          ) : (
+            <button onClick={save} disabled={saving || cardMissing} className="btn-primary">
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+          )}
         </div>
       </div>
     </div>

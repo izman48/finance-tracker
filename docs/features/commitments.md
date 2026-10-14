@@ -12,13 +12,13 @@ Detection groups payments by a key normalised from the description
 (`_normalise_merchant`): pure digit runs, dates and tokens with a 6+ digit
 reference are dropped; short mixed tokens (`O2`, `MONZO123`) are kept.
 Two more rules (T-10-9): the bank's "ON dd MON" date phrase is dropped from
-every descriptor, and inside a PayPal descriptor (`PAYPAL …`, `PP*…`) any
-token with a digit is dropped, so "PAYPAL *SPOTIFY*P12A3B4 …" keys as
-`paypal spotify` every month. A PayPal descriptor with no merchant word left
-keeps its reference, so unrelated PayPal payments never share one key.
+every descriptor, and PayPal's reference glued on with a second `*` is
+dropped ("PAYPAL *SPOTIFY*P12A3B4 …" keys as `paypal spotify` every month).
+The merchant after `PAYPAL *` always stays, digits and all, so "PAYPAL *O2 UK"
+and "PAYPAL *7DIGITAL UK" never merge; other PayPal shapes key as before.
 Changing normalisation is a two-part change: `sync_suggestions` heals
 detected rules from their label, and `rule_match_keys` (stored key, that key
-re-normalised, label key) is what dedupes detection and matches payments, so
+re-normalised, a PayPal reference stored before T-10-9 healed, label key) is what dedupes detection and matches payments, so
 a rule keyed under old rules is never suggested again.
 
 ## Code

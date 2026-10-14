@@ -51,10 +51,15 @@ _REFERENCE_RUN = re.compile(r"\d{6,}")
 # every month and is never part of a name. Only a day and a month name after
 # ON count, so "SHOP ON 12 MAIN ST" keeps its address.
 _ON_DATE_PHRASE = re.compile(r"\bON \d{1,2} (JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\b")
-# "PAYPAL *SPOTIFY*P12A3B4" or "PP*NETFLIX ..." (T-10-9).
-_PAYPAL = re.compile(r"\bPAYPAL\b|^PP\s*\*")
-# Words in PayPal descriptors that aren't a merchant name.
-_PAYPAL_FILLER = frozenset({"PAYPAL", "PP", "PAYMENT", "EUROPE", "SARL", "ET", "CIE", "SCA", "S", "A", "R", "L", "C"})
+# PayPal glues a per-payment reference onto the merchant with a second "*"
+# ("PAYPAL *SPOTIFY*P12A3B4"); it changes every month (T-10-9). Only that
+# glued reference is dropped: the merchant after "PAYPAL *" always stays,
+# digits and all, so "PAYPAL *O2 UK" and "PAYPAL *7DIGITAL UK" never merge.
+_PAYPAL_GLUED_REF = re.compile(r"(PAYPAL \*[^*]+?)\*\S+")
+# The same reference as it survives in a key stored before T-10-9, where the
+# "*" was already gone: the last word of "paypal spotify p12a3b4", seven
+# characters starting with P and holding at least two digits.
+_STORED_PAYPAL_REF = re.compile(r"^(paypal .+) p(?=(?:[a-z]*\d){2})[a-z0-9]{6}$")
 
 
 def _normalise_merchant(raw: str | None) -> str:
@@ -63,10 +68,10 @@ def _normalise_merchant(raw: str | None) -> str:
     Conservative: pure digit runs, dates, and alphanumeric tokens carrying a
     long digit run are dropped. Short mixed alphanumerics are left alone,
     because stripping those would eat real merchant names ("O2", "MONZO123")
-    and over-merge unrelated payments. PayPal descriptors are the exception
-    (`_paypal_tokens`).
+    and over-merge unrelated payments. Two exceptions (T-10-9): PayPal's
+    glued reference and the bank's "ON dd MON" date phrase are dropped.
     """
-    upper = (raw or "").upper()
+    upper = _PAYPAL_GLUED_REF.sub(r"\1", (raw or "").upper())
     text = _ON_DATE_PHRASE.sub(" ", re.sub(r"[^A-Z0-9/\- ]+", " ", upper))
     tokens = [
         t for t in text.split()
@@ -74,25 +79,8 @@ def _normalise_merchant(raw: str | None) -> str:
         and not _DATE_TOKEN.match(t)
         and not _REFERENCE_RUN.search(t)
     ]
-    if _PAYPAL.search(upper):
-        tokens = _paypal_tokens(tokens)
     # Fall back to the raw text if normalising left nothing (e.g. "123456").
     return " ".join(tokens).strip() or (raw or "").strip().upper()
-
-
-def _paypal_tokens(tokens: list[str]) -> list[str]:
-    """PAYPAL plus the merchant's words, without the per-payment reference.
-
-    PayPal glues a short reference that changes every month onto the merchant
-    ("PAYPAL *SPOTIFY*P12A3B4"): any token with a digit is dropped. If no
-    merchant word is left (a bare "PAYPAL" plus a reference, or only filler),
-    the tokens stay as they were: collapsing those into one "paypal" key
-    would merge unrelated payments and hide money.
-    """
-    merchant = [t for t in tokens if t not in _PAYPAL_FILLER and not any(c.isdigit() for c in t)]
-    if not merchant:
-        return tokens
-    return ["PAYPAL", *merchant]
 
 
 def _match_key(direction: str, merchant: str) -> str:
@@ -119,9 +107,10 @@ def rule_match_keys(rule: CommitmentRule) -> set[str]:
 
     A manual rule's stored key is the user's own text (or one payment's
     description) and is never rewritten, so after a normalisation change it
-    can go stale. Re-normalising it (T-10-9: "paypal spotify p12a3b4" becomes
-    "paypal spotify") and deriving from the label keep it matching its
-    payments and suppressing re-detection, without touching what was stored.
+    can go stale. Re-normalising it, healing a PayPal reference stored before
+    T-10-9 ("paypal spotify p12a3b4" also answers to "paypal spotify"), and
+    deriving from the label keep it matching its payments and suppressing
+    re-detection, without touching what was stored.
     """
     keys = {_match_key(rule.direction, rule.label)} if rule.label else set()
     if rule.match_key:
@@ -129,6 +118,9 @@ def rule_match_keys(rule: CommitmentRule) -> set[str]:
         direction, _, merchant = rule.match_key.partition(":")
         if merchant:
             keys.add(_match_key(direction, merchant))
+            stored_ref = _STORED_PAYPAL_REF.match(merchant)
+            if stored_ref:
+                keys.add(f"{direction}:{stored_ref.group(1)}")
     return keys
 
 

@@ -9,10 +9,11 @@ Synthetic descriptors and amounts.
 """
 from datetime import timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 
 from app.models import CommitmentRule, Transaction
 from app.services import analytics_service as svc
-from app.services.analytics.commitments import commitment_match_keys, transaction_match_key
+from app.services.analytics.commitments import commitment_match_keys, rule_match_keys, transaction_match_key
 from tests.clock import TODAY
 from tests.unit.test_analytics_service import _account, _tx_desc, _user
 
@@ -97,3 +98,15 @@ def test_a_confirmed_paypal_rule_matches_every_months_payment(db_session):
     payments = db_session.query(Transaction).filter(Transaction.account_id == card.id).all()
     assert len(payments) == 3
     assert all(transaction_match_key(t) in keys for t in payments)
+
+
+def test_stored_key_healing_only_drops_a_paypal_shaped_reference():
+    def keys(stored):
+        return rule_match_keys(SimpleNamespace(direction="expense", label=None, match_key=stored))
+
+    assert "expense:paypal spotify" in keys("expense:paypal spotify p12a3b4")
+    # Not a reference: a merchant word, too few digits, or no PayPal.
+    assert keys("expense:paypal o2 uk") == {"expense:paypal o2 uk"}
+    assert keys("expense:paypal steam pass12") == {"expense:paypal steam pass12"}
+    assert keys("expense:paypal steam p1abcde") == {"expense:paypal steam p1abcde"}
+    assert keys("expense:shop p12a3b4") == {"expense:shop p12a3b4"}

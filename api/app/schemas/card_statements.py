@@ -11,6 +11,8 @@ from __future__ import annotations
 import uuid
 from datetime import date
 from decimal import Decimal
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict
 
 from app.schemas import PlanningAmount as StatementMoney
@@ -72,6 +74,14 @@ class NextCardPayment(BaseModel):
     from_account_name: str | None
 
 
+class RepaymentWarning(BaseModel):
+    """A note about the card's repayment settings (T-10-5): a code plus
+    values the UI words from fixed templates."""
+
+    code: Literal["interest_cost", "late_fee_risk", "overdraft_breach"]
+    values: dict[str, str | None]
+
+
 class CardStatementsResponse(BaseModel):
     statements: list[CardStatementResponse]
     current: CardStatementPosition | None
@@ -82,3 +92,6 @@ class CardStatementsResponse(BaseModel):
     # UI shows both and the user picks (PUT .../in-use). Manual is in use.
     conflict: bool
     next_payment: NextCardPayment | None
+    # Card settings view (web only): the warnings and the stored APR.
+    warnings: list[RepaymentWarning] = []
+    card_apr: Decimal | None = None

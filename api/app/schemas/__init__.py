@@ -603,7 +603,7 @@ RepaymentCadenceName = Literal["monthly", "end_of_month", "every_n_months", "wee
 REPAYMENT_FIELDS = (
     "repayment_cadence", "repayment_interval_months", "repayment_day", "repayment_anchor_date",
     "repayment_strategy", "repayment_fixed_amount", "repayment_installments", "pay_from_account_id",
-    "instalment_card",
+    "instalment_card", "card_apr",
 )
 
 
@@ -624,6 +624,10 @@ class AccountSettingUpdate(BaseModel):
     pay_from_account_id: uuid.UUID | None = None
     # The user marks a card as instalment-type; only then may it use `scheduled`.
     instalment_card: StrictBool | None = None
+    # Optional, for the interest warning (T-10-5); null clears it. Never a float.
+    card_apr: Annotated[
+        Decimal, Field(ge=0, le=100, decimal_places=2), BeforeValidator(lambda v: _refuse_float(v)),
+    ] | None = None
 
     @model_validator(mode="after")
     def _no_cleared_strategy(self) -> "AccountSettingUpdate":

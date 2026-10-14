@@ -53,6 +53,7 @@ from app.services.claude_keep import (
     PENDING, applied_dismissals, claude_rows, commitment_keep, held_values, keep_kind, pending_ids, record_user_edit,
 )
 from app.services.analytics.common import _today, account_role
+from app.services.analytics.repayment_warnings import card_warnings
 from app.services.analytics.planned_matching import planned_states
 from app.services.linked_commitments import (
     LINKED_DETAIL, LinkedCommitmentEdit, linked_commitment_ids, refuse_linked_edit,
@@ -566,7 +567,12 @@ def update_account_settings(
         setattr(setting, field, value)
     db.commit()
 
-    return {"success": True, "message": "Account settings updated"}
+    return {
+        "success": True,
+        "message": "Account settings updated",
+        # ux A1: notes about the saved settings (T-10-5); [] when there are none.
+        "warnings": card_warnings(db, current_user, account, setting),
+    }
 
 
 def _check_repayment_settings(account, setting: AccountSetting, updates: dict) -> None:

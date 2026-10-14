@@ -37,8 +37,10 @@ from app.schemas.card_statements import (
     CardStatementsResponse,
     CardStatementUpdate,
     NextCardPayment,
+    RepaymentWarning,
 )
 from app.services.analytics.common import _today, account_role
+from app.services.analytics.repayment_warnings import card_warnings
 from app.services.analytics.repayments import cards_with_linked_bills, repayment_events
 from app.services.analytics.statements import check_statement, current_statement, position_for
 
@@ -63,12 +65,17 @@ def list_statements(
         .all()
     )
     current = current_statement(statements)
+    setting = db.query(AccountSetting).filter(
+        AccountSetting.account_id == account.id, AccountSetting.user_id == current_user.id,
+    ).first()
     return CardStatementsResponse(
         statements=[CardStatementResponse.model_validate(s) for s in statements],
         current=_position(db, account, current),
         missing_statement=current is not None and current.due_date < _today(),
         conflict=_conflict(statements, current),
         next_payment=_next_payment(db, current_user, account),
+        warnings=[RepaymentWarning(**w) for w in card_warnings(db, current_user, account, setting)],
+        card_apr=setting.card_apr if setting else None,
     )
 
 

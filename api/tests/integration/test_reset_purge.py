@@ -62,7 +62,7 @@ VICTIM = "victim@example.com"
 BYSTANDER = "bystander@example.com"
 ENCRYPTED_TYPES = (UserEncryptedString, UserEncryptedDecimal, UserEncryptedToken)
 KNOWN_ENCRYPTED_TABLES = {
-    "accounts", "asset_flows", "asset_valuations", "assets", "audit_entries",
+    "account_settings", "accounts", "asset_flows", "asset_valuations", "assets", "audit_entries",
     "bank_connections", "budget_changes", "budget_cycle_snapshots", "budgets", "card_statements", "category_rules",
     "commitment_rules", "liabilities", "planned_items",
     "repayment_schedule_items", "transactions",
@@ -143,7 +143,7 @@ def _seed_everything(db, user_id, dek) -> None:
         db.add_all([tx, audit])
         db.flush()
         db.add_all([
-            AccountSetting(user_id=user_id, account_id=account.id),
+            AccountSetting(user_id=user_id, account_id=account.id, card_apr=Decimal("19.90")),
             RepaymentScheduleItem(user_id=user_id, account_id=account.id, due_date=date(2026, 11, 1), amount=Decimal("20")),
             CardStatement(user_id=user_id, account_id=account.id, statement_date=date(2026, 10, 3),
                           due_date=date(2026, 10, 31), statement_balance=Decimal("5000"), minimum_due=Decimal("150")),

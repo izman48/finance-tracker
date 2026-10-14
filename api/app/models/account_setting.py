@@ -12,6 +12,7 @@ from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, fun
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.core.encryption import UserEncryptedDecimal
 
 
 class AccountRole(str, Enum):
@@ -84,6 +85,9 @@ class AccountSetting(Base):
     )
     # Set by the user: the card is an instalment plan (e.g. a "pay in 3"
     # card), the only kind that may use the `scheduled` strategy.
+    # The card's APR in percent (0-100), set by the user, for the interest
+    # warning (T-10-5). Encrypted like the liability APR (sec A2).
+    card_apr: Mapped[Decimal | None] = mapped_column(UserEncryptedDecimal, nullable=True)
     instalment_card: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )

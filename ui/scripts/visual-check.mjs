@@ -333,6 +333,12 @@ for (const [vpName, viewport] of viewports) {
     await page.waitForTimeout(400)
     await page.screenshot({ path: `${OUT}/card-not-set-up-${vpName}.png`, fullPage: true })
     console.log(`shot card-not-set-up-${vpName}`)
+    // T-10-14b: Cashflow's "Add statement" opens that card's settings too.
+    await page.goto(`${BASE}/dashboard`, { waitUntil: 'networkidle' })
+    await page.getByRole('link', { name: 'Add statement' }).click()
+    await page.getByRole('dialog', { name: 'Harbor Card' }).waitFor()
+    if (new URL(page.url()).search) errors.push(`[${vpName}] Add statement left ${page.url()}`)
+    console.log(`flow add-statement-${vpName} ok`)
   }
   // The loan form (T-10-10b): edit a linked loan, add one, and the
   // "Which bill is this?" step after a 409 choose_commitment.

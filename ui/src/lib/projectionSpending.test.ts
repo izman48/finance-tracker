@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { budgetsAvailable, evidenceLine, shownChoice, spendingParams, storedChoice } from './projectionSpending'
+import { budgetPeriod, budgetsAvailable, evidenceLine, shownChoice, spendingParams, storedChoice } from './projectionSpending'
 import type { ContributionBasis } from '../services/api'
 
 // ux T-10-15a (P-1..P-8). Synthetic figures: budgets £890, average £1,020 over 6 months.
@@ -73,5 +73,39 @@ describe('the evidence line, printed from the API', () => {
   it('P-5 budgets chosen, none active: the fallback line', () => {
     expect(evidenceLine(basis({ spending_used: 'average', budgets_fallback: true, budgets_monthly: '0.00', spending_applied: '1020.00' })))
       .toEqual({ text: 'You have no active budgets, so this uses your average: £1,020 a month.', warn: false })
+  })
+})
+
+// sec nit on #195: budgets are per pay cycle, so the budgets line says
+// "a pay cycle" unless that cycle is a calendar month.
+describe('budgetPeriod: what the budgets figure is per', () => {
+  const cycle = (start: string, end: string, fallback = false) => ({ start, end, fallback })
+  it('a payday-to-payday calendar month is "a month"', () => {
+    expect(budgetPeriod(cycle('2026-10-25', '2026-11-24'))).toBe('a month')
+    expect(budgetPeriod(cycle('2026-12-01', '2026-12-31'))).toBe('a month')
+  })
+  it('paid on the 31st: a cycle ending before a short month\'s last day is still "a month"', () => {
+    expect(budgetPeriod(cycle('2027-01-31', '2027-02-27'))).toBe('a month')
+  })
+  it('four-weekly, fortnightly and weekly cycles are "a pay cycle"', () => {
+    expect(budgetPeriod(cycle('2026-10-14', '2026-11-10'))).toBe('a pay cycle')
+    expect(budgetPeriod(cycle('2026-10-14', '2026-10-27'))).toBe('a pay cycle')
+    expect(budgetPeriod(cycle('2026-10-14', '2026-10-20'))).toBe('a pay cycle')
+  })
+  it('no payday set (the last 30 days) is "a pay cycle", never claimed as a month', () => {
+    expect(budgetPeriod(cycle('2026-09-16', '2026-10-15', true))).toBe('a pay cycle')
+  })
+  it('unknown cycle: "a pay cycle"', () => {
+    expect(budgetPeriod(null)).toBe('a pay cycle')
+  })
+})
+
+describe('evidenceLine with the budget period', () => {
+  it('budgets on a non-monthly cycle read "a pay cycle"', () => {
+    expect(evidenceLine(basis(), 'a pay cycle').text).toBe('Your budgets: £890 a pay cycle.')
+  })
+  it('only the budgets line changes: the average stays per month', () => {
+    expect(evidenceLine(basis({ spending_used: 'average', spending_choice: 'average', spending_applied: '1020.00' }), 'a pay cycle').text)
+      .toMatch(/a month\.$/)
   })
 })

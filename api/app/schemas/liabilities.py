@@ -132,3 +132,22 @@ class LiabilityResponse(BaseModel):
 class LinkedCommitment(BaseModel):
     id: uuid.UUID
     label: str
+
+
+class OverpaymentResponse(BaseModel):
+    """A lump sum paid off today, payment unchanged (T-10-11). Read-only."""
+
+    lump_sum: Decimal
+    # Paying the whole loan off today: the balance plus up to 58 days' interest.
+    settlement_figure: Decimal
+    settlement_interest: Decimal
+    payments_before: int
+    payments_after: int
+    payments_saved: int
+    interest_before: Decimal
+    interest_after: Decimal
+    interest_saved: Decimal
+    payoff_date_before: date
+    payoff_date_after: date | None
+    # A plain fact, never a recommendation (no advice).
+    note: str

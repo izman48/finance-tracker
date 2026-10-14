@@ -49,6 +49,12 @@ list (T-10-10) build on it.
   debt. An as-of date more than 90 days old sets `balance_stale` so the UI
   asks for an update.
 - Opted out: no schedule, so the schedule figures are null.
+- **Overpayment (T-10-11, read-only):** a lump sum paid today with the
+  payment unchanged gives payments and interest before/after and saved, and
+  both payoff dates. The settlement figure is today's balance plus up to 58
+  days' interest at the effective APR (UK early settlement), and caps the
+  lump sum. A plain note says savings could earn interest instead; nothing
+  recommends a choice (no advice). No UI yet (needs a ux spec).
 - List order: APR high to low, then balance high to low, then lender A to Z.
 - At most 50 liabilities per user (409 past that), since every read
   amortises each row.
@@ -64,6 +70,7 @@ list (T-10-10) build on it.
 | `GET /api/v1/liabilities/{liability_id}` | `CurrentUser` |
 | `PATCH /api/v1/liabilities/{liability_id}` | `CurrentUser` (merged terms re-checked) |
 | `DELETE /api/v1/liabilities/{liability_id}` | `CurrentUser` |
+| `GET /api/v1/liabilities/{liability_id}/overpayment` | `CurrentUser` (read-only; `lump_sum` > 0, at most the settlement figure) |
 
 `POST` also takes `replaces_asset_id`: the caller's own `loan` or
 `other_liability` asset (404 for a foreign or unknown id, 422 for any other
@@ -91,7 +98,7 @@ plaintext `kind`, `cadence`, dates, `opted_out`, `linked_commitment_id`);
 **Tests**: `api/tests/unit/test_amortisation.py` (hand-checked schedule for
 the synthetic £9,000 / £200 a month / 11% loan),
 `api/tests/integration/test_liabilities_api.py`,
-`test_liability_commitment_link.py` (rules 1-6), `test_reset_purge.py`,
+`test_liability_commitment_link.py` (rules 1-6), `test_liability_overpayment.py`, `test_reset_purge.py`,
 `test_oauth.py` (Claude tokens refused).
 
 ## Touchpoints

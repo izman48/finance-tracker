@@ -9,7 +9,7 @@ services/liability_links.py), written in the same transaction.
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
@@ -24,10 +24,12 @@ from app.schemas.liabilities import (
     LiabilityResponse,
     LiabilityUpdate,
     LinkedCommitment,
+    OverpaymentResponse,
 )
 from app.services import liabilities as service
 from app.services import liability_links as links
 from app.services.analytics import common
+from app.schemas import PlanningAmount
 
 router = APIRouter(prefix="/liabilities", tags=["liabilities"])
 
@@ -66,13 +68,15 @@ def _response(
     terms = {field: getattr(liability, field) for field in TERMS}
     return LiabilityResponse(
         id=liability.id, **terms,
-        **service.derived_figures(
-            liability, common._today(),
-            linked=rule is not None and rule.status == CommitmentStatus.CONFIRMED.value and not liability.opted_out,
-        ),
+        **service.derived_figures(liability, common._today(), linked=_linked(liability, rule)),
         linked_commitment=LinkedCommitment(id=rule.id, label=rule.label) if rule is not None else None,
         link_result=link_result,
     )
+
+
+def _linked(liability: Liability, rule: CommitmentRule | None) -> bool:
+    """Its payments are forecast: linked to a confirmed commitment."""
+    return rule is not None and rule.status == CommitmentStatus.CONFIRMED.value and not liability.opted_out
 
 
 def _link(db: Session, liability: Liability, choice: str | None) -> links.LinkResult:
@@ -163,6 +167,21 @@ def _replaceable_asset(db: Session, user_id: uuid.UUID, asset_id: uuid.UUID) -> 
 def get_liability(liability_id: uuid.UUID, current_user: CurrentUser, db: DB) -> LiabilityResponse:
     liability = _own(db, current_user.id, liability_id)
     return _response(liability, links.linked_rule(db, liability))
+
+
+@router.get("/{liability_id}/overpayment", response_model=OverpaymentResponse)
+def overpayment(
+    liability_id: uuid.UUID, lump_sum: Annotated[PlanningAmount, Query()], current_user: CurrentUser, db: DB,
+) -> OverpaymentResponse:
+    """What a lump sum paid today would save (T-10-11). Read-only: nothing
+    is stored. The lump sum is above £0 and at most the settlement figure."""
+    liability = _own(db, current_user.id, liability_id)
+    linked = _linked(liability, links.linked_rule(db, liability))
+    try:
+        figures = service.overpayment(liability, common._today(), linked, lump_sum)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from None
+    return OverpaymentResponse(**figures)
 
 
 @router.patch("/{liability_id}", response_model=LiabilityResponse)

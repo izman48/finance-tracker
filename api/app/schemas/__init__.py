@@ -126,6 +126,8 @@ class NetWorthPoint(BaseModel):
     date: date
     bank: Decimal
     assets: Decimal
+    # Owed on liabilities (positive); net_worth = bank + assets - liabilities.
+    liabilities: Decimal = Decimal(0)
     net_worth: Decimal
 
 
@@ -150,6 +152,7 @@ class NetWorthPosition(BaseModel):
     net_worth: Decimal
     bank: Decimal
     assets: Decimal
+    liabilities: Decimal = Decimal(0)
     # First date any wealth data reaches back to (transactions or valuations).
     since: date | None
     changes: list[NetWorthChange]
@@ -200,10 +203,12 @@ class ProjectionPoint(BaseModel):
     date: date
     value: Decimal
     # Component breakdown: cash buffer (drained first in negative months),
-    # the swept-surplus bucket, and manual assets.
+    # the swept-surplus bucket, manual assets, and what is owed on
+    # liabilities (value = cash + invested + assets - liabilities).
     cash: Decimal | None = None
     invested: Decimal | None = None
     assets: Decimal | None = None
+    liabilities: Decimal | None = None
 
 
 class AssetAssumption(BaseModel):
@@ -635,6 +640,7 @@ class CashflowSummary(BaseModel):
     credit_owed: Decimal
     savings_total: Decimal = Decimal(0)
     assets_total: Decimal = Decimal(0)
+    liabilities_total: Decimal = Decimal(0)
     net_worth: Decimal
     committed_before_payday: Decimal
     safe_to_spend: Decimal

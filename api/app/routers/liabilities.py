@@ -14,8 +14,8 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import CurrentUser
-from app.models import Liability
-from app.schemas.liabilities import LiabilityCreate, LiabilityResponse, LiabilityUpdate
+from app.models import Asset, Liability
+from app.schemas.liabilities import LiabilityCreate, LiabilityCreateRequest, LiabilityResponse, LiabilityUpdate
 from app.services import liabilities as service
 from app.services.analytics import common
 
@@ -25,6 +25,8 @@ DB = Annotated[Session, Depends(get_db)]
 TERMS = tuple(LiabilityCreate.model_fields)
 # Every list read amortises each row, so the rows per user are bounded.
 LIABILITIES_PER_USER_MAX = 50
+# Asset types a liability can replace. A mortgage isn't a kind yet (ux A8).
+CONVERTIBLE_ASSET_TYPES = ("loan", "other_liability")
 
 
 def _own(db: Session, user_id: uuid.UUID, liability_id: uuid.UUID) -> Liability:
@@ -65,19 +67,44 @@ def list_liabilities(current_user: CurrentUser, db: DB) -> list[LiabilityRespons
 
 
 @router.post("", response_model=LiabilityResponse, status_code=status.HTTP_201_CREATED)
-def create_liability(body: LiabilityCreate, current_user: CurrentUser, db: DB) -> LiabilityResponse:
+def create_liability(body: LiabilityCreateRequest, current_user: CurrentUser, db: DB) -> LiabilityResponse:
+    """Create a liability. With `replaces_asset_id`, the same transaction
+    deletes that asset, so the debt is counted once. A second call with the
+    same id finds no asset (404) and creates nothing."""
     held = db.query(Liability).filter(Liability.user_id == current_user.id).count()
     if held >= LIABILITIES_PER_USER_MAX:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"You can track up to {LIABILITIES_PER_USER_MAX} loans. Delete one to add another.",
         )
+    replaced = _replaceable_asset(db, current_user.id, body.replaces_asset_id) if body.replaces_asset_id else None
     _check_schedule_clears(body)
-    liability = Liability(user_id=current_user.id, **body.model_dump())
+    liability = Liability(user_id=current_user.id, **body.model_dump(exclude={"replaces_asset_id"}))
     db.add(liability)
+    if replaced is not None:
+        db.delete(replaced)
     db.commit()
     db.refresh(liability)
     return _response(liability)
+
+
+def _replaceable_asset(db: Session, user_id: uuid.UUID, asset_id: uuid.UUID) -> Asset:
+    """The caller's own loan-type asset, locked until this transaction ends so
+    two concurrent conversions can't both create a liability."""
+    asset = (
+        db.query(Asset)
+        .filter(Asset.id == asset_id, Asset.user_id == user_id)
+        .with_for_update()
+        .first()
+    )
+    if asset is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+    if asset.asset_type not in CONVERTIBLE_ASSET_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Only a loan or other debt on your balance sheet can be replaced.",
+        )
+    return asset
 
 
 @router.get("/{liability_id}", response_model=LiabilityResponse)

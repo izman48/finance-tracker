@@ -23,7 +23,7 @@ It runs two ways:
 
 | Tool | What it returns |
 |------|-----------------|
-| `cashflow_summary` | safe-to-spend, available cash, overdraft cushion, credit owed, net worth, next repayments |
+| `cashflow_summary` | safe-to-spend, available cash, overdraft cushion, credit owed, net worth (less liabilities), next repayments |
 | `forecast(horizon)` | balance projection timeline, lowest point, breaches, dated events |
 | `spending(period, frm, to, lens)` | credit-vs-cash breakdown by category & merchant; pass `frm`/`to` as `YYYY-MM-DD` for any date range; `lens='purchases'` to compare against `spending_trend` (see below) |
 | `spending_trend(months)` | real spending per month over the last N months (always 'purchases'-equivalent — see below) |

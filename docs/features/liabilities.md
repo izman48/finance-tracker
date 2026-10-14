@@ -3,9 +3,10 @@
 Debts the user enters by hand, since TrueLayer has no loan data: kind,
 lender, balance "as of" a date, APR, payment, how often, start date and an
 optional final payment date. "I repay this loan irregularly" (`opted_out`)
-makes the payment optional. Stage 1 of the liabilities spec (T-10-7a);
-net worth (T-10-7b), the commitment link (T-10-8) and the Wealth list
-(T-10-10) build on it.
+makes the payment optional. Stage 1 of the liabilities spec (T-10-7a).
+Net worth subtracts liabilities on every surface (T-10-7b, see
+[net-worth.md](net-worth.md)); the commitment link (T-10-8) and the Wealth
+list (T-10-10) build on it.
 
 ## Rules
 
@@ -45,6 +46,12 @@ net worth (T-10-7b), the commitment link (T-10-8) and the Wealth list
 | `PATCH /api/v1/liabilities/{liability_id}` | `CurrentUser` (merged terms re-checked) |
 | `DELETE /api/v1/liabilities/{liability_id}` | `CurrentUser` |
 
+`POST` also takes `replaces_asset_id`: the caller's own `loan` or
+`other_liability` asset (404 for a foreign or unknown id, 422 for any other
+type), deleted in the same transaction that creates the liability (T-10-7b).
+A second call with the same id gets 404 and creates nothing. `PATCH` refuses
+the field.
+
 Requests allow-list the user's terms (`extra="forbid"`): no id, user id,
 link or derived figure is accepted. Money is a decimal string, 2 dp, more
 than 0 and at most 1,000,000; APR 0 to 100; lender at most 100 characters;
@@ -77,7 +84,7 @@ the synthetic £9,000 / £200 a month / 11% loan),
 | 7 Claude tools | none. Claude can't read liabilities in this stage. |
 | 8 Audit | Web-only writes, not audited. |
 | 9 Bank sync | Not touched; figures are computed on read. |
-| 10 Home | not yet. |
+| 10 Home | Home's net worth (from position or summary) subtracts liabilities. |
 | 11 UI routes | none yet. |
 | 12 Tests | listed above. |
 | 13 Docs | this file. |

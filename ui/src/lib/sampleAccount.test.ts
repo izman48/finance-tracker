@@ -53,12 +53,30 @@ describe('sample account — internal reconciliation', () => {
     expect(near(sum, Number(purchases.total_spent))).toBe(true)
   })
 
-  it('net worth = cash + savings + assets − credit owed (balance sheet reconciles)', () => {
+  it('net worth = cash + savings + assets − credit owed − liabilities (balance sheet reconciles)', () => {
     const s: any = sampleResponse('/api/v1/analytics/summary', {})
-    const expected = Number(s.available_cash) + Number(s.savings_total) + Number(s.assets_total) - Number(s.credit_owed)
+    const expected = Number(s.available_cash) + Number(s.savings_total) + Number(s.assets_total)
+      - Number(s.credit_owed) - Number(s.liabilities_total)
     expect(near(Number(s.net_worth), expected)).toBe(true)
     const history: any = sampleResponse('/api/v1/analytics/net-worth-history', { months: '12' })
     expect(near(Number(history[history.length - 1].net_worth), Number(s.net_worth))).toBe(true)
+  })
+
+  it('the sample liabilities reconcile with the summary, position and history (T-10-10)', () => {
+    const loans: any[] = sampleResponse('/api/v1/liabilities', {}) as any[]
+    const total = loans.reduce((t, l) => t + Number(l.current_balance), 0)
+    const s: any = sampleResponse('/api/v1/analytics/summary', {})
+    const pos: any = sampleResponse('/api/v1/analytics/net-worth-position', {})
+    const history: any = sampleResponse('/api/v1/analytics/net-worth-history', { months: '12' })
+    expect(loans.length).toBeGreaterThan(0)
+    expect(near(Number(s.liabilities_total), total)).toBe(true)
+    expect(near(Number(pos.liabilities), total)).toBe(true)
+    expect(near(Number(pos.net_worth), Number(pos.bank) + Number(pos.assets) - Number(pos.liabilities))).toBe(true)
+    const today = history[history.length - 1]
+    expect(near(Number(today.net_worth), Number(today.bank) + Number(today.assets) - Number(today.liabilities))).toBe(true)
+    // Highest APR first, as the API sorts them (ux L-1).
+    const aprs = loans.map((l) => Number(l.apr))
+    expect(aprs).toEqual([...aprs].sort((a, b) => b - a))
   })
 
   it('per-account credit_owed is positive and sums to the headline credit owed', () => {

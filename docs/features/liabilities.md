@@ -86,7 +86,7 @@ plaintext `kind`, `cadence`, dates, `opted_out`, `linked_commitment_id`);
 `current_balance`, `owed_on`), `services/liability_links.py` (`candidates`,
 `link`, `sync`, `remove`, `release`).
 
-**UI**: none yet (T-10-10).
+**UI** (T-10-10a): `/networth` balance sheet, group "Loans and finance" (`components/wealth/LiabilityRow.tsx`, `lib/liabilities.ts`): rows in the API's order (APR high to low), line 2 from the API's figures only, `Update balance` / `Paid off` chips, the group subtotal = asset liability rows + the API's liabilities total (shown once), its own load error with Try again (no subtotal then), and the both-counted notice when a `loan`/`other_liability` asset and a liability exist. Rows are read-only until the add/edit form (T-10-10b).
 
 **Tests**: `api/tests/unit/test_amortisation.py` (hand-checked schedule for
 the synthetic £9,000 / £200 a month / 11% loan),
@@ -101,13 +101,13 @@ the synthetic £9,000 / £200 a month / 11% loan),
 | 1 Tables | `liabilities`, migrations `d8e0f2a4b6c8` (new table) and `f0a2b4c6d8e1` (link, `commitment_rules.ends_on`); downgrades drop them. |
 | 2 Purge | Yes, before `commitment_rules` in `_OWNED_BY_USER` (the reset seed links them, so the order is tested). |
 | 3 Deletion | Cascade from `users`; `test_liabilities_api.py` deletes an account with foreign keys on. |
-| 4 Demo mode | No UI reads yet; T-10-10 adds the sample data. |
+| 4 Demo mode | `GET /api/v1/liabilities` served by `sampleAccount.ts` (two synthetic liabilities that reconcile with summary, position and history). |
 | 5 Ownership | No account ids. Liabilities load by id and user; another user's id is a 404 like an unknown one. |
 | 6 Scopes | Web only (`test_oauth.py` checks). |
 | 7 Claude tools | none. Claude can't read liabilities in this stage. |
 | 8 Audit | Web-only writes, not audited. |
 | 9 Bank sync | Not touched; figures are computed on read. |
 | 10 Home | Home's net worth (from position or summary) subtracts liabilities. |
-| 11 UI routes | none yet. |
+| 11 UI routes | none new; rows live on `/networth`. |
 | 12 Tests | listed above. |
 | 13 Docs | this file. |

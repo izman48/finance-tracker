@@ -269,6 +269,36 @@ export interface Projection {
   timeline: ProjectionPoint[]
 }
 
+/** A loan, retail finance or BNPL the user entered (T-10-7a/8). Money is a
+ *  decimal string; every derived figure comes from the API. */
+export interface Liability {
+  id: string
+  kind: 'loan' | 'finance' | 'bnpl'
+  lender: string
+  balance: string
+  balance_as_of: string
+  apr: string
+  payment: string | null
+  cadence: 'monthly' | 'four_weekly' | 'fortnightly' | 'weekly'
+  start_date: string
+  end_date: string | null
+  opted_out: boolean
+  current_balance: string
+  next_payment_date: string | null
+  payments_remaining: number | null
+  payoff_date: string | null
+  interest_remaining: string | null
+  total_cost: string | null
+  paid_off: boolean
+  balance_stale: boolean
+  linked_commitment: { id: string; label: string } | null
+  link_result: 'created' | 'linked' | null
+}
+
+export const liabilitiesAPI = {
+  list: () => api.get<Liability[]>('/liabilities'),
+}
+
 export const assetsAPI = {
   list: () => api.get<Asset[]>('/assets'),
   create: (data: { name: string; asset_type: string; value: number; valued_at?: string }) =>

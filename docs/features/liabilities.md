@@ -33,15 +33,15 @@ list (T-10-10) build on it.
   one: 409 `choose_commitment` with the candidates; the client resends
   `commitment_choice` = a candidate id or `new`, and the server re-computes
   the candidates and accepts nothing else). Editing the payment or cadence
-  updates it; opting out deletes it; opting back in links again. Its
+  updates it (and renames a bill the liability created when the lender is renamed). Opting out deletes the commitment only if the liability created it (`commitment_created`); a bill the user already had is only unlinked and kept with no end. Opting back in links again. A card repayment commitment (`card_account_id`) is never a candidate. Its
   `ends_on` is the final scheduled payment, so a paid-off loan stops leaving
   the forecast. Deleting the liability without opting out keeps the
   commitment as an ordinary bill with no end (owner D4). Cadences map to
   `monthly`, `weekly`, or `custom_days` 14/28.
-- **Today's balance:** linked, it follows the schedule from the as-of
+- **Today's balance:** linked to a *confirmed* commitment, it follows the schedule from the as-of
   balance (payments due before today count as made, since they are in the
   forecast), and `paid_off` is true once every payment is made. Not linked
-  (repaid irregularly, or its commitment was deleted), it is the entered
+  (repaid irregularly, or its commitment was deleted or isn't confirmed), it is the entered
   balance: assuming payments that may not have happened would understate the
   debt. An as-of date more than 90 days old sets `balance_stale` so the UI
   asks for an update.

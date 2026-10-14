@@ -17,6 +17,7 @@ unlinked, it is the entered balance. Deleting a liability without opting out
 keeps the commitment as an ordinary bill (D4). Synthetic fixture: £9,000 at
 £200 a month, 11% APR (hand-checked schedule in test_amortisation.py).
 """
+import uuid
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -104,6 +105,14 @@ def alice(client, db_session):
 @pytest.fixture
 def bob(client, db_session):
     return Person(client, db_session, "bob-link@example.com")
+
+
+def _set_card_link(person, rule_id):
+    """Mark the bill as a card repayment (test SQLite doesn't enforce the FK)."""
+    rule = person.db.get(CommitmentRule, uuid.UUID(rule_id))
+    rule.card_account_id = uuid.uuid4()
+    rule.card_link_source = "user"
+    person.db.commit()
 
 
 def _liabilities(db) -> int:
@@ -232,6 +241,38 @@ def test_a_concurrent_double_link_is_a_409(alice, db_session, monkeypatch):
 # --------------------------------------------------------------------------- #
 # Rules 3 and 4: opt out, opt back in, edits
 # --------------------------------------------------------------------------- #
+def test_opting_out_of_a_taken_over_bill_unlinks_it_and_keeps_it(alice):
+    # Rule 3 deletes only a bill the liability created (lead, eng-a on #181):
+    # a bill the user already had stays, as an ordinary bill with no end.
+    existing = alice.bill()
+    created = alice.create().json()
+    assert created["link_result"] == "linked"
+    body = alice.patch(created["id"], opted_out=True, payment=None).json()
+    assert body["linked_commitment"] is None
+    (bill,) = alice.bills()
+    assert str(bill.id) == existing and bill.status == "confirmed" and bill.ends_on is None
+
+
+def test_a_card_repayment_commitment_is_never_taken_over(alice):
+    card_bill = alice.bill(label="CARD DD")
+    alice.as_user(lambda: _set_card_link(alice, card_bill))
+    assert alice.create().json()["link_result"] == "created"
+    assert len(alice.bills()) == 2
+
+
+def test_a_dismissed_linked_bill_leaves_the_balance_as_entered(alice):
+    created = alice.create().json()
+    bill_id = created["linked_commitment"]["id"]
+
+    def dismiss():
+        rule = alice.db.get(CommitmentRule, uuid.UUID(bill_id))
+        rule.status = "dismissed"  # however it happened, nothing forecasts the payments now
+        alice.db.commit()
+    alice.as_user(dismiss)
+    body = alice.client.get(f"{API}/liabilities/{created['id']}", headers=_bearer(alice.token)).json()
+    assert Decimal(body["current_balance"]) == Decimal("9000.00")
+
+
 def test_opt_out_removes_commitment(alice):
     created = alice.create().json()
     res = alice.patch(created["id"], opted_out=True, payment=None)
@@ -302,14 +343,39 @@ def test_the_last_payment_is_still_forecast_15_days_before_it(alice):
     assert alice.forecast_payments() == [final.isoformat()]
 
 
-def test_the_repayment_counts_once_in_safe_to_spend(alice):
-    def committed():
-        return Decimal(alice.client.get(f"{API}/analytics/summary", headers=_bearer(alice.token)).json()["committed_before_payday"])
+def test_the_repayment_counts_once_in_summary_forecast_and_projection(alice):
+    def figures():
+        get = lambda path: alice.client.get(f"{API}{path}", headers=_bearer(alice.token)).json()  # noqa: E731
+        forecast = get("/analytics/forecast?horizon=90")
+        out = sum(-Decimal(e["amount"]) for p in forecast["timeline"] for e in p["events"] if Decimal(e["amount"]) < 0)
+        basis = get("/analytics/net-worth-projection")["contribution_basis"]
+        return Decimal(get("/analytics/summary")["committed_before_payday"]), out, Decimal(basis["bills_monthly"])
 
-    before = committed()
+    committed, forecast_out, bills = figures()
     alice.create()
-    # No payday is set, so the window is the next 30 days: exactly one £200.
-    assert committed() - before == Decimal("200.00")
+    after = figures()
+    # No payday is set, so the summary window is the next 30 days: one £200.
+    assert after[0] - committed == Decimal("200.00")
+    # The forecast pays it once per month in 90 days, never twice on a day.
+    assert after[1] - forecast_out == Decimal("200.00") * len(alice.forecast_payments())
+    assert len(alice.forecast_payments()) == len(set(alice.forecast_payments())) == 3
+    # The projection's monthly bills grow by one £200.
+    assert after[2] - bills == Decimal("200.00")
+
+
+def test_renaming_the_lender_renames_a_bill_the_liability_created(alice):
+    created = alice.create().json()
+    alice.patch(created["id"], lender="Renamed Bank")
+    (bill,) = alice.bills()
+    assert bill.label == "Renamed Bank"
+
+
+def test_renaming_the_lender_leaves_a_taken_over_bill_alone(alice):
+    alice.bill("LOAN DD")
+    created = alice.create().json()
+    alice.patch(created["id"], lender="Renamed Bank")
+    (bill,) = alice.bills()
+    assert bill.label == "LOAN DD"
 
 
 def test_the_projection_pays_a_linked_debt_down_on_its_schedule(alice):

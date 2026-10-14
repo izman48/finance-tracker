@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import CurrentUser
-from app.models import Asset, CommitmentRule, Liability
+from app.models import Asset, CommitmentRule, CommitmentStatus, Liability
 from app.schemas.liabilities import (
     LiabilityCreate,
     LiabilityCreateRequest,
@@ -65,7 +65,11 @@ def _response(
 ) -> LiabilityResponse:
     terms = {field: getattr(liability, field) for field in TERMS}
     return LiabilityResponse(
-        id=liability.id, **terms, **service.derived_figures(liability, common._today()),
+        id=liability.id, **terms,
+        **service.derived_figures(
+            liability, common._today(),
+            linked=rule is not None and rule.status == CommitmentStatus.CONFIRMED.value and not liability.opted_out,
+        ),
         linked_commitment=LinkedCommitment(id=rule.id, label=rule.label) if rule is not None else None,
         link_result=link_result,
     )

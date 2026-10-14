@@ -2,9 +2,10 @@
 
 Additive and schema-only: `liabilities.linked_commitment_id` (FK to
 commitment_rules, ON DELETE SET NULL, unique: one liability per commitment)
-and `commitment_rules.ends_on` (the last date a commitment can fall on).
-Both are nullable and no row is written, so nothing moves and the previous
-release ignores them. Downgrade drops both.
+`liabilities.commitment_created` (boolean, default false: whether opting
+out may delete the commitment) and `commitment_rules.ends_on` (the last
+date a commitment can fall on). No row is written, so nothing moves and the previous
+release ignores them. Downgrade drops them.
 
 Revision ID: f0a2b4c6d8e1
 Revises: e9f1a3b5c7d9
@@ -24,6 +25,9 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.add_column("commitment_rules", sa.Column("ends_on", sa.Date(), nullable=True))
     op.add_column("liabilities", sa.Column("linked_commitment_id", sa.Uuid(), nullable=True))
+    op.add_column(
+        "liabilities", sa.Column("commitment_created", sa.Boolean(), nullable=False, server_default=sa.false()),
+    )
     op.create_foreign_key(
         "fk_liabilities_linked_commitment_id_commitment_rules", "liabilities", "commitment_rules",
         ["linked_commitment_id"], ["id"], ondelete="SET NULL",
@@ -34,5 +38,6 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_constraint("uq_liabilities_linked_commitment_id", "liabilities", type_="unique")
     op.drop_constraint("fk_liabilities_linked_commitment_id_commitment_rules", "liabilities", type_="foreignkey")
+    op.drop_column("liabilities", "commitment_created")
     op.drop_column("liabilities", "linked_commitment_id")
     op.drop_column("commitment_rules", "ends_on")

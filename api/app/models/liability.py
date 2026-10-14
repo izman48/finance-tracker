@@ -69,6 +69,12 @@ class Liability(Base):
         nullable=True,
     )
 
+    # True when the liability created its commitment (rule 1), so opting out
+    # deletes it; a bill the user already had (rule 2) is only unlinked.
+    commitment_created: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+
     # "I repay this loan irregularly": no schedule, so no payoff figures, and
     # no linked commitment.
     opted_out: Mapped[bool] = mapped_column(

@@ -32,7 +32,7 @@ from app.models import (
     PlannedItem,
 )
 from app.models.asset import LIABILITY_TYPES
-from app.services.liabilities import owed_on
+from app.services.liabilities import confirmed_commitment_ids, is_linked, owed_on
 
 from app.services.claude_keep import counted_commitments, held_removed_planned
 from .cadence import commitment_occurrences
@@ -208,6 +208,7 @@ def net_worth_projection(
     # services/liabilities.owed_on).
     liabilities_now = Decimal(str(now_point["liabilities"]))
     liabilities = db.query(Liability).filter(Liability.user_id == user.id).all()
+    confirmed = confirmed_commitment_ids(db, user.id)
 
     r_global = _monthly_rate(annual_growth_pct)
 
@@ -314,7 +315,7 @@ def net_worth_projection(
                 c["value"] = Decimal(0)
             assets_value += c["value"]
         when = _add_months(today, m)
-        owed = sum((owed_on(x, today, when) for x in liabilities), Decimal(0))
+        owed = sum((owed_on(x, today, when, is_linked(x, confirmed)) for x in liabilities), Decimal(0))
         value = cash + invested + assets_value - owed
         if target_amount is not None and target_date is None and value >= target_amount:
             target_date = when

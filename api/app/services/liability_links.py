@@ -55,6 +55,8 @@ def candidates(db: Session, liability: Liability) -> list[CommitmentRule]:
             CommitmentRule.user_id == liability.user_id,
             CommitmentRule.direction == CommitmentDirection.EXPENSE.value,
             CommitmentRule.status != CommitmentStatus.DISMISSED.value,
+            # A card repayment is never a loan's repayment (lead, eng-a on #181).
+            CommitmentRule.card_account_id.is_(None),
         )
         .all()
     )
@@ -95,6 +97,7 @@ def link(db: Session, liability: Liability, choice: str | None, today: date) -> 
         result = "linked"
     rule.status = CommitmentStatus.CONFIRMED.value
     liability.linked_commitment_id = rule.id
+    liability.commitment_created = result == "created"
     sync(liability, rule, today)
     return result
 
@@ -119,7 +122,7 @@ def sync(liability: Liability, rule: CommitmentRule, today: date) -> None:
     final scheduled payment (rule 5)."""
     if liability.payment is None:  # only linked while there is a payment
         return
-    figures = derived_figures(liability, today)
+    figures = derived_figures(liability, today, linked=True)
     cadence, interval_days = COMMITMENT_CADENCE[liability.cadence]
     rule.amount = liability.payment
     rule.cadence = cadence
@@ -127,6 +130,8 @@ def sync(liability: Liability, rule: CommitmentRule, today: date) -> None:
     rule.interval_months = None
     rule.next_date = figures["next_payment_date"] or figures["payoff_date"]
     rule.ends_on = figures["payoff_date"]
+    if liability.commitment_created:
+        rule.label = liability.lender
 
 
 def linked_rule(db: Session, liability: Liability) -> CommitmentRule | None:
@@ -140,13 +145,20 @@ def linked_rule(db: Session, liability: Liability) -> CommitmentRule | None:
 
 
 def remove(db: Session, liability: Liability) -> None:
-    """Opt-out (rule 3): unlink and delete the commitment, in the caller's
-    transaction."""
+    """Opt-out (rule 3), in the caller's transaction: unlink, and delete the
+    commitment only if the liability created it. A bill the user already had
+    stays as an ordinary bill with no end."""
     rule = linked_rule(db, liability)
+    created = liability.commitment_created
     liability.linked_commitment_id = None
+    liability.commitment_created = False
     db.flush()
-    if rule is not None:
+    if rule is None:
+        return
+    if created:
         db.delete(rule)
+    else:
+        rule.ends_on = None
 
 
 def release(db: Session, liability: Liability) -> None:

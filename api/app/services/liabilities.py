@@ -20,7 +20,9 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
-from app.models import Liability
+from sqlalchemy.orm import Session
+
+from app.models import CommitmentRule, CommitmentStatus, Liability
 from app.services.analytics.common import _add_months
 
 # Bound on the schedule (sec, T-10-7a): a payment barely above the interest
@@ -140,12 +142,23 @@ def next_payment_on(start: date, cadence: str, balance_as_of: date, today: date)
     return first_payment_after(start, cadence, max(balance_as_of, today - timedelta(days=1)))
 
 
-def is_linked(liability: Liability) -> bool:
-    """Its repayment is a linked commitment, so the payments are forecast."""
-    return liability.linked_commitment_id is not None and not liability.opted_out
+def is_linked(liability: Liability, confirmed_ids: set) -> bool:
+    """Its repayment is a linked, confirmed commitment, so the payments are
+    forecast. `confirmed_ids` is `confirmed_commitment_ids` for its user."""
+    return not liability.opted_out and liability.linked_commitment_id in confirmed_ids
 
 
-def remaining_schedule(liability: Liability, today: date) -> tuple[Decimal, list[ScheduleRow]] | None:
+def confirmed_commitment_ids(db: Session, user_id) -> set:
+    """Ids of the user's confirmed commitments (plaintext columns only)."""
+    rows = db.query(CommitmentRule.id).filter(
+        CommitmentRule.user_id == user_id, CommitmentRule.status == CommitmentStatus.CONFIRMED.value,
+    )
+    return {row[0] for row in rows}
+
+
+def remaining_schedule(
+    liability: Liability, today: date, linked: bool,
+) -> tuple[Decimal, list[ScheduleRow]] | None:
     """Today's balance and the payments still to come, or None when there is
     no schedule (repaid irregularly, or a stored row that no longer clears).
 
@@ -159,7 +172,7 @@ def remaining_schedule(liability: Liability, today: date) -> tuple[Decimal, list
     if liability.opted_out or payment is None:  # no payment only when opted out
         return None
     try:
-        if not is_linked(liability):
+        if not linked:
             first = next_payment_on(liability.start_date, liability.cadence, liability.balance_as_of, today)
             rows = amortise(liability.balance, liability.apr, payment, first, liability.cadence).rows
             return liability.balance, rows
@@ -171,16 +184,16 @@ def remaining_schedule(liability: Liability, today: date) -> tuple[Decimal, list
     return (past[-1].balance_after if past else liability.balance), rows[len(past):]
 
 
-def current_balance(liability: Liability, today: date) -> Decimal:
+def current_balance(liability: Liability, today: date, linked: bool) -> Decimal:
     """Today's balance (see `remaining_schedule`), never below £0."""
-    schedule = remaining_schedule(liability, today)
+    schedule = remaining_schedule(liability, today, linked)
     return liability.balance if schedule is None else schedule[0]
 
 
-def derived_figures(liability: Liability, today: date) -> dict:
+def derived_figures(liability: Liability, today: date, linked: bool) -> dict:
     """The read-time figures for a stored liability. The schedule figures are
     null when there is no schedule (they would be guesses)."""
-    schedule = remaining_schedule(liability, today)
+    schedule = remaining_schedule(liability, today, linked)
     figures: dict = {
         "current_balance": liability.balance,
         "next_payment_date": None,
@@ -212,14 +225,14 @@ def _final_payment(liability: Liability, payment: Decimal) -> date:
     return amortise(liability.balance, liability.apr, payment, first, liability.cadence).payoff_date
 
 
-def owed_on(liability: Liability, today: date, day: date) -> Decimal:
+def owed_on(liability: Liability, today: date, day: date, linked: bool) -> Decimal:
     """What a liability will owe on a future day. Linked: per the schedule
     (its payments are in the cashflow as the commitment). Otherwise flat at
     today's balance: nothing says a payment will leave the bank, so the debt
     isn't paid down either (overstates debt, the safe side)."""
-    schedule = remaining_schedule(liability, today)
-    if schedule is None or not is_linked(liability):
-        return current_balance(liability, today)
+    schedule = remaining_schedule(liability, today, linked)
+    if schedule is None or not linked:
+        return current_balance(liability, today, linked)
     balance, rows = schedule
     paid = [r for r in rows if r.due_date <= day]
     return paid[-1].balance_after if paid else balance

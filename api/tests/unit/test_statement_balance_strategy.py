@@ -269,3 +269,18 @@ def test_statement_balance_with_an_unknown_pay_day_uses_the_card_due_date(db_ses
     assert with_statement.repayments() == [(DUE, Decimal("5000")), (NEXT_DUE, Decimal("1000"))]
     assert without.repayments() == [(TODAY + timedelta(days=30), Decimal("6000"))]
     assert svc.get_summary(db_session, with_statement.user)["committed_before_payday"] == Decimal("5000")
+
+
+def test_pay_days_that_run_out_still_plan_the_full_balance(db_session, monkeypatch):
+    """No bare next(): even if a cadence ever yields no date, the plan pays
+    at least the full balance (sec, #175)."""
+    from app.services.analytics import repayments
+
+    w = World(db_session, cadence="monthly", repayment_day=5)
+    w.statement()
+    monkeypatch.setattr(repayments, "next_repayment_date", lambda s, d: None)
+
+    events = w.repayments(days=70)
+
+    assert sum(a for _, a in events) >= Decimal("6000")
+    assert events[0][0] == TODAY + timedelta(days=30)

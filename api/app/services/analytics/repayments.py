@@ -268,16 +268,22 @@ def _statement_plan(s: AccountSetting, owed: Decimal, position, pay_days: Iterat
     if owed <= 0:
         return []
     if position is None or position.statement.due_date < _today():
-        return [(next(pay_days), owed)]
+        return [(_next_pay_day(pay_days), owed)]
     plan = []
     # On a cadence, a paid statement's own payment day has already gone.
     if _pays_on_card_due_date(s) or not position.paid:
-        statement_day = next(pay_days)
+        statement_day = _next_pay_day(pay_days)
         if not position.paid:
             plan.append((statement_day, position.amount_still_due))
     if position.unbilled > 0:
-        plan.append((next(pay_days), position.unbilled))
+        plan.append((_next_pay_day(pay_days), position.unbilled))
     return plan
+
+
+def _next_pay_day(pay_days: Iterator[date]) -> date:
+    """The next pay day; if the days run out, 30 days from today (a missing
+    date must never mean a missing payment, or an error)."""
+    return next(pay_days, None) or _today() + timedelta(days=30)
 
 
 # Far enough to reach the end of any schedule (120 installments, or the

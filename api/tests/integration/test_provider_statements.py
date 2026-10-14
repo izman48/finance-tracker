@@ -248,4 +248,42 @@ def test_the_coverage_line_reports_field_presence_per_provider_id(bank, caplog):
 
     (line,) = [r.getMessage() for r in caplog.records if "card statement fields" in r.getMessage().lower()]
     assert line == ("Card statement fields from ob-testbank: last_statement_balance=True "
-                    "last_statement_date=True payment_due=False payment_due_date=True")
+                    "last_statement_date=True payment_due=False payment_due_date=True "
+                    "statement_owes=True stored=True")
+
+
+def _coverage_line(caplog):
+    (line,) = [r.getMessage() for r in caplog.records if "card statement fields" in r.getMessage().lower()]
+    return line
+
+
+def test_the_coverage_line_says_when_the_sign_rule_rejected_the_statement(db_session, monkeypatch, caplog):
+    """Lead (prod check): tell "the provider sends no fields" apart from
+    "the sign rule rejected them". Monzo positive = the card is in credit."""
+    caplog.set_level(logging.INFO)
+    bank = Bank(db_session, monkeypatch, provider_name="MONZO")
+    bank.response = _balance(last_statement_balance=25.00)
+
+    bank.sync()
+
+    assert _coverage_line(caplog).endswith("statement_owes=False stored=False")
+
+
+def test_the_coverage_line_says_when_a_bad_value_stopped_the_store(bank, caplog):
+    caplog.set_level(logging.INFO)
+    bank.response = _balance(payment_due_date=_stamp(STATEMENT_DATE - timedelta(days=1)))
+
+    bank.sync()
+
+    assert _coverage_line(caplog).endswith("statement_owes=True stored=False")
+
+
+def test_the_coverage_line_is_emitted_in_production(bank):
+    """Prod has no logging config for app.*: Python's last-resort handler
+    shows WARNING and above only, so this INFO line never appeared. The
+    coverage logger carries its own INFO handler (booleans only)."""
+    from app.services.provider_statements import coverage_logger
+
+    assert coverage_logger.isEnabledFor(logging.INFO)
+    handlers = [h for h in coverage_logger.handlers if h.level <= logging.INFO]
+    assert handlers, "the coverage logger needs its own handler"

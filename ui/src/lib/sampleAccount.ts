@@ -363,6 +363,8 @@ function summaryResponse() {
       repayment_day: null, repayment_interval_months: null, repayment_anchor_date: null,
       repayment_strategy: a.role === 'credit' ? 'full_balance' : null,
       repayment_fixed_amount: null, repayment_installments: null, pay_from_account_id: null,
+      // The card's statement, as statementsResponse has it (T-10-14a).
+      ...(a.role === 'credit' ? { statement: sampleStatement() } : {}),
     })),
   }
 }
@@ -702,13 +704,20 @@ function readParams(params: unknown): TxQuery & Record<string, any> {
 /** The sample card's statement. It reconciles with the summary: the whole
  *  £640.30 owed was billed, is due on the same day as next_repayments, and
  *  nothing has been spent since. Other accounts have no statement. */
+const SAMPLE_STATEMENT_DUE = () => isoDate(nowPlus(8))
+
+/** The sample card's statement as the summary carries it. */
+function sampleStatement() {
+  return { statement_balance: CREDIT_OWED.toFixed(2), due_date: SAMPLE_STATEMENT_DUE(), paid: false, missing: false }
+}
+
 function statementsResponse(path: string) {
   const empty = { statements: [], current: null, missing_statement: false, conflict: false, next_payment: null }
   if (!path.includes('/accounts/sa4/')) return empty
   const owed = CREDIT_OWED.toFixed(2)
   const statement = {
     id: 'ss1', account_id: 'sa4', statement_balance: owed, statement_date: isoDate(nowMinus(22)),
-    due_date: isoDate(nowPlus(8)), minimum_due: '25.00', source: 'manual' as const,
+    due_date: SAMPLE_STATEMENT_DUE(), minimum_due: '25.00', source: 'manual' as const,
   }
   return {
     statements: [statement],

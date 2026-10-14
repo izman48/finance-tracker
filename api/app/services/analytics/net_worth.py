@@ -50,6 +50,13 @@ def liabilities_total(db: Session, user, as_of: date | None = None) -> Decimal:
     )
 
 
+def total_owed(cards_owed: Decimal, liabilities: Decimal) -> Decimal:
+    """Everything the user owes: what is owed on cards (cards in credit
+    don't offset it) plus the liabilities total. The one definition of
+    "Total owed" (T-10-14a, sec S-6): the UI shows it and adds nothing."""
+    return cards_owed + liabilities
+
+
 def asset_decomposition(db: Session, user, months: int = 12) -> dict:
     """Contribution-vs-growth split of the manual-asset movement over a window.
 

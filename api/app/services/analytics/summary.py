@@ -22,11 +22,12 @@ from .commitments import committed_window_end, next_payday
 from app.services.balance_sign import credit_owed as credit_owed_for
 
 from .common import _d, _load, _today, resolve_roles
-from .net_worth import assets_total, liabilities_total
+from .net_worth import assets_total, liabilities_total, total_owed
 from .planned import planned_events
 from .planned_matching import planned_states
 from app.services.claude_keep import claude_rows, counted_commitments, held_back, held_removed_planned
 from .repayments import repayment_events, scheduled_outflows
+from .statements import current_positions
 
 
 def get_summary(db: Session, user) -> dict:
@@ -140,6 +141,7 @@ def get_summary(db: Session, user) -> dict:
         "savings_total": savings_total,
         "assets_total": manual_assets,
         "liabilities_total": liabilities,
+        "total_owed": total_owed(credit_owed, liabilities),
         "net_worth": available_cash + savings_total + manual_assets + credit_in_favour - credit_owed - liabilities,
         "committed_before_payday": committed,
         "safe_to_spend": safe_to_spend,
@@ -150,7 +152,7 @@ def get_summary(db: Session, user) -> dict:
         # Show upcoming card repayments over a display horizon, independent of the
         # payday window — so a bill due just after payday is still visible.
         "next_repayments": repayment_events(db, user, today, today + timedelta(days=92)),
-        "accounts": [_account_summary(acc, roles[acc.id], settings.get(acc.id)) for acc in accounts],
+        "accounts": _accounts(db, user, accounts, roles, settings, today),
     }
 
 
@@ -180,6 +182,35 @@ def _planned_out(planned: list, states: dict, start, end) -> Decimal:
         elif state.counted and max(item.start_date, start) <= end:
             total += _d(item.amount)
     return total
+
+
+def _accounts(db: Session, user, accounts, roles, settings, today) -> list[dict]:
+    """Each account's summary; a credit account also carries its current
+    statement (the card statements route's position), or None."""
+    cards = [acc for acc in accounts if roles[acc.id] == AccountRole.CREDIT]
+    positions = current_positions(db, user, cards) if cards else {}
+    rows = []
+    for acc in accounts:
+        row = _account_summary(acc, roles[acc.id], settings.get(acc.id))
+        if roles[acc.id] == AccountRole.CREDIT:
+            row["statement"] = _statement(positions.get(acc.id), today)
+        rows.append(row)
+    return rows
+
+
+def _statement(position, today) -> dict | None:
+    """The current statement as the summary shows it (no ids: sec, option A).
+    `missing`: its due date has passed and no newer one is entered, as in
+    the card statements route."""
+    if position is None:
+        return None
+    statement = position.statement
+    return {
+        "statement_balance": _d(statement.statement_balance),
+        "due_date": statement.due_date,
+        "paid": position.paid,
+        "missing": statement.due_date < today,
+    }
 
 
 def _account_summary(acc: Account, role: AccountRole, s: AccountSetting | None) -> dict:

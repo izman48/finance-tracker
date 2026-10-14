@@ -60,6 +60,17 @@ describe('sample account — internal reconciliation', () => {
     expect(cardsWithoutRepayment(s.accounts)).toEqual([])
   })
 
+  it('T-10-14a: total_owed is cards + liabilities, and the card statement matches the statements response', () => {
+    const s: any = sampleResponse('/api/v1/analytics/summary', {})
+    expect(near(Number(s.total_owed), Number(s.credit_owed) + Number(s.liabilities_total))).toBe(true)
+    const card = s.accounts.find((a: any) => a.role === 'credit')
+    const st: any = sampleResponse('/api/v1/analytics/accounts/sa4/statements', {})
+    expect(card.statement).toEqual({
+      statement_balance: st.current.statement_balance, due_date: st.current.due_date, paid: false, missing: false,
+    })
+    for (const a of s.accounts.filter((x: any) => x.role !== 'credit')) expect('statement' in a).toBe(false)
+  })
+
   it('net worth = cash + savings + assets − credit owed − liabilities (balance sheet reconciles)', () => {
     const s: any = sampleResponse('/api/v1/analytics/summary', {})
     const expected = Number(s.available_cash) + Number(s.savings_total) + Number(s.assets_total)

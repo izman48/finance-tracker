@@ -8,7 +8,7 @@ date a commitment can fall on). No row is written, so nothing moves and the prev
 release ignores them. Downgrade drops them.
 
 Revision ID: f0a2b4c6d8e1
-Revises: e9f1a3b5c7d9
+Revises: f0a2b4c6d8e0
 Create Date: 2026-10-14
 """
 from typing import Sequence, Union
@@ -17,7 +17,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "f0a2b4c6d8e1"
-down_revision: Union[str, None] = "e9f1a3b5c7d9"
+down_revision: Union[str, None] = "f0a2b4c6d8e0"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

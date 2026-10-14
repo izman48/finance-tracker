@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { analyticsAPI } from '../services/api'
 import { Commitment } from '../types'
 import { isYearly, merchantFromKey } from '../lib/cadence'
+import { linkedEditMessage } from '../lib/liabilities'
 
 export default function EditCommitmentModal({
   commitment,
@@ -18,6 +20,8 @@ export default function EditCommitmentModal({
   const [nextDate, setNextDate] = useState(commitment.next_date)
   const [matchMerchant, setMatchMerchant] = useState(merchantFromKey(commitment.match_key))
   const [saving, setSaving] = useState(false)
+  // A bill that carries a loan's repayment changes only on Wealth (409).
+  const [linkedMessage, setLinkedMessage] = useState<string | null>(null)
 
   const isExpense = commitment.direction === 'expense'
 
@@ -43,7 +47,9 @@ export default function EditCommitmentModal({
       })
       onSaved()
     } catch (e) {
-      console.error('Failed to edit commitment', e)
+      const linked = linkedEditMessage(e)
+      setLinkedMessage(linked)
+      if (!linked) console.error('Failed to edit commitment', e)
       setSaving(false)
     }
   }
@@ -82,6 +88,11 @@ export default function EditCommitmentModal({
             </div>
           )}
         </div>
+        {linkedMessage && (
+          <div className="banner-info mt-4" role="alert">
+            {linkedMessage} <Link to="/networth" className="underline">Go to Wealth</Link>
+          </div>
+        )}
         <div className="flex justify-end gap-2 mt-5">
           <button onClick={onClose} className="btn-ghost">Cancel</button>
           <button onClick={save} disabled={saving} className="btn-primary">

@@ -44,3 +44,15 @@ const REPLACEABLE_ASSET_TYPES = new Set(['loan', 'other_liability'])
 export function bothCounted(assets: Asset[], liabilities: Liability[]): boolean {
   return liabilities.length > 0 && assets.some((a) => REPLACEABLE_ASSET_TYPES.has(a.asset_type))
 }
+
+/** The API's message when a bill that carries a loan's repayment is edited,
+ *  skipped or dismissed outside the loan (409 `linked_to_liability`), or
+ *  null for any other failure. */
+export function linkedEditMessage(error: unknown): string | null {
+  const res = (error as { response?: { status?: number; data?: { detail?: unknown } } })?.response
+  const detail = res?.data?.detail as { code?: unknown; message?: unknown } | undefined
+  if (res?.status === 409 && detail?.code === 'linked_to_liability' && typeof detail.message === 'string') {
+    return detail.message
+  }
+  return null
+}

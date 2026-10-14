@@ -296,8 +296,37 @@ export interface Liability {
   link_result: 'created' | 'linked' | null
 }
 
+/** What the add/edit form sends: every term, money and APR as strings. */
+export interface LiabilityBody {
+  kind: Liability['kind']
+  lender: string
+  balance: string
+  balance_as_of: string
+  apr: string
+  payment: string | null
+  cadence: Liability['cadence']
+  start_date: string
+  end_date: string | null
+  opted_out: boolean
+  replaces_asset_id?: string
+  commitment_choice?: string
+}
+
+/** One bill the repayment could be (409 `choose_commitment`, ux A7). */
+export interface ChooseCandidate {
+  id: string
+  label: string
+  amount: string
+  cadence: string
+  interval_days: number | null
+  next_date: string
+}
+
 export const liabilitiesAPI = {
   list: () => api.get<Liability[]>('/liabilities'),
+  create: (body: LiabilityBody) => api.post<Liability>('/liabilities', body),
+  update: (id: string, body: LiabilityBody) => api.patch<Liability>(`/liabilities/${id}`, body),
+  remove: (id: string) => api.delete(`/liabilities/${id}`),
 }
 
 export const assetsAPI = {

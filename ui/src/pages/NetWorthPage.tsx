@@ -16,6 +16,9 @@ import { ASSET_TYPE_LABEL, latestValue, isLiabilityType } from '../lib/assets'
 import { gbp0 as gbp, timeAgo } from '../lib/format'
 import { bothCounted, LOANS_GROUP_LABEL } from '../lib/liabilities'
 import LiabilityRow, { BothCountedNotice, LoansLoadError } from '../components/wealth/LiabilityRow'
+import LiabilityForm from '../components/wealth/LiabilityForm'
+import { focusAfterReload } from '../lib/liabilityForm'
+import { useToast } from '../components/ui/Toast'
 import AddAssetModal from '../components/AddAssetModal'
 import UpdateAssetValueModal from '../components/UpdateAssetValueModal'
 import AccountSettingsModal from '../components/AccountSettingsModal'
@@ -105,6 +108,13 @@ export default function NetWorthPage() {
   // never blanks the page (ux B.2); null = not loaded yet.
   const [liabilities, setLiabilities] = useState<Liability[] | null>(null)
   const [liabilitiesFailed, setLiabilitiesFailed] = useState(false)
+  // The loan form: 'add', a liability to edit, or closed.
+  const [loanForm, setLoanForm] = useState<'add' | Liability | null>(null)
+  const [loanFormFromChip, setLoanFormFromChip] = useState(false)
+  // What to focus once the reloaded list has rendered: the saved row (ux
+  // L-10), or the Add button after a delete (ux on #190).
+  const [pendingFocus, setPendingFocus] = useState<string | null>(null)
+  const toast = useToast()
   const [summary, setSummary] = useState<CashflowSummary | null>(null)
   const [bankStatus, setBankStatus] = useState<BankStatus | null>(null)
   const [months, setMonths] = useState(12)
@@ -167,6 +177,14 @@ export default function NetWorthPage() {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (!pendingFocus) return
+    const target = document.getElementById(pendingFocus)
+    if (!target) return
+    target.focus()
+    setPendingFocus(null)
+  }, [pendingFocus, liabilities])
 
   const loadLiabilities = async () => {
     setLiabilitiesFailed(false)
@@ -394,7 +412,7 @@ export default function NetWorthPage() {
     <div ref={revealRef} className="max-w-5xl mx-auto px-4 py-6 sm:py-10">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
         <h1 className="font-display font-bold text-2xl sm:text-3xl text-slate-50">Wealth</h1>
-        <button onClick={() => setShowChooser(true)} className="btn-primary">
+        <button id="wealth-add" onClick={() => setShowChooser(true)} className="btn-primary">
           Add
         </button>
       </div>
@@ -724,10 +742,10 @@ export default function NetWorthPage() {
                     </span>
                   )}
                 </div>
-                {isLoans && bothCounted(assets, loans) && <BothCountedNotice />}
+                {isLoans && bothCounted(assets, loans) && <BothCountedNotice onReplace={() => setLoanForm('add')} />}
                 {loansFailed && <LoansLoadError onRetry={loadLiabilities} />}
                 {loanRows.map((l) => (
-                  <LiabilityRow key={`liability-${l.id}`} liability={l} />
+                  <LiabilityRow key={`liability-${l.id}`} liability={l} onOpen={(fromChip) => { setLoanFormFromChip(fromChip); setLoanForm(l) }} />
                 ))}
                 {groupRows.map((row) => (
                   <button
@@ -846,8 +864,7 @@ export default function NetWorthPage() {
           }}
           onLiability={() => {
             setShowChooser(false)
-            setAddLiability(true)
-            setShowAddAsset(true)
+            setLoanForm('add')
           }}
           onClose={() => setShowChooser(false)}
         />
@@ -859,6 +876,27 @@ export default function NetWorthPage() {
           onSaved={async () => {
             setShowAddAsset(false)
             await load()
+          }}
+        />
+      )}
+      {loanForm && (
+        <LiabilityForm
+          liability={loanForm === 'add' ? null : loanForm}
+          replaceable={assets.filter((a) => a.asset_type === 'loan' || a.asset_type === 'other_liability')}
+          today={new Date().toLocaleDateString('en-CA')}
+          focusBalance={loanForm !== 'add' && loanFormFromChip}
+          onClose={() => setLoanForm(null)}
+          onOtherDebt={() => {
+            // "Mortgage or another debt?": today's balance-sheet item, in liability mode.
+            setLoanForm(null)
+            setAddLiability(true)
+            setShowAddAsset(true)
+          }}
+          onSaved={async (saved, message) => {
+            setLoanForm(null)
+            toast(message)
+            await Promise.all([load(), loadLiabilities()])
+            setPendingFocus(focusAfterReload(saved))
           }}
         />
       )}

@@ -143,7 +143,7 @@ const position = {
   net_worth: '12400',
   bank: '8420',
   assets: '3980',
-  liabilities: '10500',
+  liabilities: '14500',
   since: iso(new Date(today.getFullYear() - 1, today.getMonth() - 2, 1)),
   changes: [
     { key: '1m', label: '1 month', from_date: iso(new Date(today.getFullYear(), today.getMonth() - 1, today.getDate())), available: true, from_value: '12000', change: '400', change_pct: '3.3' },
@@ -287,6 +287,8 @@ for (const [vpName, viewport] of viewports) {
   })
   page.on('pageerror', (err) => errors.push(`[${vpName}] ${page.url()}: PAGEERROR ${err.message}`))
   page.on('response', (res) => {
+    // The loan form's 409 choose_commitment is staged on purpose (below).
+    if (res.status() === 409 && res.url().endsWith('/api/v1/liabilities')) return
     if (res.status() >= 400) errors.push(`[${vpName}] HTTP ${res.status()} ${res.url()}`)
   })
 
@@ -311,6 +313,42 @@ for (const [vpName, viewport] of viewports) {
       console.log(`shot card-statement-${state}-${vpName}`)
       await page.unroute('**/api/v1/analytics/accounts/a3/statements')
     }
+  }
+  // The loan form (T-10-10b): edit a linked loan, add one, and the
+  // "Which bill is this?" step after a 409 choose_commitment.
+  if (vpName === 'desktop' || vpName === 'mobile') {
+    await page.goto(`${BASE}/networth`, { waitUntil: 'networkidle' })
+    await page.waitForTimeout(1600)
+    await page.getByText('Lender A').first().click()
+    await page.getByRole('dialog').waitFor()
+    await page.screenshot({ path: `${OUT}/loan-form-edit-${vpName}.png`, fullPage: true })
+    console.log(`shot loan-form-edit-${vpName}`)
+    await page.keyboard.press('Escape')
+
+    await page.route('**/api/v1/liabilities', (route) =>
+      route.request().method() === 'POST'
+        ? route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ detail: {
+            code: 'choose_commitment', message: 'Choose one.', candidates: [
+              { id: 'c1', label: 'LOAN DD', amount: '200.00', cadence: 'monthly', interval_days: null, next_date: daysFromNow(9) },
+              { id: 'c2', label: 'Lender A repayment', amount: '200.00', cadence: 'monthly', interval_days: null, next_date: daysFromNow(12) },
+            ] } }) })
+        : route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(liabilities) }),
+    )
+    await page.getByRole('button', { name: 'Add', exact: true }).first().click()
+    await page.getByText('Add a loan or finance').first().click()
+    await page.getByRole('dialog').waitFor()
+    await page.screenshot({ path: `${OUT}/loan-form-add-${vpName}.png`, fullPage: true })
+    console.log(`shot loan-form-add-${vpName}`)
+    await page.fill('#liability-lender', 'Lender D')
+    await page.fill('#liability-balance', '9000.00')
+    await page.fill('#liability-apr', '11')
+    await page.fill('#liability-payment', '200.00')
+    await page.fill('#liability-start-date', daysFromNow(10))
+    await page.getByRole('button', { name: 'Add loan' }).click()
+    await page.getByRole('heading', { name: 'Which bill is this loan?' }).waitFor()
+    await page.screenshot({ path: `${OUT}/loan-form-picker-${vpName}.png`, fullPage: true })
+    console.log(`shot loan-form-picker-${vpName}`)
+    await page.unroute('**/api/v1/liabilities')
   }
   await ctx.close()
 }

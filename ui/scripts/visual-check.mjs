@@ -173,6 +173,37 @@ const rules = {
   ],
 }
 
+// Card statement block (T-10-6), one body per display state. Synthetic:
+// statement £500.00 against the mocked card's £642.31 owed, so £142.31 was
+// spent since the statement.
+const statementRow = (over = {}) => ({
+  id: 'st1', account_id: 'a3', statement_balance: '500.00', statement_date: daysFromNow(-20),
+  due_date: daysFromNow(9), minimum_due: '25.00', source: 'manual', ...over,
+})
+const statementPosition = (over = {}) => ({
+  statement_id: 'st1', source: 'manual', statement_balance: '500.00', statement_date: daysFromNow(-20),
+  due_date: daysFromNow(9), minimum_due: '25.00', payments_since_statement: '0.00', amount_still_due: '500.00',
+  unbilled: '142.31', paid: false, ...over,
+})
+const nextPayment = { amount: '500.00', date: daysFromNow(9), from_account_name: 'Monzo Current' }
+const statementStates = {
+  populated: { statements: [statementRow()], current: statementPosition(), missing_statement: false, conflict: false, next_payment: nextPayment },
+  paid: {
+    statements: [statementRow()], current: statementPosition({ payments_since_statement: '500.00', amount_still_due: '0.00', paid: true }),
+    missing_statement: false, conflict: false, next_payment: { ...nextPayment, amount: '142.31', date: daysFromNow(39) },
+  },
+  missing: {
+    statements: [statementRow({ statement_date: daysFromNow(-40), due_date: daysFromNow(-3) })],
+    current: statementPosition({ statement_date: daysFromNow(-40), due_date: daysFromNow(-3) }),
+    missing_statement: true, conflict: false, next_payment: { ...nextPayment, amount: '642.31', date: daysFromNow(27) },
+  },
+  conflict: {
+    statements: [statementRow(), statementRow({ id: 'st2', statement_balance: '490.00', source: 'provider' })],
+    current: statementPosition(), missing_statement: false, conflict: true, next_payment: nextPayment,
+  },
+  empty: { statements: [], current: null, missing_statement: false, conflict: false, next_payment: { ...nextPayment, amount: '642.31', date: daysFromNow(30) } },
+}
+
 const routes = [
   ['**/api/v1/auth/me', { id: 'u1', email: 'demo@example.com' }],
   ['**/api/v1/banking/status', { is_connected: true, connections_count: 2, last_synced_at: new Date(Date.now() - 42 * 60000).toISOString(), connections: [ { id: 'b1', provider_name: 'Monzo', is_expired: false, expires_at: null }, { id: 'b2', provider_name: 'American Express', is_expired: true, expires_at: null } ], message: 'ok' }],
@@ -247,6 +278,22 @@ for (const [vpName, viewport] of viewports) {
     await page.waitForTimeout(1600) // let gsap entrances finish
     await page.screenshot({ path: `${OUT}/${name}-${vpName}.png`, fullPage: true })
     console.log(`shot ${name}-${vpName}`)
+  }
+  // The card settings modal, once per statement state (desktop and mobile).
+  if (vpName === 'desktop' || vpName === 'mobile') {
+    for (const [state, body] of Object.entries(statementStates)) {
+      await page.route('**/api/v1/analytics/accounts/a3/statements', (route) =>
+        route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) }),
+      )
+      await page.goto(`${BASE}/networth`, { waitUntil: 'networkidle' })
+      await page.waitForTimeout(1600)
+      await page.getByText('Amex Gold').first().click()
+      await page.getByRole('dialog').waitFor()
+      await page.waitForTimeout(400)
+      await page.screenshot({ path: `${OUT}/card-statement-${state}-${vpName}.png`, fullPage: true })
+      console.log(`shot card-statement-${state}-${vpName}`)
+      await page.unroute('**/api/v1/analytics/accounts/a3/statements')
+    }
   }
   await ctx.close()
 }

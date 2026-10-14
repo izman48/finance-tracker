@@ -338,6 +338,14 @@ def _card_ties(db: Session, user, rules: list, start: date):
     return schedule, last_due, ties
 
 
+def cards_with_linked_bills(db: Session, user, rules: list, start: date) -> set[str]:
+    """Ids of the credit cards that have a commitment tied to them (see
+    _card_ties). For those, which of the repayment and the bill is counted
+    depends on the window, so a single "next payment" can't be promised."""
+    _schedule, _last_due, ties = _card_ties(db, user, rules, start)
+    return set(ties.values())
+
+
 def card_repayment_rule_ids(db: Session, user, rules: list, start: date) -> set:
     """Ids of the commitments that are a credit card's repayment (see _card_ties)."""
     _schedule, _last_due, ties = _card_ties(db, user, rules, start)

@@ -18,7 +18,7 @@ derives the amount still due and the spend since the statement (unbilled).
 | `GET /api/v1/analytics/accounts/{account_id}/repayments` | `CurrentUser` |
 | `POST /api/v1/analytics/accounts/{account_id}/repayments` | `CurrentUser` |
 | `DELETE /api/v1/analytics/accounts/{account_id}/repayments/{item_id}` | `CurrentUser` |
-| `GET /api/v1/analytics/accounts/{account_id}/statements` | `CurrentUser`; newest 24 statements plus `current` (amount still due, unbilled, paid), `missing_statement` (the current one's due date has passed) and `next_payment` (amount, date, pay-from account name, from `repayment_events`, so it matches the forecast), derived on read. |
+| `GET /api/v1/analytics/accounts/{account_id}/statements` | `CurrentUser`; newest 24 statements plus `current` (amount still due, unbilled, paid), `missing_statement` (the current one's due date has passed) and `next_payment` (amount, date, pay-from account name, from `repayment_events`; null while a commitment is tied to the card (which of the two the forecast counts depends on its window), so it never disagrees with the forecast), derived on read. |
 | `POST /api/v1/analytics/accounts/{account_id}/statements` | `CurrentUser`; manual statement, credit accounts only (else 422); same card and date twice is 409. |
 | `PATCH /api/v1/analytics/accounts/{account_id}/statements/{statement_id}` | `CurrentUser`; on a provider statement it saves the user's own (manual) one for that period and returns that row (a different `id`: reload the list). |
 | `DELETE /api/v1/analytics/accounts/{account_id}/statements/{statement_id}` | `CurrentUser`; the card goes back to its current balance. A provider statement is 409 (sync would bring it back). |
@@ -61,7 +61,7 @@ strategy pays the full balance; an unknown cadence pays at each month-end
 `instalment_card` and `repayment_fix_needed` (a standard card still on
 `scheduled`; nothing is changed for the user).
 
-**UI**: `AccountSettingsModal` (opened from Wealth; `lib/accountSettings.ts`
+**UI**: `AccountSettingsModal` (opened from Wealth; its Statement block is `components/card/StatementBlock.tsx` + `StatementView.tsx`, read-only until T-10-6a2, with `lib/statements.ts`; `lib/accountSettings.ts`
 sends repayment fields only for a credit card), `lib/credit.ts`; account
 filter on Spending.
 
@@ -81,7 +81,7 @@ filter on Spending.
 | 1 Tables | `accounts`, `account_settings`, `repayment_schedule_items`, `card_statements`. Migration `f0a2b4c6d8e0` (T-10-4b) cleared repayment fields on `spending`/`savings` rows, with the old values in the plaintext backup table `account_repayment_backup_t10_4b` (drop in a later sprint; the downgrade restores from it). |
 | 2 Purge | Yes, all four. |
 | 3 Deletion | Cascade via `bank_connections` → `accounts`; `card_statements` also cascades from `users` (tested with SQLite foreign keys on). |
-| 4 Demo mode | `/banking/accounts` served (no balances). **Gap**: repayments are in `KNOWN_DEMO_GAPS`. Statements have no UI caller yet; the card settings UI (T-10-6) adds them to the sample account. |
+| 4 Demo mode | `/banking/accounts` served (no balances). **Gap**: repayments are in `KNOWN_DEMO_GAPS`. Statements served: the sample card (`sa4`) has one statement that reconciles with the sample summary (`sampleAccount.test.ts`). |
 | 5 Ownership | Yes, every route here (`owned_account`, `require_owned_account_ids`). |
 | 6 Scopes | Accounts list `finance:read`; settings, repayments and statements web only. |
 | 7 Claude tools | `accounts` (read only). |

@@ -178,3 +178,11 @@ describe('where focus goes (ux on #190)', () => {
     expect(addedToast((out as { liability: Liability }).liability)).toBe('Loan added. Linked to your existing bill "LOAN DD".')
   })
 })
+
+describe('focus once the list has reloaded (ux on #190)', () => {
+  it('a saved loan focuses its row; a deleted one focuses the page Add button', async () => {
+    const { focusAfterReload } = await import('./liabilityForm')
+    expect(focusAfterReload(loan({ id: 'l-9' }))).toBe('liability-row-l-9')
+    expect(focusAfterReload(null)).toBe('wealth-add')
+  })
+})

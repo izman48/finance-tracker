@@ -230,3 +230,11 @@ export function focusAfter(kind: SaveOutcome['kind']): string | null {
   if (kind === 'saved') return null
   return kind === 'choose' ? FOCUS.title : FOCUS.errors
 }
+
+
+/** Where focus goes once the list has reloaded after the form closes: the
+ *  saved loan's row, or, after a delete (its row is gone), the page's Add
+ *  button. */
+export function focusAfterReload(saved: Liability | null): string {
+  return saved ? `liability-row-${saved.id}` : FOCUS.pageAdd
+}

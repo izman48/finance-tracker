@@ -17,6 +17,7 @@ import { gbp0 as gbp, timeAgo } from '../lib/format'
 import { bothCounted, LOANS_GROUP_LABEL } from '../lib/liabilities'
 import LiabilityRow, { BothCountedNotice, LoansLoadError } from '../components/wealth/LiabilityRow'
 import LiabilityForm from '../components/wealth/LiabilityForm'
+import { focusAfterReload } from '../lib/liabilityForm'
 import { useToast } from '../components/ui/Toast'
 import AddAssetModal from '../components/AddAssetModal'
 import UpdateAssetValueModal from '../components/UpdateAssetValueModal'
@@ -110,8 +111,9 @@ export default function NetWorthPage() {
   // The loan form: 'add', a liability to edit, or closed.
   const [loanForm, setLoanForm] = useState<'add' | Liability | null>(null)
   const [loanFormFromChip, setLoanFormFromChip] = useState(false)
-  // A row to focus once it has rendered (after an add or an edit, ux L-10).
-  const [focusRowId, setFocusRowId] = useState<string | null>(null)
+  // What to focus once the reloaded list has rendered: the saved row (ux
+  // L-10), or the Add button after a delete (ux on #190).
+  const [pendingFocus, setPendingFocus] = useState<string | null>(null)
   const toast = useToast()
   const [summary, setSummary] = useState<CashflowSummary | null>(null)
   const [bankStatus, setBankStatus] = useState<BankStatus | null>(null)
@@ -177,12 +179,12 @@ export default function NetWorthPage() {
   }
 
   useEffect(() => {
-    if (!focusRowId) return
-    const row = document.getElementById(`liability-row-${focusRowId}`)
-    if (!row) return
-    row.focus()
-    setFocusRowId(null)
-  }, [focusRowId, liabilities])
+    if (!pendingFocus) return
+    const target = document.getElementById(pendingFocus)
+    if (!target) return
+    target.focus()
+    setPendingFocus(null)
+  }, [pendingFocus, liabilities])
 
   const loadLiabilities = async () => {
     setLiabilitiesFailed(false)
@@ -894,7 +896,7 @@ export default function NetWorthPage() {
             setLoanForm(null)
             toast(message)
             await Promise.all([load(), loadLiabilities()])
-            if (saved) setFocusRowId(saved.id)
+            setPendingFocus(focusAfterReload(saved))
           }}
         />
       )}

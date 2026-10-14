@@ -79,6 +79,15 @@ Card APR input shows for fixed, percent and instalments; a save that returns war
 "Saved. Read the notes below." and Done), `lib/credit.ts`; account
 filter on Spending.
 
+**Repayment not set up** (owner D8, T-10-12): `repayment_events` skips a card with no settings, or
+with no pay day and a strategy other than `statement_balance`/`scheduled`. The UI derives the same
+rule from the summary (`lib/credit.ts` `repaymentNotSetUp`, no API change) for a card that owes money,
+and says "Repayment not set up, so this card isn't in your forecast": in the card's settings (and the
+empty statement state then makes no payment claim), under the card's row on Cashflow, and as a row
+on Home (`components/card/RepaymentNotSetUp.tsx`). Those links go to `/networth?settings=<id>`, which
+opens the settings of an account the summary already holds and then drops the parameter. No fallback
+payment is projected (`docs/known-gaps.md`).
+
 **MCP**: `accounts`.
 
 **Tests**: `api/tests/integration/test_accounts_credit_owed.py`,
@@ -95,13 +104,13 @@ filter on Spending.
 | 1 Tables | `accounts`, `account_settings`, `repayment_schedule_items`, `card_statements`. Migration `f0a2b4c6d8e0` (T-10-4b) cleared repayment fields on `spending`/`savings` rows, with the old values in the plaintext backup table `account_repayment_backup_t10_4b` (drop in a later sprint; the downgrade restores from it). |
 | 2 Purge | Yes, all four. |
 | 3 Deletion | Cascade via `bank_connections` → `accounts`; `card_statements` also cascades from `users` (tested with SQLite foreign keys on). |
-| 4 Demo mode | `/banking/accounts` served (no balances). **Gap**: repayments are in `KNOWN_DEMO_GAPS`. Statements served: the sample card (`sa4`) has one statement that reconciles with the sample summary (`sampleAccount.test.ts`). |
+| 4 Demo mode | `/banking/accounts` served (no balances). The sample card has a repayment set up, so the "Repayment not set up" notice never shows in demo mode; the rule reads only the summary, which demo mode serves. **Gap**: repayments are in `KNOWN_DEMO_GAPS`. Statements served: the sample card (`sa4`) has one statement that reconciles with the sample summary (`sampleAccount.test.ts`). |
 | 5 Ownership | Yes, every route here (`owned_account`, `require_owned_account_ids`). |
 | 6 Scopes | Accounts list `finance:read`; settings, repayments and statements web only. |
 | 7 Claude tools | `accounts` (read only). |
 | 8 Audit | Not audited (web-only writes). |
 | 9 Bank sync | Sync updates names, type, balances; settings and manual statements untouched. On a credit card, sync upserts the provider statement from the card balance response it already fetches (`services/provider_statements.py`); a bad or missing value stores nothing and never deletes a stored one. The GET reports `conflict` when manual and provider differ for the current period. Amount still due and unbilled are computed on read from the card's balance and transactions. |
-| 10 Home | Cash and credit owed on the Cashflow and Wealth cards. Owned by Wealth. |
-| 11 UI routes | Modal on `/networth`. |
+| 10 Home | Cash and credit owed on the Cashflow and Wealth cards. Owned by Wealth. A card with no repayment set up gets its own "Repayment not set up" row linking to its settings. |
+| 11 UI routes | Modal on `/networth`; `/networth?settings=<account id>` opens it. |
 | 12 Tests | listed above. |
 | 13 Docs | `CLAUDE.md` gotcha "Credit-card sign". |

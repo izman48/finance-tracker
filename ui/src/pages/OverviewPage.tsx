@@ -13,6 +13,8 @@ import { EXPLAIN } from '../copy/statExplainers'
 import useReveal from '../components/ui/useReveal'
 import { SafeToSpendNote } from '../components/changes/KeepControls'
 import { homeBudgetLine } from '../lib/budgets'
+import { cardsWithoutRepayment } from '../lib/credit'
+import { RepaymentNotSetUpBanner } from '../components/card/RepaymentNotSetUp'
 
 interface SpendingSnapshot {
   total: number
@@ -239,6 +241,11 @@ export default function OverviewPage() {
           <ChevronRight className="w-4 h-4 text-slate-500 shrink-0" />
         </Link>
       )}
+
+      {/* Cards left out of the forecast (owner D8, T-10-12). */}
+      {cardsWithoutRepayment(summary?.accounts ?? []).map((a) => (
+        <RepaymentNotSetUpBanner key={a.id} account={a} />
+      ))}
 
       {/* First-run: nothing connected yet */}
       {!hasAccounts && (

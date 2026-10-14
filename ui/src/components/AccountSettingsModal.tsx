@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { analyticsAPI, AccountSettingUpdate, type CardStatements } from '../services/api'
 import { SummaryAccount } from '../types'
 import { gbp } from '../lib/format'
+import { repaymentNotSetUp, REPAYMENT_NOT_SET_UP } from '../lib/credit'
 import {
   amountInput, initialRepayment, payDayOptions, saveErrorMessage, settingsPayload, strategyOptions, validateRepayment,
 } from '../lib/accountSettings'
@@ -160,6 +161,7 @@ export default function AccountSettingsModal({
             accountId={account.id}
             savedAsCredit={account.role === 'credit'}
             currentBalance={String(account.credit_owed ?? 0)}
+            notInForecast={repaymentNotSetUp(account)}
             providerName={account.provider_name}
             onNotFound={onCardMissing}
             onLoaded={onStatementsLoaded}
@@ -170,6 +172,11 @@ export default function AccountSettingsModal({
           // Locked once saved with notes: only Done is offered, so an edit
           // made then would be lost (ux on #189).
           <fieldset disabled={savedWithNotes} className="space-y-3 mb-4 min-w-0">
+            {repaymentNotSetUp(account) && (
+              <div className="banner-info">
+                {REPAYMENT_NOT_SET_UP}. Choose how it is repaid below, then save.
+              </div>
+            )}
             {account.repayment_fix_needed && (
               <div className="banner-info">
                 This card uses scheduled payments, which are meant for instalment cards like Monzo Flex. Nothing has

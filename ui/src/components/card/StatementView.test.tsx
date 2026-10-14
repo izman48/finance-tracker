@@ -49,6 +49,12 @@ describe('StatementView', () => {
     expect(html({ data: data({ statements: [], current: null }) })).toMatch(/<button[^>]*>Add statement<\/button>/)
   })
 
+  it('T-10-12: no statement and no repayment set up: no claim about a payment', () => {
+    const t = text(html({ data: data({ statements: [], current: null, next_payment: null }), notInForecast: true }))
+    expect(t).toContain('No statement entered yet.')
+    expect(t).not.toContain('nilu plans to pay')
+  })
+
   it('C-10: paid shows the Paid chip and the paid sentence', () => {
     const h = html({ data: data({}, { amount_still_due: '0.00', paid: true }) })
     expect(h).toMatch(/class="chip-pos">Paid</)

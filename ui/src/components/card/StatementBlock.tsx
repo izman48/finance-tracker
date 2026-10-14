@@ -34,11 +34,12 @@ const focusLater = (...ids: string[]) =>
   }, 0)
 
 export default function StatementBlock({
-  accountId, savedAsCredit, currentBalance, providerName, onNotFound, onLoaded,
+  accountId, savedAsCredit, currentBalance, notInForecast, providerName, onNotFound, onLoaded,
 }: {
   accountId: string
   savedAsCredit: boolean
   currentBalance: string
+  notInForecast?: boolean
   providerName: string
   onNotFound: () => void
   /** Each successful load, so the repayment controls can tell whether a
@@ -184,6 +185,7 @@ export default function StatementBlock({
       status={savedAsCredit ? status : 'unsaved'}
       data={data}
       currentBalance={currentBalance}
+      notInForecast={notInForecast}
       providerName={providerName}
       choice={choice}
       busy={busy !== null}

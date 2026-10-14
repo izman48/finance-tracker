@@ -35,7 +35,9 @@ changes to income can't raise it until the user keeps them
 `ForecastChart`, `ForecastSummary`, `forecast/LateIncomeNote`,
 `forecast/BudgetStrip`, `forecast/ForecastError`, `NudgeFeed`),
 `lib/forecastLoad.ts`, `lib/late.ts`, `lib/budgetProjection.ts`,
-`lib/upcoming.ts`. Home Cashflow card.
+`lib/upcoming.ts`. Home Cashflow card. A card that owes money with no
+repayment set up shows "Repayment not set up" under its account row, with a
+link to its settings (T-10-12, see accounts.md).
 
 **MCP**: `cashflow_summary`, `forecast` (tool default horizon is `"90"`).
 

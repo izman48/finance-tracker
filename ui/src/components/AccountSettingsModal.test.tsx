@@ -40,6 +40,16 @@ describe('AccountSettingsModal', () => {
     expect(render({})).not.toContain('This card uses scheduled payments')
   })
 
+  it('T-10-12 (D8): a card owing money with no repayment set up says it is not in the forecast', () => {
+    const notice = "Repayment not set up, so this card isn&#x27;t in your forecast"
+    const unset = render({ repayment_strategy: null, repayment_cadence: null })
+    expect(unset).toContain(notice)
+    expect(unset).toContain('Choose how it is repaid below, then save.')
+    expect(render({ repayment_strategy: 'fixed', repayment_cadence: null })).toContain(notice)
+    expect(render({})).not.toContain(notice)
+    expect(render({ repayment_strategy: null, repayment_cadence: null, credit_owed: '0' })).not.toContain(notice)
+  })
+
   it('ux on #186: no help line (and no aria-describedby) where there is no help; no due-date help before the statement loads', () => {
     const fixed = render({ repayment_strategy: 'fixed' })
     expect(selected(fixed, 'repayment-strategy')).not.toContain('aria-describedby')

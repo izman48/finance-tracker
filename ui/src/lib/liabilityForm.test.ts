@@ -81,6 +81,24 @@ describe('saving (B.3)', () => {
     expect(await saveLiability(tooLow, filled(), null)).toEqual({ kind: 'message', message: "A payment of £78.61 doesn't cover the interest of £78.61 it would be charged. Increase the payment." })
   })
 
+  it('a 422 with no field (a cross-field rule) goes under the field it is about', async () => {
+    const cases: [string, string][] = [
+      ["Value error, The balance date can't be in the future", 'balance_as_of'],
+      ['Value error, The start date must be within a year from today', 'start_date'],
+      ['Value error, The final payment must be after the start date', 'end_date'],
+    ]
+    for (const [msg, field] of cases) {
+      const c = client({ create: vi.fn(() => fail(422, [{ loc: [], msg }])) })
+      const out = await saveLiability(c, filled(), null)
+      expect(out).toEqual({ kind: 'invalid', errors: { [field]: msg.replace('Value error, ', '') + '.' } })
+    }
+  })
+
+  it('an unknown no-field 422 shows the server message, never "fields marked below"', async () => {
+    const c = client({ create: vi.fn(() => fail(422, [{ loc: [], msg: 'Value error, Something else is wrong' }])) })
+    expect(await saveLiability(c, filled(), null)).toEqual({ kind: 'message', message: 'Something else is wrong' })
+  })
+
   it('L-16: a 404 says the loan is gone', async () => {
     const gone = client({ update: vi.fn(() => fail(404, 'Liability not found')) })
     expect(await saveLiability(gone, filled(), 'l-x')).toEqual({ kind: 'not_found' })

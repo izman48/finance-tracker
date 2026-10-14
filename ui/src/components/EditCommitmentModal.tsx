@@ -47,8 +47,9 @@ export default function EditCommitmentModal({
       })
       onSaved()
     } catch (e) {
-      setLinkedMessage(linkedEditMessage(e))
-      if (!linkedEditMessage(e)) console.error('Failed to edit commitment', e)
+      const linked = linkedEditMessage(e)
+      setLinkedMessage(linked)
+      if (!linked) console.error('Failed to edit commitment', e)
       setSaving(false)
     }
   }

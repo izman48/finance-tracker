@@ -40,6 +40,14 @@ export const SAVE_ERROR = 'We could not save this loan. Nothing was changed. Che
 export const NOT_FOUND = 'We could not find this loan. Close this window and reload the page.'
 const INVALID = 'Some details are not valid. Check the fields marked below and try again.'
 
+// The API's cross-field rules (no `loc` field) and the field each is about.
+const CROSS_FIELD: [string, FieldName][] = [
+  ["The balance date can't be in the future", 'balance_as_of'],
+  ['The start date must be within a year from today', 'start_date'],
+  ['The final payment must be after the start date', 'end_date'],
+  ['Enter the payment amount, or tick', 'payment'],
+]
+
 export function blankForm(today: string): LiabilityFormState {
   return {
     kind: 'loan', lender: '', balance: '', balance_as_of: today, apr: '', payment: '', cadence: 'monthly',
@@ -56,7 +64,8 @@ export function formFor(l: Liability): LiabilityFormState {
   }
 }
 
-const NUMBER = /^\d+(\.\d+)?$/
+// Up to 2 decimals (eng-a nit on #190): saves a round trip for "9000.005".
+const NUMBER = /^\d+(\.\d{1,2})?$/
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 
 /** Only required, number and date format (ux B.3): every other rule is the
@@ -125,10 +134,21 @@ function outcomeOf(e: ServerError): SaveOutcome {
   if ((status === 409 || status === 422) && typeof detail === 'string') return { kind: 'message', message: detail }
   if (status === 422 && Array.isArray(detail)) {
     const errors: FieldErrors = {}
-    for (const item of detail as { loc?: unknown[] }[]) {
+    let unplaced: string | null = null
+    for (const item of detail as { loc?: unknown[]; msg?: unknown }[]) {
       const field = item.loc?.[1]
-      if (typeof field === 'string' && field in FIELD_ERROR) errors[field as FieldName] = FIELD_ERROR[field as FieldName]
+      if (typeof field === 'string' && field in FIELD_ERROR) {
+        errors[field as FieldName] = FIELD_ERROR[field as FieldName]
+        continue
+      }
+      // A cross-field rule (loc []): our API's own fixed copy, shown as text
+      // under the field it is about, or in the summary (eng-a on #190).
+      const msg = typeof item.msg === 'string' ? item.msg.replace(/^Value error, /, '') : ''
+      const about = CROSS_FIELD.find(([start]) => msg.startsWith(start))
+      if (about) errors[about[1]] = `${msg}.`
+      else if (msg) unplaced = unplaced ?? msg
     }
+    if (unplaced) return { kind: 'message', message: unplaced }
     return Object.keys(errors).length ? { kind: 'invalid', errors } : { kind: 'message', message: INVALID }
   }
   return { kind: 'error' }

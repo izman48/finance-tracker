@@ -8,7 +8,7 @@ carries on. Synthetic fixture: statement £5,000, current £6,000.
 """
 import asyncio
 import logging
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
@@ -99,6 +99,20 @@ def test_three_syncs_give_one_row_with_the_latest_values(bank):
 
     (row,) = bank.rows()
     assert row.statement_balance == Decimal("5100.00")
+
+
+def test_timestamps_are_read_as_uk_bank_days(bank):
+    """UK midnight in BST is 23:00 UTC the day before (eng-b, #176)."""
+    bank.response = _balance(
+        last_statement_date="2026-09-30T23:00:00Z", payment_due_date="2026-10-20T23:00:00+00:00",
+    )
+    if TODAY < date(2026, 10, 1):
+        pytest.skip("the fixed BST dates must not be in the future")
+
+    bank.sync()
+
+    (row,) = bank.rows()
+    assert (row.statement_date, row.due_date) == (date(2026, 10, 1), date(2026, 10, 21))
 
 
 def test_a_new_statement_period_adds_a_row_and_becomes_current(bank):

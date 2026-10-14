@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date, datetime
+from zoneinfo import ZoneInfo
 from decimal import Decimal, InvalidOperation
 
 from sqlalchemy.orm import Session
@@ -32,6 +33,9 @@ from app.services.balance_sign import owed_amount
 
 logger = logging.getLogger(__name__)
 
+# Statement and due dates are UK bank days: a timestamp at UK midnight in BST
+# arrives as 23:00 UTC the day before.
+UK = ZoneInfo("Europe/London")
 STATEMENT_FIELDS = ("last_statement_balance", "last_statement_date", "payment_due", "payment_due_date")
 PENNY = Decimal("0.01")
 
@@ -102,6 +106,7 @@ def _day(value) -> date | None:
     if not isinstance(value, str):
         return None
     try:
-        return datetime.fromisoformat(value).date()
+        stamp = datetime.fromisoformat(value)
     except ValueError:
         return None
+    return (stamp.astimezone(UK) if stamp.tzinfo else stamp).date()

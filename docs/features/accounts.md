@@ -20,7 +20,7 @@ derives the amount still due and the spend since the statement (unbilled).
 | `DELETE /api/v1/analytics/accounts/{account_id}/repayments/{item_id}` | `CurrentUser` |
 | `GET /api/v1/analytics/accounts/{account_id}/statements` | `CurrentUser`; newest 24 statements plus `current` (amount still due, unbilled, paid), `missing_statement` (the current one's due date has passed) and `next_payment` (amount, date, pay-from account name, from `repayment_events`, so it matches the forecast), derived on read. |
 | `POST /api/v1/analytics/accounts/{account_id}/statements` | `CurrentUser`; manual statement, credit accounts only (else 422); same card and date twice is 409. |
-| `PATCH /api/v1/analytics/accounts/{account_id}/statements/{statement_id}` | `CurrentUser`; on a provider statement it saves the user's own (manual) one for that period. |
+| `PATCH /api/v1/analytics/accounts/{account_id}/statements/{statement_id}` | `CurrentUser`; on a provider statement it saves the user's own (manual) one for that period and returns that row (a different `id`: reload the list). |
 | `DELETE /api/v1/analytics/accounts/{account_id}/statements/{statement_id}` | `CurrentUser`; the card goes back to its current balance. A provider statement is 409 (sync would bring it back). |
 | `PUT /api/v1/analytics/accounts/{account_id}/statements/{statement_id}/in-use` | `CurrentUser`; use this statement for its period (no body). Choosing the provider's removes the manual one for that period. |
 

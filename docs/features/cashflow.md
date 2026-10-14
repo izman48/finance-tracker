@@ -35,9 +35,16 @@ changes to income can't raise it until the user keeps them
 `ForecastChart`, `ForecastSummary`, `forecast/LateIncomeNote`,
 `forecast/BudgetStrip`, `forecast/ForecastError`, `NudgeFeed`),
 `lib/forecastLoad.ts`, `lib/late.ts`, `lib/budgetProjection.ts`,
-`lib/upcoming.ts`. Home Cashflow card. A card that owes money with no
-repayment set up shows "Repayment not set up" under its account row, with a
-link to its settings (T-10-12, see accounts.md).
+`lib/upcoming.ts`. Home Cashflow card. Accounts (T-10-14b, ux T-10-13):
+`components/cashflow/AccountGroups.tsx` + `lib/cashflowGroups.ts` list
+Current accounts, Savings and Credit cards as labelled sections, in that
+order, each with a subtotal (the cards' is the API's `credit_owed`); the
+hero line counts current and savings accounts only. A card's figure says
+"owed" or "in credit", and its second line is its statement
+(`lib/cardStatement.ts`), with Add statement / Add new linking to its
+settings. A card that owes money with no repayment set up shows "Repayment
+not set up" under its row, with a link to its settings (T-10-12, see
+accounts.md); on Home several such cards share one notice.
 
 **MCP**: `cashflow_summary`, `forecast` (tool default horizon is `"90"`).
 

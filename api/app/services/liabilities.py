@@ -236,3 +236,48 @@ def owed_on(liability: Liability, today: date, day: date, linked: bool) -> Decim
     balance, rows = schedule
     paid = [r for r in rows if r.due_date <= day]
     return paid[-1].balance_after if paid else balance
+
+
+# UK early settlement: the lender may add up to 58 days' interest (T-10-11).
+SETTLEMENT_INTEREST_DAYS = 58
+NO_SCHEDULE = "This loan has no repayment schedule, so there is nothing to work out."
+SAVINGS_NOTE = "Money kept in savings could earn interest instead. nilu shows the figures; the choice is yours."
+
+
+def settlement_figure(balance: Decimal, apr_pct: Decimal) -> Decimal:
+    """Today's balance plus up to 58 days' interest at the effective APR."""
+    factor = (1 + apr_pct / 100) ** (Decimal(SETTLEMENT_INTEREST_DAYS) / Decimal(365))
+    return (balance * factor).quantize(PENNY, rounding=ROUND_HALF_UP)
+
+
+def overpayment(liability: Liability, today: date, linked: bool, lump_sum: Decimal) -> dict:
+    """What a lump sum paid today does, the payment unchanged. Read-only.
+    Raises ValueError (with a message for the user) when there is no
+    schedule or the lump sum is above the settlement figure."""
+    schedule = remaining_schedule(liability, today, linked)
+    if schedule is None or not schedule[1] or liability.payment is None:
+        raise ValueError(NO_SCHEDULE)
+    balance, rows = schedule
+    settlement = settlement_figure(balance, liability.apr)
+    if lump_sum > settlement:
+        raise ValueError(f"The lump sum can be at most the settlement figure, £{settlement}.")
+    left = balance - lump_sum
+    after = amortise(left, liability.apr, liability.payment, rows[0].due_date, liability.cadence).rows if left > 0 else []
+    interest_before = sum((r.interest for r in rows), Decimal("0.00"))
+    # Clearing the loan today: anything above the balance is the settlement
+    # interest, paid rather than saved (eng-a on #191).
+    interest_after = sum((r.interest for r in after), Decimal("0.00")) if left > 0 else -left
+    return {
+        "lump_sum": lump_sum,
+        "settlement_figure": settlement,
+        "settlement_interest": settlement - balance,
+        "payments_before": len(rows),
+        "payments_after": len(after),
+        "payments_saved": len(rows) - len(after),
+        "interest_before": interest_before,
+        "interest_after": interest_after,
+        "interest_saved": interest_before - interest_after,
+        "payoff_date_before": rows[-1].due_date,
+        "payoff_date_after": after[-1].due_date if after else None,
+        "note": SAVINGS_NOTE,
+    }

@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.models import AccountRole, CommitmentDirection, CommitmentRule
 from app.services.balance_sign import names_card
+from app.services.linked_commitments import linked_commitment_ids
 
 from .common import _load, resolve_roles
 
@@ -57,11 +58,14 @@ def link_card_commitments(db: Session, user) -> None:
         )
         .all()
     )
+    # A liability's repayment is never a card's (sec on #183): a bill named
+    # after a lender like "American Express" must not be replaced by the card.
+    linked = linked_commitment_ids(db, user.id)
     changed = False
     for rule in rules:
         if rule.card_link_source == USER:
             continue
-        named = [a for a in cards if names_card(rule.label, a)]
+        named = [] if rule.id in linked else [a for a in cards if names_card(rule.label, a)]
         link = (named[0].id, AUTO) if len(named) == 1 else (None, None)
         if (rule.card_account_id, rule.card_link_source) != link:
             rule.card_account_id, rule.card_link_source = link

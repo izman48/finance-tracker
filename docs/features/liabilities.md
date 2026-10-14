@@ -33,7 +33,10 @@ list (T-10-10) build on it.
   one: 409 `choose_commitment` with the candidates; the client resends
   `commitment_choice` = a candidate id or `new`, and the server re-computes
   the candidates and accepts nothing else). Editing the payment or cadence
-  updates it (and renames a bill the liability created when the lender is renamed). Opting out deletes the commitment only if the liability created it (`commitment_created`); a bill the user already had is only unlinked and kept with no end. Opting back in links again. A card repayment commitment (`card_account_id`) is never a candidate. Its
+  updates it (and renames a bill the liability created when the lender is renamed). Opting out deletes the commitment only if the liability created it (`commitment_created`); a bill the user already had is only unlinked and kept with no end. Opting back in links again. A card repayment commitment (`card_account_id`) is never a candidate. The
+  linked commitment can't be edited, skipped, dismissed or undone elsewhere
+  (409, see [commitments.md](commitments.md)), and detection never suggests
+  its payments again. Its
   `ends_on` is the final scheduled payment, so a paid-off loan stops leaving
   the forecast. Deleting the liability without opting out keeps the
   commitment as an ordinary bill with no end (owner D4). Cadences map to

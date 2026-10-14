@@ -23,6 +23,8 @@ from app.models import (
     Transaction,
 )
 
+from app.services.linked_commitments import check as check_linked, linked_commitment_ids
+
 from .cadence import _cadence_from_interval, _step, _step_back, commitment_occurrences
 from .card_links import link_card_commitments
 from .common import _d, _load, _today, detect_internal_transfers, is_card_settlement, resolve_roles
@@ -302,6 +304,8 @@ def commitment_from_transaction(db: Session, user, transaction_id: str, cadence:
         None,
     )
     if rule:
+        # A loan's repayment changes only through the loan (T-10-8).
+        check_linked(db, user.id, rule.id, {"amount", "cadence", "status"})
         rule.status = CommitmentStatus.CONFIRMED.value
         rule.amount = _d(tx.amount)
         rule.cadence = cadence
@@ -425,8 +429,19 @@ def sync_suggestions(db: Session, user) -> None:
             rule.next_date = _step(rule.next_date, rule.cadence, rule.interval_days, rule.interval_months)
             guard += 1
 
+    # A liability's linked repayment is often a new bill named after the
+    # lender, so its bank payments don't share its key. Never suggest them
+    # again: an expense with the same amount and cadence as a linked
+    # commitment is that repayment (T-10-8).
+    linked = linked_commitment_ids(db, user.id)
+    repayments = [r for r in existing_rules if r.id in linked]
+
     for cand in detect_recurring(db, user):
         if cand["match_key"] in existing_keys:
+            continue
+        if cand["direction"] == CommitmentDirection.EXPENSE.value and any(
+            _is_repayment(cand, r) for r in repayments
+        ):
             continue
         db.add(
             CommitmentRule(
@@ -446,6 +461,27 @@ def sync_suggestions(db: Session, user) -> None:
     db.commit()
     # Same self-heal pattern as match_key above: card links need the user's key.
     link_card_commitments(db, user)
+
+
+# How far a detected payment's date may sit from a linked repayment's own
+# payment date and still be that repayment (sec on #183): an unrelated bill
+# of the same amount on another day must still be suggested.
+_REPAYMENT_DAY_TOLERANCE = 3
+
+
+def _is_repayment(cand: dict, rule: CommitmentRule) -> bool:
+    """A detected candidate is a linked loan repayment's own payments: same
+    amount and cadence, and its next date within a few days of the
+    repayment's."""
+    same_terms = (cand["amount"], cand["cadence"], cand["interval_days"], cand["interval_months"]) == (
+        _d(rule.amount), rule.cadence, rule.interval_days, rule.interval_months,
+    )
+    if not same_terms:
+        return False
+    for d in commitment_occurrences(rule, cand["next_date"] - timedelta(days=40), cand["next_date"] + timedelta(days=40)):
+        if abs((d - cand["next_date"]).days) <= _REPAYMENT_DAY_TOLERANCE:
+            return True
+    return False
 
 
 def skip_commitment(db: Session, user, commitment_id):

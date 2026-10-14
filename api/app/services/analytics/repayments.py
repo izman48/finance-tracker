@@ -21,6 +21,8 @@ from app.schemas import MAX_REPAYMENT_INTERVAL_MONTHS
 from app.services.balance_sign import credit_owed
 
 from .cadence import commitment_occurrences
+from app.services.linked_commitments import linked_commitment_ids
+
 from .card_links import credit_card_ids, link_card_commitments
 from .common import _add_months, _d, _load, _today, resolve_roles
 from .statements import current_positions
@@ -325,12 +327,15 @@ def _card_ties(db: Session, user, rules: list, start: date):
     for r in schedule:
         last_due[r["account_id"]] = max(r["due_date"], last_due.get(r["account_id"], r["due_date"]))
     cards = credit_card_ids(db, user)
+    # Never a liability's repayment, whatever link is stored (sec on #183).
+    loan_bills = linked_commitment_ids(db, user.id)
 
     ties: dict = {}
     for rule in rules:
         card = rule.card_account_id
         if (
             rule.direction == CommitmentDirection.EXPENSE.value
+            and rule.id not in loan_bills
             and card in cards
             and str(card) in last_due
         ):

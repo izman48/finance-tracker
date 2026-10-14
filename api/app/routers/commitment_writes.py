@@ -18,6 +18,7 @@ from app.models import CommitmentRule, CommitmentSource, CommitmentStatus
 from app.schemas import DismissCommitmentRequest, UpdateCommitmentRequest
 from app.services.analytics.card_links import USER as CARD_LINK_USER
 from app.services.analytics.commitments import merchant_match_key
+from app.services.linked_commitments import refuse_linked_edit
 from app.services.planning_writes import WriteRequest, run_write
 
 router = APIRouter(prefix="/planning", tags=["planning"])
@@ -33,6 +34,9 @@ def update_commitment(
 ) -> dict:
     require_owned_account_ids(db, caller.user, body)
     updates = {f: getattr(body, f) for f in body.model_fields_set - _FLAGS}
+    # A loan's repayment changes only through the loan (sec T-10-8), dry run
+    # or not, and nothing is audited.
+    refuse_linked_edit(db, caller.user.id, commitment_id, updates)
 
     def apply(db: Session, rule: CommitmentRule) -> CommitmentRule:
         relabelled = "label" in updates and updates["label"] != rule.label
@@ -67,6 +71,10 @@ def dismiss_commitment(
     caller: PlanningWriter,
     db: Annotated[Session, Depends(get_db)],
 ) -> dict:
+    # An injected Claude must not dismiss a loan repayment to raise
+    # safe-to-spend (sec T-10-8).
+    refuse_linked_edit(db, caller.user.id, commitment_id, {"status"})
+
     def apply(db: Session, rule: CommitmentRule) -> CommitmentRule:
         rule.status = CommitmentStatus.DISMISSED.value
         return rule

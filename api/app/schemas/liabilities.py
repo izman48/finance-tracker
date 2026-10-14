@@ -20,6 +20,7 @@ LiabilityKindName = Literal["loan", "finance", "bnpl"]
 LiabilityCadenceName = Literal["monthly", "four_weekly", "fortnightly", "weekly"]
 Apr = Annotated[Decimal, Field(ge=0, le=100, decimal_places=2), BeforeValidator(_refuse_float)]
 Lender = Annotated[str, Field(min_length=1, max_length=100)]
+CommitmentChoice = Annotated[str, Field(min_length=1, max_length=36)]
 
 # Terms a PATCH may not clear (they have no "unknown" state). `payment` may
 # be cleared only together with opting out; the merged check enforces that.
@@ -66,6 +67,9 @@ class LiabilityCreateRequest(LiabilityCreate):
     it is never matched by name or amount."""
 
     replaces_asset_id: uuid.UUID | None = None
+    # After a 409 `choose_commitment`: one of the offered candidate ids, or
+    # "new". The server re-computes the candidates and accepts nothing else.
+    commitment_choice: CommitmentChoice | None = None
 
 
 class LiabilityUpdate(BaseModel):
@@ -83,6 +87,8 @@ class LiabilityUpdate(BaseModel):
     start_date: date | None = None
     end_date: date | None = None
     opted_out: StrictBool | None = None
+    # Opting back in: as on create.
+    commitment_choice: CommitmentChoice | None = None
 
     @model_validator(mode="after")
     def _no_cleared_terms(self) -> LiabilityUpdate:
@@ -112,5 +118,17 @@ class LiabilityResponse(BaseModel):
     payoff_date: date | None
     interest_remaining: Decimal | None
     total_cost: Decimal | None
+    # Linked and every scheduled payment has been made.
+    paid_off: bool
     # The as-of date is more than 90 days old: ask the user to update it.
     balance_stale: bool
+    # The commitment carrying the repayment (T-10-8), or null.
+    linked_commitment: LinkedCommitment | None
+    # On a create or edit that linked one: "created" (a new bill) or
+    # "linked" (an existing bill was taken over); null otherwise.
+    link_result: Literal["created", "linked"] | None = None
+
+
+class LinkedCommitment(BaseModel):
+    id: uuid.UUID
+    label: str

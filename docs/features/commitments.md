@@ -37,7 +37,9 @@ a rule keyed under old rules is never suggested again.
 
 **Tables**: `commitment_rules` (encrypted `label`, `amount`, `match_key`;
 plaintext status, cadence, `is_payday`, `card_account_id`,
-`skipped_through`).
+`skipped_through`, `ends_on`). `ends_on` is the last date a commitment can
+fall on (`cadence.commitment_occurrences` stops there); it is set for a
+liability's linked repayment ([liabilities.md](liabilities.md)).
 
 **Services**: `services/analytics/commitments.py` (`detect_recurring`,
 `sync_suggestions`, `commitment_from_transaction`, `skip_commitment`, payday

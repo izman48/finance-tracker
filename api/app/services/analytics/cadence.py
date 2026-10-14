@@ -42,7 +42,8 @@ def _step_back(d: date, cadence: str, interval_days: int | None, interval_months
 
 
 def commitment_occurrences(rule: CommitmentRule, start: date, end: date) -> list[date]:
-    """Dates on which a commitment falls within [start, end] (inclusive)."""
+    """Dates on which a commitment falls within [start, end] (inclusive),
+    never after its `ends_on`."""
     out: list[date] = []
     d = rule.next_date
     # Roll forward to the window if next_date is in the past.
@@ -50,6 +51,11 @@ def commitment_occurrences(rule: CommitmentRule, start: date, end: date) -> list
     while d < start and guard < 600:
         d = _step(d, rule.cadence, rule.interval_days, rule.interval_months)
         guard += 1
+    # Held-back copies of a rule (claude_keep) and test doubles may not carry
+    # an end; then there is none, which never drops a payment.
+    ends_on = getattr(rule, "ends_on", None)
+    if ends_on is not None:
+        end = min(end, ends_on)
     while d <= end and guard < 600:
         out.append(d)
         d = _step(d, rule.cadence, rule.interval_days, rule.interval_months)

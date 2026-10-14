@@ -39,9 +39,10 @@ def liabilities_total(db: Session, user, as_of: date | None = None) -> Decimal:
     that start later still count from the as-of date (the debt is real now).
     """
     liabilities = db.query(Liability).filter(Liability.user_id == user.id).all()
+    today = _today()
     return sum(
         (
-            current_balance(x) for x in liabilities
+            current_balance(x, today) for x in liabilities
             if as_of is None or min(x.start_date, x.balance_as_of) <= as_of
         ),
         Decimal(0),

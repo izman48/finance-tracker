@@ -82,6 +82,11 @@ def bob(client):
     return User_(client, "bob@example.com")
 
 
+def _same(a: dict, b: dict) -> bool:
+    """Equal apart from `link_result`, which only a create or edit reports."""
+    return {k: v for k, v in a.items() if k != "link_result"} == {k: v for k, v in b.items() if k != "link_result"}
+
+
 def _rows(db) -> int:
     return db.execute(select(func.count()).select_from(Liability)).scalar()
 
@@ -111,11 +116,12 @@ def test_create_returns_the_terms_and_the_derived_figures(alice):
     assert body["balance_stale"] is False
 
 
-def test_todays_balance_is_the_entered_balance_until_payments_are_linked(alice):
-    # No linked commitment yet (T-10-8), so no payment is assumed to have
-    # been made since the as-of date: the debt is never understated.
+def test_todays_balance_is_the_entered_balance_when_not_linked(alice):
+    # No linked commitment (repaid irregularly), so no payment is assumed to
+    # have been made since the as-of date: the debt is never understated.
+    # Linked liabilities follow their schedule (test_liability_commitment_link.py).
     body = alice.create(balance_as_of=(TODAY - timedelta(days=60)).isoformat(),
-                        start_date=(TODAY - timedelta(days=400)).isoformat()).json()
+                        start_date=(TODAY - timedelta(days=400)).isoformat(), payment=None, opted_out=True).json()
     assert Decimal(body["current_balance"]) == Decimal("9000.00")
 
 
@@ -128,15 +134,18 @@ def test_the_next_payment_is_the_first_on_the_start_dates_cycle_after_the_as_of_
 
 
 def test_an_old_balance_never_shows_a_next_payment_in_the_past(alice):
-    # eng-a on #174: T-10-8 seeds the linked commitment from this date. The
-    # schedule runs from today's balance (the entered one until payments are
-    # linked), so payments_remaining and payoff date count from today too.
+    # eng-a on #174: the linked commitment is seeded from this date. Linked,
+    # the payments since the as-of date count as made, so the schedule keeps
+    # the payoff date the as-of balance gives.
     start = _add_months(TODAY, -14)
-    body = alice.create(start_date=start.isoformat(), balance_as_of=(TODAY - timedelta(days=40)).isoformat()).json()
-    expected = next(d for d in (_add_months(start, n) for n in range(30)) if d >= TODAY)
-    assert body["next_payment_date"] == expected.isoformat()
-    assert body["payments_remaining"] == 58
-    assert body["payoff_date"] == _add_months(expected, 57).isoformat()
+    as_of = TODAY - timedelta(days=40)
+    body = alice.create(start_date=start.isoformat(), balance_as_of=as_of.isoformat()).json()
+    dates = [_add_months(start, n) for n in range(80)]
+    first_after_as_of = next(i for i, d in enumerate(dates) if d > as_of)
+    made = sum(1 for d in dates if as_of < d < TODAY)
+    assert body["next_payment_date"] == next(d for d in dates if d >= TODAY).isoformat()
+    assert body["payments_remaining"] == 58 - made
+    assert body["payoff_date"] == dates[first_after_as_of + 57].isoformat()
 
 
 def test_a_row_whose_schedule_no_longer_clears_shows_null_figures_not_a_500(alice, db_session, monkeypatch):
@@ -215,7 +224,7 @@ def test_get_one(alice):
     created = alice.create().json()
     res = alice.get(created["id"])
     assert res.status_code == 200
-    assert res.json() == created
+    assert _same(res.json(), created)
 
 
 def test_kinds_this_sprint_are_loan_finance_and_bnpl(alice):
@@ -241,14 +250,14 @@ def test_edit_cannot_clear_a_required_term(alice, db_session):
     created = alice.create().json()
     for field in ("lender", "balance", "apr", "payment", "balance_as_of", "kind", "cadence", "start_date", "opted_out"):
         assert alice.patch(created["id"], **{field: None}).status_code == 422, field
-    assert alice.get(created["id"]).json() == created
+    assert _same(alice.get(created["id"]).json(), created)
 
 
 def test_edit_checks_the_dates_against_the_stored_terms(alice):
     created = alice.create(start_date=(TODAY - timedelta(days=400)).isoformat()).json()
     res = alice.patch(created["id"], end_date=(TODAY - timedelta(days=500)).isoformat())
     assert res.status_code == 422
-    assert alice.get(created["id"]).json() == created
+    assert _same(alice.get(created["id"]).json(), created)
 
 
 def test_opting_out_by_edit_clears_the_schedule_and_opting_back_in_needs_a_payment(alice):
@@ -259,7 +268,7 @@ def test_opting_out_by_edit_clears_the_schedule_and_opting_back_in_needs_a_payme
 
     res = alice.patch(created["id"], opted_out=False)
     assert res.status_code == 422
-    assert alice.get(created["id"]).json() == opted.json()
+    assert _same(alice.get(created["id"]).json(), opted.json())
 
 
 def test_delete(alice, db_session):
@@ -292,7 +301,7 @@ def test_an_edit_that_stops_the_balance_clearing_is_refused_and_writes_nothing(a
     created = alice.create().json()
     res = alice.patch(created["id"], apr="30.00", payment="100.00")
     assert res.status_code == 422
-    assert alice.get(created["id"]).json() == created
+    assert _same(alice.get(created["id"]).json(), created)
 
 
 # --------------------------------------------------------------------------- #
@@ -349,7 +358,7 @@ def test_server_owned_and_derived_fields_are_refused(alice, db_session, field, v
     assert alice.create(**{field: value}).status_code == 422
     created = alice.create().json()
     assert alice.patch(created["id"], **{field: value}).status_code == 422
-    assert alice.get(created["id"]).json() == created
+    assert _same(alice.get(created["id"]).json(), created)
 
 
 # --------------------------------------------------------------------------- #
@@ -365,7 +374,7 @@ def test_another_users_liability_is_a_404_like_an_unknown_one_and_nothing_change
         assert alice.delete(liability_id).status_code == 404
     assert alice.get(theirs["id"]).json() == alice.get(unknown).json()
 
-    assert bob.get(theirs["id"]).json() == theirs
+    assert _same(bob.get(theirs["id"]).json(), theirs)
 
 
 def test_every_route_needs_a_web_session(client, alice):

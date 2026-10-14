@@ -151,9 +151,10 @@ def _seed_everything(db, user_id, dek) -> None:
             AssetFlow(asset_id=asset.id, amount=Decimal("50"), flow_date=date(2026, 10, 1)),
             CategoryRule(user_id=user_id, pack_id=pack.id, pattern="TESCO", category="Groceries"),
             Budget(user_id=user_id, category="Groceries", limit_pounds=Decimal("300")),
-            CommitmentRule(
-                user_id=user_id, direction="expense", label="Rent", amount=Decimal("950"), cadence="monthly",
-                next_date=date(2026, 11, 1), source="manual", status="confirmed", account_id=account.id,
+            rent := CommitmentRule(
+                id=uuid.uuid4(), user_id=user_id, direction="expense", label="Rent", amount=Decimal("950"),
+                cadence="monthly", next_date=date(2026, 11, 1), source="manual", status="confirmed",
+                account_id=account.id,
             ),
             PlannedItem(
                 user_id=user_id, name="Holiday", kind="one_off", start_date=date(2026, 12, 1),
@@ -164,6 +165,8 @@ def _seed_everything(db, user_id, dek) -> None:
                 user_id=user_id, kind="loan", lender="Example Bank", balance=Decimal("9000"),
                 balance_as_of=date(2026, 10, 1), apr=Decimal("11"), payment=Decimal("200"),
                 start_date=date(2026, 11, 1),
+                # Linked, so the purge must delete liabilities before commitments.
+                linked_commitment_id=rent.id,
             ),
         ])
         db.flush()

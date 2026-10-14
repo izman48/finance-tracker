@@ -102,6 +102,10 @@ class CommitmentRule(Base):
     # Income only: the user skipped the missed payment expected on this date,
     # so it is no longer flagged late (T-08-23). Next payments are unchanged.
     skipped_through: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Last date this commitment can fall on (inclusive); null = no end. Set
+    # for a liability's linked repayment to its final scheduled payment
+    # (T-10-8), so a paid-off loan stops leaving the forecast.
+    ends_on: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

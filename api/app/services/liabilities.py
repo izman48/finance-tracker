@@ -134,47 +134,92 @@ def _interest(balance: Decimal, rate: Decimal) -> Decimal:
     return (balance * rate).quantize(PENNY, rounding=ROUND_HALF_UP)
 
 
-def current_balance(liability: Liability) -> Decimal:
-    """Today's balance. Until payments are linked (T-10-8) nothing proves a
-    payment was made, so it is the entered balance: assuming payments that
-    never happened would understate the debt."""
-    return liability.balance
-
-
 def next_payment_on(start: date, cadence: str, balance_as_of: date, today: date) -> date:
     """The next payment: on or after today (never a past date), and after the
     as-of date, whose balance already reflects that day's payment."""
     return first_payment_after(start, cadence, max(balance_as_of, today - timedelta(days=1)))
 
 
-def derived_figures(liability: Liability, today: date) -> dict:
-    """The read-time figures for a stored liability. The schedule runs from
-    today's balance and the next payment on or after today.
+def is_linked(liability: Liability) -> bool:
+    """Its repayment is a linked commitment, so the payments are forecast."""
+    return liability.linked_commitment_id is not None and not liability.opted_out
 
-    The schedule figures are null when the user repays irregularly (they
-    would be guesses), and also if a stored row's schedule no longer clears
-    (terms are checked on write, but one bad row must not 500 the list)."""
-    balance = current_balance(liability)
+
+def remaining_schedule(liability: Liability, today: date) -> tuple[Decimal, list[ScheduleRow]] | None:
+    """Today's balance and the payments still to come, or None when there is
+    no schedule (repaid irregularly, or a stored row that no longer clears).
+
+    Linked (T-10-8): the schedule runs from the as-of balance and the
+    payments due before today are taken as made, since they are in the
+    forecast as the linked commitment. Not linked: nothing proves a payment
+    was made, so today's balance is the entered one (assuming payments that
+    never happened would understate the debt) and the schedule starts today.
+    """
+    payment = liability.payment
+    if liability.opted_out or payment is None:  # no payment only when opted out
+        return None
+    try:
+        if not is_linked(liability):
+            first = next_payment_on(liability.start_date, liability.cadence, liability.balance_as_of, today)
+            rows = amortise(liability.balance, liability.apr, payment, first, liability.cadence).rows
+            return liability.balance, rows
+        first = first_payment_after(liability.start_date, liability.cadence, liability.balance_as_of)
+        rows = amortise(liability.balance, liability.apr, payment, first, liability.cadence).rows
+    except PaymentTooLow:
+        return None
+    past = [r for r in rows if r.due_date < today]
+    return (past[-1].balance_after if past else liability.balance), rows[len(past):]
+
+
+def current_balance(liability: Liability, today: date) -> Decimal:
+    """Today's balance (see `remaining_schedule`), never below £0."""
+    schedule = remaining_schedule(liability, today)
+    return liability.balance if schedule is None else schedule[0]
+
+
+def derived_figures(liability: Liability, today: date) -> dict:
+    """The read-time figures for a stored liability. The schedule figures are
+    null when there is no schedule (they would be guesses)."""
+    schedule = remaining_schedule(liability, today)
     figures: dict = {
-        "current_balance": balance,
+        "current_balance": liability.balance,
         "next_payment_date": None,
         "payments_remaining": None,
         "payoff_date": None,
         "interest_remaining": None,
         "total_cost": None,
+        "paid_off": False,
         "balance_stale": (today - liability.balance_as_of).days > STALE_AFTER_DAYS,
     }
-    if liability.opted_out or liability.payment is None:  # no payment only when opted out
+    if schedule is None:
         return figures
-    first = next_payment_on(liability.start_date, liability.cadence, liability.balance_as_of, today)
-    try:
-        schedule = amortise(balance, liability.apr, liability.payment, first, liability.cadence)
-    except PaymentTooLow:
-        return figures
+    balance, rows = schedule
+    final = rows[-1].due_date if rows else _final_payment(liability, liability.payment or Decimal(0))
     return figures | {
-        "next_payment_date": first,
-        "payments_remaining": len(schedule.rows),
-        "payoff_date": schedule.payoff_date,
-        "interest_remaining": schedule.interest_remaining,
-        "total_cost": schedule.total_cost,
+        "current_balance": balance,
+        "next_payment_date": rows[0].due_date if rows else None,
+        "payments_remaining": len(rows),
+        "payoff_date": final,
+        "interest_remaining": sum((r.interest for r in rows), Decimal("0.00")),
+        "total_cost": sum((r.payment for r in rows), Decimal("0.00")),
+        "paid_off": not rows,
     }
+
+
+def _final_payment(liability: Liability, payment: Decimal) -> date:
+    """The last scheduled payment of a linked liability (already paid off)."""
+    first = first_payment_after(liability.start_date, liability.cadence, liability.balance_as_of)
+    return amortise(liability.balance, liability.apr, payment, first, liability.cadence).payoff_date
+
+
+def owed_on(liability: Liability, today: date, day: date) -> Decimal:
+    """What a liability will owe on a future day. Linked: per the schedule
+    (its payments are in the cashflow as the commitment). Otherwise flat at
+    today's balance: nothing says a payment will leave the bank, so the debt
+    isn't paid down either (overstates debt, the safe side)."""
+    schedule = remaining_schedule(liability, today)
+    if schedule is None or not is_linked(liability):
+        return current_balance(liability, today)
+    balance, rows = schedule
+    paid = [r for r in rows if r.due_date <= day]
+    return paid[-1].balance_after if paid else balance

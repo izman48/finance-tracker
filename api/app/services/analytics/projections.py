@@ -25,12 +25,14 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.models import (
+    Liability,
     Asset,
     CommitmentDirection,
     CommitmentRule,
     PlannedItem,
 )
 from app.models.asset import LIABILITY_TYPES
+from app.services.liabilities import owed_on
 
 from app.services.claude_keep import counted_commitments, held_removed_planned
 from .cadence import commitment_occurrences
@@ -201,10 +203,11 @@ def net_worth_projection(
     now_point = net_worth_history(db, user, months=1)[-1]
     bank_now = Decimal(str(now_point["bank"]))
     current = Decimal(str(now_point["net_worth"]))
-    # Liabilities stay flat: until a repayment is linked (T-10-8) nothing says
-    # it leaves the bank in the cashflow, so the debt isn't paid down either
-    # (overstates debt, the safe side).
+    # Liabilities: a linked repayment is in the cashflow (its commitment), so
+    # the debt follows its schedule; an unlinked one stays flat (T-10-8,
+    # services/liabilities.owed_on).
     liabilities_now = Decimal(str(now_point["liabilities"]))
+    liabilities = db.query(Liability).filter(Liability.user_id == user.id).all()
 
     r_global = _monthly_rate(annual_growth_pct)
 
@@ -310,8 +313,9 @@ def net_worth_projection(
             if c["is_liability"] and c["value"] > 0:
                 c["value"] = Decimal(0)
             assets_value += c["value"]
-        value = cash + invested + assets_value - liabilities_now
         when = _add_months(today, m)
+        owed = sum((owed_on(x, today, when) for x in liabilities), Decimal(0))
+        value = cash + invested + assets_value - owed
         if target_amount is not None and target_date is None and value >= target_amount:
             target_date = when
         # Chart points: up to the target (plus a little context past it), or a
@@ -326,7 +330,7 @@ def net_worth_projection(
                 "cash": _round2(cash),
                 "invested": _round2(invested),
                 "assets": _round2(assets_value),
-                "liabilities": _round2(liabilities_now),
+                "liabilities": _round2(owed),
             })
         elif target_amount is None or target_date is not None:
             break

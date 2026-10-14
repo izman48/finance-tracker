@@ -2,7 +2,9 @@
 
 Web session only. Every record is loaded by id AND user, so another user's id
 gets the same 404 as an unknown one and nothing is written. Derived figures
-are computed on read (services/liabilities.py).
+are computed on read (services/liabilities.py). A liability with a payment
+carries its repayment as one linked commitment (T-10-8,
+services/liability_links.py), written in the same transaction.
 """
 import uuid
 from typing import Annotated
@@ -10,13 +12,21 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import CurrentUser
-from app.models import Asset, Liability
-from app.schemas.liabilities import LiabilityCreate, LiabilityCreateRequest, LiabilityResponse, LiabilityUpdate
+from app.models import Asset, CommitmentRule, Liability
+from app.schemas.liabilities import (
+    LiabilityCreate,
+    LiabilityCreateRequest,
+    LiabilityResponse,
+    LiabilityUpdate,
+    LinkedCommitment,
+)
 from app.services import liabilities as service
+from app.services import liability_links as links
 from app.services.analytics import common
 
 router = APIRouter(prefix="/liabilities", tags=["liabilities"])
@@ -50,11 +60,47 @@ def _check_schedule_clears(terms: LiabilityCreate) -> None:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=exc.message)
 
 
-def _response(liability: Liability) -> LiabilityResponse:
+def _response(
+    liability: Liability, rule: CommitmentRule | None, link_result: links.LinkResult | None = None,
+) -> LiabilityResponse:
     terms = {field: getattr(liability, field) for field in TERMS}
     return LiabilityResponse(
-        id=liability.id, **terms, **service.derived_figures(liability, common._today())
+        id=liability.id, **terms, **service.derived_figures(liability, common._today()),
+        linked_commitment=LinkedCommitment(id=rule.id, label=rule.label) if rule is not None else None,
+        link_result=link_result,
     )
+
+
+def _link(db: Session, liability: Liability, choice: str | None) -> links.LinkResult:
+    """Link the repayment, or 409 `choose_commitment` with the candidates."""
+    try:
+        return links.link(db, liability, choice, common._today())
+    except links.ChooseCommitment as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={
+            "code": "choose_commitment",
+            "message": "You already have more than one bill that could be this payment. Choose one.",
+            "candidates": [
+                {
+                    "id": str(r.id), "label": r.label, "amount": str(r.amount), "cadence": r.cadence,
+                    "interval_days": r.interval_days, "next_date": r.next_date.isoformat(),
+                }
+                for r in exc.candidates
+            ],
+        })
+
+
+def _commit(db: Session) -> None:
+    """One liability per commitment (DB constraint): a concurrent link of the
+    same bill is a 409, never a second link."""
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="That bill was just linked to another loan. Reload and try again.",
+        ) from None
 
 
 @router.get("", response_model=list[LiabilityResponse])
@@ -63,7 +109,8 @@ def list_liabilities(current_user: CurrentUser, db: DB) -> list[LiabilityRespons
     These columns are encrypted, so the sort happens here, not in SQL."""
     rows = db.query(Liability).filter(Liability.user_id == current_user.id).all()
     rows.sort(key=lambda x: (-x.apr, -x.balance, x.lender.casefold()))
-    return [_response(x) for x in rows]
+    rules = {r.id: r for r in db.query(CommitmentRule).filter(CommitmentRule.user_id == current_user.id)}
+    return [_response(x, rules.get(x.linked_commitment_id) if x.linked_commitment_id else None) for x in rows]
 
 
 @router.post("", response_model=LiabilityResponse, status_code=status.HTTP_201_CREATED)
@@ -79,13 +126,14 @@ def create_liability(body: LiabilityCreateRequest, current_user: CurrentUser, db
         )
     replaced = _replaceable_asset(db, current_user.id, body.replaces_asset_id) if body.replaces_asset_id else None
     _check_schedule_clears(body)
-    liability = Liability(user_id=current_user.id, **body.model_dump(exclude={"replaces_asset_id"}))
+    liability = Liability(user_id=current_user.id, **body.model_dump(exclude={"replaces_asset_id", "commitment_choice"}))
     db.add(liability)
+    result = None if liability.opted_out else _link(db, liability, body.commitment_choice)
     if replaced is not None:
         db.delete(replaced)
-    db.commit()
+    _commit(db)
     db.refresh(liability)
-    return _response(liability)
+    return _response(liability, links.linked_rule(db, liability), result)
 
 
 def _replaceable_asset(db: Session, user_id: uuid.UUID, asset_id: uuid.UUID) -> Asset:
@@ -109,30 +157,48 @@ def _replaceable_asset(db: Session, user_id: uuid.UUID, asset_id: uuid.UUID) -> 
 
 @router.get("/{liability_id}", response_model=LiabilityResponse)
 def get_liability(liability_id: uuid.UUID, current_user: CurrentUser, db: DB) -> LiabilityResponse:
-    return _response(_own(db, current_user.id, liability_id))
+    liability = _own(db, current_user.id, liability_id)
+    return _response(liability, links.linked_rule(db, liability))
 
 
 @router.patch("/{liability_id}", response_model=LiabilityResponse)
 def update_liability(
     liability_id: uuid.UUID, body: LiabilityUpdate, current_user: CurrentUser, db: DB
 ) -> LiabilityResponse:
+    """Edit the terms. The linked commitment follows (rule 4); opting out
+    removes it (rule 3); opting back in links one like a create."""
     liability = _own(db, current_user.id, liability_id)
     updates = body.model_dump(exclude_unset=True)
+    choice = updates.pop("commitment_choice", None)
     merged = {field: getattr(liability, field) for field in TERMS} | updates
     try:
         terms = LiabilityCreate.model_validate(merged)
     except ValidationError as exc:
         raise RequestValidationError(exc.errors())
     _check_schedule_clears(terms)
+    was_linked = liability.linked_commitment_id is not None
     for field, value in terms.model_dump().items():
         setattr(liability, field, value)
-    db.commit()
+    result: links.LinkResult | None = None
+    if terms.opted_out and was_linked:
+        links.remove(db, liability)
+    elif not terms.opted_out and not was_linked and "opted_out" in updates:
+        result = _link(db, liability, choice)
+    elif was_linked:
+        rule = links.linked_rule(db, liability)
+        if rule is not None:
+            links.sync(liability, rule, common._today())
+    _commit(db)
     db.refresh(liability)
-    return _response(liability)
+    return _response(liability, links.linked_rule(db, liability), result)
 
 
 @router.delete("/{liability_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_liability(liability_id: uuid.UUID, current_user: CurrentUser, db: DB) -> Response:
-    db.delete(_own(db, current_user.id, liability_id))
+    """Without an opt-out first, the linked commitment stays as an ordinary
+    bill (owner D4)."""
+    liability = _own(db, current_user.id, liability_id)
+    links.release(db, liability)
+    db.delete(liability)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

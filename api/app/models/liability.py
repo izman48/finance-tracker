@@ -10,7 +10,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, String, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -33,6 +33,9 @@ class LiabilityCadence(str, Enum):
 
 class Liability(Base):
     __tablename__ = "liabilities"
+    __table_args__ = (
+        UniqueConstraint("linked_commitment_id", name="uq_liabilities_linked_commitment_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -55,8 +58,19 @@ class Liability(Base):
     start_date: Mapped[date] = mapped_column(Date)
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
+    # The commitment that carries this liability's repayment (T-10-8). Set
+    # only by the server; one liability per commitment. Deleting the
+    # commitment unlinks the liability, whose balance then stays as entered.
+    linked_commitment_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey(
+            "commitment_rules.id", ondelete="SET NULL",
+            name="fk_liabilities_linked_commitment_id_commitment_rules",
+        ),
+        nullable=True,
+    )
+
     # "I repay this loan irregularly": no schedule, so no payoff figures, and
-    # (T-10-8) no linked commitment.
+    # no linked commitment.
     opted_out: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )

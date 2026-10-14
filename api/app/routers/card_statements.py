@@ -39,7 +39,7 @@ from app.schemas.card_statements import (
     NextCardPayment,
 )
 from app.services.analytics.common import _today, account_role
-from app.services.analytics.repayments import repayment_events, scheduled_outflows
+from app.services.analytics.repayments import cards_with_linked_bills, repayment_events
 from app.services.analytics.statements import check_statement, current_statement, position_for
 
 router = APIRouter(prefix="/analytics/accounts/{account_id}/statements", tags=["card statements"])
@@ -234,13 +234,12 @@ def _commit_or_409(db: Session) -> None:
 
 def _next_payment(db: Session, user, account: Account) -> NextCardPayment | None:
     """The card's first repayment from today, as the summary lists it. None
-    when a larger linked bill is counted instead (scheduled_outflows keeps
-    the larger of the two), so the sentence never disagrees with the
-    forecast (sec, T-10-6)."""
+    while the card has a linked bill, so the sentence never disagrees with
+    the forecast (sec, T-10-6)."""
     today = _today()
     events = repayment_events(db, user, today, today + NEXT_PAYMENT_REACH)
     first = next((r for r in events if r["account_id"] == str(account.id)), None)
-    if first is None or not _counted(db, user, first, today):
+    if first is None or _card_has_linked_bill(db, user, account, today):
         return None
     setting = db.query(AccountSetting).filter(
         AccountSetting.account_id == account.id, AccountSetting.user_id == user.id,
@@ -256,15 +255,14 @@ def _next_payment(db: Session, user, account: Account) -> NextCardPayment | None
     )
 
 
-def _counted(db: Session, user, repayment: dict, today) -> bool:
-    """Whether the summary and forecast count this repayment, not a linked bill."""
+def _card_has_linked_bill(db: Session, user, account: Account, today) -> bool:
+    """A confirmed commitment is tied to this card, so the summary and
+    forecast may count the bill instead of the repayment, depending on their
+    window (eng-b on #182): no single next payment can be promised."""
     confirmed = db.query(CommitmentRule).filter(
         CommitmentRule.user_id == user.id, CommitmentRule.status == CommitmentStatus.CONFIRMED.value,
     ).all()
-    _occurrences, repayments = scheduled_outflows(db, user, confirmed, today, repayment["due_date"])
-    return any(
-        r["account_id"] == repayment["account_id"] and r["due_date"] == repayment["due_date"] for r in repayments
-    )
+    return str(account.id) in cards_with_linked_bills(db, user, confirmed, today)
 
 
 def _position(db: Session, account: Account, statement) -> CardStatementPosition | None:

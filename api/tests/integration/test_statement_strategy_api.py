@@ -93,11 +93,13 @@ def test_an_unknown_pay_day_still_answers_on_every_money_surface(alice, db_sessi
     assert Decimal(alice.get().json()["next_payment"]["amount"]) == Decimal("5000.00")
 
 
-@pytest.mark.parametrize("commitment, shown", [("300", True), ("5500", False)])
-def test_next_payment_is_hidden_when_a_larger_linked_commitment_is_counted_instead(alice, db_session, commitment, shown):
-    """sec (T-10-6): the sentence must never disagree with the forecast. When
-    the card's linked bill is larger, the forecast counts the bill, not the
-    repayment, so the repayment sentence is hidden."""
+@pytest.mark.parametrize("commitment", ["300", "3200", "5500"])
+def test_next_payment_is_hidden_while_a_linked_card_bill_exists(alice, db_session, commitment):
+    """sec (T-10-6), eng-b on #182: the sentence must never disagree with the
+    forecast. Which of a card's repayment and its linked bill the forecast
+    keeps depends on the window (a £3,200 monthly bill beats the £5,000 +
+    £1,000 repayments over 90 days, not over 10), so while the card has a
+    linked bill the sentence is hidden."""
     from app.models import CommitmentRule
 
     alice.add()
@@ -109,8 +111,19 @@ def test_next_payment_is_hidden_when_a_larger_linked_commitment_is_counted_inste
         ))
         db_session.commit()
 
-    nxt = alice.get().json()["next_payment"]
+    assert alice.get().json()["next_payment"] is None
 
-    assert (nxt is not None) is shown
-    if shown:
-        assert Decimal(nxt["amount"]) == Decimal("5000.00")
+
+def test_a_bill_linked_to_another_card_does_not_hide_this_cards_payment(alice, db_session):
+    from app.models import CommitmentRule
+
+    alice.add()
+    with alice.key():
+        db_session.add(CommitmentRule(
+            user_id=alice.user_id, direction="expense", label="Other card bill", amount=Decimal("3200"),
+            cadence="monthly", next_date=TODAY + timedelta(days=10), source="manual", status="confirmed",
+            card_account_id=alice.other_card_id, card_link_source="user",
+        ))
+        db_session.commit()
+
+    assert Decimal(alice.get().json()["next_payment"]["amount"]) == Decimal("5000.00")

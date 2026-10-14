@@ -2,7 +2,8 @@
 
 The balance sheet: bank accounts plus manually tracked assets and
 liabilities (ISA, savings, investment, pension, property, crypto, mortgage,
-loan…), with dated valuations and recorded contributions. Shows net worth
+loan…), with dated valuations and recorded contributions, less the loans,
+finance and BNPL in [liabilities.md](liabilities.md). Shows net worth
 today and its change, month-end history, contributions versus growth, and a
 compound projection with every assumption echoed back.
 
@@ -30,15 +31,31 @@ compound projection with every assumption echoed back.
 negative), `asset_flows` (encrypted `amount`). Instrument pricing was added
 and then dropped by migration; `REDESIGN_PLAN.md` still describes it.
 
+**Net worth and liabilities (T-10-7b)**: every surface takes liabilities
+from one function, `net_worth.liabilities_total`: the summary
+(`liabilities_total`, `net_worth`; Claude reads it through
+`cashflow_summary`), and the series behind position, history and projection
+(`liabilities` on each point). A liability counts from its as-of date, like a
+valuation, at today's balance. The projection keeps it flat until the
+repayment is linked (T-10-8): nothing yet says the payment leaves the bank, so
+the debt isn't paid down either (overstates debt). The decomposition is
+manual-asset movement only, so a liability doesn't change it. A `loan` or
+`other_liability` asset is replaced only through the id the user picked
+(`replaces_asset_id` on `POST /api/v1/liabilities`, one transaction, the
+asset row locked). Until then both count, which overstates debt and never
+drops it silently. The "both counted" notice is UI (T-10-10).
+
 **Services**: `services/analytics/net_worth.py` (history, position,
-`assets_total`, `asset_decomposition`), `services/analytics/projections.py`
+`assets_total`, `liabilities_total`, `asset_decomposition`), `services/analytics/projections.py`
 (surplus from the cashflow engine, honours Claude holds).
 
-**UI**: `/networth` (`NetWorthPage`), `PositionStrip`, `AddAssetModal`,
+**UI**: `/networth` (`NetWorthPage`), `PositionStrip` (its breakdown line
+subtracts what is owed on liabilities), `AddAssetModal`,
 `UpdateAssetValueModal`, `AddToBalanceSheetChooser`, `lib/assets.ts`. Home
 Wealth card.
 
-**Tests**: `api/tests/unit/test_net_worth.py`,
+**Tests**: `api/tests/integration/test_net_worth_liabilities.py` (every
+surface, conversion), `api/tests/unit/test_net_worth.py`,
 `test_projection_counts_once.py`; `api/tests/integration/test_api.py`,
 `test_budget_invariance.py`, `test_reset_purge.py`; UI
 `sampleAccount.test.ts` (sample balance sheet).
@@ -53,7 +70,7 @@ Wealth card.
 | 4 Demo mode | All four net-worth reads and `/assets` served. |
 | 5 Ownership | n/a (no account ids). |
 | 6 Scopes | Web only (`test_oauth.py` checks). |
-| 7 Claude tools | none; net worth reaches Claude only inside `cashflow_summary`. |
+| 7 Claude tools | none; net worth (with liabilities subtracted) reaches Claude only inside `cashflow_summary`. |
 | 8 Audit | Web-only writes, not audited. |
 | 9 Bank sync | History is rebuilt on read from synced transactions. |
 | 10 Home | Wealth card (net worth and changes, sparkline, credit owed). Owned by Wealth. |

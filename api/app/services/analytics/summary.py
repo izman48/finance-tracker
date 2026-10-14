@@ -21,7 +21,7 @@ from .commitments import committed_window_end, next_payday
 from app.services.balance_sign import credit_owed as credit_owed_for
 
 from .common import _d, _load, _today, resolve_roles
-from .net_worth import assets_total
+from .net_worth import assets_total, liabilities_total
 from .planned import planned_events
 from .planned_matching import planned_states
 from app.services.claude_keep import claude_rows, counted_commitments, held_back, held_removed_planned
@@ -130,6 +130,7 @@ def get_summary(db: Session, user) -> dict:
     savable = max(Decimal(0), available_cash + income_30 - out_30)
 
     manual_assets = assets_total(db, user)
+    liabilities = liabilities_total(db, user)
 
     return {
         "available_cash": available_cash,
@@ -137,7 +138,8 @@ def get_summary(db: Session, user) -> dict:
         "credit_owed": credit_owed,
         "savings_total": savings_total,
         "assets_total": manual_assets,
-        "net_worth": available_cash + savings_total + manual_assets + credit_in_favour - credit_owed,
+        "liabilities_total": liabilities,
+        "net_worth": available_cash + savings_total + manual_assets + credit_in_favour - credit_owed - liabilities,
         "committed_before_payday": committed,
         "safe_to_spend": safe_to_spend,
         "savable": savable,

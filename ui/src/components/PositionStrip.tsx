@@ -46,6 +46,9 @@ export default function PositionStrip({ position }: { position: NetWorthPosition
           Tracking since {dateLong(position.since)}
           {' · '}
           {gbp(Number(position.bank))} in banks + {gbp(Number(position.assets))} in assets you've added
+          {Number(position.liabilities ?? 0) > 0 && (
+            <> − {gbp(Number(position.liabilities))} owed on loans and finance</>
+          )}
         </div>
       )}
     </div>

@@ -201,6 +201,10 @@ def net_worth_projection(
     now_point = net_worth_history(db, user, months=1)[-1]
     bank_now = Decimal(str(now_point["bank"]))
     current = Decimal(str(now_point["net_worth"]))
+    # Liabilities stay flat: until a repayment is linked (T-10-8) nothing says
+    # it leaves the bank in the cashflow, so the debt isn't paid down either
+    # (overstates debt, the safe side).
+    liabilities_now = Decimal(str(now_point["liabilities"]))
 
     r_global = _monthly_rate(annual_growth_pct)
 
@@ -305,6 +309,7 @@ def net_worth_projection(
             if c["is_liability"] and c["value"] > 0:
                 c["value"] = Decimal(0)
             assets_value += c["value"]
+        assets_value -= liabilities_now
         value = cash + invested + assets_value
         when = _add_months(today, m)
         if target_amount is not None and target_date is None and value >= target_amount:

@@ -58,6 +58,11 @@ sync and budgets are opt-in. A refresh never widens scopes.
 | `resume_budget` | write (budgets) | `POST /api/v1/planning/budgets/{budget_id}/resume` |
 | `remove_budget` | write (budgets) | `POST /api/v1/planning/budgets/{budget_id}/remove` |
 
+Liabilities (loans, finance, BNPL) reach Claude only as part of the
+`net_worth` figure and `liabilities_total` in `cashflow_summary` (T-10-7b),
+which `finance:read` already covers. No tool reads or writes
+`/api/v1/liabilities` (web only).
+
 **UI**: `/oauth/authorize` (`OAuthConsentPage`), `oauth/ConsentScopes`,
 `lib/oauthConsent.ts`; landing-page `AiAssistantSection` and `lib/mcp.ts`.
 

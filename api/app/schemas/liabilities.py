@@ -60,6 +60,14 @@ class LiabilityCreate(BaseModel):
         return self
 
 
+class LiabilityCreateRequest(LiabilityCreate):
+    """Create, optionally replacing a `loan` or `other_liability` asset the
+    user picked (T-10-7b). The id is checked against the caller's own assets;
+    it is never matched by name or amount."""
+
+    replaces_asset_id: uuid.UUID | None = None
+
+
 class LiabilityUpdate(BaseModel):
     """Only the fields sent change; the merged terms are checked as a whole."""
 

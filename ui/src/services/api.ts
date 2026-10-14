@@ -184,6 +184,8 @@ export interface NetWorthPoint {
   date: string
   bank: string
   assets: string
+  // Owed on liabilities (loans, finance, BNPL); net_worth = bank + assets − liabilities.
+  liabilities?: string
   net_worth: string
 }
 
@@ -204,6 +206,7 @@ export interface NetWorthPosition {
   net_worth: string
   bank: string
   assets: string
+  liabilities?: string
   // First date any wealth data reaches back to.
   since: string | null
   changes: NetWorthChange[]

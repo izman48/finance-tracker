@@ -1,4 +1,6 @@
-"""Net worth: manual-asset totals and the reconstructed history series."""
+"""Net worth: manual-asset and liability totals and the reconstructed history
+series. Every surface that shows net worth (summary, position, history,
+projection) takes liabilities from `liabilities_total`, so they agree."""
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
@@ -6,9 +8,10 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from app.models import AccountRole, Asset, AssetFlow, AssetValuation, Transaction
+from app.models import AccountRole, Asset, AssetFlow, AssetValuation, Liability, Transaction
 
 from app.services.balance_sign import credit_owed
+from app.services.liabilities import current_balance
 
 from .common import _add_months, _d, _load, _today, resolve_roles
 
@@ -25,6 +28,16 @@ def assets_total(db: Session, user, as_of: date | None = None) -> Decimal:
         if current is not None:
             total += _d(current)
     return total
+
+
+def liabilities_total(db: Session, user, as_of: date | None = None) -> Decimal:
+    """What the user owes on their liabilities (positive). Each one counts
+    from its as-of date, like an asset valuation, at today's balance."""
+    liabilities = db.query(Liability).filter(Liability.user_id == user.id).all()
+    return sum(
+        (current_balance(x) for x in liabilities if as_of is None or x.balance_as_of <= as_of),
+        Decimal(0),
+    )
 
 
 def asset_decomposition(db: Session, user, months: int = 12) -> dict:
@@ -94,7 +107,7 @@ def _net_worth_at(db: Session, user, points: list[date]) -> list[dict]:
 
     Bank balances are reconstructed by walking transactions backwards from the
     current balance; manual assets contribute their latest valuation on/before
-    each date.
+    each date, and liabilities count from their as-of date.
     """
     accounts, settings = _load(db, user)
     roles = resolve_roles(accounts, settings)
@@ -132,12 +145,14 @@ def _net_worth_at(db: Session, user, points: list[date]) -> list[dict]:
     out = []
     for p in points:
         assets_at = assets_total(db, user, as_of=p)
+        owed_at = liabilities_total(db, user, as_of=p)
         out.append(
             {
                 "date": p.isoformat(),
                 "bank": bank_at[p],
                 "assets": assets_at,
-                "net_worth": bank_at[p] + assets_at,
+                "liabilities": owed_at,
+                "net_worth": bank_at[p] + assets_at - owed_at,
             }
         )
     return out
@@ -248,6 +263,7 @@ def net_worth_position(db: Session, user) -> dict:
         "net_worth": now["net_worth"],
         "bank": now["bank"],
         "assets": now["assets"],
+        "liabilities": now["liabilities"],
         "since": since,
         "changes": changes,
     }

@@ -8,7 +8,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 
-from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -81,6 +81,11 @@ class AccountSetting(Base):
     repayment_installments: Mapped[int | None] = mapped_column(nullable=True)
     pay_from_account_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True
+    )
+    # Set by the user: the card is an instalment plan (e.g. a "pay in 3"
+    # card), the only kind that may use the `scheduled` strategy.
+    instalment_card: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
     )
 
     created_at: Mapped[datetime] = mapped_column(

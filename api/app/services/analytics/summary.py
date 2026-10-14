@@ -14,6 +14,7 @@ from app.models import (
     CommitmentRule,
     CommitmentStatus,
     PlannedItem,
+    RepaymentStrategy,
 )
 
 from .cadence import commitment_occurrences
@@ -197,4 +198,9 @@ def _account_summary(acc: Account, role: AccountRole, s: AccountSetting | None) 
         "repayment_fixed_amount": s.repayment_fixed_amount if s else None,
         "repayment_installments": s.repayment_installments if s else None,
         "pay_from_account_id": str(s.pay_from_account_id) if s and s.pay_from_account_id else None,
+        "instalment_card": bool(s and s.instalment_card),
+        "repayment_fix_needed": bool(
+            s and role == AccountRole.CREDIT and s.repayment_strategy == RepaymentStrategy.SCHEDULED.value
+            and not s.instalment_card
+        ),
     }

@@ -48,15 +48,24 @@ def default_role(account: Account) -> AccountRole:
     return _DEFAULT_ROLE_BY_TYPE.get(atype, AccountRole.EXCLUDED)
 
 
+def account_role(account: Account, setting: AccountSetting | None) -> AccountRole:
+    """The account's role: the user's setting, else the type default. A
+    legacy free-text role (roles weren't validated before T-10-4a) also
+    falls back to the type default, so a card stays credit (its debt
+    counts) and no read 500s."""
+    if setting is not None:
+        try:
+            return AccountRole(setting.role)
+        except ValueError:
+            pass
+    return default_role(account)
+
+
 def resolve_roles(
     accounts: list[Account], settings: dict,
 ) -> dict:
     """Map account_id -> AccountRole, using settings then type defaults."""
-    roles: dict = {}
-    for acc in accounts:
-        setting = settings.get(acc.id)
-        roles[acc.id] = AccountRole(setting.role) if setting else default_role(acc)
-    return roles
+    return {acc.id: account_role(acc, settings.get(acc.id)) for acc in accounts}
 
 
 def _load(db: Session, user):

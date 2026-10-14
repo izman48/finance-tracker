@@ -75,6 +75,9 @@ export interface SummaryAccount {
   repayment_fixed_amount: number | null
   repayment_installments: number | null
   pay_from_account_id: string | null
+  instalment_card?: boolean
+  // A standard card still on `scheduled`: show a "fix this" notice (T-10-6).
+  repayment_fix_needed?: boolean
 }
 
 export interface CashflowSummary {

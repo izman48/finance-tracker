@@ -586,19 +586,46 @@ class SyncTransactionsResponse(BaseModel):
 MAX_REPAYMENT_INTERVAL_MONTHS = 24
 
 
-class AccountSettingUpdate(BaseModel):
-    """Patch an account's cashflow settings (all optional)."""
+# Enums on write (T-10-4a). Stored rows may still hold legacy free text;
+# reads tolerate it and compute fail-safe. Kept equal to the model enums by
+# tests/unit/test_settings_enums.py.
+AccountRoleName = Literal["spending", "savings", "credit", "excluded"]
+RepaymentStrategyName = Literal[
+    "full_balance", "fixed", "installments", "minimum_percent", "scheduled", "statement_balance",
+]
+RepaymentCadenceName = Literal["monthly", "end_of_month", "every_n_months", "weekly", "card_due_date"]
+# Fields that only mean something on a credit account.
+REPAYMENT_FIELDS = (
+    "repayment_cadence", "repayment_interval_months", "repayment_day", "repayment_anchor_date",
+    "repayment_strategy", "repayment_fixed_amount", "repayment_installments", "pay_from_account_id",
+    "instalment_card",
+)
 
-    role: str | None = None  # spending | savings | credit | excluded
+
+class AccountSettingUpdate(BaseModel):
+    """Patch an account's cashflow settings (all optional). Repayment fields
+    are refused (422) on an account whose role isn't credit; the route
+    checks that against the merged role."""
+
+    role: AccountRoleName | None = None
     overdraft_limit: Decimal | None = None
-    repayment_cadence: str | None = None  # monthly | end_of_month | every_n_months | weekly
+    repayment_cadence: RepaymentCadenceName | None = None
     repayment_interval_months: int | None = Field(default=None, ge=1, le=MAX_REPAYMENT_INTERVAL_MONTHS)
     repayment_day: int | None = Field(default=None, ge=1, le=31)
     repayment_anchor_date: date | None = None
-    repayment_strategy: str | None = None  # full_balance | fixed | installments | scheduled
+    repayment_strategy: RepaymentStrategyName | None = None
     repayment_fixed_amount: Decimal | None = None
     repayment_installments: int | None = Field(default=None, ge=1, le=120)
     pay_from_account_id: uuid.UUID | None = None
+    # The user marks a card as instalment-type; only then may it use `scheduled`.
+    instalment_card: StrictBool | None = None
+
+    @model_validator(mode="after")
+    def _no_cleared_strategy(self) -> "AccountSettingUpdate":
+        for name in ("role", "repayment_strategy", "instalment_card"):
+            if name in self.model_fields_set and getattr(self, name) is None:
+                raise ValueError(f"{name} can't be cleared")
+        return self
 
 
 class NextRepayment(BaseModel):
@@ -627,6 +654,10 @@ class CashflowAccount(BaseModel):
     repayment_fixed_amount: Decimal | None = None
     repayment_installments: int | None = None
     pay_from_account_id: str | None = None
+    instalment_card: bool = False
+    # A standard card on the `scheduled` strategy (allowed before T-10-4a):
+    # the card settings show a "fix this" notice. Nothing changes by itself.
+    repayment_fix_needed: bool = False
 
 
 class CashflowSummary(BaseModel):

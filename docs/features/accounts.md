@@ -14,7 +14,7 @@ derives the amount still due and the spend since the statement (unbilled).
 | Route | Auth |
 |---|---|
 | `GET /api/v1/banking/accounts` | `CurrentUserOrMcpRead`; adds `credit_owed`, `last_synced_at`, `sync_stale`. |
-| `PATCH /api/v1/analytics/accounts/{account_id}/settings` | `CurrentUser`; role, overdraft, repayment config, `pay_from_account_id`. |
+| `PATCH /api/v1/analytics/accounts/{account_id}/settings` | `CurrentUser`; role, overdraft, repayment config, `pay_from_account_id`, `instalment_card`. Role, strategy and cadence are enums (422). Repayment fields only on a credit account (the role after the patch). `scheduled` only on a card marked `instalment_card`; a card already on it can still be edited, but switching to it or unmarking the card is 422. |
 | `GET /api/v1/analytics/accounts/{account_id}/repayments` | `CurrentUser` |
 | `POST /api/v1/analytics/accounts/{account_id}/repayments` | `CurrentUser` |
 | `DELETE /api/v1/analytics/accounts/{account_id}/repayments/{item_id}` | `CurrentUser` |
@@ -54,7 +54,15 @@ already gone; with no statement, the card's `repayment_day`, else 30 days
 from today. Summary, forecast and projections all read these through
 `repayment_events` / `scheduled_outflows`.
 
-**UI**: `AccountSettingsModal` (opened from Wealth), `lib/credit.ts`; account
+**Legacy settings** (stored before T-10-4a validated them): an unknown role
+reads as the account type's default, so a card stays credit; an unknown
+strategy pays the full balance; an unknown cadence pays at each month-end
+(under `statement_balance`, the card due date). The summary's accounts carry
+`instalment_card` and `repayment_fix_needed` (a standard card still on
+`scheduled`; nothing is changed for the user).
+
+**UI**: `AccountSettingsModal` (opened from Wealth; `lib/accountSettings.ts`
+sends repayment fields only for a credit card), `lib/credit.ts`; account
 filter on Spending.
 
 **MCP**: `accounts`.

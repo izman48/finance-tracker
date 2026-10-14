@@ -11,14 +11,17 @@ from app.core.ownership import owned_account, require_owned_account_ids
 from app.core.security import CurrentUser
 from app.core.oauth_tokens import CurrentUserOrMcpRead
 from app.models import (
+    AccountRole,
     AccountSetting,
     CommitmentRule,
     CommitmentSource,
     CommitmentStatus,
     PlannedItem,
     RepaymentScheduleItem,
+    RepaymentStrategy,
 )
 from app.schemas import (
+    REPAYMENT_FIELDS,
     AccountSettingUpdate,
     AssetDecomposition,
     ClaudeMarker,
@@ -49,7 +52,7 @@ from app.services.analytics import card_links
 from app.services.claude_keep import (
     PENDING, applied_dismissals, claude_rows, commitment_keep, held_values, keep_kind, pending_ids, record_user_edit,
 )
-from app.services.analytics.common import _today
+from app.services.analytics.common import _today, account_role
 from app.services.analytics.planned_matching import planned_states
 from app.services.analytics.late_income import late_incomes
 from app.services.planning_writes import claude_markers
@@ -544,8 +547,33 @@ def update_account_settings(
         )
         db.add(setting)
 
-    for field, value in data.model_dump(exclude_unset=True).items():
+    updates = data.model_dump(exclude_unset=True)
+    _check_repayment_settings(account, setting, updates)
+    for field, value in updates.items():
         setattr(setting, field, value)
     db.commit()
 
     return {"success": True, "message": "Account settings updated"}
+
+
+def _check_repayment_settings(account, setting: AccountSetting, updates: dict) -> None:
+    """422 unless the patched settings make sense (T-10-4a):
+    - repayment fields only on a credit account (the role after the patch);
+    - `scheduled` only on a card the user marked as instalment-type. A card
+      already on `scheduled` may still be edited (the "fix this" notice asks
+      the user to move it); switching to it, or unmarking the card while on
+      it, is refused."""
+    role = updates.get("role") or account_role(account, setting).value
+    if role != AccountRole.CREDIT.value and any(updates.get(f) is not None for f in REPAYMENT_FIELDS):
+        raise HTTPException(status_code=422, detail="Repayment settings are only for credit cards.")
+    strategy = updates.get("repayment_strategy", setting.repayment_strategy)
+    instalment = updates.get("instalment_card", bool(setting.instalment_card))
+    if strategy != RepaymentStrategy.SCHEDULED.value or instalment:
+        return
+    switching = updates.get("repayment_strategy", setting.repayment_strategy) != setting.repayment_strategy
+    unmarking = "instalment_card" in updates and bool(setting.instalment_card)
+    if switching or unmarking:
+        raise HTTPException(
+            status_code=422,
+            detail="Scheduled payments are only for instalment cards. Mark the card as one, or pick another option.",
+        )

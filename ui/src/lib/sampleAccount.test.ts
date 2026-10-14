@@ -101,3 +101,22 @@ describe('sample account — unrelated + interactive', () => {
     expect(excluded.some((t: any) => t.excluded_reason === 'internal_transfer')).toBe(true)
   })
 })
+
+describe('sample card statement (T-10-6)', () => {
+  it('reconciles with the sample summary: same amount and day as the next repayment', () => {
+    const summary = sampleResponse('/api/v1/analytics/summary', {}) as { next_repayments: { amount: number; due_date: string }[] }
+    const s = sampleResponse('/api/v1/analytics/accounts/sa4/statements', {}) as CardStatementsShape
+    expect(Number(s.next_payment.amount)).toBe(summary.next_repayments[0].amount)
+    expect(s.next_payment.date).toBe(summary.next_repayments[0].due_date)
+    expect(Number(s.current.amount_still_due) + Number(s.current.unbilled)).toBe(summary.next_repayments[0].amount)
+  })
+
+  it('a non-card account has no statement', () => {
+    expect(sampleResponse('/api/v1/analytics/accounts/sa1/statements', {})).toMatchObject({ statements: [], current: null })
+  })
+})
+
+type CardStatementsShape = {
+  current: { amount_still_due: string; unbilled: string }
+  next_payment: { amount: string; date: string }
+}

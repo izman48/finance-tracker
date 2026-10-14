@@ -91,3 +91,26 @@ def test_an_unknown_pay_day_still_answers_on_every_money_surface(alice, db_sessi
     for path in ("/analytics/summary", "/analytics/forecast", "/analytics/net-worth-projection"):
         assert alice.client.get(f"{API}{path}", headers=alice.headers).status_code == 200, path
     assert Decimal(alice.get().json()["next_payment"]["amount"]) == Decimal("5000.00")
+
+
+@pytest.mark.parametrize("commitment, shown", [("300", True), ("5500", False)])
+def test_next_payment_is_hidden_when_a_larger_linked_commitment_is_counted_instead(alice, db_session, commitment, shown):
+    """sec (T-10-6): the sentence must never disagree with the forecast. When
+    the card's linked bill is larger, the forecast counts the bill, not the
+    repayment, so the repayment sentence is hidden."""
+    from app.models import CommitmentRule
+
+    alice.add()
+    with alice.key():
+        db_session.add(CommitmentRule(
+            user_id=alice.user_id, direction="expense", label="Card bill", amount=Decimal(commitment),
+            cadence="monthly", next_date=TODAY + timedelta(days=10), source="manual", status="confirmed",
+            card_account_id=alice.card_id, card_link_source="user",
+        ))
+        db_session.commit()
+
+    nxt = alice.get().json()["next_payment"]
+
+    assert (nxt is not None) is shown
+    if shown:
+        assert Decimal(nxt["amount"]) == Decimal("5000.00")

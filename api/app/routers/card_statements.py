@@ -21,7 +21,15 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.ownership import owned_account
 from app.core.security import CurrentUser
-from app.models import Account, AccountRole, AccountSetting, CardStatement, StatementSource
+from app.models import (
+    Account,
+    AccountRole,
+    AccountSetting,
+    CardStatement,
+    CommitmentRule,
+    CommitmentStatus,
+    StatementSource,
+)
 from app.schemas.card_statements import (
     CardStatementCreate,
     CardStatementPosition,
@@ -31,7 +39,7 @@ from app.schemas.card_statements import (
     NextCardPayment,
 )
 from app.services.analytics.common import _today, account_role
-from app.services.analytics.repayments import repayment_events
+from app.services.analytics.repayments import repayment_events, scheduled_outflows
 from app.services.analytics.statements import check_statement, current_statement, position_for
 
 router = APIRouter(prefix="/analytics/accounts/{account_id}/statements", tags=["card statements"])
@@ -225,11 +233,14 @@ def _commit_or_409(db: Session) -> None:
 
 
 def _next_payment(db: Session, user, account: Account) -> NextCardPayment | None:
-    """The card's first repayment from today, as the summary lists it."""
+    """The card's first repayment from today, as the summary lists it. None
+    when a larger linked bill is counted instead (scheduled_outflows keeps
+    the larger of the two), so the sentence never disagrees with the
+    forecast (sec, T-10-6)."""
     today = _today()
     events = repayment_events(db, user, today, today + NEXT_PAYMENT_REACH)
     first = next((r for r in events if r["account_id"] == str(account.id)), None)
-    if first is None:
+    if first is None or not _counted(db, user, first, today):
         return None
     setting = db.query(AccountSetting).filter(
         AccountSetting.account_id == account.id, AccountSetting.user_id == user.id,
@@ -242,6 +253,17 @@ def _next_payment(db: Session, user, account: Account) -> NextCardPayment | None
     return NextCardPayment(
         amount=first["amount"], date=first["due_date"],
         from_account_name=pay_from.display_name if pay_from else None,
+    )
+
+
+def _counted(db: Session, user, repayment: dict, today) -> bool:
+    """Whether the summary and forecast count this repayment, not a linked bill."""
+    confirmed = db.query(CommitmentRule).filter(
+        CommitmentRule.user_id == user.id, CommitmentRule.status == CommitmentStatus.CONFIRMED.value,
+    ).all()
+    _occurrences, repayments = scheduled_outflows(db, user, confirmed, today, repayment["due_date"])
+    return any(
+        r["account_id"] == repayment["account_id"] and r["due_date"] == repayment["due_date"] for r in repayments
     )
 
 

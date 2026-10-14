@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { analyticsAPI, AccountSettingUpdate } from '../services/api'
 import { SummaryAccount } from '../types'
 import { gbp } from '../lib/format'
 import { settingsPayload } from '../lib/accountSettings'
+import StatementBlock from './card/StatementBlock'
 
 export default function AccountSettingsModal({
   account,
@@ -28,6 +29,9 @@ export default function AccountSettingsModal({
     pay_from_account_id: account.pay_from_account_id ?? undefined,
   })
   const [saving, setSaving] = useState(false)
+  // The statement load said this card isn't the user's (404): nothing to save (C-21).
+  const [cardMissing, setCardMissing] = useState(false)
+  const onCardMissing = useCallback(() => setCardMissing(true), [])
   // Money owed, positive on every provider (the server normalises the sign).
   const owed = Number(account.credit_owed ?? 0)
 
@@ -46,7 +50,7 @@ export default function AccountSettingsModal({
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
+      <div className={`modal-panel${form.role === 'credit' ? ' !max-w-lg' : ''}`} onClick={(e) => e.stopPropagation()}>
         <h3 className="text-lg font-semibold text-slate-50 mb-1">{account.display_name}</h3>
         <p className="text-sm text-slate-400 mb-4">Configure how this account is treated.</p>
 
@@ -73,6 +77,16 @@ export default function AccountSettingsModal({
               placeholder="0"
             />
           </div>
+        )}
+
+        {form.role === 'credit' && (
+          <StatementBlock
+            accountId={account.id}
+            savedAsCredit={account.role === 'credit'}
+            currentBalance={String(account.credit_owed ?? 0)}
+            providerName={account.provider_name}
+            onNotFound={onCardMissing}
+          />
         )}
 
         {form.role === 'credit' && (
@@ -193,7 +207,7 @@ export default function AccountSettingsModal({
           <button onClick={onClose} className="btn-ghost">
             Cancel
           </button>
-          <button onClick={save} disabled={saving} className="btn-primary">
+          <button onClick={save} disabled={saving || cardMissing} className="btn-primary">
             {saving ? 'Saving…' : 'Save'}
           </button>
         </div>

@@ -661,6 +661,30 @@ function readParams(params: unknown): TxQuery & Record<string, any> {
 }
 
 /** The sample response for a GET endpoint, or {} for anything unmatched. */
+/** The sample card's statement. It reconciles with the summary: the whole
+ *  £640.30 owed was billed, is due on the same day as next_repayments, and
+ *  nothing has been spent since. Other accounts have no statement. */
+function statementsResponse(path: string) {
+  const empty = { statements: [], current: null, missing_statement: false, conflict: false, next_payment: null }
+  if (!path.includes('/accounts/sa4/')) return empty
+  const owed = CREDIT_OWED.toFixed(2)
+  const statement = {
+    id: 'ss1', account_id: 'sa4', statement_balance: owed, statement_date: isoDate(nowMinus(22)),
+    due_date: isoDate(nowPlus(8)), minimum_due: '25.00', source: 'manual' as const,
+  }
+  return {
+    statements: [statement],
+    current: {
+      statement_id: 'ss1', source: 'manual', statement_balance: owed, statement_date: statement.statement_date,
+      due_date: statement.due_date, minimum_due: '25.00', payments_since_statement: '0.00',
+      amount_still_due: owed, unbilled: '0.00', paid: false,
+    },
+    missing_statement: false,
+    conflict: false,
+    next_payment: { amount: owed, date: statement.due_date, from_account_name: 'Everly Current' },
+  }
+}
+
 export function sampleResponse(url: string, params: unknown): unknown {
   const [path, queryString] = url.split('?')
   const p = readParams(params)
@@ -694,6 +718,7 @@ export function sampleResponse(url: string, params: unknown): unknown {
   if (path.includes('/analytics/net-worth-projection')) return projectionResponse(p as Record<string, any>)
   if (path.includes('/analytics/net-worth-history')) return netWorthHistory(Number(p.months) || 12)
   if (path.includes('/analytics/net-worth-position')) return positionResponse()
+  if (is('/statements')) return statementsResponse(path)
   if (is('/assets')) return assetsResponse()
   if (is('/rules')) return { packs: [], personal: [] }
   if (is('/audit')) return { items: [], next_cursor: null }

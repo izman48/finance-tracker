@@ -410,6 +410,38 @@ export interface AccountSettingUpdate {
   instalment_card?: boolean
 }
 
+// Card statements (T-10-1..T-10-3). Money is a decimal string; dates are ISO.
+export interface CardStatement {
+  id: string
+  account_id: string
+  statement_balance: string
+  statement_date: string
+  due_date: string
+  minimum_due: string | null
+  source: 'manual' | 'provider'
+}
+
+export interface CardStatementPosition {
+  statement_id: string
+  source: 'manual' | 'provider'
+  statement_balance: string
+  statement_date: string
+  due_date: string
+  minimum_due: string | null
+  payments_since_statement: string
+  amount_still_due: string
+  unbilled: string
+  paid: boolean
+}
+
+export interface CardStatements {
+  statements: CardStatement[]
+  current: CardStatementPosition | null
+  missing_statement: boolean
+  conflict: boolean
+  next_payment: { amount: string; date: string; from_account_name: string | null } | null
+}
+
 export interface Nudge {
   id: string
   rank: number
@@ -476,6 +508,7 @@ export const analyticsAPI = {
     api.post(`/analytics/accounts/${accountId}/repayments`, data),
   deleteRepayment: (accountId: string, itemId: string) =>
     api.delete(`/analytics/accounts/${accountId}/repayments/${itemId}`),
+  getStatements: (accountId: string) => api.get<CardStatements>(`/analytics/accounts/${accountId}/statements`),
   // Convert a purchase into a payment plan ("pay on finance").
   payOnFinance: (data: { transaction_id: string; months: number; monthly_amount: number; start_date: string }) =>
     api.post('/analytics/planned/from-transaction', data),

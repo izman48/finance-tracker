@@ -1,3 +1,4 @@
+import type { CardStatementSummary } from './lib/cardStatement'
 /** Shared API entity types — one declaration per entity.
  *  (Decimal fields arrive as strings from the API; coerce with Number(...)
  *  before arithmetic. Central coercion mappers come with the Phase 3 backend
@@ -78,6 +79,9 @@ export interface SummaryAccount {
   instalment_card?: boolean
   // A standard card still on `scheduled`: show a "fix this" notice (T-10-6).
   repayment_fix_needed?: boolean
+  // Credit accounts (T-10-14a): the current statement, null when none is
+  // entered; absent when the response carries no statement data.
+  statement?: CardStatementSummary | null
 }
 
 export interface CashflowSummary {

@@ -16,7 +16,9 @@ import { BankStatus, CashflowSummary, SummaryAccount } from '../types'
 import { ASSET_TYPE_LABEL, latestValue, isLiabilityType } from '../lib/assets'
 import { gbp0 as gbp, timeAgo } from '../lib/format'
 import { settingsAccountFor } from '../lib/credit'
-import { bothCounted, LOANS_GROUP_LABEL } from '../lib/liabilities'
+import { bothCounted } from '../lib/liabilities'
+import { BALANCE_SHEET_GROUPS } from '../lib/balanceSheet'
+import CardRow from '../components/wealth/CardRow'
 import LiabilityRow, { BothCountedNotice, LoansLoadError } from '../components/wealth/LiabilityRow'
 import LiabilityForm from '../components/wealth/LiabilityForm'
 import { focusAfterReload } from '../lib/liabilityForm'
@@ -39,17 +41,6 @@ const RANGES = [
   { months: 60, label: '5y' },
 ]
 
-// The balance sheet: one grouped list of everything owned and owed.
-const GROUPS = [
-  { key: 'cash', label: 'Cash' },
-  { key: 'savings', label: 'Savings' },
-  { key: 'invest', label: 'Investments & pensions' },
-  { key: 'property', label: 'Property' },
-  { key: 'other', label: 'Other' },
-  { key: 'owed', label: 'Owed' },
-  { key: 'liabilities', label: LOANS_GROUP_LABEL },
-  { key: 'excluded', label: 'Excluded' },
-] as const
 
 const ROLE_GROUP: Record<string, string> = {
   spending: 'cash',
@@ -79,6 +70,8 @@ interface Row {
   value: number
   live: boolean
   ageDays?: number
+  /** A credit card: rendered by CardRow with its statement line (T-10-14c). */
+  card?: SummaryAccount
   onClick: () => void
 }
 
@@ -391,6 +384,7 @@ export default function NetWorthPage() {
       group: ROLE_GROUP[account.role] ?? 'other',
       name: account.display_name,
       sub: inCredit ? `${account.provider_name} · In credit` : account.provider_name,
+      card: account.role === 'credit' ? account : undefined,
       value: account.role === 'credit' ? -Number(account.credit_owed ?? 0) : balance,
       live: true,
       onClick: () => setSettingsAccount(account),
@@ -731,7 +725,7 @@ export default function NetWorthPage() {
         </div>
       ) : (
         <div className="card overflow-hidden mb-6" data-reveal>
-          {GROUPS.map(({ key, label }) => {
+          {BALANCE_SHEET_GROUPS.map(({ key, label }) => {
             const groupRows = rows.filter((r) => r.group === key)
             const isLoans = key === 'liabilities'
             const loanRows = isLoans ? loans : []
@@ -742,14 +736,14 @@ export default function NetWorthPage() {
             // total, shown once; no subtotal while the liabilities failed (L-5, L-7).
             const subtotal = groupRows.reduce((s, r) => s + r.value, 0) - (isLoans ? liabilitiesTotal : 0)
             return (
-              <div key={key}>
+              <section key={key} aria-labelledby={`balance-group-${key}`}>
                 <div className="px-4 pt-4 pb-1.5 flex items-baseline justify-between">
-                  <span className="text-xs uppercase tracking-wider text-slate-500">
+                  <h3 id={`balance-group-${key}`} className="text-xs font-normal uppercase tracking-wider text-slate-400">
                     {label}
                     {excluded && (
                       <span className="ml-2 normal-case tracking-normal">not counted in net worth</span>
                     )}
-                  </span>
+                  </h3>
                   {!excluded && !loansFailed && (
                     <span className={`text-sm tnum ${subtotal < 0 ? 'text-warn' : 'text-slate-400'}`}>
                       {subtotal < 0 ? '−' : ''}{gbp(Math.abs(subtotal))}
@@ -761,7 +755,9 @@ export default function NetWorthPage() {
                 {loanRows.map((l) => (
                   <LiabilityRow key={`liability-${l.id}`} liability={l} onOpen={(fromChip) => { setLoanFormFromChip(fromChip); setLoanForm(l) }} />
                 ))}
-                {groupRows.map((row) => (
+                {groupRows.map((row) => row.card ? (
+                  <CardRow key={row.key} account={row.card} onOpen={row.onClick} />
+                ) : (
                   <button
                     key={row.key}
                     onClick={row.onClick}
@@ -771,7 +767,7 @@ export default function NetWorthPage() {
                       <span className={`block text-sm font-medium truncate ${excluded ? 'text-slate-500' : 'text-slate-100'}`}>
                         {row.name}
                       </span>
-                      <span className="block text-xs text-slate-500 truncate">{row.sub}</span>
+                      <span className="block text-xs text-slate-400 truncate">{row.sub}</span>
                     </span>
                     {row.live ? (
                       <span className="chip shrink-0" title={EXPLAIN.liveBalance}>live</span>
@@ -793,7 +789,7 @@ export default function NetWorthPage() {
                     </span>
                   </button>
                 ))}
-              </div>
+              </section>
             )
           })}
         </div>

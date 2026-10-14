@@ -11,11 +11,13 @@ import {
   ShieldAlert,
   Sparkles,
 } from 'lucide-react'
-import { bankingAPI, analyticsAPI, Nudge } from '../services/api'
+import { bankingAPI, analyticsAPI, liabilitiesAPI, Liability, Nudge } from '../services/api'
 import { BankStatus, CashflowSummary, Commitment, PlannedItem } from '../types'
 import { money as formatCurrency, dateDayMonth as formatDate, timeAgo } from '../lib/format'
 import { heroSubline } from '../lib/cashflowGroups'
 import AccountGroups from '../components/cashflow/AccountGroups'
+import { loanLenders } from '../lib/homeOwed'
+import { forecastLenders, withLoanLabels } from '../lib/loanLabel'
 import ForecastChart from '../components/ForecastChart'
 import NudgeFeed, { UiNudge } from '../components/NudgeFeed'
 import AnimatedNumber from '../components/ui/AnimatedNumber'
@@ -36,6 +38,7 @@ export default function DashboardPage() {
   const [justConnected, setJustConnected] = useState(false)
   const [forecastKey, setForecastKey] = useState(0)
   const [nudges, setNudges] = useState<Nudge[]>([])
+  const [liabilities, setLiabilities] = useState<Liability[]>([])
 
   const revealRef = useReveal(!!summary)
 
@@ -45,6 +48,8 @@ export default function DashboardPage() {
     loadCommitments()
     loadPlanned()
     analyticsAPI.getNudges().then((res) => setNudges(res.data)).catch(() => {})
+    // Only for the loan bill labels (P2): without them the bill keeps its own label.
+    liabilitiesAPI.list().then((res) => setLiabilities(res.data)).catch(() => {})
 
     const params = new URLSearchParams(window.location.search)
     const bankConnected = params.get('bank_connected')
@@ -145,7 +150,10 @@ export default function DashboardPage() {
   // Keeping plans here avoids presenting a deceptively clear runway while a
   // user-entered one-off or installment is absent from the immediate view.
   const today = new Date().toISOString().slice(0, 10)
-  const upcoming = buildUpcoming(commitments, summary?.next_repayments ?? [], planned, today)
+  const upcoming = withLoanLabels(
+    buildUpcoming(commitments, summary?.next_repayments ?? [], planned, today),
+    loanLenders(liabilities),
+  )
 
   const providers = Array.from(new Set((bankStatus?.connections ?? []).map((c) => c.provider_name)))
 
@@ -344,7 +352,7 @@ export default function DashboardPage() {
       {/* Balance forecast */}
       {summary && hasAccounts && (
         <div className="mb-6" data-reveal>
-          <ForecastChart refreshKey={forecastKey} />
+          <ForecastChart refreshKey={forecastKey} lenders={forecastLenders(liabilities, commitments)} />
         </div>
       )}
 

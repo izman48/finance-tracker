@@ -93,6 +93,9 @@ plaintext `kind`, `cadence`, dates, `opted_out`, `linked_commitment_id`);
 `current_balance`, `owed_on`), `services/liability_links.py` (`candidates`,
 `link`, `sync`, `remove`, `release`).
 
+**Cashflow** (P2, T-10-14b): Cashflow also reads the list so a linked bill
+reads "{lender} loan payment" in Coming up and the forecast (cashflow.md).
+
 **UI** (T-10-10): `/networth` balance sheet, group "Loans and finance"
 (`components/wealth/LiabilityRow.tsx`, `lib/liabilities.ts`): rows in the
 API's order (APR high to low), each a button that opens the edit form; line 2

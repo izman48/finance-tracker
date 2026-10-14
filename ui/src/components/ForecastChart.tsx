@@ -19,6 +19,7 @@ import LateIncomeNote from './forecast/LateIncomeNote'
 import { BudgetLegend, BudgetStrip } from './forecast/BudgetStrip'
 import { budgetTooltip, projectionNote, projectionUnavailable, withBudgetLine, type BudgetProjection, type ProjectionReason } from '../lib/budgetProjection'
 import { FORECAST_TIMEOUT_MS, focusAfter, forecastReducer, withTimeout, type ForecastView } from '../lib/forecastLoad'
+import { loanPaymentLabel } from '../lib/homeOwed'
 
 interface ForecastEvent {
   label: string
@@ -60,7 +61,9 @@ const HORIZONS: { key: string; label: string }[] = [
   { key: '365', label: '1yr' },
 ]
 
-function ForecastTooltip({ active, payload }: any) {
+/** `lenders` (P2): {bill label: lender} for bills linked to a loan, which
+ *  read "{lender} loan payment" here as in Coming up. */
+export function ForecastTooltip({ active, payload, lenders }: any) {
   if (!active || !payload?.length) return null
   const point: ForecastPoint = payload[0].payload
   return (
@@ -73,14 +76,19 @@ function ForecastTooltip({ active, payload }: any) {
       )}
       {point.events?.map((e, i) => (
         <div key={i} className={e.amount >= 0 ? 'text-pos' : 'text-neg'}>
-          {e.amount >= 0 ? '+' : ''}{gbp(e.amount)} · {e.label}
+          {e.amount >= 0 ? '+' : ''}{gbp(e.amount)} · {eventLabel(e, lenders)}
         </div>
       ))}
     </div>
   )
 }
 
-export default function ForecastChart({ refreshKey }: { refreshKey?: number }) {
+function eventLabel(e: ForecastEvent, lenders?: Map<string, string>) {
+  const lender = e.kind === 'expense' ? lenders?.get(e.label) : undefined
+  return lender ? loanPaymentLabel(lender) : e.label
+}
+
+export default function ForecastChart({ refreshKey, lenders }: { refreshKey?: number; lenders?: Map<string, string> }) {
   const [horizon, setHorizon] = useState('30')
   const [attempt, setAttempt] = useState(0)
   const [view, dispatch] = useReducer(
@@ -181,7 +189,7 @@ export default function ForecastChart({ refreshKey }: { refreshKey?: number }) {
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="date" tickFormatter={shortDate} minTickGap={28} fontSize={12} tickLine={false} axisLine={false} />
               <YAxis tickFormatter={(v) => gbp(v)} width={70} fontSize={12} tickLine={false} axisLine={false} />
-              <Tooltip content={<ForecastTooltip />} />
+              <Tooltip content={<ForecastTooltip lenders={lenders} />} />
               <ReferenceLine y={0} stroke="#475569" strokeWidth={1} />
               {hasOverdraft && (
                 <ReferenceLine

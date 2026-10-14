@@ -25,6 +25,8 @@ const summary = {
   available_cash: 2140.55,
   overdraft_cushion: 500,
   credit_owed: 822.31,
+  // T-10-14a: cards plus loans, from the server (822.31 + the liabilities below).
+  total_owed: '15322.31',
   net_worth: 10118.24,
   committed_before_payday: 893.4,
   safe_to_spend: 1247.15,
@@ -103,6 +105,8 @@ const commitments = [
   { id: 'c4', direction: 'expense', label: 'Gym', amount: 32, cadence: 'monthly', interval_days: null, interval_months: null, next_date: daysFromNow(7), source: 'detected', status: 'confirmed', account_id: 'a1' },
   { id: 'c5', direction: 'expense', label: 'Car insurance', amount: 540, cadence: 'every_n_months', interval_days: null, interval_months: 12, next_date: daysFromNow(80), source: 'manual', status: 'confirmed', account_id: 'a1' },
   { id: 'c6', direction: 'expense', label: 'Amazon Prime', amount: 95, cadence: 'every_n_months', interval_days: null, interval_months: 12, next_date: daysFromNow(30), source: 'manual', status: 'confirmed', account_id: 'a1' },
+  // Linked to loan li1 below, so Home's Coming up reads "Lender A loan payment".
+  { id: 'c-li1', direction: 'expense', label: 'Lender A', amount: 200, cadence: 'monthly', interval_days: null, interval_months: null, next_date: daysFromNow(3), source: 'manual', status: 'confirmed', account_id: 'a1' },
   { id: 'c7', direction: 'income', label: 'Annual bonus', amount: 1500, cadence: 'every_n_months', interval_days: null, interval_months: 12, next_date: daysFromNow(200), source: 'manual', status: 'confirmed', account_id: 'a1' },
 ]
 
@@ -172,7 +176,7 @@ const liability = (over) => ({
   linked_commitment: { id: 'c-li1', label: 'Lender A' }, link_result: null, ...over,
 })
 const liabilities = [
-  liability({ id: 'li2', kind: 'finance', lender: 'Lender B with a rather long trading name', balance: '1500.00', current_balance: '1500.00', apr: '20.00', payment: '100.00', interest_remaining: '139.41', balance_stale: true, balance_as_of: daysFromNow(-120) }),
+  liability({ id: 'li2', kind: 'finance', lender: 'Lender B with a rather long trading name', balance: '1500.00', current_balance: '1500.00', apr: '20.00', payment: '100.00', interest_remaining: '139.41', balance_stale: true, balance_as_of: daysFromNow(-120), linked_commitment: { id: 'c-li2', label: 'Lender B' } }),
   liability({}),
   liability({ id: 'li3', lender: 'Lender C', balance: '4000.00', current_balance: '4000.00', apr: '5.00', payment: null, opted_out: true, payoff_date: null, interest_remaining: null, total_cost: null, payments_remaining: null, next_payment_date: null, linked_commitment: null }),
 ]

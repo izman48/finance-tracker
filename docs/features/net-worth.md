@@ -88,7 +88,7 @@ surface, conversion), `test_projection_budgets.py` (T-10-15b), `api/tests/unit/t
 | 7 Claude tools | none; net worth (with liabilities subtracted) reaches Claude only inside `cashflow_summary`. |
 | 8 Audit | Web-only writes, not audited. |
 | 9 Bank sync | History is rebuilt on read from synced transactions. |
-| 10 Home | Wealth card (net worth and changes, sparkline, credit owed). Owned by Wealth. |
+| 10 Home | Wealth card (net worth and changes, sparkline, Total owed from `total_owed`). Owned by Wealth. |
 | 11 UI routes | `/networth`. |
 | 12 Tests | listed above; no route tests for valuations or flows, no UI tests. |
 | 13 Docs | this file. |

@@ -345,6 +345,8 @@ function summaryResponse() {
     savings_total: SAVINGS_TOTAL,
     assets_total: ASSETS_TOTAL,
     liabilities_total: LIABILITIES_TOTAL,
+    // Cards plus loans, as the API sums it (T-10-14a).
+    total_owed: (CREDIT_OWED + LIABILITIES_TOTAL).toFixed(2),
     net_worth: NET_WORTH,
     committed_before_payday: committed,
     safe_to_spend: Math.round((AVAILABLE_CASH - committed) * 100) / 100,

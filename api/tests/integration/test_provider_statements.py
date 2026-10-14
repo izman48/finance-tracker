@@ -15,6 +15,7 @@ import pytest
 
 from app.models import Account, BankConnection, CardStatement, User
 from app.services.analytics.statements import current_statement
+from app.services.provider_statements import _day
 from app.services.truelayer import TrueLayerService
 from tests.clock import TODAY
 
@@ -101,18 +102,15 @@ def test_three_syncs_give_one_row_with_the_latest_values(bank):
     assert row.statement_balance == Decimal("5100.00")
 
 
-def test_timestamps_are_read_as_uk_bank_days(bank):
-    """UK midnight in BST is 23:00 UTC the day before (eng-b, #176)."""
-    bank.response = _balance(
-        last_statement_date="2026-09-30T23:00:00Z", payment_due_date="2026-10-20T23:00:00+00:00",
-    )
-    if TODAY < date(2026, 10, 1):
-        pytest.skip("the fixed BST dates must not be in the future")
-
-    bank.sync()
-
-    (row,) = bank.rows()
-    assert (row.statement_date, row.due_date) == (date(2026, 10, 1), date(2026, 10, 21))
+@pytest.mark.parametrize("stamp, day", [
+    ("2026-09-30T23:00:00Z", date(2026, 10, 1)),          # UK midnight in BST
+    ("2026-10-20T23:00:00+00:00", date(2026, 10, 21)),
+    ("2026-10-27T23:00:00+00:00", date(2026, 10, 27)),    # GMT: the same day
+    ("2026-10-27", date(2026, 10, 27)),                   # a plain date stays as given
+])
+def test_timestamps_are_read_as_uk_bank_days(stamp, day):
+    """eng-b on #176: a BST midnight must not land a day early."""
+    assert _day(stamp) == day
 
 
 def test_a_new_statement_period_adds_a_row_and_becomes_current(bank):

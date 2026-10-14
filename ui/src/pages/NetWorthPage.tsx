@@ -16,6 +16,8 @@ import { ASSET_TYPE_LABEL, latestValue, isLiabilityType } from '../lib/assets'
 import { gbp0 as gbp, timeAgo } from '../lib/format'
 import { bothCounted, LOANS_GROUP_LABEL } from '../lib/liabilities'
 import LiabilityRow, { BothCountedNotice, LoansLoadError } from '../components/wealth/LiabilityRow'
+import LiabilityForm from '../components/wealth/LiabilityForm'
+import { useToast } from '../components/ui/Toast'
 import AddAssetModal from '../components/AddAssetModal'
 import UpdateAssetValueModal from '../components/UpdateAssetValueModal'
 import AccountSettingsModal from '../components/AccountSettingsModal'
@@ -105,6 +107,9 @@ export default function NetWorthPage() {
   // never blanks the page (ux B.2); null = not loaded yet.
   const [liabilities, setLiabilities] = useState<Liability[] | null>(null)
   const [liabilitiesFailed, setLiabilitiesFailed] = useState(false)
+  // The loan form: 'add', a liability to edit, or closed.
+  const [loanForm, setLoanForm] = useState<'add' | Liability | null>(null)
+  const toast = useToast()
   const [summary, setSummary] = useState<CashflowSummary | null>(null)
   const [bankStatus, setBankStatus] = useState<BankStatus | null>(null)
   const [months, setMonths] = useState(12)
@@ -724,10 +729,10 @@ export default function NetWorthPage() {
                     </span>
                   )}
                 </div>
-                {isLoans && bothCounted(assets, loans) && <BothCountedNotice />}
+                {isLoans && bothCounted(assets, loans) && <BothCountedNotice onReplace={() => setLoanForm('add')} />}
                 {loansFailed && <LoansLoadError onRetry={loadLiabilities} />}
                 {loanRows.map((l) => (
-                  <LiabilityRow key={`liability-${l.id}`} liability={l} />
+                  <LiabilityRow key={`liability-${l.id}`} liability={l} onOpen={() => setLoanForm(l)} />
                 ))}
                 {groupRows.map((row) => (
                   <button
@@ -846,8 +851,7 @@ export default function NetWorthPage() {
           }}
           onLiability={() => {
             setShowChooser(false)
-            setAddLiability(true)
-            setShowAddAsset(true)
+            setLoanForm('add')
           }}
           onClose={() => setShowChooser(false)}
         />
@@ -859,6 +863,26 @@ export default function NetWorthPage() {
           onSaved={async () => {
             setShowAddAsset(false)
             await load()
+          }}
+        />
+      )}
+      {loanForm && (
+        <LiabilityForm
+          liability={loanForm === 'add' ? null : loanForm}
+          replaceable={assets.filter((a) => a.asset_type === 'loan' || a.asset_type === 'other_liability')}
+          today={new Date().toLocaleDateString('en-CA')}
+          onClose={() => setLoanForm(null)}
+          onOtherDebt={() => {
+            // "Mortgage or another debt?": today's balance-sheet item, in liability mode.
+            setLoanForm(null)
+            setAddLiability(true)
+            setShowAddAsset(true)
+          }}
+          onSaved={async (saved, message) => {
+            setLoanForm(null)
+            toast(message)
+            await Promise.all([load(), loadLiabilities()])
+            if (saved) document.getElementById(`liability-row-${saved.id}`)?.focus()
           }}
         />
       )}

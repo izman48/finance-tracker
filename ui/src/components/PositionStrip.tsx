@@ -42,7 +42,7 @@ export default function PositionStrip({ position }: { position: NetWorthPosition
         ))}
       </div>
       {position.since && (
-        <div className="text-xs text-slate-500 mt-3">
+        <div className="text-xs text-slate-400 mt-3">
           Tracking since {dateLong(position.since)}
           {' · '}
           {gbp(Number(position.bank))} in banks + {gbp(Number(position.assets))} in assets you've added

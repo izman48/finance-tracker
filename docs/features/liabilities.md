@@ -86,7 +86,23 @@ plaintext `kind`, `cadence`, dates, `opted_out`, `linked_commitment_id`);
 `current_balance`, `owed_on`), `services/liability_links.py` (`candidates`,
 `link`, `sync`, `remove`, `release`).
 
-**UI** (T-10-10a): `/networth` balance sheet, group "Loans and finance" (`components/wealth/LiabilityRow.tsx`, `lib/liabilities.ts`): rows in the API's order (APR high to low), line 2 from the API's figures only, `Update balance` / `Paid off` chips, the group subtotal = asset liability rows + the API's liabilities total (shown once), its own load error with Try again (no subtotal then), and the both-counted notice when a `loan`/`other_liability` asset and a liability exist. Rows are read-only until the add/edit form (T-10-10b).
+**UI** (T-10-10): `/networth` balance sheet, group "Loans and finance"
+(`components/wealth/LiabilityRow.tsx`, `lib/liabilities.ts`): rows in the
+API's order (APR high to low), each a button that opens the edit form; line 2
+from the API's figures only; `Update balance` / `Paid off` chips; the group
+subtotal = asset liability rows + the API's liabilities total (shown once);
+its own load error with Try again (no subtotal then); the both-counted
+notice with **Replace an entry** when a `loan`/`other_liability` asset and a
+liability exist. The add/edit form (`components/wealth/LiabilityForm.tsx`,
+`lib/liabilityForm.ts`) is a labelled dialog that checks only required,
+number and date format (every other rule is the server's 422), sends every
+term with money and APR as typed strings, shows the "Which bill is this?"
+step on a 409 `choose_commitment` (the choice goes with one more request),
+confirms delete, opt-out and asset replacement naming the figure that
+changes, and toasts by `link_result`. The chooser's third item opens it
+("Add a loan or finance"); mortgages and other debts stay balance-sheet items.
+A commitment edit, skip or dismiss that gets 409 `linked_to_liability` shows
+the API's message with a link to Wealth.
 
 **Tests**: `api/tests/unit/test_amortisation.py` (hand-checked schedule for
 the synthetic £9,000 / £200 a month / 11% loan),

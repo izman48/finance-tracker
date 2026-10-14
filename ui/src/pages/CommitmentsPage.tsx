@@ -5,7 +5,9 @@ import { CommitmentKeep } from '../components/changes/KeepControls'
 import { useRowActions } from '../hooks/useRowActions'
 import { canKeep, countsInListTotal, keepMovesSafeToSpend, keepToast, postEach } from '../lib/keep'
 import { withTimeout } from '../lib/forecastLoad'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
+import { useToast } from '../components/ui/Toast'
+import { linkedEditMessage } from '../lib/liabilities'
 import { analyticsAPI, auditAPI } from '../services/api'
 import { Commitment, NextRepayment, PlannedItem } from '../types'
 import { gbp as formatCurrency, dateLong as formatDate } from '../lib/format'
@@ -28,6 +30,8 @@ const heldDismissal = (c: Commitment) => c.status === 'dismissed'
 const DISMISSED_CHIP = <span className="chip shrink-0">Dismissed by Claude</span>
 
 export default function CommitmentsPage() {
+  const toast = useToast()
+  const navigate = useNavigate()
   const [commitments, setCommitments] = useState<Commitment[]>([])
   const [repayments, setRepayments] = useState<NextRepayment[]>([])
   const [planned, setPlanned] = useState<PlannedItem[]>([])
@@ -100,13 +104,25 @@ export default function CommitmentsPage() {
     load()
   }, [load])
 
+  // A bill that carries a loan's repayment changes only on Wealth: the API
+  // answers 409 and the toast says where to go (ux B.5).
+  const linkedGuard = async (action: () => Promise<unknown>) => {
+    try {
+      await action()
+    } catch (e) {
+      const message = linkedEditMessage(e)
+      if (!message) throw e
+      toast(message, { tone: 'err', action: { label: 'Go to Wealth', onClick: () => navigate('/networth') } })
+    }
+  }
+
   const setStatus = async (id: string, status: string) => {
-    await analyticsAPI.updateCommitment(id, { status })
+    await linkedGuard(() => analyticsAPI.updateCommitment(id, { status }))
     await load()
   }
 
   const handleSkip = async (c: Commitment) => {
-    await analyticsAPI.skipCommitment(c.id)
+    await linkedGuard(() => analyticsAPI.skipCommitment(c.id))
     await load()
   }
 

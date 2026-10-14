@@ -4,25 +4,33 @@ import { liabilityDetail } from '../../lib/liabilities'
 
 /** One loan, finance or BNPL row in the balance sheet's "Loans and finance"
  *  group (ux T-10-0 B.1). Every figure is the API's, only formatted; the
- *  lender renders as text. Read-only until the add/edit form lands (T-10-10b). */
-export default function LiabilityRow({ liability }: { liability: Liability }) {
+ *  lender renders as text. A button: its text is its accessible name. */
+export default function LiabilityRow({ liability, onOpen }: { liability: Liability; onOpen?: () => void }) {
   const owed = Number(liability.current_balance)
+  const chip = liability.paid_off
+    ? { className: 'chip-pos', text: 'Paid off' }
+    : liability.balance_stale
+      ? { className: 'chip-warn', text: 'Update balance' }
+      : null
   return (
-    <div className="w-full flex items-center gap-3 px-4 py-3 border-t border-white/[0.06] text-left">
+    <button
+      type="button"
+      id={`liability-row-${liability.id}`}
+      onClick={onOpen}
+      className="w-full min-h-[44px] flex items-center gap-3 px-4 py-3 border-t border-white/[0.06] text-left hover:bg-white/[0.03] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+    >
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-medium text-slate-100 truncate">{liability.lender}</span>
         <span className="block text-xs text-slate-400">{liabilityDetail(liability)}</span>
+        {/* Narrow widths: the chip gets its own line so the lender keeps its room (ux on #185). */}
+        {chip && <span className={`${chip.className} mt-1 inline-block sm:hidden`}>{chip.text}</span>}
       </span>
-      {liability.paid_off ? (
-        <span className="chip-pos shrink-0">Paid off</span>
-      ) : liability.balance_stale ? (
-        <span className="chip-warn shrink-0">Update balance</span>
-      ) : null}
+      {chip && <span className={`${chip.className} shrink-0 hidden sm:inline-flex`}>{chip.text}</span>}
       <span className={`shrink-0 text-sm font-semibold tnum ${owed > 0 ? 'text-warn' : 'text-slate-100'}`}>
         {owed > 0 ? '−' : ''}
         {gbp0(owed)}
       </span>
-    </div>
+    </button>
   )
 }
 
@@ -41,12 +49,20 @@ export function LoansLoadError({ onRetry }: { onRetry: () => void }) {
   )
 }
 
-/** A loan typed in as a balance-sheet item and a liability both count (A8). */
-export function BothCountedNotice() {
+/** A loan typed in as a balance-sheet item and a liability both count (A8).
+ *  Not dismissible; it goes once no loan-type asset is left. */
+export function BothCountedNotice({ onReplace }: { onReplace?: () => void }) {
   return (
-    <div className="banner-info mx-4 my-3">
-      You have a loan entered as a balance sheet item and a loan in this list. Both count towards what you
-      owe. If they are the same debt, replace the old entry.
+    <div className="banner-info mx-4 my-3 flex flex-wrap items-center gap-3">
+      <span className="min-w-0 flex-1">
+        You have a loan entered as a balance sheet item and a loan in this list. Both count towards what you
+        owe. If they are the same debt, replace the old entry.
+      </span>
+      {onReplace && (
+        <button type="button" className="btn-ghost shrink-0" onClick={onReplace}>
+          Replace an entry
+        </button>
+      )}
     </div>
   )
 }

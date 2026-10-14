@@ -63,3 +63,17 @@ describe('both-counted notice (A8, sec)', () => {
     expect(bothCounted([asset('loan')], [])).toBe(false)
   })
 })
+
+describe('a linked bill edited elsewhere (ux B.5)', () => {
+  it('the 409 linked_to_liability gives the API message, pointing at Wealth', async () => {
+    const { linkedEditMessage } = await import('./liabilities')
+    const err = { response: { status: 409, data: { detail: { code: 'linked_to_liability', message: 'This payment follows your loan. Change it on Wealth, under Loans and finance.' } } } }
+    expect(linkedEditMessage(err)).toBe('This payment follows your loan. Change it on Wealth, under Loans and finance.')
+  })
+
+  it('any other failure is not a linked-bill message', async () => {
+    const { linkedEditMessage } = await import('./liabilities')
+    expect(linkedEditMessage({ response: { status: 409, data: { detail: 'Conflict' } } })).toBeNull()
+    expect(linkedEditMessage(new Error('offline'))).toBeNull()
+  })
+})

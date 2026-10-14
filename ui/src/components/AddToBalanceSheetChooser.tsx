@@ -61,9 +61,9 @@ export default function AddToBalanceSheetChooser({
         >
           <TrendingDown className="w-5 h-5 text-slate-400 shrink-0 mt-0.5" />
           <span className="flex-1 min-w-0">
-            <span className="block font-medium text-slate-100">Add a liability</span>
+            <span className="block font-medium text-slate-100">Add a loan or finance</span>
             <span className="block text-sm text-slate-400 mt-0.5">
-              A mortgage, loan or other debt — subtracted from your net worth.
+              Personal loans, retail finance and buy now pay later. nilu works out the payoff date and interest left.
             </span>
           </span>
           <ChevronRight className="w-4 h-4 text-slate-500 shrink-0 mt-1" />

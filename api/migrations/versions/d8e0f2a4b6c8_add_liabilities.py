@@ -5,7 +5,7 @@ on it unchanged. Lender, balance, APR and payment are DEK-encrypted (Text);
 kind, cadence, dates and the opt-out flag are plaintext. Rows cascade from
 users (account deletion). Downgrade drops the table.
 
-Revision ID: c7d9e1f3a5b7
+Revision ID: d8e0f2a4b6c8
 Revises: b6c8d0e2f4a6
 Create Date: 2026-10-14
 """
@@ -14,7 +14,7 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "c7d9e1f3a5b7"
+revision: str = "d8e0f2a4b6c8"
 down_revision: Union[str, None] = "b6c8d0e2f4a6"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

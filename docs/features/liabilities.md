@@ -64,7 +64,7 @@ the synthetic £9,000 / £200 a month / 11% loan),
 
 | # | Answer |
 |---|---|
-| 1 Tables | `liabilities`, migration `c7d9e1f3a5b7` (new table; downgrade drops it). |
+| 1 Tables | `liabilities`, migration `d8e0f2a4b6c8` (new table; downgrade drops it). |
 | 2 Purge | Yes, before `commitment_rules` in `_OWNED_BY_USER`. |
 | 3 Deletion | Cascade from `users`; `test_liabilities_api.py` deletes an account with foreign keys on. |
 | 4 Demo mode | No UI reads yet; T-10-10 adds the sample data. |

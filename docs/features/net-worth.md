@@ -66,7 +66,8 @@ the API's numbers. Nothing is stored.
 **UI**: `/networth` (`NetWorthPage`; the balance sheet's groups, in order,
 are in `lib/balanceSheet.ts`: "Current accounts", "Savings", …, "Credit
 cards", "Loans and finance", each a `section` labelled by its heading
-(T-10-14c). Card rows (`components/wealth/CardRow.tsx`) show the statement
+(T-10-14c). "Credit cards" holds credit-role bank accounts only; a manual
+asset worth less than nothing sits in "Loans and finance" (`assetGroup`). Card rows (`components/wealth/CardRow.tsx`) show the statement
 from the summary's `statement` via `lib/cardStatement.ts`, shared with
 Cashflow; "Add statement" / "Add new" open card settings. "Loans and finance"
 lists liabilities, see [liabilities.md](liabilities.md)), `PositionStrip` (its breakdown line

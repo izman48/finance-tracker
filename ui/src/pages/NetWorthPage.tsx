@@ -13,11 +13,11 @@ import {
 } from 'recharts'
 import { assetsAPI, analyticsAPI, bankingAPI, liabilitiesAPI, Asset, AssetDecomposition, Liability, NetWorthPoint, NetWorthPosition, Projection } from '../services/api'
 import { BankStatus, CashflowSummary, SummaryAccount } from '../types'
-import { ASSET_TYPE_LABEL, latestValue, isLiabilityType } from '../lib/assets'
+import { ASSET_TYPE_LABEL, latestValue } from '../lib/assets'
 import { gbp0 as gbp, timeAgo } from '../lib/format'
 import { settingsAccountFor } from '../lib/credit'
 import { bothCounted } from '../lib/liabilities'
-import { BALANCE_SHEET_GROUPS } from '../lib/balanceSheet'
+import { accountGroup, assetGroup, BALANCE_SHEET_GROUPS } from '../lib/balanceSheet'
 import CardRow from '../components/wealth/CardRow'
 import LiabilityRow, { BothCountedNotice, LoansLoadError } from '../components/wealth/LiabilityRow'
 import LiabilityForm from '../components/wealth/LiabilityForm'
@@ -41,26 +41,6 @@ const RANGES = [
   { months: 60, label: '5y' },
 ]
 
-
-const ROLE_GROUP: Record<string, string> = {
-  spending: 'cash',
-  savings: 'savings',
-  credit: 'owed',
-  excluded: 'excluded',
-}
-
-const ASSET_GROUP: Record<string, string> = {
-  savings: 'savings',
-  isa: 'invest',
-  investment: 'invest',
-  pension: 'invest',
-  crypto: 'invest',
-  property: 'property',
-  other: 'other',
-  mortgage: 'liabilities',
-  loan: 'liabilities',
-  other_liability: 'liabilities',
-}
 
 interface Row {
   key: string
@@ -381,7 +361,7 @@ export default function NetWorthPage() {
     const inCredit = account.role === 'credit' && Number(account.credit_owed ?? 0) < 0
     rows.push({
       key: `acc-${account.id}`,
-      group: ROLE_GROUP[account.role] ?? 'other',
+      group: accountGroup(account.role),
       name: account.display_name,
       sub: inCredit ? `${account.provider_name} · In credit` : account.provider_name,
       card: account.role === 'credit' ? account : undefined,
@@ -396,11 +376,7 @@ export default function NetWorthPage() {
     const ageDays = last ? (now - new Date(last.valued_at).getTime()) / 86400000 : undefined
     rows.push({
       key: `asset-${asset.id}`,
-      group: isLiabilityType(asset.asset_type)
-        ? 'liabilities'
-        : value < 0
-          ? 'owed'
-          : ASSET_GROUP[asset.asset_type] ?? 'other',
+      group: assetGroup(asset.asset_type, value),
       name: asset.name,
       sub: ASSET_TYPE_LABEL[asset.asset_type] ?? asset.asset_type,
       value,

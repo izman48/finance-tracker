@@ -258,9 +258,14 @@ def test_adding_a_statement_moves_no_figure(alice):
     {"statement_balance": "1000000.01"},
     {"statement_balance": "5000.001"},
     {"statement_balance": "lots"},
+    {"statement_balance": 5000.5},
+    {"statement_balance": True},
+    {"minimum_due": 150.0},
     {"minimum_due": "0"},
     {"minimum_due": "5000.01"},
     {"statement_date": (TODAY + timedelta(days=1)).isoformat()},
+    {"statement_date": (TODAY - timedelta(days=401)).isoformat(),
+     "due_date": (TODAY - timedelta(days=380)).isoformat()},
     {"due_date": (STATEMENT_DATE - timedelta(days=1)).isoformat()},
     {"due_date": (STATEMENT_DATE + timedelta(days=61)).isoformat()},
     {"source": "provider"},
@@ -276,6 +281,8 @@ def test_invalid_statements_are_422_and_write_nothing(alice, db_session, change)
 
 
 def test_the_limits_themselves_are_accepted(alice):
+    oldest = TODAY - timedelta(days=400)
+    assert alice.add({**STATEMENT, "statement_date": oldest.isoformat(), "due_date": oldest.isoformat()}).status_code == 201
     res = alice.add({
         "statement_balance": "1000000.00", "minimum_due": "1000000.00",
         "statement_date": TODAY.isoformat(), "due_date": (TODAY + timedelta(days=60)).isoformat(),

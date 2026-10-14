@@ -63,12 +63,14 @@ def test_payments_on_or_before_the_statement_date_are_already_in_the_statement()
 def test_unidentified_credits_never_reduce_the_amount_due():
     """Fail-safe: a refund is not a payment we can identify, so the full
     statement stays due (overstates, never hides)."""
-    refund = _tx("300", AFTER, description="ACME STORES REFUND")
+    refunds = [_tx("300", AFTER, description="ACME STORES REFUND"),
+               _tx("50", AFTER, description="PAYMENT REFUND ACME"),
+               _tx("25", AFTER, description="PAYMENT REVERSAL")]
 
-    position = statement_position(_statement(), owed=Decimal("5700"), card_transactions=[refund])
+    position = statement_position(_statement(), owed=Decimal("5625"), card_transactions=refunds)
 
     assert position.amount_still_due == Decimal("5000.00")
-    assert position.unbilled == Decimal("700.00")
+    assert position.unbilled == Decimal("625.00")
 
 
 def test_purchases_on_the_card_are_not_payments():

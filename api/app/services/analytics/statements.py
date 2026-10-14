@@ -25,8 +25,12 @@ from .common import _d
 
 ZERO = Decimal("0")
 # Card-side payment descriptors ("PAYMENT RECEIVED - THANK YOU"). Whole word,
-# so a merchant like "PAYMENTSENSE" refunding a purchase is not a payment.
+# so a merchant like "PAYMENTSENSE" refunding a purchase is not a payment, and
+# anything naming a refund or reversal is not one either: counting a refund as a payment
+# would lower the amount due (the unsafe side). Card feeds' exact payment text
+# is unverified; the user's counts_as choice beats this guess.
 _PAYMENT_WORD = re.compile(r"\bpayment\b")
+_REFUND_WORD = re.compile(r"\b(refund|reversal)")
 
 
 @dataclass(frozen=True)
@@ -55,7 +59,7 @@ def is_payment_to_card(tx) -> bool:
     if tx.counts_as_override is not None:
         return tx.counts_as_override == "card_payment"
     text = f"{tx.description or ''} {tx.merchant_name or ''}".lower()
-    return bool(_PAYMENT_WORD.search(text))
+    return bool(_PAYMENT_WORD.search(text)) and not _REFUND_WORD.search(text)
 
 
 def payments_since(statement_date: date, card_transactions) -> Decimal:
@@ -84,6 +88,7 @@ def statement_position(statement, owed: Decimal, card_transactions) -> Statement
 
 
 MAX_DAYS_TO_DUE = 60
+MAX_STATEMENT_AGE_DAYS = 400  # a little over a year of statements
 
 
 def check_statement(statement_balance, statement_date: date, due_date: date, minimum_due, today: date) -> None:
@@ -91,6 +96,8 @@ def check_statement(statement_balance, statement_date: date, due_date: date, min
     with a message the user can act on."""
     if statement_date > today:
         raise ValueError("The statement date can't be in the future.")
+    if statement_date < today - timedelta(days=MAX_STATEMENT_AGE_DAYS):
+        raise ValueError("The statement date can't be more than 400 days ago.")
     if not statement_date <= due_date <= statement_date + timedelta(days=MAX_DAYS_TO_DUE):
         raise ValueError("The due date must be on or after the statement date, and no more than 60 days after it.")
     if minimum_due is not None and _d(minimum_due) > _d(statement_balance):

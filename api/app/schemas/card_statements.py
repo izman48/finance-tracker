@@ -2,7 +2,8 @@
 
 Requests allow-list their fields (`extra="forbid"`): the client can never set
 `user_id`, `source` or a derived figure. Money is Decimal (a string in JSON),
-greater than 0, at most £1,000,000, 2 dp. Date rules that need today or the
+greater than 0, at most £1,000,000, 2 dp, never a JSON float (the
+shared `PlanningAmount` bounds). Date rules that need today or the
 stored row are checked by `services/analytics/statements.check_statement`.
 """
 from __future__ import annotations
@@ -10,12 +11,9 @@ from __future__ import annotations
 import uuid
 from datetime import date
 from decimal import Decimal
-from typing import Annotated
+from pydantic import BaseModel, ConfigDict
 
-from pydantic import BaseModel, ConfigDict, Field
-
-MAX_STATEMENT_AMOUNT = Decimal("1000000")
-StatementMoney = Annotated[Decimal, Field(gt=0, le=MAX_STATEMENT_AMOUNT, decimal_places=2)]
+from app.schemas import PlanningAmount as StatementMoney
 
 
 class CardStatementCreate(BaseModel):

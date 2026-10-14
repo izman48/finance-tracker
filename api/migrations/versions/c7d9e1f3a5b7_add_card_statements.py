@@ -32,8 +32,8 @@ def upgrade() -> None:
         sa.Column("statement_balance", sa.Text(), nullable=False),
         sa.Column("minimum_due", sa.Text(), nullable=True),
         sa.Column("source", sa.String(10), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.UniqueConstraint("account_id", "statement_date", "source", name="uq_card_statements_period_source"),
     )
     op.create_index("ix_card_statements_user_id", "card_statements", ["user_id"])

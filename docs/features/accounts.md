@@ -37,8 +37,9 @@ money owed; unverified providers fall back to `abs()`),
 `installments`, `minimum_percent`, `scheduled`; a card repayment and its
 linked commitment count once), `services/analytics/card_links.py`,
 `services/analytics/statements.py` (current statement, amount still due,
-unbilled; only credits identified as payments reduce the amount due, so a
-refund leaves the full statement due: fail-safe). Statements don't change any
+unbilled; only credits identified as payments reduce the amount due, and
+nothing naming a refund or reversal counts, so the full statement stays due:
+fail-safe). Statement dates are at most 400 days old and never in the future. Statements don't change any
 figure yet: no repayment strategy reads them (T-10-3 adds one).
 
 **UI**: `AccountSettingsModal` (opened from Wealth), `lib/credit.ts`; account

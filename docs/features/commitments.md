@@ -21,6 +21,17 @@ detected rules from their label, and `rule_match_keys` (stored key, that key
 re-normalised, a PayPal reference stored before T-10-9 healed, label key) is what dedupes detection and matches payments, so
 a rule keyed under old rules is never suggested again.
 
+## Linked repayments (T-10-8)
+
+A commitment that carries a liability's repayment (`Liability.linked_commitment_id`)
+changes only through the liability. The web `PATCH` and skip,
+mark-as-recurring, Claude's `update_commitment` and `dismiss_commitment`
+(dry run or not, nothing audited) and undoing an earlier Claude change
+return 409 `linked_to_liability` for amount, cadence, interval, next date and
+status (`services/linked_commitments.py`). Renaming stays open. The list
+marks such rows `linked_liability: true`. `sync_suggestions` never suggests
+an expense with the same amount and cadence as a linked repayment.
+
 ## Code
 
 **API**:
@@ -55,7 +66,8 @@ helpers), `cadence.py`, `card_links.py`, `late_income.py`,
 **MCP**: `commitments`, `update_commitment`, `dismiss_commitment`.
 
 **Tests**: `api/tests/unit/test_commitment_dedupe.py`,
-`test_paypal_match_key.py`, `test_paypal_commitments.py`, `test_card_link.py`,
+`test_paypal_match_key.py`, `test_paypal_commitments.py`,
+`api/tests/integration/test_linked_commitment_guards.py`, `test_card_link.py`,
 `test_analytics_service.py`; `api/tests/integration/test_commitment_writes_api.py`,
 `test_keep_commitment_api.py`, `test_card_link_api.py`,
 `test_claude_payday_dismissal.py`, `test_claude_payday_window.py`,

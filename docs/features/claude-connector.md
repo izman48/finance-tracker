@@ -60,8 +60,11 @@ sync and budgets are opt-in. A refresh never widens scopes.
 
 Liabilities (loans, finance, BNPL) reach Claude only as part of the
 `net_worth` figure and `liabilities_total` in `cashflow_summary` (T-10-7b),
-which `finance:read` already covers. No tool reads or writes
-`/api/v1/liabilities` (web only).
+which `finance:read` already covers (a test pins `liabilities_total` as the
+only liability field). No tool reads or writes `/api/v1/liabilities` (web
+only). `update_commitment` and `dismiss_commitment` get 409 on a commitment
+that carries a loan's repayment (T-10-8), so Claude can't dismiss it to
+raise safe-to-spend.
 
 **UI**: `/oauth/authorize` (`OAuthConsentPage`), `oauth/ConsentScopes`,
 `lib/oauthConsent.ts`; landing-page `AiAssistantSection` and `lib/mcp.ts`.

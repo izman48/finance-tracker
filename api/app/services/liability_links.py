@@ -23,6 +23,7 @@ from app.models import (
     Liability,
 )
 from app.services.liabilities import derived_figures
+from app.services.linked_commitments import linked_commitment_ids
 
 # Liability cadence -> (commitment cadence, interval_days).
 COMMITMENT_CADENCE = {
@@ -73,10 +74,7 @@ def candidates(db: Session, liability: Liability) -> list[CommitmentRule]:
 
 
 def _linked_ids(db: Session, user_id: uuid.UUID) -> set:
-    rows = db.query(Liability.linked_commitment_id).filter(
-        Liability.user_id == user_id, Liability.linked_commitment_id.isnot(None),
-    )
-    return {row[0] for row in rows}
+    return linked_commitment_ids(db, user_id)
 
 
 def link(db: Session, liability: Liability, choice: str | None, today: date) -> LinkResult:

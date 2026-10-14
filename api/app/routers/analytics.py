@@ -54,6 +54,9 @@ from app.services.claude_keep import (
 )
 from app.services.analytics.common import _today, account_role
 from app.services.analytics.planned_matching import planned_states
+from app.services.linked_commitments import (
+    LINKED_DETAIL, LinkedCommitmentEdit, linked_commitment_ids, refuse_linked_edit,
+)
 from app.services.analytics.late_income import late_incomes
 from app.services.planning_writes import claude_markers
 
@@ -259,6 +262,7 @@ def list_commitments(
     ]
     markers = claude_markers(db, current_user.id, "commitment", [r.id for r in rules])
     late = late_incomes(db, current_user, _today())
+    linked = linked_commitment_ids(db, current_user.id)
     return [
         CommitmentResponse.model_validate(r).model_copy(update={
             "changed_by_claude": ClaudeMarker(**markers[r.id]) if r.id in markers else None,
@@ -268,6 +272,7 @@ def list_commitments(
             "keep_audit_ids": pending_ids(r, claude.get(r.id, []), applied),
             **(held_values(r, claude[r.id], applied) if keeps[r.id][0] == PENDING else {}),
             "expected_date": late[r.id].expected_date if r.id in late else None,
+            "linked_liability": r.id in linked,
         })
         for r in rules
     ]
@@ -280,9 +285,12 @@ def commitment_from_transaction(
     db: Annotated[Session, Depends(get_db)],
 ) -> CommitmentRule:
     """Mark a transaction as recurring → a confirmed commitment."""
-    rule = analytics_service.commitment_from_transaction(
-        db, current_user, str(data.transaction_id), data.cadence
-    )
+    try:
+        rule = analytics_service.commitment_from_transaction(
+            db, current_user, str(data.transaction_id), data.cadence
+        )
+    except LinkedCommitmentEdit:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=LINKED_DETAIL) from None
     if not rule:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found")
     return rule
@@ -334,6 +342,7 @@ def update_commitment(
     require_owned_account_ids(db, current_user, data)
 
     updates = data.model_dump(exclude_unset=True)
+    refuse_linked_edit(db, current_user.id, rule.id, updates)
     # match_merchant is a virtual field — translate it into the stored match_key.
     if "match_merchant" in updates:
         merchant = updates.pop("match_merchant")
@@ -374,6 +383,10 @@ def skip_commitment(
     db: Annotated[Session, Depends(get_db)],
 ) -> CommitmentRule:
     """Skip the next occurrence (e.g. paid early) — advances it one cadence step."""
+    try:
+        refuse_linked_edit(db, current_user.id, uuid.UUID(commitment_id), {"next_date"})
+    except ValueError:
+        pass  # not an id: skip_commitment answers 404
     rule = analytics_service.skip_commitment(db, current_user, commitment_id)
     if not rule:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Commitment not found")

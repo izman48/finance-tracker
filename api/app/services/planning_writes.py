@@ -39,6 +39,7 @@ from app.core.oauth_tokens import Caller
 from app.models import AuditEntry, Budget, CommitmentRule, PlannedItem, WriteIdempotency
 from app.models.audit import AUDIT_KIND_UNDO, AUDIT_KIND_WRITE
 from app.schemas import PlanningWriteRequest
+from app.services.linked_commitments import refuse_linked_edit
 
 IDEMPOTENCY_TTL = timedelta(hours=24)
 # Maintained by the database, not by a write.
@@ -364,6 +365,9 @@ def undo_write(db: Session, user, audit_id: uuid.UUID) -> AuditEntry:
     if target is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Can't undo: the item no longer exists.")
     changes = json.loads(entry.changes)
+    if entry.target_kind == "commitment":
+        # A loan's repayment changes only through the loan (T-10-8).
+        refuse_linked_edit(db, user.id, entry.target_id, {c["field"] for c in changes})
     current = _snapshot(target, spec)
     if any(current[c["field"]] != c["after"] for c in changes):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Can't undo: it has changed since.")

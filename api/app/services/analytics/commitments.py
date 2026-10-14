@@ -23,6 +23,8 @@ from app.models import (
     Transaction,
 )
 
+from app.services.linked_commitments import check as check_linked, linked_commitment_ids
+
 from .cadence import _cadence_from_interval, _step, _step_back, commitment_occurrences
 from .card_links import link_card_commitments
 from .common import _d, _load, _today, detect_internal_transfers, is_card_settlement, resolve_roles
@@ -302,6 +304,8 @@ def commitment_from_transaction(db: Session, user, transaction_id: str, cadence:
         None,
     )
     if rule:
+        # A loan's repayment changes only through the loan (T-10-8).
+        check_linked(db, user.id, rule.id, {"amount", "cadence", "status"})
         rule.status = CommitmentStatus.CONFIRMED.value
         rule.amount = _d(tx.amount)
         rule.cadence = cadence
@@ -425,8 +429,22 @@ def sync_suggestions(db: Session, user) -> None:
             rule.next_date = _step(rule.next_date, rule.cadence, rule.interval_days, rule.interval_months)
             guard += 1
 
+    # A liability's linked repayment is often a new bill named after the
+    # lender, so its bank payments don't share its key. Never suggest them
+    # again: an expense with the same amount and cadence as a linked
+    # commitment is that repayment (T-10-8).
+    linked = linked_commitment_ids(db, user.id)
+    repayments = {
+        (_d(r.amount), r.cadence, r.interval_days, r.interval_months)
+        for r in existing_rules if r.id in linked
+    }
+
     for cand in detect_recurring(db, user):
         if cand["match_key"] in existing_keys:
+            continue
+        if cand["direction"] == CommitmentDirection.EXPENSE.value and (
+            cand["amount"], cand["cadence"], cand["interval_days"], cand["interval_months"]
+        ) in repayments:
             continue
         db.add(
             CommitmentRule(

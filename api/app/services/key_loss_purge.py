@@ -30,6 +30,7 @@ from app.models import (
     BudgetChange,
     BudgetCycleSnapshot,
     BudgetNudge,
+    CardStatement,
     CategoryRule,
     CommitmentRule,
     OAuthAuthorizationCode,
@@ -54,6 +55,7 @@ _OWNED_BY_USER = (
     CommitmentRule,
     PlannedItem,
     RepaymentScheduleItem,
+    CardStatement,
     AccountSetting,
 )
 

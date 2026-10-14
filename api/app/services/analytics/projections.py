@@ -34,6 +34,7 @@ from app.models import (
 from app.models.asset import LIABILITY_TYPES
 from app.services.liabilities import confirmed_commitment_ids, is_linked, owed_on
 
+from app.services.budgets import cycle_budgets
 from app.services.claude_keep import counted_commitments, held_removed_planned
 from .cadence import commitment_occurrences
 from .common import _add_months, _d, _today
@@ -187,6 +188,7 @@ def net_worth_projection(
     annual_growth_pct: Decimal = Decimal("5"),
     subtract_spending: bool = True,
     monthly_spending: Decimal | None = None,
+    spending_source: str | None = None,
 ) -> dict:
     """Project the whole balance sheet forward, month by month.
 
@@ -243,23 +245,7 @@ def net_worth_projection(
     if monthly_contribution is None:
         mode = "cashflow"
         basis = derived_contribution(db, user)
-        # The spending leg, most-explicit first:
-        # - subtract_spending=False → nothing subtracted ("all my future
-        #   cashflow lands in my wealth", matching the Cashflow chart);
-        # - monthly_spending given → the user's own estimate replaces the
-        #   history-measured average entirely;
-        # - otherwise → the measured average. The measurement always stays in
-        #   the basis so the UI can show it beside whatever was applied.
-        if not subtract_spending:
-            spend_leg = Decimal(0)
-            basis["spending_source"] = "measured"
-        elif monthly_spending is not None:
-            spend_leg = max(Decimal(0), monthly_spending)
-            basis["spending_source"] = "custom"
-        else:
-            spend_leg = basis["avg_spending_monthly"]
-            basis["spending_source"] = "measured"
-        basis["spending_subtracted"] = subtract_spending
+        spend_leg = _spending_leg(db, user, basis, spending_source, subtract_spending, monthly_spending)
         basis["spending_applied"] = _round2(spend_leg)
         basis["contribution"] = _round2(
             basis["income_monthly"] - basis["bills_monthly"] - spend_leg
@@ -358,6 +344,55 @@ def net_worth_projection(
         "as_of": today,
         "timeline": timeline,
     }
+
+
+def _spending_leg(
+    db: Session, user, basis: dict, spending_source: str | None, subtract_spending: bool,
+    monthly_spending: Decimal | None,
+) -> Decimal:
+    """The monthly spending the projection subtracts, recorded in `basis`.
+    The one place the precedence lives (sec T-10-15):
+
+    - No `spending_source` (old clients, demo): today's rule.
+      subtract_spending=False → nothing; monthly_spending → the user's
+      estimate; otherwise the measured average.
+    - With `spending_source` it wins, and subtract_spending is ignored:
+      "none" → nothing; "average" → the estimate if given, else the measured
+      average; "budgets" → the total of active, unpaused budget limits
+      (`cycle_budgets`, as the Cashflow budget line), falling back to the
+      measured average when that is £0 (never "£0 spending").
+    """
+    average = basis["avg_spending_monthly"]
+    estimate = max(Decimal(0), monthly_spending) if monthly_spending is not None else None
+    if spending_source is None:
+        if not subtract_spending:
+            spend, legacy = Decimal(0), "measured"
+        elif estimate is not None:
+            spend, legacy = estimate, "custom"
+        else:
+            spend, legacy = average, "measured"
+        basis.update(spending_source=legacy, spending_subtracted=subtract_spending)
+        return spend
+
+    budgets = cycle_budgets(db, user, _today()).total_limit
+    fallback = spending_source == "budgets" and budgets <= 0
+    if spending_source == "none":
+        spend, used = Decimal(0), "none"
+    elif spending_source == "budgets" and not fallback:
+        spend, used = budgets, "budgets"
+    elif spending_source == "average" and estimate is not None:
+        spend, used = estimate, "estimate"
+    else:
+        spend, used = average, "average"
+    basis.update(
+        spending_source="custom" if used == "estimate" else "measured",
+        spending_subtracted=used != "none",
+        spending_choice=spending_source,
+        spending_used=used,
+        budgets_monthly=_round2(budgets),
+        budgets_fallback=fallback,
+    )
+    return spend
 
 
 def _round2(v: Decimal) -> Decimal:

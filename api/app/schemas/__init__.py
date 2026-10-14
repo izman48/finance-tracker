@@ -237,6 +237,14 @@ class ContributionBasis(BaseModel):
     # measurement ('measured') or the user's own estimate ('custom').
     spending_applied: Decimal = Decimal(0)
     spending_source: str = "measured"
+    # T-10-15, only when the request sent `spending_source`: what was asked
+    # for, what was used (budgets / average / estimate / none), the active
+    # unpaused budget total a month, and whether budgets fell back to the
+    # average because that total is £0.
+    spending_choice: Literal["budgets", "average", "none"] | None = None
+    spending_used: Literal["budgets", "average", "estimate", "none"] | None = None
+    budgets_monthly: Decimal | None = None
+    budgets_fallback: bool = False
     # The evidence: each sampled month's measured spending.
     sampled_months: list[SampledMonth] = []
 

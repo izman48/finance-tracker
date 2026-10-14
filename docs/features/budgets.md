@@ -73,6 +73,7 @@ next to every component and lib file above.
 | 8 Audit | Yes, target `budget` (`limit_pounds`, `paused`, `active`). Budget changes take effect at once: no keep state. |
 | 9 Bank sync | Spend is computed on read from synced transactions. |
 | 10 Home | "X of Y on pace" on the Spending card; budget line on the Cashflow forecast. Owned by Spending. |
+| Wealth projection | The Wealth projection (`spending_source=budgets` on `GET /api/v1/analytics/net-worth-projection`) uses the total of active, unpaused limits (`cycle_budgets(...).total_limit`, the Cashflow budget line's figure) as monthly spending; £0 falls back to the average (T-10-15b). Read-only. |
 | 11 UI routes | `/insights` (`?section=budgets`). |
 | 12 Tests | listed above. |
 | 13 Docs | `api/mcp/README.md` doesn't list the budget tools yet (gap). |

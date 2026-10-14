@@ -2,8 +2,10 @@
 
 One shared total (`net_worth.liabilities_total`) feeds the summary (which is
 what Claude's `cashflow_summary` reads) and the reconstructed series behind
-net worth position, history and projection. A liability counts from its
-as-of date, like an asset valuation. Nothing else moves: safe-to-spend, the
+net worth position, history and projection. A liability counts at every
+point from the earlier of its start date and its as-of date: it existed
+before the user typed it in, so adding it must not read as money lost that
+month. Nothing else moves: safe-to-spend, the
 forecast and the asset decomposition stay as they were (the repayment
 reaches the forecast through the commitment link, T-10-8).
 
@@ -121,11 +123,35 @@ def test_net_worth_subtracts_liability_balance(world):
         assert after[surface] == before[surface] - Decimal("9000.00"), surface
 
 
-def test_the_liability_counts_from_its_as_of_date_like_a_valuation(world):
+def test_adding_a_loan_that_started_earlier_shifts_the_whole_history_without_a_step(world):
+    before_history = world.get("/analytics/net-worth-history?months=2")
+    before_changes = world.get("/analytics/net-worth-position")["changes"]
+    world.add_liability(start_date=(TODAY - timedelta(days=400)).isoformat())
+
+    after_history = world.get("/analytics/net-worth-history?months=2")
+    for old, new in zip(before_history, after_history):
+        assert Decimal(new["net_worth"]) == Decimal(old["net_worth"]) - Decimal("9000.00"), new["date"]
+    # Position changes compare two points that both carry the debt: no "−£9,000 this month".
+    after_changes = world.get("/analytics/net-worth-position")["changes"]
+    assert [c["change"] for c in after_changes] == [c["change"] for c in before_changes]
+
+
+def test_a_loan_counts_only_from_when_it_started(world):
+    before = world.get("/analytics/net-worth-history?months=2")
+    start = TODAY - timedelta(days=20)  # after the oldest point, before today
+    world.add_liability(start_date=start.isoformat(), balance_as_of=start.isoformat())
+    after = world.get("/analytics/net-worth-history?months=2")
+    assert after[0]["net_worth"] == before[0]["net_worth"]
+    assert Decimal(after[-1]["net_worth"]) == Decimal(before[-1]["net_worth"]) - Decimal("9000.00")
+
+
+def test_a_loan_whose_payments_start_later_counts_from_its_as_of_date(world):
+    # BNPL bought last week, first payment next month: the debt is real today.
     before = world.figures()
-    world.add_liability()
-    # The history's oldest point (two month-ends back) is before the as-of date.
-    assert world.figures()["history_before_as_of"] == before["history_before_as_of"]
+    world.add_liability(kind="bnpl", start_date=(TODAY + timedelta(days=20)).isoformat())
+    after = world.figures()
+    assert after["history_today"] == before["history_today"] - Decimal("9000.00")
+    assert after["history_before_as_of"] == before["history_before_as_of"]
 
 
 def test_nothing_but_net_worth_moves(world):
@@ -153,12 +179,19 @@ def test_a_liability_repaid_irregularly_still_counts(world):
     assert world.figures()["summary"] == before - Decimal("9000.00")
 
 
-def test_projection_keeps_the_debt_flat_until_payments_are_linked(world):
+def test_projection_keeps_the_debt_flat_and_separate_from_assets(world):
     # Until T-10-8 links the repayment, nothing says the £200 leaves the bank
     # in the forecast, so the projection doesn't pay the debt down either.
+    # The debt is its own component; `assets` never goes negative because of it.
     world.add_liability()
     timeline = world.get("/analytics/net-worth-projection")["timeline"]
-    assert [Decimal(timeline[m]["assets"]) for m in (0, 1, 6)] == [Decimal("-9000.00")] * 3
+    for m in (0, 1, 6):
+        point = timeline[m]
+        assert Decimal(point["liabilities"]) == Decimal("9000.00"), m
+        assert Decimal(point["assets"]) == Decimal("0.00"), m
+        assert Decimal(point["value"]) == (
+            Decimal(point["cash"]) + Decimal(point["invested"]) + Decimal(point["assets"]) - Decimal(point["liabilities"])
+        ), m
 
 
 def test_claude_sees_liabilities_only_inside_the_summary_net_worth(client, db_session):

@@ -203,10 +203,12 @@ class ProjectionPoint(BaseModel):
     date: date
     value: Decimal
     # Component breakdown: cash buffer (drained first in negative months),
-    # the swept-surplus bucket, and manual assets.
+    # the swept-surplus bucket, manual assets, and what is owed on
+    # liabilities (value = cash + invested + assets - liabilities).
     cash: Decimal | None = None
     invested: Decimal | None = None
     assets: Decimal | None = None
+    liabilities: Decimal | None = None
 
 
 class AssetAssumption(BaseModel):

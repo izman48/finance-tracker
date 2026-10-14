@@ -31,11 +31,19 @@ def assets_total(db: Session, user, as_of: date | None = None) -> Decimal:
 
 
 def liabilities_total(db: Session, user, as_of: date | None = None) -> Decimal:
-    """What the user owes on their liabilities (positive). Each one counts
-    from its as-of date, like an asset valuation, at today's balance."""
+    """What the user owes on their liabilities (positive), at today's balance.
+
+    In the history each one counts from the earlier of its start date and its
+    as-of date: the debt existed before the user typed it in, so adding it
+    shifts the whole series rather than showing a drop that month. Payments
+    that start later still count from the as-of date (the debt is real now).
+    """
     liabilities = db.query(Liability).filter(Liability.user_id == user.id).all()
     return sum(
-        (current_balance(x) for x in liabilities if as_of is None or x.balance_as_of <= as_of),
+        (
+            current_balance(x) for x in liabilities
+            if as_of is None or min(x.start_date, x.balance_as_of) <= as_of
+        ),
         Decimal(0),
     )
 
@@ -107,7 +115,8 @@ def _net_worth_at(db: Session, user, points: list[date]) -> list[dict]:
 
     Bank balances are reconstructed by walking transactions backwards from the
     current balance; manual assets contribute their latest valuation on/before
-    each date, and liabilities count from their as-of date.
+    each date, and liabilities count from when they started (see
+    `liabilities_total`).
     """
     accounts, settings = _load(db, user)
     roles = resolve_roles(accounts, settings)

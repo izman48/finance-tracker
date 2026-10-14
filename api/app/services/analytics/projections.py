@@ -274,7 +274,8 @@ def net_worth_projection(
         "value": _round2(current),
         "cash": _round2(bank_now),
         "invested": Decimal("0.00"),
-        "assets": _round2(current - bank_now),
+        "assets": _round2(current - bank_now + liabilities_now),
+        "liabilities": _round2(liabilities_now),
     }]
     # Already there today (e.g. a target below current net worth) — say so,
     # rather than "not reached" when growth is negative.
@@ -309,8 +310,7 @@ def net_worth_projection(
             if c["is_liability"] and c["value"] > 0:
                 c["value"] = Decimal(0)
             assets_value += c["value"]
-        assets_value -= liabilities_now
-        value = cash + invested + assets_value
+        value = cash + invested + assets_value - liabilities_now
         when = _add_months(today, m)
         if target_amount is not None and target_date is None and value >= target_amount:
             target_date = when
@@ -326,6 +326,7 @@ def net_worth_projection(
                 "cash": _round2(cash),
                 "invested": _round2(invested),
                 "assets": _round2(assets_value),
+                "liabilities": _round2(liabilities_now),
             })
         elif target_amount is None or target_date is not None:
             break

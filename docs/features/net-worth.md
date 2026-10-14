@@ -35,10 +35,13 @@ and then dropped by migration; `REDESIGN_PLAN.md` still describes it.
 from one function, `net_worth.liabilities_total`: the summary
 (`liabilities_total`, `net_worth`; Claude reads it through
 `cashflow_summary`), and the series behind position, history and projection
-(`liabilities` on each point). A liability counts from its as-of date, like a
-valuation, at today's balance. The projection keeps it flat until the
-repayment is linked (T-10-8): nothing yet says the payment leaves the bank, so
-the debt isn't paid down either (overstates debt). The decomposition is
+(`liabilities` on each point). In the history a liability counts at today's
+balance from the earlier of its start date and its as-of date, so adding a
+loan that started earlier shifts the whole series instead of showing a drop
+that month. The projection carries it as its own `liabilities` component
+(`assets` stays the manual assets) and keeps it flat until the repayment is
+linked (T-10-8): nothing yet says the payment leaves the bank, so the debt
+isn't paid down either (overstates debt). The decomposition is
 manual-asset movement only, so a liability doesn't change it. A `loan` or
 `other_liability` asset is replaced only through the id the user picked
 (`replaces_asset_id` on `POST /api/v1/liabilities`, one transaction, the

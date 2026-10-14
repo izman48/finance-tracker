@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { warningText, validateApr, type RepaymentWarning } from './repaymentWarnings'
+import { aprTyping, warningText, validateApr, type RepaymentWarning } from './repaymentWarnings'
 
 // Repayment warnings in card settings (ux T-10-0 A.6; C-17). Synthetic values.
 const w = (code: RepaymentWarning['code'], values: RepaymentWarning['values']): RepaymentWarning => ({ code, values })
@@ -34,5 +34,13 @@ describe('validateApr', () => {
   })
   it.each(['', '0', '19.9', '100'])('accepts %j', (v) => {
     expect(validateApr(v)).toBeNull()
+  })
+})
+
+describe('aprTyping (ux nit on #189)', () => {
+  it('keeps digits and one decimal point while typing', () => {
+    expect(aprTyping('abc')).toBe('')
+    expect(aprTyping('19.9%')).toBe('19.9')
+    expect(aprTyping('1.2.3')).toBe('1.23')
   })
 })

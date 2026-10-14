@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { analyticsAPI, AccountSettingUpdate, type CardStatements } from '../services/api'
 import { SummaryAccount } from '../types'
 import { gbp } from '../lib/format'
@@ -8,7 +8,7 @@ import {
 import StatementBlock from './card/StatementBlock'
 import RepaymentWarnings from './card/RepaymentWarnings'
 import { useToast } from './ui/Toast'
-import { validateApr, type RepaymentWarning } from '../lib/repaymentWarnings'
+import { aprTyping, validateApr, type RepaymentWarning } from '../lib/repaymentWarnings'
 
 const focusLater = (id: string) => window.setTimeout(() => document.getElementById(id)?.focus(), 0)
 
@@ -66,7 +66,17 @@ export default function AccountSettingsModal({
   // Money owed, positive on every provider (the server normalises the sign).
   const owed = Number(account.credit_owed ?? 0)
 
-  const set = (patch: Partial<AccountSettingUpdate>) => setForm((f) => ({ ...f, ...patch }))
+  // Warnings describe the saved settings: once the user edits, they are
+  // hidden until the next save brings fresh ones (ux on #189).
+  const [edited, setEdited] = useState(false)
+  const set = (patch: Partial<AccountSettingUpdate>) => {
+    setEdited(true)
+    setForm((f) => ({ ...f, ...patch }))
+  }
+  const shown = edited ? [] : warnings
+  // Focus goes back to the control that opened the modal when it closes.
+  const opener = useRef<Element | null>(typeof document === 'undefined' ? null : document.activeElement)
+  useEffect(() => () => (opener.current as HTMLElement | null)?.focus?.(), [])
   const strategyHelp = STRATEGY_HELP[form.repayment_strategy ?? '']
   const payDayHelp = form.repayment_cadence !== 'card_due_date' || hasDueDate === null
     ? null
@@ -97,6 +107,7 @@ export default function AccountSettingsModal({
       if (notes.length) {
         // C-18: stay open so the notes can be read; the button becomes Done.
         setWarnings(notes)
+        setEdited(false)
         setSavedWithNotes(true)
         setSaving(false)
         focusLater('settings-saved')
@@ -156,7 +167,9 @@ export default function AccountSettingsModal({
         )}
 
         {form.role === 'credit' && (
-          <div className="space-y-3 mb-4">
+          // Locked once saved with notes: only Done is offered, so an edit
+          // made then would be lost (ux on #189).
+          <fieldset disabled={savedWithNotes} className="space-y-3 mb-4 min-w-0">
             {account.repayment_fix_needed && (
               <div className="banner-info">
                 This card uses scheduled payments, which are meant for instalment cards like Monzo Flex. Nothing has
@@ -181,7 +194,7 @@ export default function AccountSettingsModal({
               )}
             </div>
 
-            <RepaymentWarnings warnings={warnings} codes={['interest_cost']} providerName={account.provider_name} />
+            <RepaymentWarnings warnings={shown} codes={['interest_cost']} providerName={account.provider_name} />
 
             <label htmlFor="instalment-card" className="flex items-center gap-2 text-sm text-slate-300 min-h-[44px]">
               <input
@@ -235,7 +248,7 @@ export default function AccountSettingsModal({
                   id="card-apr"
                   type="text" inputMode="decimal"
                   value={form.card_apr ?? ''}
-                  onChange={(e) => set({ card_apr: amountInput(e.target.value) })}
+                  onChange={(e) => set({ card_apr: amountInput(aprTyping(e.target.value)) })}
                   aria-invalid={aprError ? true : undefined}
                   aria-describedby={aprError ? 'card-apr-help card-apr-error' : 'card-apr-help'}
                   className="input"
@@ -265,7 +278,7 @@ export default function AccountSettingsModal({
                   {payDayHelp && (
                     <p id="repayment-pay-day-help" className="text-xs text-slate-400 mt-1">{payDayHelp}</p>
                   )}
-                  <RepaymentWarnings warnings={warnings} codes={['late_fee_risk']} providerName={account.provider_name} />
+                  <RepaymentWarnings warnings={shown} codes={['late_fee_risk']} providerName={account.provider_name} />
                 </div>
                 {form.repayment_cadence === 'monthly' && (
                   <div>
@@ -331,9 +344,9 @@ export default function AccountSettingsModal({
                   <option key={a.id} value={a.id}>{a.display_name}</option>
                 ))}
               </select>
-              <RepaymentWarnings warnings={warnings} codes={['overdraft_breach']} providerName={account.provider_name} />
+              <RepaymentWarnings warnings={shown} codes={['overdraft_breach']} providerName={account.provider_name} />
             </div>
-          </div>
+          </fieldset>
         )}
 
         {savedWithNotes && (

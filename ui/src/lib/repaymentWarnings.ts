@@ -40,3 +40,9 @@ export function validateApr(text: string): string | null {
   if (value === '') return null
   return APR.test(value) && Number(value) <= 100 ? null : 'Enter a number from 0 to 100.'
 }
+
+/** What the APR box keeps while typing: digits and one decimal point. */
+export function aprTyping(text: string): string {
+  const [whole, ...rest] = text.replace(/[^\d.]/g, '').split('.')
+  return rest.length ? `${whole}.${rest.join('')}` : whole
+}

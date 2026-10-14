@@ -134,4 +134,14 @@ describe('StatementView', () => {
       expect(missing).not.toContain('full current balance')
     }
   })
+
+  it('a2: an open form replaces the rows, a failed pick says nothing changed, Edit has an id for focus', () => {
+    const withForm = text(html({ form: <p>FORM HERE</p> }))
+    expect(withForm).toContain('FORM HERE')
+    expect(withForm).not.toContain('Statement balance £5,000.00')
+    const provider = { ...manual, id: 'p1', statement_balance: '4990.00', source: 'provider' as const }
+    expect(text(html({ data: data({ statements: [manual, provider], conflict: true }), useError: true }))).toContain(
+      'We could not change which statement is used. Nothing was changed. Try again.')
+    expect(html({})).toMatch(/<button[^>]*id="statement-edit"[^>]*>Edit statement<\/button>/)
+  })
 })

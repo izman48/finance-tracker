@@ -61,7 +61,7 @@ strategy pays the full balance; an unknown cadence pays at each month-end
 `instalment_card` and `repayment_fix_needed` (a standard card still on
 `scheduled`; nothing is changed for the user).
 
-**UI**: `AccountSettingsModal` (opened from Wealth; its Statement block is `components/card/StatementBlock.tsx` + `StatementView.tsx`, read-only until T-10-6a2, with `lib/statements.ts`; `lib/accountSettings.ts`
+**UI**: `AccountSettingsModal` (opened from Wealth; its Statement block is `components/card/StatementBlock.tsx` + `StatementView.tsx`, with `StatementForm.tsx` for add/edit and `lib/statements.ts` for the rules and copy: the edit form sends every field, delete and "use this statement" each confirm first, naming the figure that changes; `lib/accountSettings.ts`
 sends repayment fields only for a credit card), `lib/credit.ts`; account
 filter on Spending.
 

@@ -121,6 +121,35 @@ this order:
    so no dump is needed and the api boots.
 4. Check the deploy run (`gh run list --workflow deploy.yml`) and the app.
 
+### Roll back the card repayment options (statement balance, card due date)
+
+Code before T-10-3 doesn't know the `statement_balance` strategy or the
+`card_due_date` pay day. It would read the strategy as full balance (fine),
+but an unknown pay day means **no card repayment at all**, so a card bill
+would vanish from the forecast. These values are plain columns, not a
+migration, so no `downgrade` restores them. **Before** merging a revert to
+such code, count and switch them on the server (counts only, never ids):
+
+```bash
+cd ~/finance-tracker
+DC="docker compose -f docker-compose.prod.yml --env-file .env.production exec -T db"
+$DC sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB" -c "SELECT
+  count(*) FILTER (WHERE repayment_strategy = '"'"'statement_balance'"'"') AS statement_balance,
+  count(*) FILTER (WHERE repayment_cadence = '"'"'card_due_date'"'"') AS card_due_date,
+  count(*) FILTER (WHERE repayment_strategy = '"'"'statement_balance'"'"' AND repayment_cadence IS NULL) AS statement_balance_no_pay_day
+  FROM account_settings"'
+$DC sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB" -c "BEGIN;
+  UPDATE account_settings SET repayment_strategy = '"'"'full_balance'"'"', repayment_cadence = COALESCE(repayment_cadence, '"'"'end_of_month'"'"') WHERE repayment_strategy = '"'"'statement_balance'"'"';
+  UPDATE account_settings SET repayment_cadence = '"'"'end_of_month'"'"' WHERE repayment_cadence = '"'"'card_due_date'"'"';
+  COMMIT;"'
+```
+
+Record the three counts with the revert. A `statement_balance` card with no
+pay day stored means "card due date"; old code would read it as no cadence,
+so the first update also gives it month-end. Full balance at month end pays at
+least as much as the statement plan did (fail-safe). Users choose again
+after the next forward release.
+
 If a downgrade can't restore the data (it fails, or the migration was lossy),
 ship a forward fix instead, or restore the pre-migration dump:
 

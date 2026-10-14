@@ -34,13 +34,16 @@ const focusLater = (...ids: string[]) =>
   }, 0)
 
 export default function StatementBlock({
-  accountId, savedAsCredit, currentBalance, providerName, onNotFound,
+  accountId, savedAsCredit, currentBalance, providerName, onNotFound, onLoaded,
 }: {
   accountId: string
   savedAsCredit: boolean
   currentBalance: string
   providerName: string
   onNotFound: () => void
+  /** Each successful load, so the repayment controls can tell whether a
+   *  statement (and so a due date) exists. */
+  onLoaded?: (data: CardStatements) => void
 }) {
   const confirm = useConfirm()
   const toast = useToast()
@@ -62,6 +65,7 @@ export default function StatementBlock({
       const res = await analyticsAPI.getStatements(accountId)
       setData(res.data)
       setStatus('ready')
+      onLoaded?.(res.data)
       return true
     } catch (e) {
       const notFound = (e as { response?: { status?: number } })?.response?.status === 404
@@ -69,7 +73,7 @@ export default function StatementBlock({
       if (notFound) onNotFound()
       return false
     }
-  }, [accountId, onNotFound])
+  }, [accountId, onNotFound, onLoaded])
 
   useEffect(() => {
     if (savedAsCredit) load()

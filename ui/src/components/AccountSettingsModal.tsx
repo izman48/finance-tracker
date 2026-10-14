@@ -1,9 +1,21 @@
 import { useCallback, useEffect, useState } from 'react'
-import { analyticsAPI, AccountSettingUpdate } from '../services/api'
+import { analyticsAPI, AccountSettingUpdate, type CardStatements } from '../services/api'
 import { SummaryAccount } from '../types'
 import { gbp } from '../lib/format'
-import { settingsPayload } from '../lib/accountSettings'
+import {
+  amountInput, initialRepayment, payDayOptions, saveErrorMessage, settingsPayload, strategyOptions, validateRepayment,
+} from '../lib/accountSettings'
 import StatementBlock from './card/StatementBlock'
+
+const focusLater = (id: string) => window.setTimeout(() => document.getElementById(id)?.focus(), 0)
+
+// Help under "How is it repaid?" (ux A.5).
+const STRATEGY_HELP: Record<string, string> = {
+  statement_balance: 'Pays what your latest statement says, on its due date. Spending since goes on the next bill.',
+  full_balance: 'Pays everything you owe at the time, including spending since the statement.',
+}
+// Strategies that pay on a pay day (instalments and scheduled set their own dates).
+const PAY_DAY_STRATEGIES = new Set(['statement_balance', 'full_balance', 'fixed', 'minimum_percent'])
 
 export default function AccountSettingsModal({
   account,
@@ -19,16 +31,21 @@ export default function AccountSettingsModal({
   const [form, setForm] = useState<AccountSettingUpdate>({
     role: account.role,
     overdraft_limit: account.overdraft_limit ?? undefined,
-    repayment_cadence: account.repayment_cadence ?? 'end_of_month',
     repayment_day: account.repayment_day ?? undefined,
     repayment_interval_months: account.repayment_interval_months ?? undefined,
     repayment_anchor_date: account.repayment_anchor_date ?? undefined,
-    repayment_strategy: account.repayment_strategy ?? 'full_balance',
     repayment_fixed_amount: account.repayment_fixed_amount ?? undefined,
     repayment_installments: account.repayment_installments ?? 3,
     pay_from_account_id: account.pay_from_account_id ?? undefined,
+    ...initialRepayment(account),
   })
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [dayError, setDayError] = useState<string | null>(null)
+  // Whether the card has a statement, for the "Card due date" help text.
+  // null until the statements load succeeds: no due-date help is shown before then.
+  const [hasDueDate, setHasDueDate] = useState<boolean | null>(null)
+  const onStatementsLoaded = useCallback((data: CardStatements) => setHasDueDate(data.current !== null), [])
   // The statement load said this card isn't the user's (404): nothing to save (C-21).
   const [cardMissing, setCardMissing] = useState(false)
   const onCardMissing = useCallback(() => setCardMissing(true), [])
@@ -36,15 +53,29 @@ export default function AccountSettingsModal({
   const owed = Number(account.credit_owed ?? 0)
 
   const set = (patch: Partial<AccountSettingUpdate>) => setForm((f) => ({ ...f, ...patch }))
+  const strategyHelp = STRATEGY_HELP[form.repayment_strategy ?? '']
+  const payDayHelp = form.repayment_cadence !== 'card_due_date' || hasDueDate === null
+    ? null
+    : hasDueDate
+      ? 'Uses the due date on your statement.'
+      : "No due date yet. nilu uses the card's usual payment date, or 30 days from today."
 
   const save = async () => {
+    const invalid = validateRepayment(form)
+    setDayError(invalid.repayment_day ?? null)
+    if (invalid.repayment_day) {
+      focusLater('repayment-day')
+      return
+    }
     setSaving(true)
+    setSaveError(null)
     try {
       await analyticsAPI.updateAccountSettings(account.id, settingsPayload(form))
       onSaved()
     } catch (e) {
-      console.error('Failed to save settings', e)
+      setSaveError(saveErrorMessage(e, form.repayment_strategy))
       setSaving(false)
+      focusLater('settings-save-error')
     }
   }
 
@@ -88,39 +119,61 @@ export default function AccountSettingsModal({
             currentBalance={String(account.credit_owed ?? 0)}
             providerName={account.provider_name}
             onNotFound={onCardMissing}
+            onLoaded={onStatementsLoaded}
           />
         )}
 
         {form.role === 'credit' && (
           <div className="space-y-3 mb-4">
+            {account.repayment_fix_needed && (
+              <div className="banner-info">
+                This card uses scheduled payments, which are meant for instalment cards like Monzo Flex. Nothing has
+                changed. Choose how this card is repaid, or tick "This is an instalment card" if it is one.
+              </div>
+            )}
             <div>
-              <label className="label">How is it repaid?</label>
+              <label htmlFor="repayment-strategy" className="label">How is it repaid?</label>
               <select
-                value={form.repayment_strategy ?? 'full_balance'}
+                id="repayment-strategy"
+                value={form.repayment_strategy ?? 'statement_balance'}
                 onChange={(e) => set({ repayment_strategy: e.target.value })}
+                aria-describedby={strategyHelp ? 'repayment-strategy-help' : undefined}
                 className="input"
               >
-                <option value="full_balance">Pay the full balance each cycle (e.g. Amex)</option>
-                <option value="fixed">Pay a fixed amount each month</option>
-                <option value="installments">Pay the balance off in installments (e.g. Monzo Flex)</option>
-                <option value="scheduled">Scheduled payments (set each amount &amp; date)</option>
+                {strategyOptions(account.repayment_strategy, Boolean(form.instalment_card), form.repayment_strategy).map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
               </select>
+              {strategyHelp && (
+                <p id="repayment-strategy-help" className="text-xs text-slate-400 mt-1">{strategyHelp}</p>
+              )}
             </div>
+
+            <label htmlFor="instalment-card" className="flex items-center gap-2 text-sm text-slate-300 min-h-[44px]">
+              <input
+                id="instalment-card"
+                type="checkbox"
+                checked={Boolean(form.instalment_card)}
+                onChange={(e) => set({ instalment_card: e.target.checked })}
+              />
+              This is an instalment card, like Monzo Flex
+            </label>
 
             {form.repayment_strategy === 'fixed' && (
               <div>
-                <label className="label">Amount paid each cycle (£)</label>
+                <label htmlFor="repayment-amount" className="label">Amount paid each cycle (£)</label>
                 <input
+                  id="repayment-amount"
                   type="number" min={0} step="0.01"
                   value={form.repayment_fixed_amount ?? ''}
-                  onChange={(e) => set({ repayment_fixed_amount: e.target.value === '' ? null : Number(e.target.value) })}
+                  onChange={(e) => set({ repayment_fixed_amount: amountInput(e.target.value) })}
                   className="input"
                   placeholder="e.g. 200"
                 />
                 {owed > 0 && form.repayment_fixed_amount ? (
                   <p className="text-xs text-slate-500 mt-1">
                     {(() => {
-                      const months = Math.ceil(owed / Math.max(form.repayment_fixed_amount, 1))
+                      const months = Math.ceil(owed / Math.max(Number(form.repayment_fixed_amount), 1))
                       return `≈ ${months} month${months !== 1 ? 's' : ''} to clear the current ${gbp(owed)} balance`
                     })()}
                   </p>
@@ -128,29 +181,51 @@ export default function AccountSettingsModal({
               </div>
             )}
 
-            {(form.repayment_strategy === 'full_balance' || form.repayment_strategy === 'fixed') && (
+            {form.repayment_strategy === 'minimum_percent' && (
+              <div>
+                <label htmlFor="repayment-percent" className="label">Percent of the current balance (%)</label>
+                <input
+                  id="repayment-percent"
+                  type="number" min={1} max={100}
+                  value={form.repayment_fixed_amount ?? ''}
+                  onChange={(e) => set({ repayment_fixed_amount: amountInput(e.target.value) })}
+                  className="input"
+                />
+              </div>
+            )}
+
+            {PAY_DAY_STRATEGIES.has(form.repayment_strategy ?? '') && (
               <>
                 <div>
-                  <label className="label">Repayment cycle</label>
+                  <label htmlFor="repayment-pay-day" className="label">Pay day</label>
                   <select
-                    value={form.repayment_cadence ?? 'end_of_month'}
+                    id="repayment-pay-day"
+                    value={form.repayment_cadence ?? 'card_due_date'}
                     onChange={(e) => set({ repayment_cadence: e.target.value })}
+                    aria-describedby={payDayHelp ? 'repayment-pay-day-help' : undefined}
                     className="input"
                   >
-                    <option value="end_of_month">End of month</option>
-                    <option value="monthly">Monthly on a day</option>
-                    <option value="weekly">Weekly</option>
+                    {payDayOptions(account.repayment_cadence, form.repayment_cadence).map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
                   </select>
+                  {payDayHelp && (
+                    <p id="repayment-pay-day-help" className="text-xs text-slate-400 mt-1">{payDayHelp}</p>
+                  )}
                 </div>
                 {form.repayment_cadence === 'monthly' && (
                   <div>
-                    <label className="label">Payment day of month</label>
+                    <label htmlFor="repayment-day" className="label">Day (1 to 31)</label>
                     <input
+                      id="repayment-day"
                       type="number" min={1} max={31}
                       value={form.repayment_day ?? ''}
                       onChange={(e) => set({ repayment_day: e.target.value === '' ? null : Number(e.target.value) })}
+                      aria-invalid={dayError ? true : undefined}
+                      aria-describedby={dayError ? 'repayment-day-error' : undefined}
                       className="input"
                     />
+                    {dayError && <p id="repayment-day-error" className="text-xs text-neg mt-1">{dayError}</p>}
                   </div>
                 )}
               </>
@@ -190,8 +265,9 @@ export default function AccountSettingsModal({
             )}
 
             <div>
-              <label className="label">Paid from</label>
+              <label htmlFor="repayment-pay-from" className="label">Paid from</label>
               <select
+                id="repayment-pay-from"
                 value={form.pay_from_account_id ?? ''}
                 onChange={(e) => set({ pay_from_account_id: e.target.value || null })}
                 className="input"
@@ -203,6 +279,10 @@ export default function AccountSettingsModal({
               </select>
             </div>
           </div>
+        )}
+
+        {saveError && (
+          <div id="settings-save-error" role="alert" tabIndex={-1} className="banner-err mb-3">{saveError}</div>
         )}
 
         <div className="flex justify-end gap-2 mt-2">

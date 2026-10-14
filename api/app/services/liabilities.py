@@ -4,44 +4,54 @@ The user enters a liability's terms; everything else (payoff date, interest
 left, total cost) is computed here at read time and never stored. Money stays
 Decimal throughout.
 
-APR is the effective yearly rate UK lenders quote, so the monthly rate is
-(1 + APR)^(1/12) - 1. Each month interest is charged on the balance, rounded
-half-up to the penny, then the payment is taken (the last payment clears what
-is left). The entered balance is taken as the balance just after the last
-payment, so the first scheduled payment carries a full month's interest.
+APR is the effective yearly rate UK lenders quote, so the rate per payment is
+(1 + APR)^(1/n) - 1 for n payments a year (monthly: (1 + APR)^(1/12) - 1).
+Each period interest is charged on the balance, rounded half-up to the penny,
+then the payment is taken (the last payment clears what is left).
+
+The start date sets the payment day. The entered balance is the balance on
+the as-of date with any payment due that day already taken, so the first
+scheduled payment is the first one after the as-of date, and it carries a
+full period's interest.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
+from app.models import Liability
 from app.services.analytics.common import _add_months
 
-# Bound on the schedule (sec, S T-10-7a): a payment barely above the interest
-# must give a 422, never a loop that runs for centuries.
-MAX_SCHEDULE_MONTHS = 600
+# Bound on the schedule (sec, T-10-7a): a payment barely above the interest
+# must give a 422, never a loop that runs for centuries. 600 months.
+MAX_SCHEDULE_YEARS = 50
+# Payments a year, and the step from one payment date to the next.
+PERIODS_PER_YEAR = {"monthly": 12, "four_weekly": 13, "fortnightly": 26, "weekly": 52}
+_WEEKS_PER_STEP = {"four_weekly": 4, "fortnightly": 2, "weekly": 1}
+# An as-of balance older than this gets an "update your balance" prompt.
+STALE_AFTER_DAYS = 90
 PENNY = Decimal("0.01")
 
 
 class PaymentTooLow(ValueError):
     """The payment never clears the balance (or not within the cap)."""
 
-    def __init__(self, monthly_interest: Decimal, payment: Decimal):
-        self.monthly_interest = monthly_interest
+    def __init__(self, first_interest: Decimal, payment: Decimal):
+        self.first_interest = first_interest
         self.payment = payment
         super().__init__(self.message)
 
     @property
     def message(self) -> str:
-        if self.payment <= self.monthly_interest:
+        if self.payment <= self.first_interest:
             return (
-                f"A payment of £{self.payment} doesn't cover the first month's interest "
-                f"of £{self.monthly_interest}. Increase the payment."
+                f"A payment of £{self.payment} doesn't cover the interest of "
+                f"£{self.first_interest} it would be charged. Increase the payment."
             )
         return (
-            f"At £{self.payment} a month the balance would take more than "
-            f"{MAX_SCHEDULE_MONTHS // 12} years to clear. Increase the payment."
+            f"At £{self.payment} a payment the balance would take more than "
+            f"{MAX_SCHEDULE_YEARS} years to clear. Increase the payment."
         )
 
 
@@ -70,29 +80,51 @@ class Schedule:
         return sum((r.payment for r in self.rows), Decimal("0.00"))
 
 
-def monthly_rate(apr_pct: Decimal) -> Decimal:
-    """Monthly rate from an effective annual rate given in percent."""
-    return (1 + apr_pct / 100) ** (Decimal(1) / Decimal(12)) - 1
+def period_rate(apr_pct: Decimal, cadence: str = "monthly") -> Decimal:
+    """Rate per payment from an effective annual rate given in percent."""
+    return (1 + apr_pct / 100) ** (Decimal(1) / PERIODS_PER_YEAR[cadence]) - 1
 
 
-def amortise(balance: Decimal, apr_pct: Decimal, payment: Decimal, first_payment: date) -> Schedule:
-    """Monthly schedule from `balance` until it reaches zero.
+def payment_date(start: date, cadence: str, n: int) -> date:
+    """The n-th payment date counting from `start` (n = 0 is `start`)."""
+    if cadence == "monthly":
+        return _add_months(start, n)
+    return start + timedelta(weeks=_WEEKS_PER_STEP[cadence] * n)
 
-    Raises PaymentTooLow when the payment doesn't cover the first month's
-    interest or the balance isn't cleared within MAX_SCHEDULE_MONTHS.
+
+def first_payment_after(start: date, cadence: str, balance_as_of: date) -> date:
+    """The first payment date after the as-of date on the start date's cycle."""
+    if start > balance_as_of:
+        return start
+    if cadence == "monthly":
+        n = (balance_as_of.year - start.year) * 12 + balance_as_of.month - start.month
+    else:
+        n = (balance_as_of - start).days // (7 * _WEEKS_PER_STEP[cadence])
+    while payment_date(start, cadence, n) <= balance_as_of:
+        n += 1
+    return payment_date(start, cadence, n)
+
+
+def amortise(
+    balance: Decimal, apr_pct: Decimal, payment: Decimal, first_payment: date, cadence: str = "monthly"
+) -> Schedule:
+    """Schedule from `balance` until it reaches zero.
+
+    Raises PaymentTooLow when the payment doesn't cover the first period's
+    interest or the balance isn't cleared within MAX_SCHEDULE_YEARS.
     """
-    rate = monthly_rate(apr_pct)
+    rate = period_rate(apr_pct, cadence)
     first_interest = _interest(balance, rate)
     if payment <= first_interest:
         raise PaymentTooLow(first_interest, payment)
 
     rows: list[ScheduleRow] = []
     remaining = balance
-    for month in range(MAX_SCHEDULE_MONTHS):
+    for n in range(MAX_SCHEDULE_YEARS * PERIODS_PER_YEAR[cadence]):
         interest = _interest(remaining, rate)
         paid = min(payment, remaining + interest)
         remaining = remaining + interest - paid
-        rows.append(ScheduleRow(_add_months(first_payment, month), interest, paid, remaining))
+        rows.append(ScheduleRow(payment_date(first_payment, cadence, n), interest, paid, remaining))
         if remaining == 0:
             return Schedule(rows)
     raise PaymentTooLow(first_interest, payment)
@@ -100,3 +132,40 @@ def amortise(balance: Decimal, apr_pct: Decimal, payment: Decimal, first_payment
 
 def _interest(balance: Decimal, rate: Decimal) -> Decimal:
     return (balance * rate).quantize(PENNY, rounding=ROUND_HALF_UP)
+
+
+def current_balance(liability: Liability) -> Decimal:
+    """Today's balance. Until payments are linked (T-10-8) nothing proves a
+    payment was made, so it is the entered balance: assuming payments that
+    never happened would understate the debt."""
+    return liability.balance
+
+
+def next_payment_date(liability: Liability) -> date:
+    return first_payment_after(liability.start_date, liability.cadence, liability.balance_as_of)
+
+
+def derived_figures(liability: Liability, today: date) -> dict:
+    """The read-time figures for a stored liability. A liability repaid
+    irregularly has no schedule, so its payoff figures are null (they would
+    be guesses). Terms were checked on write, so a schedule always clears."""
+    figures = {
+        "current_balance": current_balance(liability),
+        "next_payment_date": None,
+        "payments_remaining": None,
+        "payoff_date": None,
+        "interest_remaining": None,
+        "total_cost": None,
+        "balance_stale": (today - liability.balance_as_of).days > STALE_AFTER_DAYS,
+    }
+    if liability.opted_out or liability.payment is None:  # no payment only when opted out
+        return figures
+    first = next_payment_date(liability)
+    schedule = amortise(liability.balance, liability.apr, liability.payment, first, liability.cadence)
+    return figures | {
+        "next_payment_date": first,
+        "payments_remaining": len(schedule.rows),
+        "payoff_date": schedule.payoff_date,
+        "interest_remaining": schedule.interest_remaining,
+        "total_cost": schedule.total_cost,
+    }

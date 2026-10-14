@@ -1,0 +1,79 @@
+# Liabilities (loans, retail finance, buy now pay later)
+
+Debts the user enters by hand, since TrueLayer has no loan data: kind,
+lender, balance "as of" a date, APR, payment, how often, start date and an
+optional final payment date. "I repay this loan irregularly" (`opted_out`)
+makes the payment optional. Stage 1 of the liabilities spec (T-10-7a);
+net worth (T-10-7b), the commitment link (T-10-8) and the Wealth list
+(T-10-10) build on it.
+
+## Rules
+
+- **Derived on read, never stored**: next payment, payments left, payoff
+  date, interest left and total cost (`services/liabilities.py`). Money stays
+  `Decimal` throughout.
+- **APR is the effective yearly rate** UK lenders quote. The rate per payment
+  is (1 + APR)^(1/n) − 1 for n payments a year (monthly: 12; every 4 weeks:
+  13; every 2 weeks: 26; weekly: 52). Interest is charged each period on the
+  balance, rounded half-up to the penny, then the payment is taken.
+- **The start date sets the payment day.** The entered balance already
+  reflects any payment due on the as-of date, so the next payment is the
+  first one after it.
+- **Bounded**: a payment that doesn't cover the first period's interest, or
+  doesn't clear the balance within 50 years (600 months), is a 422 with a
+  plain message. Nothing is stored.
+- **Today's balance is the entered balance** until payments are linked
+  (T-10-8): assuming payments that may not have happened would understate
+  the debt. An as-of date more than 90 days old sets `balance_stale` so the
+  UI asks for an update.
+- Opted out: no schedule, so the schedule figures are null.
+- List order: APR high to low, then balance high to low, then lender A to Z.
+
+## Code
+
+**API**:
+
+| Route | Auth |
+|---|---|
+| `GET /api/v1/liabilities` | `CurrentUser` |
+| `POST /api/v1/liabilities` | `CurrentUser` |
+| `GET /api/v1/liabilities/{liability_id}` | `CurrentUser` |
+| `PATCH /api/v1/liabilities/{liability_id}` | `CurrentUser` (merged terms re-checked) |
+| `DELETE /api/v1/liabilities/{liability_id}` | `CurrentUser` |
+
+Requests allow-list the user's terms (`extra="forbid"`): no id, user id,
+link or derived figure is accepted. Money is a decimal string, 2 dp, more
+than 0 and at most 1,000,000; APR 0 to 100; lender at most 100 characters;
+as-of date not in the future; start date at most a year ahead; final payment
+after the start date; kind and cadence are enums.
+
+**Tables**: `liabilities` (encrypted `lender`, `balance`, `apr`, `payment`;
+plaintext `kind`, `cadence`, dates, `opted_out`).
+
+**Services**: `services/liabilities.py` (`amortise`, `period_rate`,
+`first_payment_after`, `derived_figures`, `current_balance`).
+
+**UI**: none yet (T-10-10).
+
+**Tests**: `api/tests/unit/test_amortisation.py` (hand-checked schedule for
+the synthetic £9,000 / £200 a month / 11% loan),
+`api/tests/integration/test_liabilities_api.py`, `test_reset_purge.py`,
+`test_oauth.py` (Claude tokens refused).
+
+## Touchpoints
+
+| # | Answer |
+|---|---|
+| 1 Tables | `liabilities`, migration `c7d9e1f3a5b7` (new table; downgrade drops it). |
+| 2 Purge | Yes, before `commitment_rules` in `_OWNED_BY_USER`. |
+| 3 Deletion | Cascade from `users`; `test_liabilities_api.py` deletes an account with foreign keys on. |
+| 4 Demo mode | No UI reads yet; T-10-10 adds the sample data. |
+| 5 Ownership | No account ids. Liabilities load by id and user; another user's id is a 404 like an unknown one. |
+| 6 Scopes | Web only (`test_oauth.py` checks). |
+| 7 Claude tools | none. Claude can't read liabilities in this stage. |
+| 8 Audit | Web-only writes, not audited. |
+| 9 Bank sync | Not touched; figures are computed on read. |
+| 10 Home | not yet. |
+| 11 UI routes | none yet. |
+| 12 Tests | listed above. |
+| 13 Docs | this file. |

@@ -19,7 +19,8 @@ update the feature doc's touchpoints. Security-relevant items are marked 🔒.
   (`useAuth.syncAfterLogin` doesn't check `isAnonymized()`).
 - 🔒 **Delete-account is untested.** No test deletes an account with data and
   checks every table is empty, and the test SQLite doesn't enable foreign
-  keys, so the cascades it relies on never run in tests.
+  keys, so the cascades it relies on never run in tests. Only `liabilities`
+  is covered (`test_liabilities_api.py` turns foreign keys on for its test).
 - 🔒 Delete-account doesn't revoke TrueLayer tokens (disconnect does; it
   revokes only the access token, not the refresh token).
 - `test_reset_purge.py` only guards tables with encrypted columns;

@@ -24,7 +24,7 @@ transaction:
 
 1. By `user_id`: `write_idempotency`, `budget_nudges`,
    `budget_cycle_snapshots`, `budget_changes`, `budgets`, `audit_entries`,
-   `category_rules`, `rule_packs`, `commitment_rules`, `planned_items`,
+   `category_rules`, `rule_packs`, `liabilities`, `commitment_rules`, `planned_items`,
    `repayment_schedule_items`, `card_statements`, `account_settings`.
 2. `asset_valuations`, `asset_flows`, then `assets`.
 3. `transactions`, `accounts`, then `bank_connections`.

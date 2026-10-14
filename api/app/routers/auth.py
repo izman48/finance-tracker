@@ -41,7 +41,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 RESET_WITHOUT_RECOVERY_CODE_MESSAGE = (
     "Password updated. We deleted your bank data, commitments, planned events, rules "
-    "(shared rule pack links no longer work), assets and the history of changes made by "
+    "(shared rule pack links no longer work), assets, debts and the history of changes made by "
     "Claude, and disconnected Claude (MCP) access. Reconnect your bank to start again, "
     "and reconnect Claude if you use it."
 )

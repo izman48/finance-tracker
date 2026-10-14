@@ -29,6 +29,7 @@ this before changing a feature; update it in the same PR as the change.
 | Nudges | [nudges.md](nudges.md) | Cashflow tab | no | served |
 | Spending insight | [spending.md](spending.md) | Spending tab, Home | `spending`, `spending_trend` | served |
 | Net worth and assets | [net-worth.md](net-worth.md) | Wealth tab, Home | no | served |
+| Liabilities (loans, finance, BNPL) | [liabilities.md](liabilities.md) | Wealth tab (T-10-10) | no | no UI reads yet |
 | Budgets | [budgets.md](budgets.md) | Spending > Budgets, Home, Cashflow forecast | `list_budgets`, `set_budgets`, `pause_budget`, `resume_budget`, `remove_budget` | **gap: not served** |
 | Claude's changes (audit, undo, keep) | [claude-changes.md](claude-changes.md) | user menu > Changes made by Claude | every write tool | served (empty) |
 | Claude connector (MCP server, OAuth) | [claude-connector.md](claude-connector.md) | `/oauth/authorize`, landing page | all tools | by design not sampled |

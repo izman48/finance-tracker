@@ -32,6 +32,17 @@ from app.services.analytics.statements import check_statement
 from app.services.balance_sign import owed_amount
 
 logger = logging.getLogger(__name__)
+# The provider coverage line (booleans per TrueLayer provider id only). The
+# app has no logging config in production, where Python's last-resort handler
+# shows WARNING and above only, so this logger carries its own INFO handler.
+# Nothing else in the app changes level.
+coverage_logger = logging.getLogger(f"{__name__}.coverage")
+coverage_logger.setLevel(logging.INFO)
+if not coverage_logger.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setLevel(logging.INFO)
+    _handler.setFormatter(logging.Formatter("%(levelname)s [%(name)s] %(message)s"))
+    coverage_logger.addHandler(_handler)
 
 # Statement and due dates are UK bank days: a timestamp at UK midnight in BST
 # arrives as 23:00 UTC the day before.
@@ -40,18 +51,27 @@ STATEMENT_FIELDS = ("last_statement_balance", "last_statement_date", "payment_du
 PENNY = Decimal("0.01")
 
 
-def log_statement_field_coverage(provider_id: str, balance: dict) -> None:
-    """Which statement fields this provider fills (booleans only)."""
+def log_statement_field_coverage(provider_id: str, balance: dict, statement_owes: bool, stored: bool) -> None:
+    """Which statement fields this provider fills, whether the statement owes
+    anything after the sign rule, and whether it was stored (booleans only)."""
     present = " ".join(f"{field}={balance.get(field) is not None}" for field in STATEMENT_FIELDS)
-    logger.info("Card statement fields from %s: %s", provider_id, present)
+    coverage_logger.info(
+        "Card statement fields from %s: %s statement_owes=%s stored=%s", provider_id, present, statement_owes, stored,
+    )
 
 
-def store_provider_statement(db: Session, account: Account, balance: dict) -> None:
+def statement_owes(account: Account, balance: dict) -> bool:
+    """The statement balance, after the provider's sign rule, is owed (> 0)."""
+    raw = _money(balance.get("last_statement_balance"))
+    return raw is not None and owed_amount(account, raw) > 0
+
+
+def store_provider_statement(db: Session, account: Account, balance: dict) -> bool:
     """Upsert the provider statement in this card balance response, if it has
-    a valid one. Never commits; the sync does."""
+    a valid one. Returns whether one was stored. Never commits; the sync does."""
     parsed = _parse(account, balance)
     if parsed is None:
-        return
+        return False
     statement_balance, statement_date, due_date, minimum_due = parsed
     row = db.query(CardStatement).filter(
         CardStatement.user_id == account.user_id,
@@ -68,6 +88,7 @@ def store_provider_statement(db: Session, account: Account, balance: dict) -> No
     row.statement_balance = statement_balance
     row.due_date = due_date
     row.minimum_due = minimum_due
+    return True
 
 
 def _parse(account: Account, balance: dict):

@@ -23,7 +23,9 @@ data key, which only exists inside a request.
 per-account isolation, 403 → 88-day fallback, Revolut/Amex card fallbacks,
 balance fail-safe; on a credit card it also keeps the provider statement
 from the same balance response, `services/provider_statements.py`, logging
-field-presence booleans per provider id only), `services/sync_lock.py`, `services/sync_status.py`,
+field-presence booleans per provider id only, plus `statement_owes` (after the sign rule) and
+`stored`; that line has its own INFO handler so it shows in production, where `app.*` INFO
+logs otherwise don't), `services/sync_lock.py`, `services/sync_status.py`,
 `core/rate_limit.py` (`user_in_flight`).
 
 **What runs on new transactions**: `categorization.apply_rules`. Everything

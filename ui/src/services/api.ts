@@ -442,6 +442,14 @@ export interface CardStatements {
   next_payment: { amount: string; date: string; from_account_name: string | null } | null
 }
 
+/** Every field is sent on add and edit, so nothing is filled from another row. */
+export interface CardStatementBody {
+  statement_balance: string
+  statement_date: string
+  due_date: string
+  minimum_due: string | null
+}
+
 export interface Nudge {
   id: string
   rank: number
@@ -509,6 +517,14 @@ export const analyticsAPI = {
   deleteRepayment: (accountId: string, itemId: string) =>
     api.delete(`/analytics/accounts/${accountId}/repayments/${itemId}`),
   getStatements: (accountId: string) => api.get<CardStatements>(`/analytics/accounts/${accountId}/statements`),
+  addStatement: (accountId: string, body: CardStatementBody) =>
+    api.post<CardStatement>(`/analytics/accounts/${accountId}/statements`, body),
+  updateStatement: (accountId: string, statementId: string, body: CardStatementBody) =>
+    api.patch<CardStatement>(`/analytics/accounts/${accountId}/statements/${statementId}`, body),
+  deleteStatement: (accountId: string, statementId: string) =>
+    api.delete(`/analytics/accounts/${accountId}/statements/${statementId}`),
+  useStatement: (accountId: string, statementId: string) =>
+    api.put(`/analytics/accounts/${accountId}/statements/${statementId}/in-use`),
   // Convert a purchase into a payment plan ("pay on finance").
   payOnFinance: (data: { transaction_id: string; months: number; monthly_amount: number; start_date: string }) =>
     api.post('/analytics/planned/from-transaction', data),

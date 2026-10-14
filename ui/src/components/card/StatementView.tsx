@@ -23,6 +23,10 @@ export interface StatementViewProps {
   onEdit?: () => void
   onChoose?: (statementId: string) => void
   onUse?: () => void
+  /** The add/edit form, shown in place of the rows while open. */
+  form?: ReactNode
+  /** "Use this statement" failed. */
+  useError?: boolean
 }
 
 const pounds = (amount: string | number) => money(Number(amount))
@@ -47,6 +51,7 @@ export default function StatementView(props: StatementViewProps) {
 
 function Body(props: StatementViewProps) {
   const { status, data } = props
+  if (status === 'ready' && props.form) return <>{props.form}</>
   if (status === 'unsaved') {
     return <p className="text-sm text-slate-400">Save this account as a credit card first, then you can add a statement.</p>
   }
@@ -72,7 +77,9 @@ function Body(props: StatementViewProps) {
             ? `Until you add one, nilu plans to pay your full current balance of ${pounds(props.currentBalance)} on the card's next payment date.`
             : 'nilu has no balance to plan for this card yet.'}
         </p>
-        {props.onAdd && <button type="button" onClick={props.onAdd} className="btn-ghost">Add statement</button>}
+        {props.onAdd && (
+          <button type="button" id="statement-add" onClick={props.onAdd} className="btn-ghost">Add statement</button>
+        )}
       </div>
     )
   }
@@ -86,7 +93,7 @@ function Body(props: StatementViewProps) {
           bill.
           {owes(props.currentBalance) && ` Until then it plans your full current balance of ${pounds(props.currentBalance)}.`}
           {props.onAdd && (
-            <button type="button" onClick={props.onAdd} className="btn-primary mt-2">Add new statement</button>
+            <button type="button" id="statement-add" onClick={props.onAdd} className="btn-primary mt-2">Add new statement</button>
           )}
         </div>
       )}
@@ -107,7 +114,9 @@ function Body(props: StatementViewProps) {
         />
         <Row term="Spent since the statement" value={pounds(current.unbilled)} />
       </dl>
-      {props.onEdit && <button type="button" onClick={props.onEdit} className="btn-ghost">Edit statement</button>}
+      {props.onEdit && (
+        <button type="button" id="statement-edit" onClick={props.onEdit} className="btn-ghost">Edit statement</button>
+      )}
       {sentence && <p className="text-sm text-slate-300">{sentence}</p>}
     </div>
   )
@@ -170,9 +179,14 @@ function Conflict(props: StatementViewProps & { data: CardStatements }) {
       </fieldset>
       )}
       {props.onUse && (
-        <button type="button" onClick={props.onUse} disabled={props.busy || choice === inUse} className="btn-primary">
+        <button type="button" id="statement-use" onClick={props.onUse} disabled={props.busy || choice === inUse} className="btn-primary">
           Use this statement
         </button>
+      )}
+      {props.useError && (
+        <div role="alert" className="banner-err">
+          We could not change which statement is used. Nothing was changed. Try again.
+        </div>
       )}
     </div>
   )

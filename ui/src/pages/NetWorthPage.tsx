@@ -32,6 +32,7 @@ import AddAssetModal from '../components/AddAssetModal'
 import UpdateAssetValueModal from '../components/UpdateAssetValueModal'
 import InvestmentRow from '../components/wealth/InvestmentRow'
 import InvestmentValueModal from '../components/wealth/InvestmentValueModal'
+import InvestmentForm from '../components/wealth/InvestmentForm'
 import { currentValue, isInvestment } from '../lib/investments'
 import AccountSettingsModal from '../components/AccountSettingsModal'
 import AddToBalanceSheetChooser from '../components/AddToBalanceSheetChooser'
@@ -100,6 +101,7 @@ export default function NetWorthPage() {
   // L-10), or the Add button after a delete (ux on #190).
   const [pendingFocus, setPendingFocus] = useState<string | null>(null)
   const [updatingValue, setUpdatingValue] = useState<Asset | null>(null)
+  const [investmentForm, setInvestmentForm] = useState<Asset | 'add' | null>(null)
   const toast = useToast()
   const [summary, setSummary] = useState<CashflowSummary | null>(null)
   const [bankStatus, setBankStatus] = useState<BankStatus | null>(null)
@@ -748,7 +750,7 @@ export default function NetWorthPage() {
                 {groupRows.map((row) => row.card ? (
                   <CardRow key={row.key} account={row.card} onOpen={row.onClick} />
                 ) : row.investment ? (
-                  <InvestmentRow key={row.key} asset={row.investment} onOpen={row.onClick}
+                  <InvestmentRow key={row.key} asset={row.investment} onOpen={() => setInvestmentForm(row.investment!)}
                     onUpdateValue={() => setUpdatingValue(row.investment!)} />
                 ) : (
                   <button
@@ -782,6 +784,12 @@ export default function NetWorthPage() {
                     </span>
                   </button>
                 ))}
+                {key === 'invest' && (
+                  <button type="button" id="investment-add" onClick={() => setInvestmentForm('add')}
+                    className="w-full min-h-[44px] px-4 py-3 border-t border-white/[0.06] text-left text-sm text-accent hover:underline">
+                    Add an investment
+                  </button>
+                )}
               </section>
             )
           })}
@@ -865,6 +873,10 @@ export default function NetWorthPage() {
             setAddLiability(false)
             setShowAddAsset(true)
           }}
+          onInvestment={() => {
+            setShowChooser(false)
+            setInvestmentForm('add')
+          }}
           onLiability={() => {
             setShowChooser(false)
             setLoanForm('add')
@@ -900,6 +912,20 @@ export default function NetWorthPage() {
             toast(message)
             await Promise.all([load(), loadLiabilities()])
             setPendingFocus(focusAfterReload(saved))
+          }}
+        />
+      )}
+      {investmentForm && (
+        <InvestmentForm
+          asset={investmentForm === 'add' ? null : investmentForm}
+          accounts={(summary?.accounts ?? []).filter((a) => a.role === 'spending').map((a) => ({ id: a.id, name: a.display_name }))}
+          today={new Date().toLocaleDateString('en-CA')}
+          onClose={() => setInvestmentForm(null)}
+          onSaved={async (assetId, message) => {
+            setInvestmentForm(null)
+            toast(message)
+            await load()
+            setPendingFocus(assetId ? `investment-row-${assetId}` : 'wealth-add')
           }}
         />
       )}

@@ -48,6 +48,14 @@ default as the target projection, so the two agree.
 forecast) and Paid in, a hidden table for screen readers. A holding with no rate of its own
 grows at the target form's `wealth.growth`.
 
+**Add and edit (T-11-5d)**: `components/wealth/InvestmentForm.tsx` with the logic in
+`lib/investmentForm.ts`: Name, Type (ISA, Investment, Pension, Crypto), Value today, Growth a year,
+Monthly contribution, and `Add £X a month as a commitment` with Pay from (current accounts) and
+Day of the month (1 to 28). Save creates or patches the holding, then links, changes or stops its
+bill through the contribution routes (T-11-3c, documented in net-worth.md); an existing bill is taken over
+only after the user picks it in `Which bill is this?` (owner D2). Opened from a row, `Add an
+investment` under the group, or the Add chooser's `Investment`.
+
 **Who calls the engine**: the target projection
 (`analytics/projections.net_worth_projection`, per-holding series and
 liabilities), `net_worth.assets_total` (so the summary, position, history

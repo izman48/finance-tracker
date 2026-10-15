@@ -1,4 +1,4 @@
-import { Landmark, Pencil, TrendingDown, ChevronRight } from 'lucide-react'
+import { Landmark, LineChart, Pencil, TrendingDown, ChevronRight } from 'lucide-react'
 
 /** The universal "add" entry point on Wealth: connect a bank (automatic,
  *  first and highlighted), track an asset manually, or record a liability.
@@ -8,12 +8,15 @@ export default function AddToBalanceSheetChooser({
   providers,
   onConnect,
   onManual,
+  onInvestment,
   onLiability,
   onClose,
 }: {
   providers: string[]
   onConnect: () => void
   onManual: () => void
+  /** Wealth's Investments group (T-11-5): opens the investment form. */
+  onInvestment?: () => void
   onLiability: () => void
   onClose: () => void
 }) {
@@ -40,6 +43,22 @@ export default function AddToBalanceSheetChooser({
           </span>
           <ChevronRight className="w-4 h-4 text-accent shrink-0 mt-1" />
         </button>
+
+        {onInvestment && (
+          <button
+            onClick={onInvestment}
+            className="w-full text-left flex items-start gap-3 p-4 rounded-xl border border-white/10 hover:bg-white/[0.04] transition-colors mb-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+          >
+            <LineChart className="w-5 h-5 text-slate-400 shrink-0 mt-0.5" />
+            <span className="flex-1 min-w-0">
+              <span className="block font-medium text-slate-100">Investment</span>
+              <span className="block text-sm text-slate-400 mt-0.5">
+                An ISA, pension, investment account or crypto, with its growth and any monthly contribution.
+              </span>
+            </span>
+            <ChevronRight className="w-4 h-4 text-slate-500 shrink-0 mt-1" />
+          </button>
+        )}
 
         <button
           onClick={onManual}

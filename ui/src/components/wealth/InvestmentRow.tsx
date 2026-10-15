@@ -1,7 +1,6 @@
 import type { Asset } from '../../services/api'
-import { latestValue } from '../../lib/assets'
 import { gbp0 } from '../../lib/format'
-import { daysSinceValued, investmentLine, STALE_VALUE_DAYS, updatedAgo } from '../../lib/investments'
+import { currentValue, daysSinceValued, investmentLine, STALE_VALUE_DAYS, updatedAgo } from '../../lib/investments'
 
 /** One investment in Wealth's Investments group (ux T-11-2): the row button
  *  opens the holding, and "Update value" is its own button after it (never
@@ -12,7 +11,7 @@ export default function InvestmentRow({ asset, now = Date.now(), onOpen, onUpdat
   onOpen: () => void
   onUpdateValue: () => void
 }) {
-  const value = latestValue(asset)
+  const value = currentValue(asset)
   const days = daysSinceValued(asset, now)
   const stale = days !== null && days > STALE_VALUE_DAYS
   return (

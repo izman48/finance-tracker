@@ -13,7 +13,7 @@ import {
 } from 'recharts'
 import { assetsAPI, analyticsAPI, bankingAPI, budgetsAPI, liabilitiesAPI, Asset, AssetDecomposition, Liability, NetWorthPoint, NetWorthPosition, Projection } from '../services/api'
 import { BankStatus, CashflowSummary, SummaryAccount } from '../types'
-import { ASSET_TYPE_LABEL, latestValue } from '../lib/assets'
+import { ASSET_TYPE_LABEL } from '../lib/assets'
 import { gbp0 as gbp, timeAgo } from '../lib/format'
 import { settingsAccountFor } from '../lib/credit'
 import { bothCounted } from '../lib/liabilities'
@@ -32,7 +32,7 @@ import AddAssetModal from '../components/AddAssetModal'
 import UpdateAssetValueModal from '../components/UpdateAssetValueModal'
 import InvestmentRow from '../components/wealth/InvestmentRow'
 import InvestmentValueModal from '../components/wealth/InvestmentValueModal'
-import { isInvestment } from '../lib/investments'
+import { currentValue, isInvestment } from '../lib/investments'
 import AccountSettingsModal from '../components/AccountSettingsModal'
 import AddToBalanceSheetChooser from '../components/AddToBalanceSheetChooser'
 import PositionStrip from '../components/PositionStrip'
@@ -410,7 +410,8 @@ export default function NetWorthPage() {
     })
   }
   for (const asset of assets) {
-    const value = latestValue(asset)
+    // The API's value today (as net worth counts it), else the latest valuation.
+    const value = currentValue(asset)
     const last = asset.valuations[asset.valuations.length - 1]
     const ageDays = last ? (now - new Date(last.valued_at).getTime()) / 86400000 : undefined
     rows.push({

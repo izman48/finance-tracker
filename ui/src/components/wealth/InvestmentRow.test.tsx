@@ -45,3 +45,9 @@ describe('InvestmentRow', () => {
     expect(h).toContain('&lt;img')
   })
 })
+
+describe('InvestmentRow value', () => {
+  it('shows the API value today (a paid contribution included)', () => {
+    expect(text(html(asset({ value_today: '19000.00' })))).toContain('£19,000')
+  })
+})

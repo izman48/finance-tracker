@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   answerSentence, contributionOf, graphStateNotes, inputsLine, investmentLine, isInvestment, investmentsTotal,
-  LOOK_AHEAD, axisLabel, chartPoints, wealthFormLink, graphDefaultGrowth, lastValueLine, parseValueToday, tablePoints, type InvestmentGraph,
+  LOOK_AHEAD, axisLabel, chartPoints, currentValue, wealthFormLink, graphDefaultGrowth, lastValueLine, parseValueToday, tablePoints, type InvestmentGraph,
 } from './investments'
 import type { Asset } from '../services/api'
 
@@ -177,5 +177,17 @@ describe('links into Wealth\'s investment form (ux on #217)', () => {
     expect(wealthFormLink({ edit: 'a1' })).toBe('/networth?edit=a1')
     expect(wealthFormLink({ edit: 'a/b?c' })).toBe('/networth?edit=a%2Fb%3Fc')
     expect(wealthFormLink({ add: true })).toBe('/networth?add=investment')
+  })
+})
+
+describe('value today comes from the API when it gives one', () => {
+  it('a linked holding after a payment day is above its last entered value', () => {
+    const paid = asset({ value_today: '19000.00' })
+    expect(currentValue(paid)).toBe(19000)
+    expect(investmentsTotal([paid])).toBe(19000)
+  })
+  it('falls back to the latest valuation for an older API', () => {
+    expect(currentValue(asset())).toBe(18000)
+    expect(currentValue(asset({ value_today: null }))).toBe(18000)
   })
 })

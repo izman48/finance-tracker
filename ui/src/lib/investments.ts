@@ -77,8 +77,11 @@ export function investmentLine(asset: Asset): string {
 }
 
 /** The Investments group's figure: the latest value of each investment. */
+/** Value today: the API's (as net worth counts it), else the latest valuation. */
+export const currentValue = (asset: Asset) => (asset.value_today != null ? Number(asset.value_today) : latestValue(asset))
+
 export const investmentsTotal = (assets: Asset[]) =>
-  assets.filter((a) => isInvestment(a.asset_type)).reduce((s, a) => s + latestValue(a), 0)
+  assets.filter((a) => isInvestment(a.asset_type)).reduce((s, a) => s + currentValue(a), 0)
 
 /** `In 10 years: worth about £171,000, paid in £120,000` (the API rounds). */
 export function answerSentence(answer: GraphAnswer | null): string {

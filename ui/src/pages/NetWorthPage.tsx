@@ -24,6 +24,8 @@ import LiabilityForm from '../components/wealth/LiabilityForm'
 import SpendingChoice from '../components/wealth/SpendingChoice'
 import NetWorthKey from '../components/wealth/NetWorthKey'
 import ForecastChart from '../components/wealth/ForecastChart'
+import ForecastDrivers from '../components/wealth/ForecastDrivers'
+import { forecastDrivers } from '../lib/forecastDrivers'
 import { forecastRows, parseView, VIEW_KEY, type ChartView } from '../lib/netWorthChart'
 import { lineEndLabel } from '../components/wealth/LineEndLabel'
 import {
@@ -722,6 +724,8 @@ export default function NetWorthPage() {
             Spending tab.
           </p>
         )}
+
+        {view === 'forecast' && projection && <ForecastDrivers drivers={forecastDrivers(projection)} />}
 
         {today && (
           <NetWorthKey

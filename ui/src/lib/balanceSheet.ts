@@ -7,7 +7,7 @@ import { LOANS_GROUP_LABEL } from './liabilities'
 export const BALANCE_SHEET_GROUPS = [
   { key: 'cash', label: 'Current accounts' },
   { key: 'savings', label: 'Savings' },
-  { key: 'invest', label: 'Investments & pensions' },
+  { key: 'invest', label: 'Investments' },
   { key: 'property', label: 'Property' },
   { key: 'other', label: 'Other' },
   { key: 'owed', label: 'Credit cards' },

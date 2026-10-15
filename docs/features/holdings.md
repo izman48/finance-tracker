@@ -39,7 +39,9 @@ default as the target projection, so the two agree.
   choice.
 - `graphs.py`: the investment graph payload.
 
-**UI (T-11-5)**: the investment graph at `/networth/investments`
+**UI (T-11-5)**: Wealth's Investments group (`components/wealth/InvestmentRow.tsx`: row line
+`ISA · 7% a year · £1,000 a month`, `Bill linked` chip, its own `Update value` button opening
+`InvestmentValueModal`, one field, one request), `See graph` to `/networth/investments`
 (`pages/InvestmentsGraphPage.tsx`, `components/wealth/InvestmentGraphView.tsx`, helpers in
 `lib/investments.ts`): look-ahead 5/10/20/30 years and the holding choice (in the URL as
 `?holding=`), the API's sentence and inputs line, Worth (entered values as dots, dashed
@@ -81,6 +83,6 @@ foreign id, 422s, include_investments).
 | 8 Audit | Read-only. |
 | 9 Bank sync | Computed on read. |
 | 10 Home | Not yet (Home's investments total is T-11-6/7). |
-| 11 UI routes | `/networth/investments` (`InvestmentsGraphPage`; in `visual-check.mjs`; linked from Wealth in the next PR). |
+| 11 UI routes | `/networth/investments` (`InvestmentsGraphPage`, "See graph" on Wealth's Investments group; in `visual-check.mjs`). |
 | 12 Tests | listed above. |
 | 13 Docs | this file; net-worth.md points here. |

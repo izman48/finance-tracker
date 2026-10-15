@@ -130,7 +130,9 @@ from the summary's `statement` via `lib/cardStatement.ts`, shared with
 Cashflow; "Add statement" / "Add new" open card settings. "Loans and finance"
 lists liabilities, see [liabilities.md](liabilities.md)), `PositionStrip` (its breakdown line
 subtracts what is owed on liabilities), `AddAssetModal`,
-`UpdateAssetValueModal`, `AddToBalanceSheetChooser`, `lib/assets.ts`. Home
+`UpdateAssetValueModal`, `AddToBalanceSheetChooser`, `lib/assets.ts`. The
+"Investments" group (owner D1 kinds) uses `InvestmentRow` and links to the
+investment graph, see [holdings.md](holdings.md). Home
 Wealth card.
 
 **Tests**: `api/tests/integration/test_net_worth_liabilities.py` (every

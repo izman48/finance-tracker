@@ -180,6 +180,9 @@ export interface Asset {
   // Planned monthly saving into this asset (paydown on a liability).
   monthly_contribution: string | null
   valuations: AssetValuation[]
+  /** Value today from the holding engine (a linked contribution paid since
+   *  the last valuation included); null before a first value (#210). */
+  value_today?: string | null
   // The bill that carries its contribution while linked (T-11-3c).
   linked_commitment?: { id: string; label: string; amount?: string } | null
 }

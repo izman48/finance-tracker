@@ -80,7 +80,10 @@ _RE2_OPTIONS.never_capture = True
 
 
 # Shown on the Rules page for a stored regex RE2 can't run (sec-1 on #248).
-CANT_RUN_REASON = "Look-arounds and back-references aren't supported, so this rule can't run. Edit or delete it."
+CANT_RUN_REASON = (
+    "Look-arounds and back-references aren't supported, so this rule can't run. "
+    "Delete it and add it again without them."
+)
 
 
 def cant_run_reason(rule: CategoryRule) -> str | None:

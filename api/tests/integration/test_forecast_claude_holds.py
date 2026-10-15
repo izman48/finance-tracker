@@ -129,11 +129,7 @@ def test_a_pending_claude_move_of_payday_closer_keeps_the_budget_line(w):
     """T-12-9d: the budget cycle (the "after budgets" strip) ends where the
     summary's committed window does, so a pending salary move can't take
     the bill before the old payday out of the strip and lift it."""
-    from app.models import Budget
-    def add_budget():
-        w.db.add(Budget(user_id=w.user.id, category="Groceries", limit_pounds=Decimal("90")))
-        w.db.commit()
-    w.as_user(add_budget)
+    _add_budget(w)
     before = _forecast(w)["budget_projection"]
     assert before is not None
     audit_id = w.claude_update(w.salary, next_date=(TODAY + timedelta(days=2)).isoformat())
@@ -151,3 +147,36 @@ def test_a_pending_claude_move_of_payday_closer_leaves_every_day_as_before(w):
     w.claude_update(w.salary, next_date=(TODAY + timedelta(days=2)).isoformat())
     held = _forecast(w)
     assert [(p["date"], p["balance"]) for p in held["timeline"]] == [(p["date"], p["balance"]) for p in before["timeline"]]
+
+
+def test_a_pending_claude_move_of_payday_later_shows_the_later_date(w):
+    """eng-b on #238, the mirror: an income tie counts the version whose pay
+    lands later, so moving pay later shows the later date at once and no day
+    between the two dates is overstated."""
+    before = _forecast(w, horizon="30")
+    audit_id = w.claude_update(w.salary, next_date=(TODAY + timedelta(days=14)).isoformat())
+    held = _forecast(w, horizon="30")
+    assert all(Decimal(str(h["balance"])) <= Decimal(str(b["balance"]))
+               for h, b in zip(held["timeline"], before["timeline"]))
+    w.keep(audit_id)
+    kept = _forecast(w, horizon="30")
+    assert [(p["date"], p["balance"]) for p in held["timeline"]] == [(p["date"], p["balance"]) for p in kept["timeline"]]
+
+
+def test_a_pending_claude_move_of_payday_closer_leaves_the_dotted_line_as_before(w):
+    """sec-1 on #238 (criterion 3): the cycles after this one step at the
+    later of payday now and before Claude, so the whole dotted series is
+    unchanged while the move is pending."""
+    _add_budget(w)
+    before = _forecast(w, horizon="90")["budget_projection"]["series"]
+    w.claude_update(w.salary, next_date=(TODAY + timedelta(days=2)).isoformat())
+    assert _forecast(w, horizon="90")["budget_projection"]["series"] == before
+
+
+def _add_budget(w):
+    from app.models import Budget
+
+    def add():
+        w.db.add(Budget(user_id=w.user.id, category="Groceries", limit_pounds=Decimal("90")))
+        w.db.commit()
+    w.as_user(add)

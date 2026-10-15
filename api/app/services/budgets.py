@@ -35,7 +35,7 @@ from app.schemas.budgets import (
     CycleFigure,
     NotCounted,
 )
-from app.services.analytics.commitments import held_next_payday, last_payday, payday_dates
+from app.services.analytics.commitments import held_next_payday, held_payday_dates, last_payday
 from app.services.analytics.common import _today
 from app.services.budget_spend import UNCATEGORISED, BudgetSpend, budget_spend
 
@@ -270,10 +270,14 @@ def _later_cycles(db: Session, user, cycle: Cycle, until: date) -> list[Cycle]:
     before the next one, as `current_cycle` finds them, from one read of the
     payday commitment."""
     start = cycle.end + timedelta(days=1)
-    paydays = payday_dates(db, user, start + timedelta(days=1), until + timedelta(days=PAYDAY_LOOKAHEAD_DAYS))
+    # Payday now and before Claude: each cycle ends at the later of the two,
+    # so a pending payday move doesn't step the dotted line early (T-12-9d).
+    now, before = held_payday_dates(db, user, start + timedelta(days=1), until + timedelta(days=PAYDAY_LOOKAHEAD_DAYS))
     out = []
     while start <= until and len(out) < 400:
-        nxt = next((p for p in paydays if p > start), None)
+        candidates = [d for d in (next((p for p in now if p > start), None),
+                                  next((p for p in before if p > start), None)) if d]
+        nxt = max(candidates) if candidates else None
         end = (nxt - timedelta(days=1)) if nxt else start + timedelta(days=FALLBACK_DAYS - 1)
         out.append(Cycle(start, end, fallback=False))
         start = end + timedelta(days=1)

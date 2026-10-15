@@ -576,6 +576,17 @@ def committed_window_end(db: Session, user, today: date, start: date | None = No
     return max(now, before)
 
 
+def held_payday_dates(db: Session, user, start: date, end: date) -> tuple[list[date], list[date]]:
+    """Payday dates in [start, end] now and as they were before Claude's
+    pending income changes, each sorted. A cycle ends at the later of the
+    next one from each list (T-12-9d, sec-1 on #238)."""
+    from app.services.claude_keep import pre_claude_payday_incomes
+
+    def dates(incomes) -> list[date]:
+        return sorted({occ for r in incomes for occ in commitment_occurrences(r, start, end)})
+    return dates(_payday_incomes(db, user)), dates(pre_claude_payday_incomes(db, user))
+
+
 def held_next_payday(db: Session, user, start: date) -> date | None:
     """Next payday on/after `start` as safe-to-spend sees it: the later of
     payday now and payday before Claude, while a Claude income change is

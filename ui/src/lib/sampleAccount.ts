@@ -632,8 +632,11 @@ function projectionResponse(q: Record<string, any>) {
   // backend: income commitments − bills − average everyday spending.
   const round2 = (n: number) => Math.round(n * 100) / 100
   const INCOME_MONTHLY = 3200 + 480 // salary + freelance
-  // The ISA contribution is a bill here (counted once), and the holding takes it.
-  const BILLS_MONTHLY = 1100 + 32 + 20 + 12.99 + 11.99 + CONTRIBUTION.amount
+  // Every confirmed monthly bill, as the API sums them: the ISA contribution
+  // (counted once; the holding takes it) and the mortgage payment included.
+  const BILLS_MONTHLY = commitmentsResponse()
+    .filter((c) => c.direction === 'expense' && c.status === 'confirmed' && c.cadence === 'monthly')
+    .reduce((t, c) => t + c.amount, 0)
   const AVG_SPENDING = round2((980 + 1120 + 1040 + 1210 + 1005 + 1180) / 6)
   const derived = q.monthly_contribution == null
   // Spending is always subtracted (owner, T-12-0), as the API: "none" and an

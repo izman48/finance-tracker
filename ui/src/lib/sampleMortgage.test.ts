@@ -44,3 +44,12 @@ describe('the sample house and mortgage', () => {
     expect(Number(last.net_worth)).toBeCloseTo(get<Summary>('/analytics/summary').net_worth, 2)
   })
 })
+
+describe('the projection counts the mortgage payment as a bill (eng-a on #243)', () => {
+  it('bills_monthly is the sum of the confirmed monthly expense commitments, as the live rule', () => {
+    const bills = get<{ direction: string; status: string; cadence: string; amount: number }[]>('/analytics/commitments')
+      .filter((c) => c.direction === 'expense' && c.status === 'confirmed' && c.cadence === 'monthly')
+    const p = get<{ contribution_basis: { bills_monthly: string } }>('/analytics/net-worth-projection', { target_amount: 100000 })
+    expect(Number(p.contribution_basis.bills_monthly)).toBeCloseTo(bills.reduce((t, c) => t + c.amount, 0), 2)
+  })
+})

@@ -3,7 +3,9 @@
 The liability is the source of truth: its linked commitment's amount,
 cadence, next date and end follow the liability's schedule. The link is the
 stored `Liability.linked_commitment_id`, set only here, never matched by
-label. Every lookup is scoped to the caller, and candidate matching runs in
+label, with a matching `commitment_links` row written in the same
+transaction (ADR-002): its UNIQUE(commitment_id) keeps a bill linked to at
+most one loan or holding. Every lookup is scoped to the caller, and candidate matching runs in
 Python because amounts are encrypted.
 """
 from __future__ import annotations
@@ -22,6 +24,7 @@ from app.models import (
     CommitmentStatus,
     Liability,
 )
+from app.models.commitment_link import REPAYMENT, CommitmentLink
 from app.services.liabilities import derived_figures
 from app.services.linked_commitments import linked_commitment_ids
 
@@ -96,6 +99,10 @@ def link(db: Session, liability: Liability, choice: str | None, today: date) -> 
     rule.status = CommitmentStatus.CONFIRMED.value
     liability.linked_commitment_id = rule.id
     liability.commitment_created = result == "created"
+    liability.commitment_link = CommitmentLink(
+        user_id=liability.user_id, commitment_id=rule.id, role=REPAYMENT,
+        commitment_created=liability.commitment_created, created_on=today,
+    )
     sync(liability, rule, today)
     return result
 
@@ -150,6 +157,7 @@ def remove(db: Session, liability: Liability) -> None:
     created = liability.commitment_created
     liability.linked_commitment_id = None
     liability.commitment_created = False
+    liability.commitment_link = None
     db.flush()
     if rule is None:
         return

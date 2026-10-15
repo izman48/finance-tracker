@@ -754,6 +754,8 @@ class CommitmentResponse(BaseModel):
     # It carries a liability's repayment (T-10-8): amount, cadence, dates and
     # status change only through the liability (edits get 409).
     linked_liability: bool = False
+    # Carries a holding's contribution (ADR-002): edit it through the holding.
+    linked_holding: bool = False
     # The audit rows the app's Keep button keeps (the pending ones), oldest first.
     keep_audit_ids: list[uuid.UUID] = []
     # While pending: the before-Claude amount / next date the figures still

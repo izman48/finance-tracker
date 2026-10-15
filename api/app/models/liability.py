@@ -11,7 +11,7 @@ from decimal import Decimal
 from enum import Enum
 
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, String, UniqueConstraint, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.core.encryption import UserEncryptedDecimal, UserEncryptedString
@@ -79,6 +79,12 @@ class Liability(Base):
     # no linked commitment.
     opted_out: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
+    )
+
+    # Its row in the shared link set (ADR-002), written with
+    # linked_commitment_id; removed with the liability.
+    commitment_link: Mapped["CommitmentLink | None"] = relationship(  # noqa: F821
+        "CommitmentLink", uselist=False, cascade="all, delete-orphan",
     )
 
     created_at: Mapped[datetime] = mapped_column(

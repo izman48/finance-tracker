@@ -65,6 +65,11 @@ class Asset(Base):
         cascade="all, delete-orphan",
         order_by="AssetValuation.valued_at",
     )
+    # Its contribution link (ADR-002); deleting the asset removes the link
+    # and keeps the commitment as an ordinary bill (D4).
+    commitment_link: Mapped["CommitmentLink | None"] = relationship(  # noqa: F821
+        "CommitmentLink", uselist=False, cascade="all, delete-orphan",
+    )
     flows: Mapped[list["AssetFlow"]] = relationship(
         "AssetFlow",
         back_populates="asset",

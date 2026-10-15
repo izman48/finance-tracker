@@ -1,5 +1,6 @@
 """Manually tracked assets (ISAs, pensions, property …) and their valuations."""
 import logging
+import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -23,7 +24,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/assets", tags=["assets"])
 
 
-def _own_asset(db: Session, user_id, asset_id: str) -> Asset:
+def _own_asset(db: Session, user_id, asset_id: uuid.UUID) -> Asset:
     asset = (
         db.query(Asset)
         .options(joinedload(Asset.valuations))
@@ -75,7 +76,7 @@ def create_asset(
 
 @router.patch("/{asset_id}", response_model=AssetResponse)
 def update_asset(
-    asset_id: str,
+    asset_id: uuid.UUID,
     body: AssetUpdate,
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
@@ -99,7 +100,7 @@ def update_asset(
 
 @router.delete("/{asset_id}")
 def delete_asset(
-    asset_id: str,
+    asset_id: uuid.UUID,
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> dict:
@@ -110,7 +111,7 @@ def delete_asset(
 
 @router.post("/{asset_id}/valuations", response_model=AssetResponse, status_code=status.HTTP_201_CREATED)
 def add_valuation(
-    asset_id: str,
+    asset_id: uuid.UUID,
     body: AssetValuationCreate,
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
@@ -135,8 +136,8 @@ def add_valuation(
 
 @router.delete("/{asset_id}/valuations/{valuation_id}")
 def delete_valuation(
-    asset_id: str,
-    valuation_id: str,
+    asset_id: uuid.UUID,
+    valuation_id: uuid.UUID,
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> dict:
@@ -155,7 +156,7 @@ def delete_valuation(
 
 @router.post("/{asset_id}/flows", response_model=AssetFlowResponse, status_code=status.HTTP_201_CREATED)
 def add_flow(
-    asset_id: str,
+    asset_id: uuid.UUID,
     body: AssetFlowCreate,
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
@@ -178,8 +179,8 @@ def add_flow(
 
 @router.delete("/{asset_id}/flows/{flow_id}")
 def delete_flow(
-    asset_id: str,
-    flow_id: str,
+    asset_id: uuid.UUID,
+    flow_id: uuid.UUID,
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> dict:

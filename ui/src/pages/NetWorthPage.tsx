@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Clock, Landmark, Plug, RefreshCw } from 'lucide-react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   Area,
   AreaChart,
@@ -30,6 +30,9 @@ import { focusAfterReload } from '../lib/liabilityForm'
 import { useToast } from '../components/ui/Toast'
 import AddAssetModal from '../components/AddAssetModal'
 import UpdateAssetValueModal from '../components/UpdateAssetValueModal'
+import InvestmentRow from '../components/wealth/InvestmentRow'
+import InvestmentValueModal from '../components/wealth/InvestmentValueModal'
+import { isInvestment } from '../lib/investments'
 import AccountSettingsModal from '../components/AccountSettingsModal'
 import AddToBalanceSheetChooser from '../components/AddToBalanceSheetChooser'
 import PositionStrip from '../components/PositionStrip'
@@ -57,6 +60,8 @@ interface Row {
   ageDays?: number
   /** A credit card: rendered by CardRow with its statement line (T-10-14c). */
   card?: SummaryAccount
+  /** An investment (owner D1): rendered by InvestmentRow (T-11-5). */
+  investment?: Asset
   onClick: () => void
 }
 
@@ -94,6 +99,7 @@ export default function NetWorthPage() {
   // What to focus once the reloaded list has rendered: the saved row (ux
   // L-10), or the Add button after a delete (ux on #190).
   const [pendingFocus, setPendingFocus] = useState<string | null>(null)
+  const [updatingValue, setUpdatingValue] = useState<Asset | null>(null)
   const toast = useToast()
   const [summary, setSummary] = useState<CashflowSummary | null>(null)
   const [bankStatus, setBankStatus] = useState<BankStatus | null>(null)
@@ -191,7 +197,7 @@ export default function NetWorthPage() {
     if (!target) return
     target.focus()
     setPendingFocus(null)
-  }, [pendingFocus, liabilities])
+  }, [pendingFocus, liabilities, assets])
 
   const loadLiabilities = async () => {
     setLiabilitiesFailed(false)
@@ -415,6 +421,7 @@ export default function NetWorthPage() {
       value,
       live: false,
       ageDays,
+      investment: isInvestment(asset.asset_type) && value >= 0 ? asset : undefined,
       onClick: () => setUpdating(asset),
     })
   }
@@ -721,11 +728,16 @@ export default function NetWorthPage() {
                       <span className="ml-2 normal-case tracking-normal">not counted in net worth</span>
                     )}
                   </h3>
-                  {!excluded && !loansFailed && (
-                    <span className={`text-sm tnum ${subtotal < 0 ? 'text-warn' : 'text-slate-400'}`}>
-                      {subtotal < 0 ? '−' : ''}{gbp(Math.abs(subtotal))}
-                    </span>
-                  )}
+                  <span className="inline-flex items-baseline gap-3">
+                    {key === 'invest' && (
+                      <Link to="/networth/investments" className="text-sm text-accent hover:underline">See graph</Link>
+                    )}
+                    {!excluded && !loansFailed && (
+                      <span className={`text-sm tnum ${subtotal < 0 ? 'text-warn' : 'text-slate-400'}`}>
+                        {subtotal < 0 ? '−' : ''}{gbp(Math.abs(subtotal))}
+                      </span>
+                    )}
+                  </span>
                 </div>
                 {isLoans && bothCounted(assets, loans) && <BothCountedNotice onReplace={() => setLoanForm('add')} />}
                 {loansFailed && <LoansLoadError onRetry={loadLiabilities} />}
@@ -734,6 +746,9 @@ export default function NetWorthPage() {
                 ))}
                 {groupRows.map((row) => row.card ? (
                   <CardRow key={row.key} account={row.card} onOpen={row.onClick} />
+                ) : row.investment ? (
+                  <InvestmentRow key={row.key} asset={row.investment} onOpen={row.onClick}
+                    onUpdateValue={() => setUpdatingValue(row.investment!)} />
                 ) : (
                   <button
                     key={row.key}
@@ -884,6 +899,19 @@ export default function NetWorthPage() {
             toast(message)
             await Promise.all([load(), loadLiabilities()])
             setPendingFocus(focusAfterReload(saved))
+          }}
+        />
+      )}
+      {updatingValue && (
+        <InvestmentValueModal
+          asset={updatingValue}
+          onClose={() => setUpdatingValue(null)}
+          onSaved={async () => {
+            const id = updatingValue.id
+            setUpdatingValue(null)
+            toast('Value updated.')
+            await load()
+            setPendingFocus(`investment-update-${id}`)
           }}
         />
       )}

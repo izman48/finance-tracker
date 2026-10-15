@@ -7,7 +7,7 @@ describe('balance sheet groups', () => {
 
   it('G-8: current accounts and credit cards, never "Cash" or "Owed"', () => {
     expect(labels).toEqual([
-      'Current accounts', 'Savings', 'Investments & pensions', 'Property', 'Other', 'Credit cards',
+      'Current accounts', 'Savings', 'Investments', 'Property', 'Other', 'Credit cards',
       'Loans and finance', 'Excluded',
     ])
     expect(labels).not.toContain('Cash')

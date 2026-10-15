@@ -25,14 +25,12 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.models import (
-    Liability,
-    Asset,
     CommitmentDirection,
     CommitmentRule,
     PlannedItem,
 )
-from app.models.asset import LIABILITY_TYPES
-from app.services.liabilities import confirmed_commitment_ids, is_linked, owed_on
+from app.services.holdings.inputs import holding_inputs
+from app.services.holdings.projection import exact_total_at, monthly_rate, project_holdings
 
 from app.services.budgets import cycle_budgets
 from app.services.claude_keep import counted_commitments, held_removed_planned
@@ -133,11 +131,6 @@ def derived_contribution(db: Session, user) -> dict:
     }
 
 
-def _monthly_rate(annual_pct: Decimal) -> Decimal:
-    clamped = max(Decimal("-50"), min(annual_pct, Decimal("50"))) / Decimal(100)
-    return Decimal(str((1 + float(clamped)) ** (1 / 12) - 1))
-
-
 def monthly_surplus_series(db: Session, user, months: int, avg_spending: Decimal) -> list[Decimal]:
     """Per-month net cash surplus, from the same model as the Cashflow forecast.
 
@@ -205,41 +198,21 @@ def net_worth_projection(
     now_point = net_worth_history(db, user, months=1)[-1]
     bank_now = Decimal(str(now_point["bank"]))
     current = Decimal(str(now_point["net_worth"]))
-    # Liabilities: a linked repayment is in the cashflow (its commitment), so
-    # the debt follows its schedule; an unlinked one stays flat (T-10-8,
-    # services/liabilities.owed_on).
     liabilities_now = Decimal(str(now_point["liabilities"]))
-    liabilities = db.query(Liability).filter(Liability.user_id == user.id).all()
-    confirmed = confirmed_commitment_ids(db, user.id)
+    r_global = monthly_rate(annual_growth_pct)
 
-    r_global = _monthly_rate(annual_growth_pct)
-
-    # Per-asset components: latest value + a monthly rate from the per-asset
-    # assumption (global default for assets, flat for liabilities).
-    assets = db.query(Asset).filter(Asset.user_id == user.id).all()
-    components: list[dict] = []
-    for a in assets:
-        if not a.valuations:
-            continue
-        value = _d(a.valuations[-1].value)
-        if a.assumed_growth_pct is not None:
-            pct = a.assumed_growth_pct
-        elif a.asset_type in LIABILITY_TYPES:
-            pct = Decimal(0)
-        else:
-            pct = annual_growth_pct
-        components.append({
-            "name": a.name,
-            "value": value,
-            "growth_pct": pct,
-            "rate": _monthly_rate(pct),
-            # Planned monthly saving into the asset (paydown on a liability).
-            # The cash side already shows up in measured spending/bills, so
-            # adding it here moves that money from "consumption" to "wealth"
-            # rather than double-counting it.
-            "contribution": _d(a.monthly_contribution) if a.monthly_contribution else Decimal(0),
-            "is_liability": a.asset_type in LIABILITY_TYPES,
-        })
+    # Every holding's own series comes from the one holding engine (ADR-002),
+    # the same function behind the investment graphs: each asset compounds
+    # at its own % (the global default when unset, 0% for a legacy
+    # asset-liability) plus its monthly contribution; a liability follows its
+    # schedule when its repayment is linked and stays flat when not (T-10-8).
+    # The contribution's cash side is already in measured spending or bills,
+    # so adding it to the asset moves money from "consumption" to "wealth".
+    holdings = holding_inputs(db, user, today, annual_growth_pct)
+    engine = project_holdings(holdings, today, MAX_MONTHS)
+    asset_series = [s for s in engine.per_holding if s.source == "assets"]
+    liability_series = [s for s in engine.per_holding if s.source == "liabilities"]
+    asset_inputs = {h.id: h for h in holdings}
 
     basis: dict | None = None
     if monthly_contribution is None:
@@ -293,15 +266,9 @@ def net_worth_projection(
                     # cash so it accrues nothing rather than compounding.
                     cash = invested
                     invested = Decimal(0)
-        assets_value = Decimal(0)
-        for c in components:
-            c["value"] = c["value"] * (1 + c["rate"]) + c["contribution"]
-            # A paid-off liability stops at zero — you don't keep paying it.
-            if c["is_liability"] and c["value"] > 0:
-                c["value"] = Decimal(0)
-            assets_value += c["value"]
+        assets_value = exact_total_at(asset_series, m)
+        owed = -exact_total_at(liability_series, m)
         when = _add_months(today, m)
-        owed = sum((owed_on(x, today, when, is_linked(x, confirmed)) for x in liabilities), Decimal(0))
         value = cash + invested + assets_value - owed
         if target_amount is not None and target_date is None and value >= target_amount:
             target_date = when
@@ -335,11 +302,11 @@ def net_worth_projection(
         "bank_component": _round2(bank_now),
         "asset_assumptions": [
             {
-                "name": c["name"],
-                "growth_pct": c["growth_pct"],
-                "monthly_contribution": _round2(c["contribution"]),
+                "name": s.name,
+                "growth_pct": asset_inputs[s.id].growth_pct,
+                "monthly_contribution": _round2(asset_inputs[s.id].monthly_contribution),
             }
-            for c in components
+            for s in asset_series
         ],
         "as_of": today,
         "timeline": timeline,

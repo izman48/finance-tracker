@@ -119,7 +119,16 @@ group lines at full width, with no projection. Forecast
 (`components/wealth/ForecastChart.tsx`) draws net worth to today and the
 dashed projection on a real date axis with year ticks, plus the target
 line; the range buttons are hidden there and the key lists today's figures
-under "Today", without line switches. With no target only History exists. Line choices and the tick box are kept in this browser
+under "Today", without line switches. With no target only History exists.
+Under the Forecast graph, "What moves it each month"
+(`components/wealth/ForecastDrivers.tsx`, `lib/forecastDrivers.ts`) lists
+the projection's own monthly figures: income commitments, bills and
+commitments (card repayments left out), everyday spending with its source
+(budgets, average, estimate; left out for None), or the typed figure in
+custom mode, then each holding's monthly contribution, summed as "Net
+worth change before growth", with the growth % stated. The figures come from
+`contribution_basis` and `asset_assumptions`; nothing is computed beyond
+their sum. Line choices and the tick box are kept in this browser
 (`wealth.lines`, `wealth.includeInvestments`; `lib/netWorthLines.ts`); hiding
 a line never changes a figure. The target result is one sentence. Home's
 Wealth card shows `investments_total` as "Investments" when above 0.
@@ -194,5 +203,5 @@ surface, conversion), `test_projection_budgets.py` (T-10-15b), `api/tests/unit/t
 | 9 Bank sync | History is rebuilt on read from synced transactions. |
 | 10 Home | Wealth card (net worth and changes, sparkline, Total owed from `total_owed`). Owned by Wealth. |
 | 11 UI routes | `/networth`. |
-| 12 Tests | listed above (UI: `NetWorthKey.test.tsx`, `netWorthLines.test.ts`, `netWorthChart.test.ts`); no route tests for valuations or flows. |
+| 12 Tests | listed above (UI: `NetWorthKey.test.tsx`, `netWorthLines.test.ts`, `netWorthChart.test.ts`, `forecastDrivers.test.ts`, `ForecastDrivers.test.tsx`); no route tests for valuations or flows. |
 | 13 Docs | this file. |

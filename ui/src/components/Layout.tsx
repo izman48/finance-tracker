@@ -200,7 +200,7 @@ export default function Layout() {
                   <button
                     onClick={() => setAnonymized(false)}
                     className="flex items-center gap-1.5 px-2 py-1 min-h-[44px] sm:min-h-0 rounded-lg bg-warn/15 border border-warn/30 text-warn text-xs font-semibold shrink-0"
-                    title="Numbers and names are anonymized — tap to show your real data"
+                    title="Demo mode: anonymized. Tap to show your real data"
                     aria-label="Anonymized. Show your real data"
                   >
                     {/* Icon only on the narrowest phones, so the header fits at 320px (T-12-11). */}

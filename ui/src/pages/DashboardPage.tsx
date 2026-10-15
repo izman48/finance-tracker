@@ -188,7 +188,7 @@ export default function DashboardPage() {
 
   return (
     <div ref={revealRef} className="max-w-7xl mx-auto px-4 py-6 sm:py-10">
-      <div className="flex items-baseline justify-between mb-6 sm:mb-8">
+      <div className="flex items-baseline justify-between gap-3 mb-6 sm:mb-8">
         <h1 className="font-display font-bold text-2xl sm:text-3xl text-slate-50">Cashflow</h1>
         {hasAccounts && (
           <button

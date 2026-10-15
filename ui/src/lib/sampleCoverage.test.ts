@@ -49,3 +49,9 @@ describe('demo mode covers every GET the UI makes', () => {
     expect(both).toEqual([])
   })
 })
+
+describe('demo gaps only shrink (sec T-12-11)', () => {
+  it('no read is a known demo gap any more', () => {
+    expect(KNOWN_DEMO_GAPS).toEqual({})
+  })
+})

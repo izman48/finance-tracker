@@ -80,6 +80,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // session, so sync happens here at login (there is no background worker).
   // Fire-and-forget: pages refresh as data lands; failures are non-fatal.
   const syncAfterLogin = async () => {
+    // Demo mode: a sync is a write, so it would only fire the blocked toast
+    // on login (T-12-11).
+    if (isAnonymized()) return
     setIsSyncing(true)
     try {
       const status = await bankingAPI.getConnectionStatus()

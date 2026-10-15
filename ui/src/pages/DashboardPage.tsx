@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { bankLinkError } from '../lib/bankLink'
 import UpcomingLabel from '../components/UpcomingLabel'
 import { Link, useNavigate } from 'react-router-dom'
 import { CARD_OVERLAP_ANCHOR, isCardOverlapNudge } from '../lib/cardPayment'
@@ -133,7 +134,7 @@ export default function DashboardPage() {
       const response = await bankingAPI.getBankConnectionURL()
       window.location.href = response.data.auth_url
     } catch (error: any) {
-      setMessage('Failed to get bank connection URL: ' + (error.response?.data?.detail || error.message))
+      setMessage(bankLinkError('Failed to get bank connection URL', error))
       setLoading(false)
     }
   }
@@ -187,7 +188,7 @@ export default function DashboardPage() {
 
   return (
     <div ref={revealRef} className="max-w-7xl mx-auto px-4 py-6 sm:py-10">
-      <div className="flex items-baseline justify-between mb-6 sm:mb-8">
+      <div className="flex items-baseline justify-between gap-3 mb-6 sm:mb-8">
         <h1 className="font-display font-bold text-2xl sm:text-3xl text-slate-50">Cashflow</h1>
         {hasAccounts && (
           <button

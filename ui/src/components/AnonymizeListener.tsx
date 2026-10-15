@@ -6,7 +6,10 @@ import { useToast } from './ui/Toast'
 export default function AnonymizeListener() {
   const showToast = useToast()
   useEffect(() => {
-    const onBlocked = () => showToast('Demo mode: nothing was saved.', { tone: 'info' })
+    const onBlocked = (e: Event) => showToast(
+      (e as CustomEvent).detail === 'connect' ? 'Demo mode: connecting a bank is off.' : 'Demo mode: nothing was saved.',
+      { tone: 'info' },
+    )
     window.addEventListener('anonymize:blocked', onBlocked)
     return () => window.removeEventListener('anonymize:blocked', onBlocked)
   }, [showToast])

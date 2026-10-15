@@ -6,11 +6,6 @@ update the feature doc's touchpoints. Security-relevant items are marked 🔒.
 
 ## Missed touchpoints (the "budgets in demo mode" class)
 
-- Other demo-mode gaps: `/banking/sync-status`, account repayments
-  (`AccountSettingsModal` throws and logs), shared rule-pack preview. Connect
-  and reconnect buttons set `window.location.href` to `undefined` in demo
-  mode. Logging in while demo mode is on fires a blocked sync and a toast
-  (`useAuth.syncAfterLogin` doesn't check `isAnonymized()`).
 - `test_reset_purge.py` only guards tables with encrypted columns;
   `budget_nudges` is purged but not seeded or checked.
 - Claude's `create_rule_pack` isn't in `planning_writes.TARGETS`: no Changes

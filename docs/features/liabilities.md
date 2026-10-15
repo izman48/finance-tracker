@@ -87,7 +87,35 @@ than 0 and at most 1,000,000; APR 0 to 100; lender at most 100 characters;
 as-of date not in the future; start date at most a year ahead; final payment
 after the start date; kind and cadence are enums.
 
-**Tables**: `liabilities` (encrypted `lender`, `balance`, `apr`, `payment`;
+**Card instalment plans (T-12-5a, ADR-002 kind `card_plan`)**: a purchase
+repaid in monthly instalments plus a fee inside a credit card (Amex Plan It,
+Monzo Flex).
+
+| Route | Auth |
+|---|---|
+| `GET /api/v1/card-plans` | `CurrentUser` |
+| `POST /api/v1/card-plans` | `CurrentUser` (card ownership-checked, must be a credit card; at most 50 a card, 409) |
+| `PATCH /api/v1/card-plans/{plan_id}` | `CurrentUser` (terms only; the card is fixed) |
+| `DELETE /api/v1/card-plans/{plan_id}` | `CurrentUser` |
+
+Terms allow-listed (`extra="forbid"`): name (1-100), balance up to
+10,000,000, instalment, monthly fee 0-100, APR 0-100 (optional),
+instalments remaining 1-120, next instalment within a year of today.
+Instalment dates that have passed come off at read time
+(`services/card_plans.figures`). Owner D4 (2026-10-15): while the plan has
+its card it is never added to net worth, Total owed or Claude's totals on
+its own: a provider in `card_plans.PLAN_IN_CARD_BALANCE` (code list only,
+none yet) holds it in the card balance; any other is hidden until confirmed
+(`provider_confirmed` false, and the UI says "Not in net worth yet"). A plan
+whose card has gone (`card_account_id` SET NULL on disconnect) counts as
+standalone debt in `liabilities_total` and the projection. The instalment
+and fee reach the card's amount due, the forecast and safe-to-spend in
+T-12-5b.
+
+**Tables**: `card_plans` (encrypted `name`, `balance`, `instalment`, `fee`,
+`apr`; plaintext `card_account_id`, `instalments_remaining`, `next_date`;
+migration `e5f7a9b1c3d5`, downgrade drops it).
+`liabilities` (encrypted `lender`, `balance`, `apr`, `payment`;
 plaintext `kind`, `cadence`, dates, `opted_out`, `linked_commitment_id`);
 `commitment_rules.ends_on` (migration `f0a2b4c6d8e1`).
 
@@ -127,10 +155,10 @@ the synthetic £9,000 / £200 a month / 11% loan),
 
 | # | Answer |
 |---|---|
-| 1 Tables | `liabilities`, migrations `d8e0f2a4b6c8` (new table) and `f0a2b4c6d8e1` (link, `commitment_rules.ends_on`); downgrades drop them. |
-| 2 Purge | Yes, before `commitment_rules` in `_OWNED_BY_USER` (the reset seed links them, so the order is tested). |
+| 1 Tables | `liabilities`, migrations `d8e0f2a4b6c8` (new table) and `f0a2b4c6d8e1` (link, `commitment_rules.ends_on`); downgrades drop them. `card_plans` (`e5f7a9b1c3d5`; downgrade tested with foreign keys on after the card was deleted). |
+| 2 Purge | Yes, before `commitment_rules` in `_OWNED_BY_USER` (the reset seed links them, so the order is tested). `card_plans` before `account_settings`, seeded in the reset test. |
 | 3 Deletion | Cascade from `users`; `test_liabilities_api.py` deletes an account with foreign keys on. |
-| 4 Demo mode | `GET /api/v1/liabilities` served by `sampleAccount.ts` (two synthetic liabilities that reconcile with summary, position and history). |
+| 4 Demo mode | `GET /api/v1/liabilities` served by `sampleAccount.ts` (two synthetic liabilities that reconcile with summary, position and history). Card plans: no screen reads them until T-12-7b, which adds a sample plan in the same PR. |
 | 5 Ownership | No account ids. Liabilities load by id and user; another user's id is a 404 like an unknown one. |
 | 6 Scopes | Web only (`test_oauth.py` checks). |
 | 7 Claude tools | none. Claude can't read liabilities in this stage. |

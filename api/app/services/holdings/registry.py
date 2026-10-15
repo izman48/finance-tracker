@@ -21,7 +21,7 @@ from typing import Literal
 
 log = logging.getLogger(__name__)
 
-Source = Literal["assets", "liabilities"]
+Source = Literal["assets", "liabilities", "card_plans"]
 Group = Literal["investments", "savings", "property", "other", "debt"]
 Model = Literal["growth", "amortisation", "flat"]
 LinkRole = Literal["contribution", "repayment"]
@@ -127,6 +127,20 @@ KINDS: tuple[HoldingKind, ...] = (
     _liability("loan"),
     _liability("finance"),
     _liability("bnpl"),
+    # A card instalment plan (T-12-5, owner D3/D4).
+    HoldingKind(
+        source="card_plans", stored_type="card_plan", group="debt", model="amortisation",
+        is_debt=True, is_investment=False, link_role=None, surfaces={
+            Surface.NET_WORTH: "only once its card has gone (standalone debt); inside its card never on its own (owner D4)",
+            Surface.PROJECTION: "standalone: falls by its instalments; inside its card: not projected on its own",
+            Surface.COMMITMENTS: "no: its instalment and fee go into the card's amount due (D3)",
+            Surface.CASHFLOW: "instalment + fee on the card's due dates until a statement covers them (T-12-5b)",
+            Surface.CLAUDE: "no: not listed; a standalone plan counts in liabilities_total in cashflow_summary",
+            Surface.DEMO: "no: no screen shows plans until T-12-7b, which adds a sample plan",
+            Surface.PURGE: "card_plans in _OWNED_BY_USER",
+            Surface.DOCS: "docs/features/liabilities.md",
+        },
+    ),
 )
 
 INVESTMENT_KINDS: frozenset[HoldingKind] = frozenset(k for k in KINDS if k.is_investment)

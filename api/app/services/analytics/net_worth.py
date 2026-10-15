@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.models import AccountRole, Asset, AssetFlow, AssetValuation, Liability, Transaction
 
 from app.services.balance_sign import credit_owed
+from app.services import card_plans
 from app.services.holdings.inputs import asset_inputs, without_investments
 from app.services.holdings.projection import value_on
 from app.services.liabilities import confirmed_commitment_ids, current_balance, is_linked
@@ -43,13 +44,17 @@ def liabilities_total(db: Session, user, as_of: date | None = None) -> Decimal:
     liabilities = db.query(Liability).filter(Liability.user_id == user.id).all()
     today = _today()
     confirmed = confirmed_commitment_ids(db, user.id)
-    return sum(
+    loans = sum(
         (
             current_balance(x, today, is_linked(x, confirmed)) for x in liabilities
             if as_of is None or min(x.start_date, x.balance_as_of) <= as_of
         ),
         Decimal(0),
     )
+    # A card plan counts on its own only once its card has gone (owner D4,
+    # T-12-5): inside its card it is in the card balance, or hidden until
+    # its provider is confirmed.
+    return loans + card_plans.standalone_owed(db, user, today, as_of)
 
 
 def total_owed(cards_owed: Decimal, liabilities: Decimal) -> Decimal:

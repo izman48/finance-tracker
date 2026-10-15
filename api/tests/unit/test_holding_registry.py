@@ -151,3 +151,12 @@ def test_no_debt_kind_is_listed_to_claude():
     for kind in (*KINDS, registry.UNKNOWN_LIABILITY):
         if kind.is_debt:
             assert kind.surfaces[Surface.CLAUDE].startswith("no:"), kind.key
+
+
+def test_a_card_plan_is_debt_with_no_commitment_link():
+    # T-12-5: its instalment and fee go into the card's amount due (D3), so
+    # it carries no commitment link, and it is never an investment.
+    kind = kind_for("card_plans", "card_plan")
+    assert kind in KINDS
+    assert (kind.group, kind.model, kind.is_debt, kind.is_investment, kind.link_role) == (
+        "debt", "amortisation", True, False, None)

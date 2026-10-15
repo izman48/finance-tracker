@@ -29,6 +29,7 @@ from app.models import (
     Budget,
     BudgetChange,
     BudgetCycleSnapshot,
+    CardPlan,
     CardStatement,
     CategoryRule,
     CommitmentRule,
@@ -64,7 +65,7 @@ ENCRYPTED_TYPES = (UserEncryptedString, UserEncryptedDecimal, UserEncryptedToken
 KNOWN_ENCRYPTED_TABLES = {
     "account_settings", "accounts", "asset_flows", "asset_valuations", "assets", "audit_entries",
     "bank_connections", "budget_changes", "budget_cycle_snapshots", "budgets", "card_statements", "category_rules",
-    "commitment_rules", "liabilities", "planned_items",
+    "card_plans", "commitment_rules", "liabilities", "planned_items",
     "repayment_schedule_items", "transactions",
 }
 
@@ -167,6 +168,10 @@ def _seed_everything(db, user_id, dek) -> None:
                 start_date=date(2026, 11, 1),
                 # Linked, so the purge must delete liabilities before commitments.
                 linked_commitment_id=rent.id,
+            ),
+            CardPlan(
+                user_id=user_id, card_account_id=account.id, name="Example plan", balance=Decimal("600"),
+                instalment=Decimal("100"), fee=Decimal("2.50"), instalments_remaining=6, next_date=date(2026, 11, 1),
             ),
         ])
         db.flush()

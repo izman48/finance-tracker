@@ -170,6 +170,11 @@ CASES: dict[tuple[str, str, str], Case] = {
         json={"name": "Holiday", "kind": "one_off", "start_date": "2026-12-01",
               "amount": "500", "account_id": acc},
     ),
+    ("POST", f"{API}/card-plans", "card_account_id"): lambda w, acc: w.client.post(
+        f"{API}/card-plans",
+        json={"card_account_id": acc, "name": "Plan", "balance": "600.00", "instalment": "100.00",
+              "instalments_remaining": 6, "next_date": date.today().isoformat()},
+    ),
     ("PATCH", f"{API}/analytics/accounts/{{account_id}}/settings", "account_id"): lambda w, acc: w.client.patch(
         f"{API}/analytics/accounts/{acc}/settings", json={"role": "excluded"},
     ),

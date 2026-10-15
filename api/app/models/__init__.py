@@ -21,6 +21,7 @@ from app.models.card_statement import CardStatement, StatementSource
 from app.models.category_rule import CategoryRule, RulePack, merchant_match_key
 from app.models.asset import Asset, AssetFlow, AssetValuation, ASSET_TYPES
 from app.models.liability import Liability, LiabilityCadence, LiabilityKind
+from app.models.card_plan import CardPlan
 from app.models.commitment_link import CommitmentLink
 from app.models.oauth import OAuthAuthorizationCode, OAuthClient, OAuthGrant
 from app.models.audit import AuditEntry, WriteIdempotency
@@ -63,6 +64,7 @@ __all__ = [
     "AssetValuation",
     "ASSET_TYPES",
     "Liability",
+    "CardPlan",
     "CommitmentLink",
     "LiabilityCadence",
     "LiabilityKind",

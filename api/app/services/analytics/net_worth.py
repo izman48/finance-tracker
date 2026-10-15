@@ -11,19 +11,24 @@ from sqlalchemy.orm import Session
 from app.models import AccountRole, Asset, AssetFlow, AssetValuation, Liability, Transaction
 
 from app.services.balance_sign import credit_owed
-from app.services.holdings.inputs import asset_inputs
+from app.services.holdings.inputs import asset_inputs, without_investments
 from app.services.holdings.projection import value_on
 from app.services.liabilities import confirmed_commitment_ids, current_balance, is_linked
 
 from .common import _add_months, _d, _load, _today, resolve_roles
 
 
-def assets_total(db: Session, user, as_of: date | None = None) -> Decimal:
+def assets_total(db: Session, user, as_of: date | None = None, include_investments: bool = True) -> Decimal:
     """Sum of each asset's value on as_of, from the holding engine's
     `value_on` (ADR-002): its latest valuation on/before that day plus any
-    linked contributions paid since. No as_of: its latest valuation."""
+    linked contributions paid since. No as_of: its latest valuation.
+    include_investments=False leaves out the investment kinds (owner D1)
+    and nothing else."""
     day = as_of or date.max
-    values = (value_on(h, day) for h in asset_inputs(db, user, Decimal(0)))
+    holdings = asset_inputs(db, user, Decimal(0))
+    if not include_investments:
+        holdings = without_investments(holdings, day)
+    values = (value_on(h, day) for h in holdings)
     return sum((v for v in values if v is not None), Decimal(0))
 
 
@@ -116,7 +121,7 @@ def asset_decomposition(db: Session, user, months: int = 12) -> dict:
     }
 
 
-def _net_worth_at(db: Session, user, points: list[date]) -> list[dict]:
+def _net_worth_at(db: Session, user, points: list[date], include_investments: bool = True) -> list[dict]:
     """Net worth at each of `points` (sorted ascending).
 
     Bank balances are reconstructed by walking transactions backwards from the
@@ -159,7 +164,7 @@ def _net_worth_at(db: Session, user, points: list[date]) -> list[dict]:
 
     out = []
     for p in points:
-        assets_at = assets_total(db, user, as_of=p)
+        assets_at = assets_total(db, user, as_of=p, include_investments=include_investments)
         owed_at = liabilities_total(db, user, as_of=p)
         out.append(
             {
@@ -173,15 +178,16 @@ def _net_worth_at(db: Session, user, points: list[date]) -> list[dict]:
     return out
 
 
-def net_worth_history(db: Session, user, months: int = 12) -> list[dict]:
-    """Net worth at month-ends (plus today), looking back `months` months."""
+def net_worth_history(db: Session, user, months: int = 12, include_investments: bool = True) -> list[dict]:
+    """Net worth at month-ends (plus today), looking back `months` months.
+    include_investments=False: without the investment kinds (owner D1)."""
     today = _today()
     points: list[date] = [today]
     cursor = date(today.year, today.month, 1) - timedelta(days=1)
     for _ in range(months):
         points.append(cursor)
         cursor = date(cursor.year, cursor.month, 1) - timedelta(days=1)
-    return _net_worth_at(db, user, points)
+    return _net_worth_at(db, user, points, include_investments)
 
 
 # The horizons the position card reports. "all" runs from the first day we

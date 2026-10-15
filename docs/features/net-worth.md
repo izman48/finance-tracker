@@ -82,6 +82,11 @@ to None and a stored `wealth.monthlySpend` to Average. The budgets line says
 "a pay cycle" unless the budget cycle is a calendar month (budgets are per
 cycle).
 
+**Holdings engine (ADR-002, T-11-4)**: every asset's value today and
+forecast come from the holding engine (`api/app/services/holdings/`);
+`include_investments=true|false` on history and projection drops the
+investment kinds only (one worth less than nothing stays, as Debt). Growth % is bounded −100..50 and values ±10,000,000.
+
 **Services**: `services/analytics/net_worth.py` (history, position,
 `assets_total`, `liabilities_total`, `asset_decomposition`), `services/analytics/projections.py`
 (surplus from the cashflow engine, honours Claude holds).

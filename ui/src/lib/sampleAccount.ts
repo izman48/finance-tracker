@@ -598,7 +598,9 @@ const money2 = (n: number) => `£${n.toLocaleString('en-GB', { minimumFractionDi
  *  first pay window: today to the day before payday. */
 function cardOverlapNudges() {
   const manual = SAMPLE_CARD_BILL.amount
-  const projected = CREDIT_OWED // the Harbor Rewards bill, due in 8 days
+  // The card repayments due in the window (today to the day before payday),
+  // as the API's overlap reads them.
+  const projected = SAMPLE_REPAYMENTS.filter((r) => r.due_in < SAMPLE_PAYDAY_IN).reduce((t, r) => t + r.amount, 0)
   const larger = Math.max(manual, projected)
   const end = nowPlus(SAMPLE_PAYDAY_IN - 1)
   return [{

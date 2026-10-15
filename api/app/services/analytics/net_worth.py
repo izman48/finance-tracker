@@ -160,7 +160,9 @@ def _net_worth_at(db: Session, user, points: list[date], include_investments: bo
                 # In credit (overpaid) is negative owed, so net worth goes up.
                 owed_at = credit_owed(acc) + delta_after
                 bank_at[p] -= owed_at
-                cards_at[p] += owed_at
+                # Debt counts what is owed; a card in credit is Cash, as
+                # total_owed never lets one offset debt.
+                cards_at[p] += max(owed_at, Decimal(0))
             else:
                 bank_at[p] += _d(acc.current_balance) - delta_after
 
@@ -179,7 +181,7 @@ def _net_worth_at(db: Session, user, points: list[date], include_investments: bo
                 "net_worth": bank_at[p] + assets_at - owed_at,
                 # The four groups (ux T-11-2 A1) add up to net_worth:
                 # cash + property - debt, plus investments when included.
-                "cash": bank_at[p] + cards_at[p] + groups["cash"],
+                "cash": bank_at[p] + cards_at[p] + groups["cash"],  # bank without what cards owe
                 "investments": groups["investments"],
                 "property": groups["property"],
                 "debt": cards_at[p] + owed_at - groups["debt"],
@@ -190,7 +192,8 @@ def _net_worth_at(db: Session, user, points: list[date], include_investments: bo
 
 # Registry group -> net worth graph group. Savings are cash; property, other
 # and unknown kinds are Property (nothing is dropped); a legacy debt asset
-# (stored negative) is Debt.
+# (stored negative) is Debt, and so is any other asset worth less than
+# nothing on the day, as on the balance sheet (Loans and finance).
 _GRAPH_GROUP = {"investments": "investments", "savings": "cash", "property": "property", "debt": "debt"}
 
 
@@ -199,8 +202,10 @@ def _asset_groups(holdings, day: date) -> dict[str, Decimal]:
     groups = {"cash": Decimal(0), "investments": Decimal(0), "property": Decimal(0), "debt": Decimal(0)}
     for h in holdings:
         value = value_on(h, day)
-        if value is not None:
-            groups[_GRAPH_GROUP.get(h.group, "property")] += value
+        if value is None:
+            continue
+        group = "debt" if value < 0 and h.group != "investments" else _GRAPH_GROUP.get(h.group, "property")
+        groups[group] += value
     return groups
 
 

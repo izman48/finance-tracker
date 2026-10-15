@@ -96,8 +96,10 @@ stale), at the bill's current amount.
 **Graph groups (T-11-6, ux T-11-2)**: every history point (and so
 position) also carries `cash` (bank accounts, cards excluded, plus manual
 savings), `investments` (owner D1 kinds), `property` (property, other and
-unknown asset types: nothing is dropped) and `debt` (cards owed,
-liabilities, legacy debt assets as owed). `net_worth = cash + property −
+unknown asset types: nothing is dropped) and `debt` (what cards owe, never
+offset by a card in credit, which stays in Cash, as `total_owed`;
+liabilities; legacy debt assets and any non-investment asset worth less
+than nothing that day, as the balance sheet's Loans and finance). `net_worth = cash + property −
 debt`, plus `investments` unless `include_investments=false`, when the
 figure is still returned for the "Not included" row. Groups come from the
 kind registry; tested in `test_net_worth_groups.py`.

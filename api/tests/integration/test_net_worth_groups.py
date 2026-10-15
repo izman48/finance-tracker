@@ -101,3 +101,27 @@ def test_a_legacy_debt_asset_valued_later_joins_debt_from_then(world):
         world.db.commit()
     world.as_user(value_old_loan)
     assert _d(_history(world)[-1], "debt") == Decimal("5900.00")
+
+
+def test_a_card_in_credit_stays_in_cash_and_never_lowers_debt(world):
+    # eng-b on #212: as total_owed, a card in credit doesn't offset debt.
+    def card_in_credit():
+        acc = _account(world.db, world.user.id, atype="CREDIT_CARD", name="Spare card", balance="-250")
+        acc.provider_name = "AMEX"  # Amex owed is positive, so -250 is £250 in credit
+        world.db.add(AccountSetting(user_id=world.user.id, account_id=acc.id, role="credit"))
+        world.db.commit()
+    before = _history(world)[-1]
+    world.as_user(card_in_credit)
+    after = _history(world)[-1]
+    assert _d(after, "debt") == _d(before, "debt")
+    assert _d(after, "cash") - _d(before, "cash") == _d(after, "net_worth") - _d(before, "net_worth")
+    assert _d(after, "net_worth") != _d(before, "net_worth")
+
+
+def test_an_asset_worth_less_than_nothing_counts_as_debt(world):
+    # The balance sheet puts a negative asset under Loans and finance.
+    world.asset("Old tab", "other", "-400", days_ago=1)
+    today = _history(world)[-1]
+    assert _d(today, "property") == Decimal("201000.00")
+    assert _d(today, "debt") == Decimal("6600.00")
+    assert _d(today, "net_worth") == Decimal("204900.00")

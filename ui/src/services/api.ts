@@ -184,7 +184,19 @@ export interface Asset {
    *  the last valuation included); null before a first value (#210). */
   value_today?: string | null
   // The bill that carries its contribution while linked (T-11-3c).
-  linked_commitment?: { id: string; label: string; amount?: string } | null
+  linked_commitment?: {
+    id: string; label: string; amount?: string; next_date?: string; pay_from_account_id?: string | null
+    /** The link made this bill (opting out deletes it); false: the user's own bill, which stays. */
+    created?: boolean
+  } | null
+}
+
+/** PUT /assets/{id}/contribution: the user's terms and choice only (#210). */
+export interface ContributionBody {
+  amount: string
+  next_date: string
+  pay_from_account_id?: string
+  commitment_choice?: string
 }
 
 export interface NetWorthPoint {
@@ -354,13 +366,17 @@ export const holdingsAPI = {
 
 export const assetsAPI = {
   list: () => api.get<Asset[]>('/assets'),
-  create: (data: { name: string; asset_type: string; value: number; valued_at?: string }) =>
+  create: (data: { name: string; asset_type: string; value: number; valued_at?: string; assumed_growth_pct?: number | null; monthly_contribution?: number | null }) =>
     api.post('/assets', data),
   update: (id: string, data: { name?: string; asset_type?: string; assumed_growth_pct?: number | null; monthly_contribution?: number | null }) =>
     api.patch(`/assets/${id}`, data),
   remove: (id: string) => api.delete(`/assets/${id}`),
   addValuation: (id: string, data: { value: number; valued_at?: string }) =>
     api.post(`/assets/${id}/valuations`, data),
+  /** Opt in to (or change) the monthly contribution as a linked bill (T-11-3c). */
+  setContribution: (id: string, body: ContributionBody) => api.put(`/assets/${id}/contribution`, body),
+  /** Opt out: the bill goes if the link created it (T-11-3c). */
+  stopContribution: (id: string) => api.delete(`/assets/${id}/contribution`),
   removeValuation: (assetId: string, valuationId: string) =>
     api.delete(`/assets/${assetId}/valuations/${valuationId}`),
   // Record money added (+) / withdrawn (−) so growth can be told from saving.

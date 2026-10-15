@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter } from 'react-router-dom'
-import PlannedItems from './PlannedItems'
+import PlannedItems, { AddPlannedModal } from './PlannedItems'
 import type { PlannedItem } from '../types'
 
 const item = (over: Partial<PlannedItem> = {}): PlannedItem => ({
@@ -50,5 +50,38 @@ describe('PlannedItems Paid (P1-P3, P5, P6)', () => {
     expect(h).not.toContain('t9-secret-id')
     expect(h).not.toMatch(/<a[^>]*>[^<]*Paid/)
     expect(h).toContain('>Remove</button>')
+  })
+})
+
+describe('PlannedItems card payment (T-12-7a, ux O-1, O-2, O-4, X-1, X-2)', () => {
+  const flagged = (over: Partial<PlannedItem> = {}) =>
+    item({ name: 'Card bill', amount: 400, is_card_payment: true, card_payment_overlap: true, ...over })
+
+  it('O-2: a ticked item in a window with projected card bills shows the chip and says Card payment', () => {
+    const h = render([flagged()])
+    expect(h).toMatch(/class="chip-warn[^"]*"[^>]*>Overlaps card bills</)
+    expect(h).toContain('Card payment · £400.00 · ')
+  })
+
+  it('no overlap, no chip; unticked (O-4), neither the chip nor the words', () => {
+    expect(render([flagged({ card_payment_overlap: false })])).not.toContain('Overlaps card bills')
+    const h = render([item({ name: 'Amex bill', is_card_payment: false, card_payment_overlap: false })])
+    expect(h).not.toContain('Overlaps card bills')
+    expect(h).not.toContain('Card payment ·')
+  })
+
+  it('an existing expense can be ticked or unticked on its row (a native checkbox); income cannot', () => {
+    const h = render([flagged(), item({ id: 'p2', name: 'Refund', direction: 'income' })])
+    expect(h.match(/type="checkbox"/g)).toHaveLength(1)
+    expect(h).toMatch(/<input[^>]*type="checkbox"[^>]*checked=""/)
+    expect(h).toContain('aria-label="Card payment: Card bill"')
+  })
+
+  it('X-1/X-2: the add form has a labelled Card payment checkbox with its help, and no card select', () => {
+    const h = renderToStaticMarkup(<AddPlannedModal onClose={() => {}} onAdded={() => {}} />)
+    expect(h).toMatch(/<input[^>]*id="planned-card-payment"[^>]*type="checkbox"[^>]*aria-describedby="planned-card-payment-help"/)
+    expect(h).toContain('<label for="planned-card-payment"')
+    expect(h).toContain('Tick this if it pays a credit card, so nilu counts it once with your projected card bills.')
+    expect(h).not.toMatch(/<select[^>]*card/i)
   })
 })

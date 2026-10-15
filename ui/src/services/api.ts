@@ -627,6 +627,9 @@ export const analyticsAPI = {
   getPlannedItems: () => api.get('/analytics/planned-items'),
   addPlannedItem: (data: Record<string, unknown>) => api.post('/analytics/planned-items', data),
   deletePlannedItem: (id: string) => api.delete(`/analytics/planned-items/${id}`),
+  // The user ticks or unticks "Card payment" (T-12-4a; web only, never Claude).
+  setPlannedCardPayment: (id: string, isCardPayment: boolean) =>
+    api.patch(`/analytics/planned-items/${id}`, { is_card_payment: isCardPayment }),
   // Scheduled credit-card repayments (the `scheduled` repayment strategy).
   getRepayments: (accountId: string) => api.get(`/analytics/accounts/${accountId}/repayments`),
   addRepayment: (accountId: string, data: { due_date: string; amount: number }) =>

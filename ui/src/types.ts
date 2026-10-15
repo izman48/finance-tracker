@@ -164,6 +164,9 @@ export interface PlannedItem {
   active: boolean
   // Pays a credit card: counts once with the projected card bills (T-12-4a).
   is_card_payment?: boolean
+  // Ticked and in a pay window with projected card bills (T-12-4b): the
+  // "Overlaps card bills" chip. Decided by the API.
+  card_payment_overlap?: boolean
   changed_by_claude?: ClaudeMarker | null
   // Set once the real transaction that paid it has landed (T-08-7).
   matched_transaction_id?: string | null

@@ -553,7 +553,42 @@ function decompositionResponse(months: number) {
 }
 
 function nudgesResponse() {
-  return [...cashDragNudges(), ...sampleBudgetNudges(sampleBudgetList(BUDGET_LEDGER, PAYDAY_AGO, false))]
+  return [...cardOverlapNudges(), ...cashDragNudges(), ...sampleBudgetNudges(sampleBudgetList(BUDGET_LEDGER, PAYDAY_AGO, false))]
+}
+
+// T-12-7a (ux demo): a manual "Card bill" ticked as a card payment, due
+// before payday like the Harbor Rewards bill. It is smaller, so by the API's
+// rule (the larger counts once) the forecast and safe-to-spend keep the
+// projected bill and leave this item out: no figure moves.
+const SAMPLE_PAYDAY_IN = 24 // next_payday = nowPlus(24)
+const SAMPLE_CARD_BILL = { id: 'sp2', name: 'Card bill', amount: 400, dueIn: 6 }
+
+function plannedItemsResponse() {
+  return [
+    { id: 'sp1', name: 'New laptop', direction: 'expense', kind: 'installment_plan', start_date: isoDate(nowPlus(9)), amount: null, total_amount: 1200, installments: 6, is_card_payment: false, card_payment_overlap: false },
+    { id: SAMPLE_CARD_BILL.id, name: SAMPLE_CARD_BILL.name, direction: 'expense', kind: 'one_off', start_date: isoDate(nowPlus(SAMPLE_CARD_BILL.dueIn)), amount: SAMPLE_CARD_BILL.amount, total_amount: null, installments: null, cadence: null, interval_days: null, interval_months: null, end_date: null, apr: null, fee_amount: null, active: true, is_card_payment: true, card_payment_overlap: true },
+  ]
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const dayMonth = (d: Date) => `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`
+const money2 = (n: number) => `£${n.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
+/** The API's overlap nudge (nudges._card_payment_overlap) for the sample's
+ *  first pay window: today to the day before payday. */
+function cardOverlapNudges() {
+  const manual = SAMPLE_CARD_BILL.amount
+  const projected = CREDIT_OWED // the Harbor Rewards bill, due in 8 days
+  const larger = Math.max(manual, projected)
+  const end = nowPlus(SAMPLE_PAYDAY_IN - 1)
+  return [{
+    id: `card_payment_overlap_${isoDate(end)}`,
+    rank: 0,
+    body: `Your planned card payments (${money2(manual)}) overlap your projected card bills (${money2(projected)}). nilu counts the larger, ${money2(larger)}, once.`,
+    detail: `Between ${dayMonth(nowPlus(0))} and ${dayMonth(end)}. Planned items you marked as a card payment and the card repayments nilu projects pay the same cards, so only the larger total counts in safe to spend and the forecast.`,
+    source: null,
+    as_of: null,
+  }]
 }
 
 function cashDragNudges() {
@@ -850,7 +885,7 @@ export function sampleResponse(url: string, params: unknown): unknown {
   if (path.includes('/analytics/spending/trend')) return trendResponse(Number(p.months) || 6)
   if (path.includes('/analytics/spending')) return spendingResponse(p as any)
   if (is('/analytics/commitments')) return commitmentsResponse()
-  if (is('/analytics/planned-items')) return [{ id: 'sp1', name: 'New laptop', direction: 'expense', kind: 'installment_plan', start_date: isoDate(nowPlus(9)), amount: null, total_amount: 1200, installments: 6, is_card_payment: false, card_payment_overlap: false }]
+  if (is('/analytics/planned-items')) return plannedItemsResponse()
   if (is('/analytics/nudges')) return nudgesResponse()
   if (path.includes('/analytics/net-worth-decomposition')) return decompositionResponse(Number(p.months) || 12)
   if (path.includes('/analytics/net-worth-projection')) return projectionResponse(p as Record<string, any>)

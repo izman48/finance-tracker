@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { moneyStyle } from '../lib/late'
 import ClaudeMarker from '../components/changes/ClaudeMarker'
 import { CommitmentKeep } from '../components/changes/KeepControls'
 import { useRowActions } from '../hooks/useRowActions'
 import { canKeep, countsInListTotal, keepMovesSafeToSpend, keepToast, postEach } from '../lib/keep'
 import { withTimeout } from '../lib/forecastLoad'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useToast } from '../components/ui/Toast'
 import { linkedChip, linkedEditMessage } from '../lib/liabilities'
 import { analyticsAPI, auditAPI } from '../services/api'
@@ -13,6 +13,8 @@ import { Commitment, NextRepayment, PlannedItem } from '../types'
 import { gbp as formatCurrency, dateLong as formatDate } from '../lib/format'
 import { cadenceLabel, isYearly, monthlyEquivalent } from '../lib/cadence'
 import { isRegularPlanned, plannedMonthly, plannedPerPayment } from '../lib/planned'
+import { CARD_OVERLAP_ANCHOR, canBeCardPayment, firstOverlapId } from '../lib/cardPayment'
+import CardPaymentToggle from '../components/CardPaymentToggle'
 import AddCommitmentModal from '../components/AddCommitmentModal'
 import EditCommitmentModal from '../components/EditCommitmentModal'
 import PlannedItems from '../components/PlannedItems'
@@ -66,6 +68,18 @@ export default function CommitmentsPage() {
     await refresh()
     setLoading(false)
   }, [refresh])
+
+  // The overlap nudge's Review (ux O-2): focus the first overlapping planned
+  // item once, when the list first has one. Later refetches leave focus alone.
+  const { hash } = useLocation()
+  const overlapFocused = useRef(false)
+  useEffect(() => {
+    if (loading || overlapFocused.current || hash !== `#${CARD_OVERLAP_ANCHOR}`) return
+    const id = firstOverlapId(planned)
+    if (!id) return
+    overlapFocused.current = true
+    document.getElementById(`planned-${id}`)?.focus()
+  }, [loading, hash, planned])
 
   // Keep this change / Undo on a pending income (ux spec 9.1).
   const rowActions = useRowActions(refresh)
@@ -250,7 +264,7 @@ export default function CommitmentsPage() {
           max-content track that overflows (see CLAUDE.md gotcha). */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6" data-reveal>
         <ConfirmedList title="Regular income" headingId={INCOME_HEADING} items={confirmedIncome} renderKeep={renderKeep} planned={plannedIncome} onRemovePlanned={removePlanned} onRemove={(id) => setStatus(id, 'dismissed')} onEdit={setEditing} onSkip={handleSkip} onPayday={handlePayday} positive />
-        <ConfirmedList title="Regular expenses" headingId={EXPENSE_HEADING} items={confirmedExpense} renderKeep={renderKeep} repayments={nextRepayments} planned={plannedExpense} onRemovePlanned={removePlanned} onRemove={(id) => setStatus(id, 'dismissed')} onEdit={setEditing} onSkip={handleSkip} />
+        <ConfirmedList title="Regular expenses" headingId={EXPENSE_HEADING} items={confirmedExpense} renderKeep={renderKeep} repayments={nextRepayments} planned={plannedExpense} onRemovePlanned={removePlanned} onPlannedChanged={load} onRemove={(id) => setStatus(id, 'dismissed')} onEdit={setEditing} onSkip={handleSkip} />
       </div>
 
       {/* Yearly commitments — billed once a year, so they get their own totals
@@ -306,6 +320,7 @@ function ConfirmedList({
   repayments,
   planned,
   onRemovePlanned,
+  onPlannedChanged,
   onRemove,
   onEdit,
   onSkip,
@@ -320,6 +335,7 @@ function ConfirmedList({
   repayments?: NextRepayment[]
   planned?: PlannedItem[]
   onRemovePlanned?: (id: string) => void
+  onPlannedChanged?: () => void
   onRemove: (id: string) => void
   onEdit: (c: Commitment) => void
   onSkip: (c: Commitment) => void
@@ -365,15 +381,17 @@ function ConfirmedList({
         <div className="divide-y divide-white/[0.06]">
           {sorted.map((row) =>
             row.plan ? (
-              <div key={row.key} className="p-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+              <div key={row.key} id={`planned-${row.plan.id}`} tabIndex={-1} className="p-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
                 <div className="min-w-0 flex-1 basis-40">
                   <div className="font-medium text-slate-200 flex items-center gap-2">
                     <span className="truncate">{row.plan.name}</span>
                     <span className="chip-info shrink-0">
                       {row.plan.kind === 'installment_plan' ? 'Plan' : 'Planned'}
                     </span>
+                    {row.plan.card_payment_overlap && <span className="chip-warn shrink-0">Overlaps card bills</span>}
                   </div>
                   <div className="text-sm text-slate-500">
+                    {row.plan.is_card_payment && 'Card payment · '}
                     {cadenceLabel({
                       cadence: row.plan.cadence || 'monthly',
                       interval_days: row.plan.interval_days,
@@ -388,6 +406,9 @@ function ConfirmedList({
                   <span className={`font-semibold tnum ${positive ? 'text-pos' : 'text-slate-100'}`}>
                     {positive ? '+' : ''}{formatCurrency(plannedPerPayment(row.plan))}
                   </span>
+                  {onPlannedChanged && canBeCardPayment(row.plan.direction, row.plan.kind) && (
+                    <CardPaymentToggle item={row.plan} onChanged={onPlannedChanged} />
+                  )}
                   <button
                     onClick={() => onRemovePlanned?.(row.plan!.id)}
                     className="text-sm text-slate-500 hover:text-neg transition-colors"

@@ -813,6 +813,9 @@ class ForecastEvent(BaseModel):
     label: str
     amount: Decimal  # signed: income +, expense/repayment −
     kind: str        # income | expense | repayment
+    # The commitment an income/expense event comes from (the UI names a
+    # loan's linked bill by it); None for repayments and planned items.
+    commitment_id: str | None = None
 
 
 class ForecastPoint(BaseModel):

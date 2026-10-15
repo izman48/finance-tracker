@@ -43,7 +43,9 @@ const summary = {
 const timeline = Array.from({ length: 31 }, (_, i) => ({
   date: daysFromNow(i),
   balance: 2140 - i * 55 + (i % 7 === 0 ? 300 : 0) + (i === 16 ? 3200 : 0),
-  events: i === 16 ? [{ label: 'Salary', amount: 3200, kind: 'income' }] : [],
+  events: i === 16 ? [{ label: 'Salary', amount: 3200, kind: 'income', commitment_id: 'c1' }]
+    // A loan's linked bill, matched by commitment id in the tooltip (P2).
+    : i === 3 ? [{ label: 'Lender A', amount: -200, kind: 'expense', commitment_id: 'c-li1' }] : [],
 }))
 
 const forecast = {
@@ -109,6 +111,7 @@ const commitments = [
   { id: 'c6', direction: 'expense', label: 'Amazon Prime', amount: 95, cadence: 'every_n_months', interval_days: null, interval_months: 12, next_date: daysFromNow(30), source: 'manual', status: 'confirmed', account_id: 'a1' },
   // Linked to loan li1 below, so Home's Coming up reads "Lender A loan payment".
   { id: 'c-li1', direction: 'expense', label: 'Lender A', amount: 200, cadence: 'monthly', interval_days: null, interval_months: null, next_date: daysFromNow(3), source: 'manual', status: 'confirmed', account_id: 'a1' },
+  { id: 'c-li5', direction: 'expense', label: 'MOTOR DD', amount: 150, cadence: 'monthly', interval_days: null, interval_months: null, next_date: daysFromNow(1), source: 'manual', status: 'confirmed', account_id: 'a1' },
   { id: 'c-li4', direction: 'expense', label: 'FINANCE DD', amount: 45, cadence: 'monthly', interval_days: null, interval_months: null, next_date: daysFromNow(4), source: 'manual', status: 'confirmed', account_id: 'a1' },
   { id: 'c7', direction: 'income', label: 'Annual bonus', amount: 1500, cadence: 'every_n_months', interval_days: null, interval_months: 12, next_date: daysFromNow(200), source: 'manual', status: 'confirmed', account_id: 'a1' },
 ]
@@ -181,6 +184,8 @@ const liability = (over) => ({
 const liabilities = [
   liability({ id: 'li2', kind: 'finance', lender: 'Lender B with a rather long trading name', balance: '1500.00', current_balance: '1500.00', apr: '20.00', payment: '100.00', interest_remaining: '139.41', balance_stale: true, balance_as_of: daysFromNow(-120), linked_commitment: { id: 'c-li2', label: 'Lender B' } }),
   // A 100-character lender (sec on P2): the Coming up row must still fit.
+  // A 60-character lender (ux on #198): truncates at 390px, full name in the accessible name.
+  liability({ id: 'li5', kind: 'finance', lender: 'Example Motor Finance and Leasing Services for Private Buyer', balance: '3000.00', current_balance: '3000.00', apr: '9.90', payment: '150.00', linked_commitment: { id: 'c-li5', label: 'MOTOR DD' } }),
   liability({ id: 'li4', kind: 'finance', lender: 'Example Consumer Finance Limited trading as Example Retail Credit for Household Goods and Furnishing', balance: '900.00', current_balance: '900.00', apr: '0.00', payment: '45.00', linked_commitment: { id: 'c-li4', label: 'FINANCE DD' } }),
   liability({}),
   liability({ id: 'li3', lender: 'Lender C', balance: '4000.00', current_balance: '4000.00', apr: '5.00', payment: null, opted_out: true, payoff_date: null, interest_remaining: null, total_cost: null, payments_remaining: null, next_payment_date: null, linked_commitment: null }),
@@ -342,6 +347,16 @@ for (const [vpName, viewport] of viewports) {
     await page.getByRole('dialog', { name: 'Harbor Card' }).waitFor()
     if (new URL(page.url()).search) errors.push(`[${vpName}] Add statement left ${page.url()}`)
     console.log(`flow add-statement-${vpName} ok`)
+    // ux on #198: a long lender truncates in Coming up, the row fits, and
+    // the accessible name keeps the whole name.
+    await page.goto(`${BASE}/dashboard`, { waitUntil: 'networkidle' })
+    const lender60 = 'Example Motor Finance and Leasing Services for Private Buyer loan payment'
+    const label = page.getByText(lender60, { exact: true })
+    const fit = await label.evaluate((el) => ({ cut: el.scrollWidth > el.clientWidth, name: el.textContent,
+      pageFits: document.documentElement.scrollWidth <= document.documentElement.clientWidth }))
+    if (vpName === 'mobile' && !fit.cut) errors.push(`[${vpName}] long lender not truncated`)
+    if (fit.name !== lender60 || !fit.pageFits) errors.push(`[${vpName}] long lender: ${JSON.stringify(fit)}`)
+    console.log(`check long-lender-${vpName} ${JSON.stringify(fit)}`)
   }
   // The loan form (T-10-10b): edit a linked loan, add one, and the
   // "Which bill is this?" step after a 409 choose_commitment.

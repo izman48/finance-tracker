@@ -25,6 +25,8 @@ interface ForecastEvent {
   label: string
   amount: number
   kind: string
+  /** The commitment an income/expense event comes from; null otherwise. */
+  commitment_id?: string | null
 }
 interface ForecastPoint {
   date: string
@@ -61,8 +63,8 @@ const HORIZONS: { key: string; label: string }[] = [
   { key: '365', label: '1yr' },
 ]
 
-/** `lenders` (P2): {bill label: lender} for bills linked to a loan, which
- *  read "{lender} loan payment" here as in Coming up. */
+/** `lenders` (P2): {commitment id: lender} for bills linked to a loan,
+ *  which read "{lender} loan payment" here as in Coming up. */
 export function ForecastTooltip({ active, payload, lenders }: any) {
   if (!active || !payload?.length) return null
   const point: ForecastPoint = payload[0].payload
@@ -84,7 +86,7 @@ export function ForecastTooltip({ active, payload, lenders }: any) {
 }
 
 function eventLabel(e: ForecastEvent, lenders?: Map<string, string>) {
-  const lender = e.kind === 'expense' ? lenders?.get(e.label) : undefined
+  const lender = e.kind === 'expense' && e.commitment_id ? lenders?.get(e.commitment_id) : undefined
   return lender ? loanPaymentLabel(lender) : e.label
 }
 

@@ -184,6 +184,7 @@ def get_forecast(db: Session, user, horizon: str = "payday") -> dict:
             "label": rule.label,
             "amount": sign * _d(rule.amount),
             "kind": rule.direction,
+            "commitment_id": str(rule.id),
         })
     for r in repayments:
         card_setting = settings.get(uuid.UUID(r["account_id"]))

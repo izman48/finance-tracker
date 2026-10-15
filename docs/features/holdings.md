@@ -39,6 +39,13 @@ default as the target projection, so the two agree.
   choice.
 - `graphs.py`: the investment graph payload.
 
+**UI (T-11-5)**: the investment graph at `/networth/investments`
+(`pages/InvestmentsGraphPage.tsx`, `components/wealth/InvestmentGraphView.tsx`, helpers in
+`lib/investments.ts`): look-ahead 5/10/20/30 years and the holding choice (in the URL as
+`?holding=`), the API's sentence and inputs line, Worth (entered values as dots, dashed
+forecast) and Paid in, a hidden table for screen readers. A holding with no rate of its own
+grows at the target form's `wealth.growth`.
+
 **Who calls the engine**: the target projection
 (`analytics/projections.net_worth_projection`, per-holding series and
 liabilities), `net_worth.assets_total` (so the summary, position, history
@@ -67,13 +74,13 @@ foreign id, 422s, include_investments).
 | 1 Tables | none (adapter over `assets` and `liabilities`). |
 | 2 Purge | n/a: no table; the source tables are purged. |
 | 3 Deletion | n/a: no table. |
-| 4 Demo mode | gap until T-11-8: no UI reads the route yet (T-11-5). |
+| 4 Demo mode | gap until T-11-8: `/holdings/projection` is in `KNOWN_DEMO_GAPS`. |
 | 5 Ownership | No account ids. `holding_id` is checked against the caller's own investments (404). |
 | 6 Scopes | Web only. Claude's read-only `list_holdings` is T-11-7. |
 | 7 Claude tools | none yet (T-11-7). |
 | 8 Audit | Read-only. |
 | 9 Bank sync | Computed on read. |
 | 10 Home | Not yet (Home's investments total is T-11-6/7). |
-| 11 UI routes | none yet (`/networth/investments` in T-11-5). |
+| 11 UI routes | `/networth/investments` (`InvestmentsGraphPage`; in `visual-check.mjs`; linked from Wealth in the next PR). |
 | 12 Tests | listed above. |
 | 13 Docs | this file; net-worth.md points here. |

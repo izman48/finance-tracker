@@ -16,6 +16,7 @@ import CommitmentsPage from './pages/CommitmentsPage'
 import RulesPage from './pages/RulesPage'
 import ChangesPage from './pages/ChangesPage'
 import NetWorthPage from './pages/NetWorthPage'
+import InvestmentsGraphPage from './pages/InvestmentsGraphPage'
 import ImportSharedPage from './pages/ImportSharedPage'
 import CallbackPage from './pages/CallbackPage'
 import OAuthConsentPage from './pages/OAuthConsentPage'
@@ -76,6 +77,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <NetWorthPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="networth/investments"
+            element={
+              <ProtectedRoute>
+                <InvestmentsGraphPage />
               </ProtectedRoute>
             }
           />

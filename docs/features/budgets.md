@@ -66,7 +66,7 @@ next to every component and lib file above.
 | 1 Tables | `budgets`, `budget_nudges`, `budget_changes`, `budget_cycle_snapshots`. |
 | 2 Purge | Yes, all four. |
 | 3 Deletion | Cascade from `users`. |
-| 4 Demo mode | Served (T-11-8): `GET /api/v1/budgets` and `GET /api/v1/budgets/history` come from `ui/src/lib/sampleBudgets.ts`, computed from the sample ledger with the API's rules (purchases per category in the pay cycle, pace, kept), so they reconcile with Spending (`sampleBudgets.test.tsx`). The projection's "My budgets" uses their total. **Gap:** the sample forecast has no `budget_projection` (no dotted budget line on Cashflow) and the sample nudges have no budget nudges. |
+| 4 Demo mode | Served (T-11-8): `GET /api/v1/budgets` and `GET /api/v1/budgets/history` come from `ui/src/lib/sampleBudgets.ts`, computed from the sample ledger with the API's rules (purchases per category in the pay cycle, pace, kept), so they reconcile with Spending (`sampleBudgets.test.tsx`). The projection's "My budgets" uses their total. The sample forecast has `budget_projection` (the dotted line and payday strip on every horizon) and the sample nudges have budget nudges, both by the API's rules (`sampleBudgetProjection`, `sampleBudgetNudges`; `sampleBudgetLine.test.ts`, T-11-10). |
 | 5 Ownership | n/a (no account ids); budget ids are owner-checked. |
 | 6 Scopes | List `finance:read`; Claude writes `finance:budgets.write`; everything else web only. |
 | 7 Claude tools | listed above. |

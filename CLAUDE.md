@@ -33,7 +33,11 @@ adding one, walk the checklist in `docs/features/README.md` (budgets missed
 demo mode that way). Update the doc in the same PR.
 `.github/scripts/check_feature_docs.py` fails CI when a route, table, MCP
 tool or UI route isn't in a feature doc, and `ui/src/lib/sampleCoverage.test.ts`
-fails when a UI read isn't handled by demo mode. `docs/known-gaps.md` lists
+fails when a UI read isn't handled by demo mode. **Demo mode moves with
+the feature (owner rule, 2026-10-15):** any change to what a screen shows
+updates the sample account in the same PR, including derived fields (like
+the forecast's `budget_projection`) and nudges, reconciled with the API's
+rule; a new `KNOWN_DEMO_GAPS` entry needs the owner's OK. `docs/known-gaps.md` lists
 open gaps; delete a line when you fix it.
 
 ## Layout

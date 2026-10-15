@@ -33,7 +33,8 @@ write is blocked with a toast.
 - `UNSAMPLED_BY_DESIGN`: reads that must not be faked (they start real
   flows), with the reason.
 - `KNOWN_DEMO_GAPS`: reads that should be sampled but aren't yet, with what
-  breaks.
+  breaks. New entries need the owner's OK: demo mode moves with the feature,
+  in the same PR (owner rule, 2026-10-15; `CLAUDE.md`).
 
 So for a new read endpoint:
 
@@ -42,7 +43,8 @@ So for a new read endpoint:
 2. Add a reconciliation test in `sampleAccount.test.ts` when the figure is
    a sum of other figures.
 3. If the feature adds fields to an existing response (like budgets adding
-   `budget_projection` to the forecast), add them to that sample response
+   `budget_projection` to the forecast, and budget nudges; served since
+   T-11-10 by `sampleBudgetProjection` / `sampleBudgetNudges`), add them to that sample response
    too. The coverage test can't see missing fields.
 4. A read that is a POST (like `POST /api/v1/budgets/suggest`) is blocked in demo
    mode; prefer GET for reads.

@@ -31,7 +31,7 @@ this before changing a feature; update it in the same PR as the change.
 | Net worth and assets | [net-worth.md](net-worth.md) | Wealth tab, Home | no | served |
 | Holdings and their projection | [holdings.md](holdings.md) | Wealth (T-11-5) | no (T-11-7) | gap until T-11-8 |
 | Liabilities (loans, finance, BNPL) | [liabilities.md](liabilities.md) | Wealth tab (T-10-10) | no | no UI reads yet |
-| Budgets | [budgets.md](budgets.md) | Spending > Budgets, Home, Cashflow forecast | `list_budgets`, `set_budgets`, `pause_budget`, `resume_budget`, `remove_budget` | served (gap: forecast budget line, nudges) |
+| Budgets | [budgets.md](budgets.md) | Spending > Budgets, Home, Cashflow forecast | `list_budgets`, `set_budgets`, `pause_budget`, `resume_budget`, `remove_budget` | served |
 | Claude's changes (audit, undo, keep) | [claude-changes.md](claude-changes.md) | user menu > Changes made by Claude | every write tool | served (empty) |
 | Claude connector (MCP server, OAuth) | [claude-connector.md](claude-connector.md) | `/oauth/authorize`, landing page | all tools | by design not sampled |
 | Demo mode ("Anonymize numbers") | [demo-mode.md](demo-mode.md) | user menu | no | it is the feature |
@@ -50,7 +50,7 @@ missed row 4, which is why budgets can't be demoed.
 | 1 | **Tables and migrations** | New table or column gets an additive Alembic migration with a working `downgrade()`. Money and free text use `UserEncrypted*` columns. | review; `CLAUDE.md` gotchas |
 | 2 | **Key-loss purge** | Any table holding a user's encrypted data is deleted by `api/app/services/key_loss_purge.py`. | `api/tests/integration/test_reset_purge.py` (encrypted tables only) |
 | 3 | **Account deletion** | Table has `ondelete="CASCADE"` to `users.id` (or to a parent that has it), in the model and the migration. `POST /api/v1/auth/delete-account` relies on it. | nothing yet (see known gaps) |
-| 4 | **Demo mode** | Every GET the UI calls is served by `sampleResponse` in `ui/src/lib/sampleAccount.ts`, with sample data that reconciles with the rest of the sample account, or is listed in `UNSAMPLED_BY_DESIGN` / `KNOWN_DEMO_GAPS` with a reason. | `ui/src/lib/sampleCoverage.test.ts` |
+| 4 | **Demo mode** | Every GET the UI calls is served by `sampleResponse` in `ui/src/lib/sampleAccount.ts`, with sample data that reconciles with the rest of the sample account, or is listed in `UNSAMPLED_BY_DESIGN` with a reason. Any change to what a screen shows updates the sample account in the same PR, derived fields and nudges included; a new `KNOWN_DEMO_GAPS` entry needs the owner's OK. | `ui/src/lib/sampleCoverage.test.ts` |
 | 5 | **Account ownership** | Any route taking an `*account_id` checks it with `core/ownership.py`. | `api/tests/integration/test_account_ownership.py` (write routes) |
 | 6 | **Auth and scopes** | Routes are web-only (`CurrentUser`) unless Claude needs them; then `CurrentUserOrMcpRead`, `CurrentUserOrMcpRulesWrite`, `PlanningWriter` or `BudgetsWriter`. Never auth, bank-connection or account-management routes. | `api/tests/integration/test_oauth.py` (hand-listed) |
 | 7 | **Claude tools** | New MCP tool in `api/mcp/server.py` with the right annotations, listed in `api/mcp/README.md` and the reviewed set. | `api/mcp/tests/test_tool_annotations.py` |

@@ -6,7 +6,7 @@ import { useToast } from './ui/Toast'
 export default function AnonymizeListener() {
   const showToast = useToast()
   useEffect(() => {
-    const onBlocked = () => showToast('Turn off anonymized view to make changes', { tone: 'err' })
+    const onBlocked = () => showToast('Demo mode: nothing was saved.', { tone: 'info' })
     window.addEventListener('anonymize:blocked', onBlocked)
     return () => window.removeEventListener('anonymize:blocked', onBlocked)
   }, [showToast])

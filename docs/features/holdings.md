@@ -84,7 +84,7 @@ foreign id, 422s, include_investments).
 | 1 Tables | none (adapter over `assets` and `liabilities`). |
 | 2 Purge | n/a: no table; the source tables are purged. |
 | 3 Deletion | n/a: no table. |
-| 4 Demo mode | gap until T-11-8: `/holdings/projection` is in `KNOWN_DEMO_GAPS`. |
+| 4 Demo mode | Served (T-11-8): three sample investments (ISA £18,500 at 7% with a £400 linked contribution, pension £24,000 at 5%, crypto £1,200 at 0%; total £43,700), the contribution as a bill in Commitments, Cashflow and safe to spend, and `/holdings/projection` from the engine's arithmetic (`ui/src/lib/sampleInvestments.ts`, `sampleInvestments.test.ts`). Writes are blocked before the network, with the toast `Demo mode: nothing was saved.`; `services/anonymizeSentinel.test.ts` proves no real figure reaches a new surface. |
 | 5 Ownership | No account ids. `holding_id` is checked against the caller's own investments (404). |
 | 6 Scopes | Web only. Claude's read-only `list_holdings` is T-11-7. |
 | 7 Claude tools | none yet (T-11-7). |

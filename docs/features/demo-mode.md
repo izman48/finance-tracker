@@ -16,8 +16,11 @@ write is blocked with a toast.
   `sampleResponse(url, params)`.
 - `ui/src/lib/sampleAccount.ts`: one authored ledger that every sample view
   is computed from, so figures reconcile. Unknown paths return `{}`.
-- `ui/src/components/AnonymizeListener.tsx`: the "Turn off anonymized view
-  to make changes" toast. `ui/src/hooks/useAnonymize.ts`.
+- `ui/src/components/AnonymizeListener.tsx`: the "Demo mode: nothing was
+  saved." toast (ux T-11-2). `ui/src/hooks/useAnonymize.ts`.
+- `ui/src/services/anonymizeSentinel.test.ts` (sec T-11-8): with the real API
+  stubbed to answer a sentinel, demo mode shows it on no holdings, net worth
+  or projection read, and blocks every holding write before the network.
 - Toggle: user menu "Anonymize numbers" / "Show real numbers", and the
   "Anonymized" header chip (`components/Layout.tsx`).
 

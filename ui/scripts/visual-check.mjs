@@ -404,7 +404,7 @@ for (const [vpName, viewport] of viewports) {
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
         current_net_worth: '10118.24', target_amount: '50000', target_date: daysFromNow(900), monthly_contribution: '1000.00',
         annual_growth_pct: '5', mode: 'cashflow', bank_component: '2140.55', asset_assumptions: [], as_of: daysFromNow(0),
-        timeline: [{ date: daysFromNow(0), net_worth: '10118.24' }, { date: daysFromNow(900), net_worth: '50000.00' }],
+        timeline: Array.from({ length: 31 }, (_, i) => ({ date: daysFromNow(i * 30), value: String(10118.24 + i * 1329) })),
         contribution_basis: {
           income_monthly: '3200.00', bills_monthly: '1180.00', avg_spending_monthly: '1020.00', contribution: '1000.00',
           spending_months_sampled: 6, spending_subtracted: used !== 'none', spending_applied: applied,

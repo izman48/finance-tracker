@@ -18,7 +18,7 @@ account. How the password protects their data is in
 | `POST /api/v1/auth/change-password` | `CurrentUser` | Re-wraps the DEK, bumps `session_version` (logs out other sessions), returns a new token. No rate limit. |
 | `POST /api/v1/auth/forgot-password` | none | 5/hour, always 202. Emails a 30-minute `pwd_reset` token link. |
 | `POST /api/v1/auth/reset-password` | reset token | 10/15 min. With the recovery code the data survives; without it the key-loss purge runs. Always bumps `session_version`. |
-| `POST /api/v1/auth/delete-account` | `CurrentUser` + password | Deletes bank connections, then the user; everything else goes by DB cascade. No rate limit. |
+| `POST /api/v1/auth/delete-account` | `CurrentUser` + password | Ends each bank connection at TrueLayer (its delete-connection call, refreshing once on 401; best-effort, 15 s cap), deletes bank connections, then the user; everything else goes by DB cascade. No rate limit. |
 
 **Tables**: `users` (`email`, bcrypt `hashed_password`, wrapped DEKs,
 `session_version`).

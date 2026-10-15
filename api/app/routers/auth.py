@@ -1,9 +1,11 @@
+import asyncio
 import logging
 from typing import Annotated
 from datetime import datetime, timedelta, timezone
 
 from cryptography.fernet import InvalidToken
 from fastapi import APIRouter, Depends, HTTPException, Request, status, Query
+from fastapi.concurrency import run_in_threadpool
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
@@ -297,7 +299,7 @@ def reset_password(
 
 
 @router.post("/delete-account")
-def delete_account(
+async def delete_account(
     body: DeleteAccountRequest,
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
@@ -307,13 +309,18 @@ def delete_account(
     Requires the current password as confirmation. Accounts, transactions,
     bank connections (tokens), commitments and planned items all cascade.
     """
-    if not verify_password(body.password, current_user.hashed_password):
+    # Off the event loop: the password check is deliberately slow (eng-a on #244).
+    if not await run_in_threadpool(verify_password, body.password, current_user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Incorrect password",
         )
 
     logger.info(f"Deleting account and all data for user {current_user.id}")
+    try:
+        await asyncio.wait_for(_revoke_bank_tokens(db, current_user.id), timeout=REVOKE_TOTAL_SECONDS)
+    except asyncio.TimeoutError:
+        logger.warning("Ending bank connections at TrueLayer timed out; deleting the account anyway")
     # Bulk-delete bank connections first (DB cascades remove accounts and
     # transactions) so the ORM cascade never loads encrypted rows — deletion
     # must work even without a session DEK.
@@ -323,3 +330,22 @@ def delete_account(
     db.delete(current_user)
     db.commit()
     return {"message": "Account and all associated data deleted."}
+
+
+# The whole TrueLayer clean-up may take at most this long; deletion then
+# goes ahead regardless (eng-a on #244).
+REVOKE_TOTAL_SECONDS = 15
+
+
+async def _revoke_bank_tokens(db: Session, user_id) -> None:
+    """End every bank connection at TrueLayer (sec T-12-10a). Best-effort: a
+    connection whose tokens can't be read (no session key) or ended never
+    blocks the deletion, and no token value is logged."""
+    for connection_id, in db.query(BankConnection.id).filter(BankConnection.user_id == user_id).all():
+        try:
+            connection = db.get(BankConnection, connection_id)
+            tokens = (connection.access_token, connection.refresh_token)
+        except Exception as exc:  # unreadable without the session key
+            logger.warning(f"Could not read a bank connection's tokens to revoke them: {type(exc).__name__}")
+            continue
+        await truelayer_service.revoke_connection(*tokens)

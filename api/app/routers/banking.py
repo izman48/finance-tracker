@@ -954,8 +954,7 @@ async def disconnect_all_banks(
     # Revoke each token at TrueLayer before removing the connection (best-effort),
     # then delete (cascade handles accounts and transactions).
     for connection in connections:
-        if connection.access_token:
-            await truelayer_service.revoke_token(connection.access_token)
+        await truelayer_service.revoke_connection(connection.access_token, connection.refresh_token)
         db.delete(connection)
 
     deleted_count = len(connections)
@@ -971,7 +970,7 @@ async def disconnect_all_banks(
 
 @router.delete("/connections/{connection_id}")
 async def disconnect_specific_bank(
-    connection_id: str,
+    connection_id: uuid.UUID,
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> dict:
@@ -994,8 +993,7 @@ async def disconnect_specific_bank(
 
     # Revoke the token at TrueLayer before deleting (best-effort)
     provider_name = connection.provider_name
-    if connection.access_token:
-        await truelayer_service.revoke_token(connection.access_token)
+    await truelayer_service.revoke_connection(connection.access_token, connection.refresh_token)
     db.delete(connection)
     db.commit()
 

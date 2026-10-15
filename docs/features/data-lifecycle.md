@@ -45,7 +45,16 @@ that guard; add them to the purge by hand.
 `users` row, and relies on `ON DELETE CASCADE` from `users.id` for every other
 table (`transactions` cascade through `accounts`; asset children through
 `assets`). A new user-owned table must declare that cascade in both the model
-and the migration.
+and the migration. Before the delete it ends each connection at
+TrueLayer (`truelayer_service.revoke_connection`: the documented `DELETE
+{auth}/api/delete` with the access token as bearer; on 401 it refreshes once
+with the refresh token and retries), best-effort with the client timeout per
+call and `REVOKE_TOTAL_SECONDS` (15 s) for the whole loop. A connection it
+can't read or end never blocks the deletion, and no token value is logged.
+The password check runs in the threadpool, off the event loop. `test_delete_account.py`
+builds the table list from `Base.metadata` (every table with a foreign key to
+`users`) and checks, with SQLite foreign keys on, that none holds a row of the
+deleted user and another user's rows are untouched (T-12-10a).
 
 ## Touchpoints
 
@@ -53,7 +62,7 @@ and the migration.
 |---|---|
 | 1 Tables | Owns no tables; defines the rules above for all of them. |
 | 2 Purge | This feature. |
-| 3 Deletion | This feature. Not covered by a test (gap). |
+| 3 Deletion | This feature. `test_delete_account.py` (foreign keys on). |
 | 4 Demo mode | n/a. |
 | 5 Ownership | n/a. |
 | 6 Scopes | Web only. |
@@ -62,9 +71,8 @@ and the migration.
 | 9 Bank sync | Sync needs the DEK, so it only runs in a user request. |
 | 10 Home | n/a. |
 | 11 UI routes | `/reset-password`, delete-account modal. |
-| 12 Tests | `test_reset_purge.py`, `test_user_encryption.py`, `api/tests/unit/test_user_crypto.py`, `test_encryption.py`. |
+| 12 Tests | `test_reset_purge.py`, `test_delete_account.py`, `test_user_encryption.py`, `api/tests/unit/test_user_crypto.py`, `test_encryption.py`. |
 | 13 Docs | `CLAUDE.md` "Per-user encryption". |
 
-Gaps: no delete-account test, test SQLite doesn't enforce foreign keys,
-TrueLayer tokens aren't revoked on delete, privacy copy understates
-plaintext fields. See [known-gaps.md](../known-gaps.md).
+Gaps: the test SQLite doesn't enforce foreign keys by default (tests that
+rely on cascades turn them on), privacy copy understates plaintext fields. See [known-gaps.md](../known-gaps.md).

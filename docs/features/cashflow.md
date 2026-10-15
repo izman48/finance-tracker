@@ -49,7 +49,10 @@ Coming up and in the forecast's event list (P2, `lib/loanLabel.ts` with
 `homeOwed.loanPaymentLabel`): built in the browser from the liabilities list
 (`linked_commitment`, see liabilities.md), so the label never reaches Claude. Both match on the
 commitment id: forecast income/expense events carry `commitment_id` (null for
-repayments and planned items).
+repayments and planned items). A card plan's instalment plus fee is a
+repayment event labelled "{plan} instalment" on the card's next pay day
+(or its own date with no pay day), counted in safe-to-spend whatever the
+provider's status (T-12-5b, see liabilities.md).
 
 **MCP**: `cashflow_summary`, `forecast` (tool default horizon is `"90"`).
 

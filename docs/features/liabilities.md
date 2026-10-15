@@ -119,8 +119,14 @@ none yet) holds it in the card balance; any other is hidden until confirmed
 (`provider_confirmed` false, and the UI says "Not in net worth yet"). A plan
 whose card has gone (`card_account_id` SET NULL on disconnect) counts as
 standalone debt in `liabilities_total` and the projection. The instalment
-and fee reach the card's amount due, the forecast and safe-to-spend in
-T-12-5b.
+plus fee (`card_plans.monthly_total`) leaves the bank on the card's next pay
+day on or after each instalment date, or on the instalment date when the
+card has no pay day or has gone (`repayments.plan_instalment_events`, added
+in `scheduled_outflows` after the per-card choice, so a commitment tied to
+the card never drops it). It counts in the Cashflow forecast and
+safe-to-spend whatever the provider's status, and is never a commitment.
+Past instalments are on the card already (statement or unbilled) and are
+not added again (T-12-5b).
 
 **Tables**: `card_plans` (encrypted `name`, `balance`, `instalment`, `fee`,
 `apr`; plaintext `card_account_id`, `instalments_remaining`, `next_date`;

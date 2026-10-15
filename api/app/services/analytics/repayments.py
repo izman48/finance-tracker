@@ -9,6 +9,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.models import (
+    CardPlan,
     AccountRole,
     AccountSetting,
     CommitmentDirection,
@@ -19,6 +20,7 @@ from app.models import (
 from app.schemas import MAX_REPAYMENT_INTERVAL_MONTHS
 
 from app.services.balance_sign import credit_owed
+from app.services import card_plans
 
 from .cadence import commitment_occurrences
 from app.services.linked_commitments import linked_commitment_ids
@@ -392,4 +394,41 @@ def scheduled_outflows(db: Session, user, rules: list, start: date, end: date):
             occurrences.extend(covered)
             repayments = [r for r in repayments if r["account_id"] != card_id]
     occurrences.sort(key=lambda o: o[1])
+    # Card plan instalments always count, after the per-card choice above, so
+    # a commitment tied to the card never drops them (sec T-12-5; the safe side).
+    repayments = sorted(repayments + plan_instalment_events(db, user, start, end), key=lambda r: r["due_date"])
     return occurrences, repayments
+
+
+def plan_instalment_events(db: Session, user, start: date, end: date) -> list[dict]:
+    """Card plan instalments + fees due in [start, end] (T-12-5b, owner D3).
+
+    Each future instalment joins the card's next pay day on or after its
+    date; with no pay day (no repayment set up, or the card has gone) it
+    leaves on the instalment date itself. Counted whatever the provider's
+    verification status (sec T-12-5 b). Past instalments are already on the
+    card (statement or unbilled), so they are never added again."""
+    plans = db.query(CardPlan).filter(CardPlan.user_id == user.id).all()
+    if not plans:
+        return []
+    accounts, settings = _load(db, user)
+    roles = resolve_roles(accounts, settings)
+    by_id = {a.id: a for a in accounts}
+    positions = current_positions(db, user, accounts)
+    today = _today()
+    out = []
+    for plan in plans:
+        card = by_id.get(plan.card_account_id)
+        s = settings.get(card.id) if card is not None and roles[card.id] == AccountRole.CREDIT else None
+        has_pay_day = s is not None and s.repayment_strategy != RepaymentStrategy.SCHEDULED.value and (
+            _pays_on_card_due_date(s) or bool(s.repayment_cadence))
+        amount = card_plans.monthly_total(plan)
+        for n in range(plan.instalments_remaining):
+            charged = _add_months(plan.next_date, n)
+            if charged < today:
+                continue
+            due = next(_pay_days(s, positions.get(card.id), charged), charged) if has_pay_day else charged
+            if start <= due <= end:
+                out.append({"account_id": str(card.id) if card is not None else None,
+                            "label": f"{plan.name} instalment", "amount": amount, "due_date": due})
+    return out

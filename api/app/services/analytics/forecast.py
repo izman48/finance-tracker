@@ -235,7 +235,8 @@ def get_forecast(db: Session, user, horizon: str = "payday") -> dict:
     for (item, amount), day, _ in kept_card:
         add(day, item.account_id, {"label": item.name, "amount": amount, "kind": "planned"})
     for r in kept_repayments:
-        card_setting = settings.get(uuid.UUID(r["account_id"]))
+        # A plan whose card has gone has no account: it lands on the fallback.
+        card_setting = settings.get(uuid.UUID(r["account_id"])) if r["account_id"] else None
         pay_from = card_setting.pay_from_account_id if card_setting else None
         add(r["due_date"], pay_from,
             {"label": r["label"], "amount": -_d(r["amount"]), "kind": "repayment"})

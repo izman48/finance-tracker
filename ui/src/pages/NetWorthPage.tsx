@@ -24,6 +24,7 @@ import LiabilityRow, { BothCountedNotice, LoansLoadError } from '../components/w
 import LiabilityForm from '../components/wealth/LiabilityForm'
 import SpendingChoice from '../components/wealth/SpendingChoice'
 import NetWorthKey from '../components/wealth/NetWorthKey'
+import { lineEndLabel } from '../components/wealth/LineEndLabel'
 import {
   GROUPS, INCLUDE_KEY, LINES_KEY, NET_WORTH_COLOUR, chartRows, headline, keyRows, parseIncludeInvestments, parseLines,
   type GroupKey,
@@ -424,6 +425,14 @@ export default function NetWorthPage() {
   const monthLabel = (d: string) =>
     new Date(d).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })
   const historyRows = chartRows(history, monthLabel)
+  const headlineName = includeInvestments ? 'Net worth' : 'Net worth without investments'
+  // Which months the spending average was measured from (kept from the old
+  // caption as an info tip, ux on #219).
+  const spendingEvidence = projection?.contribution_basis?.sampled_months?.length
+    ? `Everyday spending is measured from your last ${projection.contribution_basis.spending_months_sampled} complete months of purchases (transfers between your accounts, card repayments and confirmed bills left out): ${projection.contribution_basis.sampled_months
+        .map((m) => `${new Date(m.month + '-01').toLocaleDateString('en-GB', { month: 'short' })} ${gbp(Number(m.total))}`)
+        .join(' · ')}.`
+    : ''
   const today = history.length ? history[history.length - 1] : null
   const keyFigures = today ? keyRows(today, includeInvestments) : []
   const hasInvestments = keyFigures.some((r) => r.key === 'investments')
@@ -634,7 +643,7 @@ export default function NetWorthPage() {
         )}
 
         <ResponsiveContainer width="100%" height={280}>
-          <ComposedChart data={chartData}>
+          <ComposedChart data={chartData} margin={{ top: 5, right: drawn.length ? 96 : 5, bottom: 0, left: 0 }}>
             <defs>
               <linearGradient id="nw" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#38BDF8" stopOpacity={0.3} />
@@ -660,6 +669,7 @@ export default function NetWorthPage() {
               strokeWidth={drawn.length ? 2.5 : 2}
               fill={netWorthFill ? 'url(#nw)' : 'none'}
               fillOpacity={netWorthFill ? 1 : 0}
+              label={drawn.length ? lineEndLabel(headlineName, NET_WORTH_COLOUR, historyRows.length - 1) : false}
             />
             {drawn.map((g) => (
               <Line
@@ -670,7 +680,8 @@ export default function NetWorthPage() {
                 strokeWidth={2.5}
                 dot={false}
                 isAnimationActive={!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches}
-                label={false}
+                // Its name at its right end (today, the last history point).
+                label={lineEndLabel(g.label, g.colour, historyRows.length - 1)}
               />
             ))}
             {projRows.length > 0 && (
@@ -696,6 +707,11 @@ export default function NetWorthPage() {
               </>
             ) : (
               <>Not reached within 50 years on these assumptions.</>
+            )}
+            {spendingEvidence && (
+              <span className="inline-flex align-middle ml-1">
+                <InfoTip text={spendingEvidence} side="bottom" align="left" />
+              </span>
             )}
           </p>
         )}

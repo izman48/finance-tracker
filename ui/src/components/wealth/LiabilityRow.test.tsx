@@ -98,4 +98,14 @@ describe('a plan whose card has gone (T-12-7b, ux "Plans": card disconnected)', 
     expect(h).toMatch(/class="chip-warn[^"]*"[^>]*>Card disconnected</)
     expect(t).toContain('−£800')
   })
+
+  it('offers Remove (eng-a on #241): a paid-off plan whose card has gone would otherwise count forever', async () => {
+    const { DisconnectedPlanRow } = await import('./LiabilityRow')
+    const h = renderToStaticMarkup(<DisconnectedPlanRow onRemove={() => {}} plan={{
+      id: 'p1', card_account_id: null, card_name: null, name: 'Laptop plan', balance: '800.00', instalment: '100.00',
+      fee: '5.00', instalments_remaining: 8, next_date: '2026-11-04', final_date: '2027-06-04', monthly_total: '105.00',
+      in_net_worth: true, provider_confirmed: false,
+    }} />)
+    expect(h).toMatch(/<button[^>]*aria-label="Remove Laptop plan"[^>]*>Remove<\/button>/)
+  })
 })

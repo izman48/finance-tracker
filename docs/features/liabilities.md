@@ -165,7 +165,7 @@ yet" notice with the monthly figure. On Wealth each card row lists its plans
 indented under it (`CardRow`): unconfirmed shows "£X left" with no minus and
 a chip, confirmed shows "−£X already counted"; neither is added to a total.
 A plan whose card has gone shows under Loans and finance with "Card
-disconnected" (`DisconnectedPlanRow`) at the API's figure. Payments left are
+disconnected" (`DisconnectedPlanRow`) at the API's figure, with Remove (a paid-off plan would otherwise count forever). Payments left are
 shown as "N payments to go" (the API keeps no original count). Demo:
 `sampleAccount.ts` serves one unconfirmed "Laptop plan" on Harbor Rewards
 whose instalment + fee is in the sample forecast and safe to spend.

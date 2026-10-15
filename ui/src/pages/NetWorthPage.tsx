@@ -281,6 +281,23 @@ export default function NetWorthPage() {
     }
   }
 
+  // A plan whose card has gone counts as debt on its own, so it needs a way
+  // out once paid (eng-a on #241).
+  const removeDisconnectedPlan = async (p: CardPlan) => {
+    const ok = await confirm({
+      title: `Remove ${p.name}?`,
+      body: `It stops counting as ${gbp(Number(p.balance))} of debt in your net worth, and its payments leave your forecast.`,
+      confirmLabel: 'Remove', danger: true,
+    })
+    if (!ok) return
+    try {
+      await cardPlansAPI.remove(p.id)
+      await Promise.all([loadPlans(), load()])
+    } catch (e: any) {
+      if (e?.message !== 'anonymized-write-blocked') toast('We could not remove this plan. Try again.', { tone: 'err' })
+    }
+  }
+
   useEffect(() => {
     load()
     loadLiabilities()
@@ -840,7 +857,7 @@ export default function NetWorthPage() {
                     onOpen={(fromChip) => { setLoanFormFromChip(fromChip); setLoanFormProperty(false); setLoanForm(l) }}
                     onChooseProperty={needsProperty(l) ? () => { setLoanFormFromChip(false); setLoanFormProperty(true); setLoanForm(l) } : undefined} />
                 ))}
-                {planRows.map((p) => <DisconnectedPlanRow key={`plan-${p.id}`} plan={p} />)}
+                {planRows.map((p) => <DisconnectedPlanRow key={`plan-${p.id}`} plan={p} onRemove={() => removeDisconnectedPlan(p)} />)}
                 {groupRows.map((row) => row.card ? (
                   <CardRow key={row.key} account={row.card} plans={plansOnCard(plans, row.card.id)} onOpen={row.onClick} />
                 ) : row.investment ? (

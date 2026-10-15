@@ -89,7 +89,7 @@ export function BothCountedNotice({ onReplace }: { onReplace?: () => void }) {
 
 /** A card plan whose card has gone (bank disconnect): the API counts what is
  *  left as debt of its own (safe side), so it shows here with that figure. */
-export function DisconnectedPlanRow({ plan }: { plan: CardPlan }) {
+export function DisconnectedPlanRow({ plan, onRemove }: { plan: CardPlan; onRemove?: () => void }) {
   const left = Number(plan.balance)
   const toGo = `${plan.instalments_remaining} ${plan.instalments_remaining === 1 ? 'payment' : 'payments'} to go`
   return (
@@ -100,6 +100,10 @@ export function DisconnectedPlanRow({ plan }: { plan: CardPlan }) {
       </span>
       <span className="chip-warn shrink-0">Card disconnected</span>
       <span className="shrink-0 text-sm font-semibold tnum text-warn">−{gbp0(left)}</span>
+      {onRemove && (
+        <button type="button" id={`plan-remove-${plan.id}`} aria-label={`Remove ${plan.name}`} onClick={onRemove}
+          className="shrink-0 text-xs text-accent underline min-h-[44px] sm:min-h-0">Remove</button>
+      )}
     </div>
   )
 }

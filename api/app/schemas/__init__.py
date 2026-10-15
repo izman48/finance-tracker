@@ -134,6 +134,52 @@ class AssetResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class GraphHistoryPoint(BaseModel):
+    date: date
+    worth: Decimal
+
+
+class GraphForecastPoint(BaseModel):
+    date: date
+    worth: Decimal
+    paid_in: Decimal
+
+
+class GraphAnswer(BaseModel):
+    months: int
+    worth_about: Decimal
+    paid_in: Decimal
+
+
+class InvestmentSeries(BaseModel):
+    id: uuid.UUID
+    name: str
+    kind: str
+    value_today: Decimal
+    value_as_of: date
+    growth_pct: Decimal
+    monthly_contribution: Decimal
+    history: list[GraphHistoryPoint]
+    forecast: list[GraphForecastPoint]
+
+
+class InvestmentTotal(BaseModel):
+    value_today: Decimal
+    monthly_contribution: Decimal
+    history: list[GraphHistoryPoint]
+    forecast: list[GraphForecastPoint]
+    answer: GraphAnswer | None = None
+
+
+class InvestmentGraph(BaseModel):
+    """The investment graphs: an estimate from the user's own %, not advice."""
+
+    as_of: date
+    months: int
+    holdings: list[InvestmentSeries]
+    total: InvestmentTotal
+
+
 class NetWorthPoint(BaseModel):
     date: date
     bank: Decimal

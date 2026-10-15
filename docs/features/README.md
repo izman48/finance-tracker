@@ -29,6 +29,7 @@ this before changing a feature; update it in the same PR as the change.
 | Nudges | [nudges.md](nudges.md) | Cashflow tab | no | served |
 | Spending insight | [spending.md](spending.md) | Spending tab, Home | `spending`, `spending_trend` | served |
 | Net worth and assets | [net-worth.md](net-worth.md) | Wealth tab, Home | no | served |
+| Holdings and their projection | [holdings.md](holdings.md) | Wealth (T-11-5) | no (T-11-7) | gap until T-11-8 |
 | Liabilities (loans, finance, BNPL) | [liabilities.md](liabilities.md) | Wealth tab (T-10-10) | no | no UI reads yet |
 | Budgets | [budgets.md](budgets.md) | Spending > Budgets, Home, Cashflow forecast | `list_budgets`, `set_budgets`, `pause_budget`, `resume_budget`, `remove_budget` | served (gap: forecast budget line, nudges) |
 | Claude's changes (audit, undo, keep) | [claude-changes.md](claude-changes.md) | user menu > Changes made by Claude | every write tool | served (empty) |

@@ -15,6 +15,7 @@ from app.routers import (
     rules_router,
     assets_router,
     liabilities_router,
+    holdings_router,
     oauth_router,
     well_known_router,
     audit_router,
@@ -78,6 +79,7 @@ app.include_router(analytics_router, prefix="/api/v1")
 app.include_router(rules_router, prefix="/api/v1")
 app.include_router(assets_router, prefix="/api/v1")
 app.include_router(liabilities_router, prefix="/api/v1")
+app.include_router(holdings_router, prefix="/api/v1")
 app.include_router(oauth_router, prefix="/api/v1")
 app.include_router(audit_router, prefix="/api/v1")
 app.include_router(planning_router, prefix="/api/v1")

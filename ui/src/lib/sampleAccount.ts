@@ -717,6 +717,7 @@ function assetsResponse() {
       ? { id: CONTRIBUTION.id, label: CONTRIBUTION.label, amount: CONTRIBUTION.amount.toFixed(2), next_date: isoDate(nowPlus(CONTRIBUTION.nextIn)), pay_from_account_id: CONTRIBUTION.account }
       : null,
     valuations: assetValuations(a).map((v) => ({ id: v.id, value: String(v.value), valued_at: v.date })),
+    value_today: a.value.toFixed(2),
   }))
 }
 

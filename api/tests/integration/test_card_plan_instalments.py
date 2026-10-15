@@ -114,3 +114,11 @@ def test_after_the_card_goes_the_instalments_still_count(client, db_session):
     world.db.commit()
     assert _plan_events(world) == [(_add_months(NEXT, n).isoformat(), "-102.50") for n in range(2)]
     assert world.client.get(f"{API}/analytics/summary", headers=world.h).status_code == 200
+
+
+def test_another_users_plan_never_reaches_my_forecast(client, db_session):
+    alice = World(client, db_session, "instal-alice@example.com")
+    alice.plan()
+    bob = World(client, db_session, "instal-bob@example.com")
+    assert _plan_events(bob) == []
+    assert _plan_events(alice)[0] == (NEXT.isoformat(), "-102.50")

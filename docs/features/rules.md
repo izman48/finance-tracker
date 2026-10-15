@@ -16,8 +16,8 @@ create a whole pack in one call.
 | `POST /api/v1/rules` | `CurrentUser` (does not auto-apply) |
 | `PATCH /api/v1/rules/{rule_id}` | `CurrentUser` |
 | `DELETE /api/v1/rules/{rule_id}` | `CurrentUser` |
-| `POST /api/v1/rules/preview` | `CurrentUserOrMcpRead` |
-| `GET /api/v1/rules/impact` | `CurrentUserOrMcpRead` (shadowed and dead rules, gaps) |
+| `POST /api/v1/rules/preview` | `CurrentUserOrMcpRead`; per-user limit (`rules-preview`, T-12-10b) |
+| `GET /api/v1/rules/impact` | `CurrentUserOrMcpRead` (shadowed and dead rules, gaps); per-user limit (`rules-impact`) |
 | `POST /api/v1/rules/apply` | `CurrentUser` |
 | `POST /api/v1/rules/packs` | `CurrentUser` |
 | `POST /api/v1/rules/packs/bulk` | `CurrentUserOrMcpRulesWrite` (up to 200 rules, validated first) |

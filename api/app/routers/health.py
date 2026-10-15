@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response, status
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -18,20 +18,16 @@ class HealthResponse(BaseModel):
 
 
 @router.get("/health", response_model=HealthResponse)
-def health_check(db: Annotated[Session, Depends(get_db)]) -> HealthResponse:
+def health_check(response: Response, db: Annotated[Session, Depends(get_db)]) -> HealthResponse:
+    """Verifies the API is running and the database answers.
+
+    503 when the database is down (T-12-10b), so a load balancer or uptime
+    check sees it, with the same fixed body: never the driver's error text,
+    host or port.
     """
-    Health check endpoint.
-    
-    Verifies API is running and database is accessible.
-    """
-    # Check database connection
     try:
         db.execute(text("SELECT 1"))
-        db_status = "healthy"
     except Exception:
-        db_status = "unhealthy"
-
-    return HealthResponse(
-        status="healthy" if db_status == "healthy" else "degraded",
-        database=db_status,
-    )
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        return HealthResponse(status="degraded", database="unhealthy")
+    return HealthResponse(status="healthy", database="healthy")

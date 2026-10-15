@@ -33,7 +33,7 @@ from app.schemas import (
     TransactionListResponse,
     TransactionUpdate,
 )
-from app.core.rate_limit import user_in_flight, user_rate_limiter
+from app.core.rate_limit import limit_user, user_in_flight, user_rate_limiter
 from app.schemas.transaction_search import TransactionSearchRequest, TransactionSearchResponse
 from app.services import analytics_service, categorization
 from app.services import transaction_search as search
@@ -654,6 +654,7 @@ def get_transactions(
     detection the spending aggregates use, so a figure on the Spending page
     always reconciles with the transactions listed beneath it.
     """
+    limit_user("transactions", current_user.id)  # decrypts a page of the ledger
     txns = (
         _user_transactions_query(db, current_user, account_id, date_from, date_to)
         .order_by(Transaction.transaction_date.desc())

@@ -41,6 +41,9 @@ HOLDINGS_PER_USER_MAX = 100
 # values per holding are bounded where they are added. An overwrite of a
 # date that has a value is always allowed.
 VALUATIONS_PER_ASSET_MAX = 1000
+# Recorded deposits and withdrawals are walked by the decomposition the same
+# way (sec-2 on #239): bounded where they are added.
+FLOWS_PER_ASSET_MAX = 1000
 
 
 def _own_asset(db: Session, user_id, asset_id: uuid.UUID) -> Asset:
@@ -312,6 +315,12 @@ def add_flow(
     asset = _own_asset(db, current_user.id, asset_id)
     if body.amount == 0:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Flow amount can't be zero")
+    flows = db.query(AssetFlow).filter(AssetFlow.asset_id == asset.id).count()
+    if flows >= FLOWS_PER_ASSET_MAX:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"This holding has {FLOWS_PER_ASSET_MAX} recorded movements already. Delete an old one to add another.",
+        )
     flow = AssetFlow(
         asset_id=asset.id,
         amount=body.amount,

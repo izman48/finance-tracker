@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.rate_limit import auth_rate_limiter
+from app.core.rate_limit import auth_rate_limiter, limit_user_and_ip
 from app.core.security import (
     create_access_token,
     create_password_reset_token,
@@ -153,6 +153,7 @@ def login(
 
 @router.post("/change-password", response_model=Token)
 def change_password(
+    request: Request,
     body: ChangePasswordRequest,
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
@@ -162,6 +163,7 @@ def change_password(
     The DEK is unwrapped with the old password and rewrapped with the new one,
     so encrypted data (and the recovery code) survive unchanged.
     """
+    limit_user_and_ip(request, "change-password", current_user.id)
     if not verify_password(body.current_password, current_user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -300,6 +302,7 @@ def reset_password(
 
 @router.post("/delete-account")
 async def delete_account(
+    request: Request,
     body: DeleteAccountRequest,
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
@@ -309,6 +312,9 @@ async def delete_account(
     Requires the current password as confirmation. Accounts, transactions,
     bank connections (tokens), commitments and planned items all cascade.
     """
+    # The limit comes first, before the password check and any TrueLayer
+    # call, so a guess always costs (T-12-10b, sec-2).
+    limit_user_and_ip(request, "delete-account", current_user.id)
     # Off the event loop: the password check is deliberately slow (eng-a on #244).
     if not await run_in_threadpool(verify_password, body.password, current_user.hashed_password):
         raise HTTPException(

@@ -123,3 +123,32 @@ auth_rate_limiter = SlidingWindowRateLimiter()
 # container's address, so an IP key would throttle every user as one.
 user_rate_limiter = SlidingWindowRateLimiter()
 user_in_flight = InFlightGuard()
+
+
+# Per-route limits (T-12-10b, sec): scope -> (events, window in seconds).
+# Account routes are limited per user AND per IP ("-ip"): a password guess
+# must cost something from one account and from one address. Reads that
+# decrypt the whole ledger are per user only (MCP calls share one IP).
+LIMITS: dict[str, tuple[int, int]] = {
+    "change-password": (5, 60 * 60),
+    "change-password-ip": (20, 60 * 60),
+    "delete-account": (5, 60 * 60),
+    "delete-account-ip": (20, 60 * 60),
+    "rules-preview": (30, 60),
+    "rules-impact": (10, 60),
+    "transactions": (60, 60),
+    "packs-bulk": (10, 60 * 60),
+}
+
+
+def limit_user(scope: str, user_id) -> None:
+    """429 once this user passes the scope's limit (keyed by user id)."""
+    events, window = LIMITS[scope]
+    user_rate_limiter.check_key(f"{scope}:{user_id}", events, window)
+
+
+def limit_user_and_ip(request: Request, scope: str, user_id) -> None:
+    """Both the per-user and the per-IP budget for a scope."""
+    events, window = LIMITS[f"{scope}-ip"]
+    auth_rate_limiter.check(request, f"{scope}-ip", events, window)
+    limit_user(scope, user_id)

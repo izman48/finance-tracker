@@ -931,6 +931,7 @@ export default function SpendingPage() {
               className="input flex-1"
             />
             <select
+              aria-label="Account"
               value={selectedAccount}
               onChange={(e) => setSelectedAccount(e.target.value)}
               className="input md:!w-56"

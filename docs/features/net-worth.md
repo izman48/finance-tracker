@@ -58,7 +58,15 @@ line), the measured average or the user's estimate (`average`), or nothing
 `subtract_spending`; `monthly_spending` applies only to `average`; omitted,
 the result is today's. The basis echoes `spending_choice`, `spending_used`,
 `budgets_monthly` and the figure applied, so the UI's evidence line prints
-the API's numbers. Nothing is stored.
+the API's numbers. Nothing is stored server-side. UI: the "Everyday
+spending" radio group (`components/wealth/SpendingChoice.tsx`,
+`lib/projectionSpending.ts`) in the target form's cashflow mode: My budgets
+(the default, disabled with "Add a budget to use this." when there are none),
+Average past spending (with the optional estimate) and None. The choice is
+kept in `wealth.spendingSource`; the old `wealth.subtractSpending = '0'` maps
+to None and a stored `wealth.monthlySpend` to Average. The budgets line says
+"a pay cycle" unless the budget cycle is a calendar month (budgets are per
+cycle).
 
 **Services**: `services/analytics/net_worth.py` (history, position,
 `assets_total`, `liabilities_total`, `asset_decomposition`), `services/analytics/projections.py`

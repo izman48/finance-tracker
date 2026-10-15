@@ -170,3 +170,30 @@ type CardStatementsShape = {
   current: { amount_still_due: string; unbilled: string }
   next_payment: { amount: string; date: string }
 }
+
+// T-10-15b: demo mode answers spending_source as the API does. The sample has
+// no budgets, so "budgets" (and no choice) falls back to the average.
+describe('sample projection spending', () => {
+  const basis = (q: Record<string, unknown>) =>
+    (sampleResponse('/api/v1/analytics/net-worth-projection', q) as any).contribution_basis
+  // No spending_source keeps the legacy answer, as the API does (tested by the API).
+  it('budgets fall back to the average, saying so', () => {
+    const b = basis({ spending_source: 'budgets' })
+    expect(b.budgets_fallback).toBe(true)
+    expect(b.budgets_monthly).toBe('0.00')
+    expect(b.spending_choice).toBe('budgets')
+    expect(b.spending_used).toBe('average')
+    expect(Number(b.spending_applied)).toBe(Number(b.avg_spending_monthly))
+  })
+  it('average with an estimate uses the estimate', () => {
+    const b = basis({ spending_source: 'average', monthly_spending: '900' })
+    expect(b.spending_used).toBe('estimate')
+    expect(Number(b.spending_applied)).toBe(900)
+  })
+  it('none subtracts nothing', () => {
+    const b = basis({ spending_source: 'none' })
+    expect(b.spending_used).toBe('none')
+    expect(Number(b.spending_applied)).toBe(0)
+    expect(Number(b.contribution)).toBe(Number(b.income_monthly) - Number(b.bills_monthly))
+  })
+})

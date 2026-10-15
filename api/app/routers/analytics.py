@@ -20,6 +20,7 @@ from app.models import (
     RepaymentScheduleItem,
     RepaymentStrategy,
 )
+from fastapi.exceptions import RequestValidationError
 from app.schemas import (
     MAX_HOLDING_AMOUNT,
     MAX_TARGET,
@@ -33,6 +34,7 @@ from app.schemas import (
     CommitmentFromTransaction,
     CommitmentResponse,
     CommitmentUpdate,
+    changed_label_error,
     ForecastResponse,
     NetWorthPoint,
     NetWorthPosition,
@@ -364,6 +366,11 @@ def update_commitment(
     require_owned_account_ids(db, current_user, data)
 
     updates = data.model_dump(exclude_unset=True)
+    if "label" in updates and updates["label"] != rule.label:
+        problem = changed_label_error(updates["label"] or "")
+        if problem:
+            raise RequestValidationError([{"type": "value_error", "loc": ("body", "label"), "msg": problem,
+                                           "input": None}])
     refuse_linked_edit(db, current_user.id, rule.id, updates)
     # match_merchant is a virtual field — translate it into the stored match_key.
     if "match_merchant" in updates:

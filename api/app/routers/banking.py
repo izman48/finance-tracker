@@ -871,10 +871,12 @@ def update_transaction(
         )
 
     # Update fields
-    if update_data.category is not None:
-        transaction.category = update_data.category
+    sent = update_data.model_fields_set
+    if "category" in sent:
+        # Field absent = unchanged; null or "" = clear (the UI sends null).
+        transaction.category = update_data.category or None
         # Learn the rule and spread it to this merchant's other transactions
-        # (empty category = forget the rule).
+        # (a cleared category forgets the rule, T-12-12).
         categorization.learn_and_apply(db, current_user.id, transaction)
     if update_data.subcategory is not None:
         transaction.subcategory = update_data.subcategory

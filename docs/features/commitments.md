@@ -57,8 +57,8 @@ unrelated bill of the same amount on another day is still suggested.
 | Route | Auth |
 |---|---|
 | `GET /api/v1/analytics/commitments` | `CurrentUserOrMcpRead`; runs `sync_suggestions` first (detection, re-keying, rolling dates), adds late, keep and Claude-marker fields. |
-| `POST /api/v1/analytics/commitments` | `CurrentUser` (manual add) |
-| `PATCH /api/v1/analytics/commitments/{commitment_id}` | `CurrentUser`; calls `record_user_edit`. |
+| `POST /api/v1/analytics/commitments` | `CurrentUser` (manual add; T-12-12 bounds: direction and cadence enums, label 1-100 visible characters, amount above £0 to £1,000,000 in pence, intervals bounded, match text up to 200; else 422) |
+| `PATCH /api/v1/analytics/commitments/{commitment_id}` | `CurrentUser`; calls `record_user_edit`. Same bounds; status enum; a label is checked only when it changes (bank labels are sent back unchanged). |
 | `POST /api/v1/analytics/commitments/{commitment_id}/skip` | `CurrentUser` |
 | `POST /api/v1/analytics/commitments/from-transaction` | `CurrentUser` |
 | `POST /api/v1/planning/commitments/{commitment_id}/update` | `PlanningWriter` (Claude) |

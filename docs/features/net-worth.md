@@ -111,7 +111,15 @@ Investments, Property & other and Debt (a group at 0 is left out; Debt shows
 whenever anything is owed) with their figures, each a switch for its line
 (`aria-pressed`, announced), plus "Include investments in net worth", which
 reloads history and the projection with `include_investments=false` and
-renames the headline. Line choices and the tick box are kept in this browser
+renames the headline. **History / Forecast views** (owner 2026-10-15): once a
+target gives a projection, a "History | Forecast" switch shows above the
+graph (`lib/netWorthChart.ts`, kept in `wealth.chartView`; Forecast is the
+default unless History was chosen). History draws the chosen range and the
+group lines at full width, with no projection. Forecast
+(`components/wealth/ForecastChart.tsx`) draws net worth to today and the
+dashed projection on a real date axis with year ticks, plus the target
+line; the range buttons are hidden there and the key lists today's figures
+under "Today", without line switches. With no target only History exists. Line choices and the tick box are kept in this browser
 (`wealth.lines`, `wealth.includeInvestments`; `lib/netWorthLines.ts`); hiding
 a line never changes a figure. The target result is one sentence. Home's
 Wealth card shows `investments_total` as "Investments" when above 0.
@@ -179,5 +187,5 @@ surface, conversion), `test_projection_budgets.py` (T-10-15b), `api/tests/unit/t
 | 9 Bank sync | History is rebuilt on read from synced transactions. |
 | 10 Home | Wealth card (net worth and changes, sparkline, Total owed from `total_owed`). Owned by Wealth. |
 | 11 UI routes | `/networth`. |
-| 12 Tests | listed above; no route tests for valuations or flows, no UI tests. |
+| 12 Tests | listed above (UI: `NetWorthKey.test.tsx`, `netWorthLines.test.ts`, `netWorthChart.test.ts`); no route tests for valuations or flows. |
 | 13 Docs | this file. |

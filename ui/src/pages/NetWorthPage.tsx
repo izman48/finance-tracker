@@ -6,7 +6,6 @@ import {
   CartesianGrid,
   ComposedChart,
   Line,
-  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -24,6 +23,8 @@ import LiabilityRow, { BothCountedNotice, LoansLoadError } from '../components/w
 import LiabilityForm from '../components/wealth/LiabilityForm'
 import SpendingChoice from '../components/wealth/SpendingChoice'
 import NetWorthKey from '../components/wealth/NetWorthKey'
+import ForecastChart from '../components/wealth/ForecastChart'
+import { forecastRows, parseView, VIEW_KEY, type ChartView } from '../lib/netWorthChart'
 import { lineEndLabel } from '../components/wealth/LineEndLabel'
 import {
   GROUPS, INCLUDE_KEY, LINES_KEY, NET_WORTH_COLOUR, chartRows, headline, keyRows, parseIncludeInvestments, parseLines,
@@ -114,6 +115,7 @@ function store(key: string, value: string) {
 export default function NetWorthPage() {
   const [history, setHistory] = useState<NetWorthPoint[]>([])
   const [lines, setLines] = useState<GroupKey[]>(() => parseLines(stored(LINES_KEY)))
+  const [viewChoice, setViewChoice] = useState(() => stored(VIEW_KEY))
   const [includeInvestments, setIncludeInvestments] = useState(() => parseIncludeInvestments(stored(INCLUDE_KEY)))
   const [announcement, setAnnouncement] = useState('')
   const [assets, setAssets] = useState<Asset[]>([])
@@ -441,19 +443,15 @@ export default function NetWorthPage() {
   // The area fill only when Net worth is alone (N-9).
   const netWorthFill = drawn.length === 0
 
-  // The dashed estimate extends the solid line: the junction row carries both
-  // keys so the two areas connect, then projection-only rows follow.
-  const projRows =
-    projection && historyRows.length
-      ? projection.timeline.slice(1).map((p) => ({ date: monthLabel(p.date), Projected: Number(p.value) }))
-      : []
-  const chartData = projRows.length
-    ? [
-        ...historyRows.map((r, i) => (i === historyRows.length - 1 ? { ...r, Projected: current } : r)),
-        ...projRows,
-      ]
-    : historyRows
   const targetNum = Number(target) > 0 ? Number(target) : null
+  // With a target the projection gets its own Forecast view, so History keeps
+  // the full width for its range and lines (owner 2026-10-15).
+  const forecast = targetNum && projection ? forecastRows(history, projection.timeline) : []
+  const view = parseView(viewChoice, forecast.length > 0)
+  const chooseView = (next: ChartView) => {
+    setViewChoice(next)
+    store(VIEW_KEY, next)
+  }
   const targetMonthYear = projection?.target_date
     ? new Date(projection.target_date).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
     : null
@@ -572,7 +570,21 @@ export default function NetWorthPage() {
             >
               {targetNum ? `Target ${gbp(targetNum)}` : 'Set a target'}
             </button>
-            <div className="flex gap-0.5">
+            {forecast.length > 0 && (
+              <div className="flex gap-0.5" role="group" aria-label="Graph view">
+                {(['history', 'forecast'] as const).map((v) => (
+                  <button
+                    key={v}
+                    aria-pressed={view === v}
+                    onClick={() => chooseView(v)}
+                    className={view === v ? 'seg-active' : 'seg'}
+                  >
+                    {v === 'history' ? 'History' : 'Forecast'}
+                  </button>
+                ))}
+              </div>
+            )}
+            {view === 'history' && <div className="flex gap-0.5">
               {RANGES.map((r) => (
                 <button
                   key={r.months}
@@ -582,7 +594,7 @@ export default function NetWorthPage() {
                   {r.label}
                 </button>
               ))}
-            </div>
+            </div>}
           </div>
         </div>
 
@@ -642,8 +654,11 @@ export default function NetWorthPage() {
           </div>
         )}
 
+        {view === 'forecast' ? (
+          <ForecastChart rows={forecast} target={targetNum} />
+        ) : (
         <ResponsiveContainer width="100%" height={280}>
-          <ComposedChart data={chartData} margin={{ top: 5, right: drawn.length ? 96 : 5, bottom: 0, left: 0 }}>
+          <ComposedChart data={historyRows} margin={{ top: 5, right: drawn.length ? 96 : 5, bottom: 0, left: 0 }}>
             <defs>
               <linearGradient id="nw" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#38BDF8" stopOpacity={0.3} />
@@ -654,14 +669,6 @@ export default function NetWorthPage() {
             <XAxis dataKey="date" fontSize={12} tickLine={false} axisLine={false} minTickGap={28} />
             <YAxis tickFormatter={(v) => gbp(v)} width={70} fontSize={12} tickLine={false} axisLine={false} />
             <Tooltip content={<NetWorthTooltip />} />
-            {targetNum && projRows.length > 0 && (
-              <ReferenceLine
-                y={targetNum}
-                stroke="#2DD4A7"
-                strokeDasharray="4 4"
-                label={{ value: 'target', position: 'insideTopRight', fontSize: 11, fill: '#2DD4A7' }}
-              />
-            )}
             <Area
               type="monotone"
               dataKey="Net worth"
@@ -684,19 +691,9 @@ export default function NetWorthPage() {
                 label={lineEndLabel(g.label, g.colour, historyRows.length - 1)}
               />
             ))}
-            {projRows.length > 0 && (
-              <Area
-                type="monotone"
-                dataKey="Projected"
-                stroke="#2DD4A7"
-                strokeWidth={2}
-                strokeDasharray="6 4"
-                fill="none"
-                fillOpacity={0}
-              />
-            )}
           </ComposedChart>
         </ResponsiveContainer>
+        )}
 
         {projection && targetNum && (
           <p className="text-xs text-slate-400 mt-3">
@@ -736,6 +733,7 @@ export default function NetWorthPage() {
             announcement={announcement}
             onToggle={toggleLine}
             onIncludeInvestments={chooseIncludeInvestments}
+            lineSwitches={view === 'history'}
           />
         )}
       </div>

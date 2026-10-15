@@ -13,20 +13,23 @@ export interface NetWorthKeyProps {
   announcement: string
   onToggle: (key: GroupKey) => void
   onIncludeInvestments: (include: boolean) => void
+  /** False in the Forecast view, which draws no group lines: the rows are
+   *  today's figures only. */
+  lineSwitches?: boolean
 }
 
 function money(value: number) {
   return value < 0 ? `−${gbp(Math.abs(value))}` : gbp(value)
 }
 
-export default function NetWorthKey(p: NetWorthKeyProps) {
+export default function NetWorthKey({ lineSwitches = true, ...p }: NetWorthKeyProps) {
   const netWorthName = p.includeInvestments ? 'Net worth' : 'Net worth without investments'
   return (
     <div className="mt-4">
-      <h3 id="nw-key-heading" className="text-xs uppercase tracking-wider text-slate-400 mb-1.5">Show on graph</h3>
+      <h3 id="nw-key-heading" className="text-xs uppercase tracking-wider text-slate-400 mb-1.5">{lineSwitches ? 'Show on graph' : 'Today'}</h3>
       <div role="group" aria-labelledby="nw-key-heading" className="divide-y divide-white/[0.05]">
         {p.rows.map((row) => {
-          const on = p.shown.includes(row.key)
+          const on = lineSwitches && p.shown.includes(row.key)
           const swatch = (
             <span
               aria-hidden="true"
@@ -37,13 +40,15 @@ export default function NetWorthKey(p: NetWorthKeyProps) {
           const figure = (
             <span className={`tnum ${row.key === 'debt' ? 'text-warn' : 'text-slate-200'}`}>{money(row.value)}</span>
           )
-          if (!row.included) {
+          if (!row.included || !lineSwitches) {
             return (
               <div key={row.key} className="flex items-center gap-3 min-h-[44px] px-1">
                 {swatch}
                 <span className="flex-1 min-w-0 text-slate-300">{row.label}</span>
                 {figure}
-                <span className="text-xs text-slate-400 w-24 shrink-0 whitespace-nowrap text-right">Not included</span>
+                {!row.included && (
+                  <span className="text-xs text-slate-400 w-24 shrink-0 whitespace-nowrap text-right">Not included</span>
+                )}
               </div>
             )
           }
@@ -67,7 +72,9 @@ export default function NetWorthKey(p: NetWorthKeyProps) {
           <span aria-hidden="true" className="inline-block w-4 shrink-0 border-t-[3px]" style={{ borderColor: NET_WORTH_COLOUR }} />
           <span className="flex-1 min-w-0 text-slate-100 font-medium">{netWorthName}</span>
           <span className="tnum text-slate-50 font-medium">{money(p.netWorth)}</span>
-          <span className="text-xs text-slate-400 w-24 shrink-0 whitespace-nowrap text-right">Always shown</span>
+          {lineSwitches && (
+            <span className="text-xs text-slate-400 w-24 shrink-0 whitespace-nowrap text-right">Always shown</span>
+          )}
         </div>
       </div>
       {p.hasInvestments && (

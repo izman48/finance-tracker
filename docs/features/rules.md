@@ -32,7 +32,7 @@ create a whole pack in one call.
 `category_rules` (encrypted `pattern`).
 
 **Services**: `services/categorization.py`: `category_from_provider`,
-`validate_pattern` (length cap, valid regex, and since T-12-10b no nested unbounded repetition such as `(a+)+` or `(a|aa)+`, read from the parsed pattern), precedence (own beats imported; exact beats contains
+`validate_pattern` (length cap; a regex must compile on RE2, the linear-time engine every regex rule runs on since T-12-10b, so no back-references, look-arounds or conditional groups; a stored regex RE2 can't run is skipped by `active_rules`, logging a count only), precedence (own beats imported; exact beats contains
 beats regex; longer beats shorter), `apply_rules` (respects per-field locks),
 `learn_and_apply`.
 

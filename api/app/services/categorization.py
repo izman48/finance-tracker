@@ -8,14 +8,10 @@ overwritten. When several rules match, precedence is deliberately boring:
   2. exact beats contains beats regex
   3. longer patterns beat shorter ones
 """
+import functools
 import logging
-import re
-try:  # Python 3.11+
-    import re._constants as sre_constants
-    import re._parser as sre_parse
-except ImportError:  # pragma: no cover
-    import sre_constants
-    import sre_parse
+
+import re2
 
 from sqlalchemy.orm import Session, joinedload
 
@@ -62,51 +58,35 @@ def validate_pattern(pattern: str, match_type: str) -> str | None:
         return "Pattern is empty"
     if len(pattern) > MAX_PATTERN_LENGTH:
         return f"Pattern longer than {MAX_PATTERN_LENGTH} characters"
-    if match_type == "regex":
-        try:
-            re.compile(pattern, re.IGNORECASE)
-        except re.error as exc:
-            return f"Invalid regex: {exc}"
-        if _catastrophic(pattern):
-            return CATASTROPHIC_PATTERN
+    if match_type == "regex" and _compiled(pattern) is None:
+        return UNSUPPORTED_REGEX
     return None
 
 
-# Possessive repeats (3.11+) cannot backtrack, but are treated alike.
-_POSSESSIVE = getattr(sre_constants, "POSSESSIVE_REPEAT", None)
-CATASTROPHIC_PATTERN = "Pattern could take too long to match (nested repetition)"
+# Regex rules run on RE2, a linear-time engine (T-12-10b, lead decision on
+# #248): no pattern can backtrack, whatever its shape, so a user's or a
+# shared pack's regex can't stall a request. RE2 has no back-references,
+# look-arounds or conditional groups; such patterns are refused when written
+# and skipped when loaded. Errors are never logged by RE2 itself (the
+# pattern is user text), and matching never captures.
+UNSUPPORTED_REGEX = (
+    "Invalid or unsupported regex: nilu matches with a linear-time engine, "
+    "so back-references, look-arounds and conditional groups aren't allowed"
+)
+_RE2_OPTIONS = re2.Options()
+_RE2_OPTIONS.case_sensitive = False
+_RE2_OPTIONS.log_errors = False
+_RE2_OPTIONS.never_capture = True
 
 
-def _catastrophic(pattern: str) -> bool:
-    """Nested unbounded repetition, the ReDoS shape (T-12-10b, sec): an
-    unbounded repeat around another unbounded repeat (`(a+)+`, `(.*)*`) or
-    around alternatives (`(a|aa)+`). Python's `re` has no timeout, and a
-    shared pack's patterns run against every transaction, so these are
-    refused. Read from the parsed pattern, never by running it."""
-    return _nested_repeat(sre_parse.parse(pattern), inside=False)
-
-
-def _nested_repeat(tokens, inside: bool) -> bool:
-    for op, av in tokens:
-        if op in (sre_constants.MAX_REPEAT, sre_constants.MIN_REPEAT, _POSSESSIVE):
-            _, hi, sub = av
-            unbounded = hi == sre_constants.MAXREPEAT
-            if unbounded and inside:
-                return True
-            if _nested_repeat(sub, inside or unbounded):
-                return True
-        elif op == sre_constants.SUBPATTERN:
-            if _nested_repeat(av[-1], inside):
-                return True
-        elif op == sre_constants.BRANCH:
-            if inside:
-                return True
-            if any(_nested_repeat(branch, inside) for branch in av[1]):
-                return True
-        elif op in (sre_constants.ASSERT, sre_constants.ASSERT_NOT):
-            if _nested_repeat(av[1], inside):
-                return True
-    return False
+@functools.lru_cache(maxsize=512)
+def _compiled(pattern: str):
+    """The RE2 program for a regex rule, or None if RE2 can't run it. Cached
+    like `re`'s own pattern cache, so a rule compiles once per process."""
+    try:
+        return re2.compile(pattern, options=_RE2_OPTIONS)
+    except re2.error:
+        return None
 
 
 def _fields_for(tx: Transaction, match_field: str) -> list[str]:
@@ -130,11 +110,8 @@ def _rule_matches(rule: CategoryRule, tx: Transaction) -> bool:
     if rule.match_type == "contains":
         return any(pattern.lower() in f.lower() for f in fields)
     if rule.match_type == "regex":
-        try:
-            compiled = re.compile(pattern[:MAX_PATTERN_LENGTH], re.IGNORECASE)
-        except re.error:
-            return False
-        return any(compiled.search(f) for f in fields)
+        compiled = _compiled(pattern[:MAX_PATTERN_LENGTH])
+        return compiled is not None and any(compiled.search(f) for f in fields)
     return False
 
 
@@ -153,8 +130,14 @@ def active_rules(db: Session, user_id) -> list[CategoryRule]:
         .all()
     )
     rules = [r for r in rules if r.pack is None or r.pack.enabled]
-    rules.sort(key=_precedence)
-    return rules
+    # A regex stored before RE2 that it can't run is skipped (it would match
+    # nothing anyway); the count only is logged, never the pattern.
+    runnable = [r for r in rules if r.match_type != "regex" or _compiled(r.pattern.strip()[:MAX_PATTERN_LENGTH])]
+    if len(runnable) < len(rules):
+        skipped = len(rules) - len(runnable)
+        logger.warning("Skipped %d stored regex rule(s) the matching engine can't run", skipped)
+    runnable.sort(key=_precedence)
+    return runnable
 
 
 def categorize(rules: list[CategoryRule], tx: Transaction) -> str | None:

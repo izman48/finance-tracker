@@ -15,6 +15,7 @@ from app.models import (
     User,
 )
 from app.services import analytics_service as svc
+from tests.clock import TODAY
 
 
 # --------------------------------------------------------------------------- #
@@ -499,6 +500,11 @@ class TestPerAccountOverdraft:
 
 class TestCreditRepayments:
     def test_flex_installments_recur_monthly(self, db_session):
+        # The pay day is a few days after the run's today, never on or before
+        # it, so all three instalments fall inside the 90-day window whatever
+        # the date (a fixed day 15 failed on the 15th: the first one is today,
+        # before the window starts). Capped at 28 so every month has the day.
+        pay_day = min((TODAY + timedelta(days=5)).day, 28)
         user = _user(db_session)
         spending = _account(db_session, user, "TRANSACTION", "5000", "Current")
         flex = _account(db_session, user, "CREDIT_CARD", "900", "Flex")
@@ -506,7 +512,7 @@ class TestCreditRepayments:
             AccountSetting(user_id=user.id, account_id=spending.id, role="spending"),
             AccountSetting(
                 user_id=user.id, account_id=flex.id, role="credit",
-                repayment_cadence="monthly", repayment_day=15,
+                repayment_cadence="monthly", repayment_day=pay_day,
                 repayment_strategy="installments", repayment_installments=3,
             ),
         ])

@@ -11,6 +11,8 @@ import re
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+from app.core.clock import uk_today
+
 LONDON = ZoneInfo("Europe/London")
 DEFAULT_WINDOW_DAYS = 90
 MAX_WINDOW_DAYS = 731
@@ -43,7 +45,7 @@ def matcher(query: str):
 
 
 def london_today() -> date:
-    return datetime.now(LONDON).date()
+    return uk_today()
 
 
 def utc_bounds(frm: date, to: date) -> tuple[datetime, datetime]:

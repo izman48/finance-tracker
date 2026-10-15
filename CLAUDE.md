@@ -157,6 +157,12 @@ quick overflow check, navigate a page and compare `document.documentElement
   `app/services/balance_sign.credit_owed`. Positive = owed, negative = card in
   credit. Unverified providers fall back to `abs()` (never hide a debt); add a
   provider to a sign list only once its sign is observed on real data.
+- **"Today" is the UK day** (T-11-9): take the date from
+  `app.core.clock.uk_today()` (or `analytics.common._today()`, which calls
+  it), never `date.today()` or a UTC `.date()`: between 00:00 and 01:00 BST
+  UTC is still on yesterday, which moved payday and bills.
+  `tests/unit/test_uk_today.py` scans services, routers and schemas, and
+  `api/mcp/tests/test_no_server_clock_day.py` the MCP server, for them. Timestamps stay UTC.
 - **Client IP behind Caddy**: the auth rate limits key on `request.client.host`,
   which is only the real caller because prod uvicorn runs with
   `--forwarded-allow-ips` set to Caddy's pinned address on the `edge` network

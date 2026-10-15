@@ -8,6 +8,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.models import Account, AccountRole, AccountSetting, AccountType
+from app.core.clock import uk_today
 
 _DEFAULT_ROLE_BY_TYPE = {
     AccountType.TRANSACTION: AccountRole.SPENDING,
@@ -24,7 +25,8 @@ _DEFAULT_ROLE_BY_TYPE = {
 
 
 def _today() -> date:
-    return datetime.now(timezone.utc).date()
+    """The UK day (T-11-9): every money path takes its day from here."""
+    return uk_today()
 
 
 def _d(value) -> Decimal:

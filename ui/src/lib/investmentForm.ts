@@ -206,11 +206,21 @@ export function deleteLinkedConfirm(asset: Asset): ConfirmCopy {
   }
 }
 
-/** Unticking the box on a linked holding (ux I-10). */
+/** Unticking the box on a linked holding (ux I-10). Opting out deletes the
+ *  bill only if the link created it; one the user already had stays as an
+ *  ordinary bill (#210 rule 3), so the copy says which. */
 export function stopBillConfirm(asset: Asset): ConfirmCopy {
+  const label = asset.linked_commitment?.label
+  if (asset.linked_commitment?.created === false) {
+    return {
+      title: 'Stop counting this as a bill?',
+      body: `"${label}" stays in your bills as a normal bill, no longer linked to this investment. The monthly contribution stays on the investment.`,
+      confirmLabel: 'Unlink bill', cancelLabel: 'Cancel', danger: false,
+    }
+  }
   return {
     title: 'Stop counting this as a bill?',
-    body: `"${asset.linked_commitment?.label}" will be removed from your bills. The monthly contribution stays on the investment.`,
+    body: `"${label}" will be removed from your bills. The monthly contribution stays on the investment.`,
     confirmLabel: 'Remove bill', cancelLabel: 'Cancel', danger: true,
   }
 }

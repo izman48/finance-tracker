@@ -184,7 +184,11 @@ export interface Asset {
    *  the last valuation included); null before a first value (#210). */
   value_today?: string | null
   // The bill that carries its contribution while linked (T-11-3c).
-  linked_commitment?: { id: string; label: string; amount?: string; next_date?: string; pay_from_account_id?: string | null } | null
+  linked_commitment?: {
+    id: string; label: string; amount?: string; next_date?: string; pay_from_account_id?: string | null
+    /** The link made this bill (opting out deletes it); false: the user's own bill, which stays. */
+    created?: boolean
+  } | null
 }
 
 /** PUT /assets/{id}/contribution: the user's terms and choice only (#210). */

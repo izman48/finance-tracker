@@ -187,11 +187,18 @@ describe('confirm copy', () => {
       confirmLabel: 'Delete', cancelLabel: 'Cancel', danger: true,
     })
   })
-  it('unticking says the bill is removed and the contribution stays (I-10)', () => {
-    expect(stopBillConfirm(linked)).toEqual({
+  it('unticking a bill nilu added says it is removed and the contribution stays (I-10)', () => {
+    expect(stopBillConfirm({ ...linked, linked_commitment: { ...linked.linked_commitment!, created: true } })).toEqual({
       title: 'Stop counting this as a bill?',
       body: '"Meridian S&S ISA contribution" will be removed from your bills. The monthly contribution stays on the investment.',
       confirmLabel: 'Remove bill', cancelLabel: 'Cancel', danger: true,
+    })
+  })
+  it('unticking a bill the user already had says it stays as a normal bill (lead, #221)', () => {
+    expect(stopBillConfirm({ ...linked, linked_commitment: { ...linked.linked_commitment!, created: false } })).toEqual({
+      title: 'Stop counting this as a bill?',
+      body: '"Meridian S&S ISA contribution" stays in your bills as a normal bill, no longer linked to this investment. The monthly contribution stays on the investment.',
+      confirmLabel: 'Unlink bill', cancelLabel: 'Cancel', danger: false,
     })
   })
 })

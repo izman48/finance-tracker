@@ -27,7 +27,7 @@ password and account deletion live in the user menu.
 | `/oauth/authorize` | `OAuthConsentPage` | yes |
 | `/callback` | `CallbackPage` | yes |
 | `/transactions` | redirect to `/insights` | n/a |
-| any other path | `NotFoundPage` ("Page not found", the path as text, link to Home; T-12-12) | no |
+| `/*` (any other path) | `NotFoundPage` ("Page not found", the path as text, link to Home; T-12-12) | no |
 
 There is no catch-all 404 route.
 

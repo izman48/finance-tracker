@@ -59,6 +59,17 @@ def test_today_splits_into_the_four_groups(world):
     assert _d(today, "net_worth") == Decimal("205300.00")
 
 
+def test_the_groups_add_up_to_net_worth_to_the_penny_on_every_point(world):
+    # ux invariant (owner-approved 2026-10-15): Cash + Investments +
+    # Property & other - Debt = Net worth, exactly, with and without investments.
+    for include in ("true", "false"):
+        for p in _history(world, months=6, include_investments=include):
+            investments = _d(p, "investments") if include == "true" else Decimal(0)
+            total = _d(p, "cash") + investments + _d(p, "property") - _d(p, "debt")
+            assert total == _d(p, "net_worth"), (include, p["date"])
+            assert total.as_tuple().exponent >= -2  # pennies, no rounding drift
+
+
 def test_the_groups_add_up_to_net_worth_on_every_point(world):
     points = _history(world, months=6)
     assert len(points) == 7

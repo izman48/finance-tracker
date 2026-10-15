@@ -96,7 +96,7 @@ stale), at the bill's current amount.
 **Graph groups (T-11-6, ux T-11-2)**: every history point (and so
 position) also carries `cash` (bank accounts, cards excluded, plus manual
 savings), `investments` (owner D1 kinds), `property` (property, other and
-unknown asset types: nothing is dropped) and `debt` (what cards owe, never
+unknown asset types: nothing is dropped; shown as "Property & other", owner 2026-10-15) and `debt` (what cards owe, never
 offset by a card in credit, which stays in Cash, as `total_owed`;
 liabilities; legacy debt assets and any non-investment asset worth less
 than nothing that day, as the balance sheet's Loans and finance). `net_worth = cash + property −

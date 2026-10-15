@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  blankInvestment, checkInvestment, commitmentLabel, deleteLinkedConfirm, investmentFor, nextDateForDay,
+  blankInvestment, checkInvestment, commitmentLabel, deleteLinkedConfirm, formFromQuery, investmentFor, nextDateForDay,
   saveInvestment, stopBillConfirm, type InvestmentClient, type InvestmentFormState,
 } from './investmentForm'
 import type { Asset } from '../services/api'
@@ -201,5 +201,19 @@ describe('confirm copy', () => {
       body: '"Meridian ISA direct debit" stays in your bills as an ordinary bill. The monthly contribution stays on the investment.',
       confirmLabel: 'Stop linking', cancelLabel: 'Cancel', danger: false,
     })
+  })
+})
+
+describe('opening the form from a link (ux on #217)', () => {
+  const isa = { id: 'a1', name: 'Test ISA', asset_type: 'isa', assumed_growth_pct: null, monthly_contribution: null, valuations: [] } as Asset
+  const house = { ...isa, id: 'h1', asset_type: 'property' } as Asset
+  it('?edit=<id> opens that investment; ?add=investment opens a new one', () => {
+    expect(formFromQuery('?edit=a1', [isa, house])).toBe(isa)
+    expect(formFromQuery('?add=investment', [isa])).toBe('add')
+  })
+  it('an unknown id, a non-investment or no parameter opens nothing', () => {
+    expect(formFromQuery('?edit=zz', [isa])).toBeNull()
+    expect(formFromQuery('?edit=h1', [isa, house])).toBeNull()
+    expect(formFromQuery('', [isa])).toBeNull()
   })
 })

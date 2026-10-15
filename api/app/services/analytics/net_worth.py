@@ -192,8 +192,9 @@ def _net_worth_at(db: Session, user, points: list[date], include_investments: bo
 
 # Registry group -> net worth graph group. Savings are cash; property, other
 # and unknown kinds are Property (nothing is dropped); a legacy debt asset
-# (stored negative) is Debt, and so is any other asset worth less than
-# nothing on the day, as on the balance sheet (Loans and finance).
+# (stored negative) is Debt, and so is any asset worth less than nothing on
+# the day, investments too (lead / sec-2, fail-safe: "Include investments"
+# never hides money owed), as on the balance sheet (Loans and finance).
 _GRAPH_GROUP = {"investments": "investments", "savings": "cash", "property": "property", "debt": "debt"}
 
 
@@ -204,7 +205,7 @@ def _asset_groups(holdings, day: date) -> dict[str, Decimal]:
         value = value_on(h, day)
         if value is None:
             continue
-        group = "debt" if value < 0 and h.group != "investments" else _GRAPH_GROUP.get(h.group, "property")
+        group = "debt" if value < 0 else _GRAPH_GROUP.get(h.group, "property")
         groups[group] += value
     return groups
 

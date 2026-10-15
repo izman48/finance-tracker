@@ -136,3 +136,15 @@ def test_an_asset_worth_less_than_nothing_counts_as_debt(world):
     assert _d(today, "property") == Decimal("201000.00")
     assert _d(today, "debt") == Decimal("6600.00")
     assert _d(today, "net_worth") == Decimal("204900.00")
+
+
+def test_a_negative_investment_counts_as_debt(world):
+    # Lead decision (sec-2, fail-safe, 2026-10-15): money owed is never shown
+    # as a smaller investment, and "Include investments" never hides it.
+    world.asset("Margin account", "investment", "-300", days_ago=1)
+    with_inv = _history(world)[-1]
+    without = _history(world, include_investments="false")[-1]
+    assert _d(with_inv, "investments") == Decimal("5000.00")
+    assert _d(with_inv, "debt") == Decimal("6500.00")
+    assert _d(with_inv, "net_worth") == Decimal("205000.00")
+    assert _d(without, "net_worth") == Decimal("200000.00")  # the £300 owed still counts

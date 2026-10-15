@@ -70,6 +70,23 @@ def test_a_loan_is_listed_as_debt_with_no_growth(world):
     assert h["growth_pct"] is None and h["linked"] is True and h["monthly_contribution"] == "200.00"
 
 
+def test_growth_not_set_reads_null_not_the_default(world):
+    res = world.client.post(f"{API}/assets", json={"name": "No rate", "asset_type": "pension", "value": "100"},
+                            headers=_bearer(world.web))
+    (h,) = [x for x in _list(world)["holdings"] if x["id"] == res.json()["id"]]
+    assert h["growth_pct"] is None
+
+
+def test_a_loan_whose_bill_is_not_confirmed_is_not_linked(world):
+    from app.models import CommitmentRule
+    loan = world.loan()
+    with world.as_user():
+        world.db.get(CommitmentRule, uuid.UUID(loan["linked_commitment"]["id"])).status = "suggested"
+        world.db.commit()
+    (h,) = _list(world)["holdings"]
+    assert h["linked"] is False
+
+
 def test_nothing_beyond_the_allowed_fields_leaks(world):
     isa = _isa(world)
     world.put(isa, amount="1000.00")

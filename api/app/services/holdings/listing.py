@@ -14,8 +14,9 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from app.models import CommitmentLink, Liability
+from app.models import Asset, CommitmentLink, Liability
 from app.services.analytics.common import _today
+from app.services.liabilities import confirmed_commitment_ids, is_linked
 
 from .inputs import asset_inputs, holding_inputs
 from .projection import HoldingInput, project_holding, value_on
@@ -32,9 +33,11 @@ def list_holdings(db: Session, user) -> dict:
     holdings = [h for h in holding_inputs(db, user, today, DEFAULT_GROWTH_PCT) if value_on(h, today) is not None]
     linked = _linked_ids(db, user)
     liabilities = {str(x.id): x for x in db.query(Liability).filter(Liability.user_id == user.id)}
+    own_growth = {str(a_id): pct for a_id, pct in db.query(Asset.id, Asset.assumed_growth_pct).filter(
+        Asset.user_id == user.id)}
     shown = holdings[:MAX_LISTED]
     return {
-        "holdings": [_row(h, today, linked, liabilities.get(h.id)) for h in shown],
+        "holdings": [_row(h, today, linked, liabilities.get(h.id), own_growth.get(h.id)) for h in shown],
         "count": len(holdings),
         "truncated": len(holdings) > MAX_LISTED,
     }
@@ -48,7 +51,8 @@ def investments_total(db: Session, user) -> Decimal:
     return sum((v for v in values if v is not None), Decimal(0)).quantize(PENNY)
 
 
-def _row(h: HoldingInput, today: date, linked: set[str], liability: Liability | None) -> dict:
+def _row(h: HoldingInput, today: date, linked: set[str], liability: Liability | None,
+         own_growth: Decimal | None) -> dict:
     series = project_holding(h, today, max(HORIZONS.values())).forecast
     if liability is not None:
         value_as_of = liability.balance_as_of
@@ -56,7 +60,7 @@ def _row(h: HoldingInput, today: date, linked: set[str], liability: Liability | 
         contribution = None if liability.opted_out or liability.payment is None else liability.payment
     else:
         value_as_of = max(d for d, _ in h.valuations if d <= today)
-        growth = h.growth_pct
+        growth = own_growth  # the user's own %; null when not set ("growth not set")
         contribution = h.monthly_contribution
     return {
         "id": h.id,
@@ -72,10 +76,11 @@ def _row(h: HoldingInput, today: date, linked: set[str], liability: Liability | 
 
 
 def _linked_ids(db: Session, user) -> set[str]:
-    """Holdings whose payment is a linked bill: an asset's contribution or a
-    loan's repayment."""
-    ids = {str(row.asset_id or row.liability_id) for row in db.query(CommitmentLink).filter(
-        CommitmentLink.user_id == user.id)}
-    ids |= {str(x_id) for (x_id,) in db.query(Liability.id).filter(
-        Liability.user_id == user.id, Liability.linked_commitment_id.isnot(None))}
+    """Holdings whose payment is a linked bill that counts: an asset's
+    contribution, or a loan's repayment linked to a confirmed bill and not
+    opted out (as the projection's `is_linked`)."""
+    ids = {str(row.asset_id) for row in db.query(CommitmentLink).filter(
+        CommitmentLink.user_id == user.id, CommitmentLink.asset_id.isnot(None))}
+    confirmed = confirmed_commitment_ids(db, user.id)
+    ids |= {str(x.id) for x in db.query(Liability).filter(Liability.user_id == user.id) if is_linked(x, confirmed)}
     return ids

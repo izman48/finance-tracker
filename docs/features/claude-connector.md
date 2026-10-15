@@ -62,7 +62,7 @@ sync and budgets are opt-in. A refresh never widens scopes.
 **Holdings (T-11-7, sec T-11-7):** `list_holdings` (read-only, no inputs,
 one fixed path) returns at most 100 holdings (`count`, `truncated`), each
 with exactly `id`, `name`, `kind`, `value` (today; debts negative),
-`value_as_of`, `growth_pct`, `monthly_contribution`, `linked` and
+`value_as_of`, `growth_pct` (null when the user set none), `monthly_contribution`, `linked` (a loan only when its bill is confirmed) and
 `projected` at `1y`/`5y`/`10y` from the holding engine
 (`services/holdings/listing.py`); no user id, history, commitment ids or
 timestamps (`test_holdings_list_api.py` pins the keys). Loans appear here

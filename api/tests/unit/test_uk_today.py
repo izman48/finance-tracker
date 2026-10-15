@@ -19,7 +19,10 @@ from tests.conftest import _real_today
 
 API = Path(__file__).resolve().parents[2]
 SCANNED = [API / "app" / "services", API / "app" / "routers", API / "app" / "schemas", API / "mcp"]
-FORBIDDEN = re.compile(r"date\.today\(\)|utcnow\(\)\.date\(\)|datetime\.now\((timezone\.utc)?\)\.date\(\)")
+FORBIDDEN = re.compile(
+    r"date\.today\(\)|datetime\.today\(\)|utcnow\(\)\.date\(\)|date\.fromtimestamp\("
+    r"|datetime\.now\([^)]*\)\.date\(\)"
+)
 
 
 def _freeze(monkeypatch, when: datetime):
@@ -81,7 +84,8 @@ def test_no_money_path_takes_the_day_from_the_server_clock():
 
 @pytest.mark.parametrize("line", [
     "today = date.today()", "d = datetime.utcnow().date()", "d = datetime.now(timezone.utc).date()",
-    "d = datetime.now().date()",
+    "d = datetime.now().date()", "d = datetime.today()", "d = datetime.now(UTC).date()",
+    "d = datetime.now(tz=timezone.utc).date()", "d = date.fromtimestamp(t)",
 ])
 def test_the_scan_fires_on_a_server_clock_day(tmp_path, line):
     bad = tmp_path / "bad.py"

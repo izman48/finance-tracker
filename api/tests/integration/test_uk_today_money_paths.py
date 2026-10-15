@@ -62,5 +62,7 @@ def test_bills_and_payday_roll_on_the_uk_date(world, at, utc, uk_yesterday, next
 
     summary = world.client.get(f"{API}/analytics/summary", headers=_bearer(world.web)).json()
     assert summary["next_payday"] == next_month.isoformat()
-    # The gym bill falls due before that payday, once.
+    # The gym bill falls due before that payday, once, so safe to spend is the
+    # balance less that bill (no other bills, no budgets).
     assert Decimal(summary["committed_before_payday"]) == Decimal("100.00")
+    assert Decimal(summary["safe_to_spend"]) == Decimal("1900.00")

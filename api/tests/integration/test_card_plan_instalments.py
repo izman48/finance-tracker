@@ -12,6 +12,8 @@ are never added again. Synthetic figures.
 from datetime import date, timedelta
 from decimal import Decimal
 
+import pytest
+
 from app.models import AccountSetting, CardPlan, CommitmentRule
 from app.services.analytics.common import _add_months
 from tests.clock import TODAY
@@ -60,12 +62,14 @@ def test_an_unconfirmed_providers_plan_still_counts_in_cash(client, db_session):
     assert _plan_events(world)[0] == (NEXT.isoformat(), "-102.50")
 
 
-def test_on_a_card_with_a_pay_day_it_joins_the_next_payment(client, db_session):
+# eng-a on #233: a statement-strategy card too.
+@pytest.mark.parametrize("strategy", ["full_balance", "statement_balance"])
+def test_on_a_card_with_a_pay_day_it_joins_the_next_payment(client, db_session, strategy):
     world = World(client, db_session)
     pay_day = (NEXT + timedelta(days=3)).day
     if pay_day > 28:
         pay_day = 28
-    world.as_user(lambda: _set_pay_day(world, pay_day))
+    world.as_user(lambda: _set_pay_day(world, pay_day, strategy))
     world.plan(instalments_remaining=1)
     (when, amount), = _plan_events(world)
     due = date.fromisoformat(when)
@@ -73,11 +77,11 @@ def test_on_a_card_with_a_pay_day_it_joins_the_next_payment(client, db_session):
     assert due >= NEXT and due.day == pay_day and (due - NEXT).days < 32
 
 
-def _set_pay_day(world, day):
+def _set_pay_day(world, day, strategy="full_balance"):
     s = world.db.query(AccountSetting).filter(AccountSetting.account_id == world.card_id).one()
     s.repayment_cadence = "monthly"
     s.repayment_day = day
-    s.repayment_strategy = "full_balance"
+    s.repayment_strategy = strategy
     world.db.commit()
 
 

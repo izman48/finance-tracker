@@ -127,6 +127,12 @@ the card never drops it). It counts in the Cashflow forecast and
 safe-to-spend whatever the provider's status, and is never a commitment.
 Past instalments are on the card already (statement or unbilled) and are
 not added again (T-12-5b).
+Home and Cashflow "Coming up" (`next_repayments`, from `repayment_events`)
+don't list instalments yet; T-12-7b shows them. When the first provider is
+verified (its card balance holds the plan), a `full_balance` repayment
+already pays the plan's remaining balance, so that card's repayment must then
+leave out the plan's principal, or the instalments count twice (today that
+can only overstate, the safe side).
 
 **Tables**: `card_plans` (encrypted `name`, `balance`, `instalment`, `fee`,
 `apr`; plaintext `card_account_id`, `instalments_remaining`, `next_date`;

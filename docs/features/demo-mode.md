@@ -54,7 +54,7 @@ insists it stays served.
 | 1 Tables | none (UI only). |
 | 2 Purge | n/a. |
 | 3 Deletion | n/a. |
-| 4 Demo mode | This feature. Current gaps: `/budgets`, `/budgets/history`, `/banking/sync-status`, `/analytics/accounts/:param/repayments`, `/rules/shared/:param`. |
+| 4 Demo mode | This feature. Current gaps: `/banking/sync-status`, `/analytics/accounts/:param/repayments`, `/rules/shared/:param`. |
 | 5 Ownership | n/a. |
 | 6 Scopes | n/a. |
 | 7 Claude tools | none. |

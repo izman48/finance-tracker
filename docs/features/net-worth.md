@@ -49,6 +49,20 @@ manual-asset movement only, so a liability doesn't change it. A `loan` or
 asset row locked). Until then both count, which overstates debt and never
 drops it silently. The "both counted" notice is UI (T-10-10).
 
+**Holding kinds (ADR-002, T-11-3a)**: `services/holdings/registry.py` has
+one entry per stored `asset_type` and liability `kind`: its group
+(investments, savings, property, other, debt), projection model (growth,
+amortisation, flat), whether it is debt or an investment, the commitment
+link it can carry, and how it reaches every surface (net worth, projection,
+commitments, Cashflow, Claude, demo, purge, docs). `INVESTMENT_KINDS` (isa,
+investment, pension, crypto; owner D1) is the one list behind "Include
+investments" and `investments_total`. A stored type with no entry is the
+`unknown` kind of its table, held flat and never hidden: an unknown asset
+counts at its stored value and sign, an unknown liability counts as debt. Adding a
+kind is a registry entry plus tests; `tests/unit/test_holding_registry.py`
+fails if it skips a surface, and `check_feature_docs.py` checks its docs
+file exists. Design: `docs/engineering/adr-002-holdings-and-flows.md`.
+
 **Projection spending (T-10-15b)**: `spending_source` picks the monthly
 spending the projection subtracts: the total of active, unpaused budget
 limits (`budgets`, the same `cycle_budgets` figure as the Cashflow budget
@@ -86,7 +100,7 @@ Wealth card.
 
 **Tests**: `api/tests/integration/test_net_worth_liabilities.py` (every
 surface, conversion), `test_projection_budgets.py` (T-10-15b), `api/tests/unit/test_net_worth.py`,
-`test_projection_counts_once.py`; `api/tests/integration/test_api.py`,
+`test_projection_counts_once.py`, `test_holding_registry.py`; `api/tests/integration/test_api.py`,
 `test_budget_invariance.py`, `test_reset_purge.py`; UI
 `sampleAccount.test.ts` (sample balance sheet).
 

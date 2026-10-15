@@ -8,8 +8,10 @@ overwritten. When several rules match, precedence is deliberately boring:
   2. exact beats contains beats regex
   3. longer patterns beat shorter ones
 """
+import functools
 import logging
-import re
+
+import re2
 
 from sqlalchemy.orm import Session, joinedload
 
@@ -56,12 +58,35 @@ def validate_pattern(pattern: str, match_type: str) -> str | None:
         return "Pattern is empty"
     if len(pattern) > MAX_PATTERN_LENGTH:
         return f"Pattern longer than {MAX_PATTERN_LENGTH} characters"
-    if match_type == "regex":
-        try:
-            re.compile(pattern, re.IGNORECASE)
-        except re.error as exc:
-            return f"Invalid regex: {exc}"
+    if match_type == "regex" and _compiled(pattern) is None:
+        return UNSUPPORTED_REGEX
     return None
+
+
+# Regex rules run on RE2, a linear-time engine (T-12-10b, lead decision on
+# #248): no pattern can backtrack, whatever its shape, so a user's or a
+# shared pack's regex can't stall a request. RE2 has no back-references,
+# look-arounds or conditional groups; such patterns are refused when written
+# and skipped when loaded. Errors are never logged by RE2 itself (the
+# pattern is user text), and matching never captures.
+UNSUPPORTED_REGEX = (
+    "Invalid or unsupported regex: nilu matches with a linear-time engine, "
+    "so back-references, look-arounds and conditional groups aren't allowed"
+)
+_RE2_OPTIONS = re2.Options()
+_RE2_OPTIONS.case_sensitive = False
+_RE2_OPTIONS.log_errors = False
+_RE2_OPTIONS.never_capture = True
+
+
+@functools.lru_cache(maxsize=512)
+def _compiled(pattern: str):
+    """The RE2 program for a regex rule, or None if RE2 can't run it. Cached
+    like `re`'s own pattern cache, so a rule compiles once per process."""
+    try:
+        return re2.compile(pattern, options=_RE2_OPTIONS)
+    except re2.error:
+        return None
 
 
 def _fields_for(tx: Transaction, match_field: str) -> list[str]:
@@ -85,11 +110,8 @@ def _rule_matches(rule: CategoryRule, tx: Transaction) -> bool:
     if rule.match_type == "contains":
         return any(pattern.lower() in f.lower() for f in fields)
     if rule.match_type == "regex":
-        try:
-            compiled = re.compile(pattern[:MAX_PATTERN_LENGTH], re.IGNORECASE)
-        except re.error:
-            return False
-        return any(compiled.search(f) for f in fields)
+        compiled = _compiled(pattern[:MAX_PATTERN_LENGTH])
+        return compiled is not None and any(compiled.search(f) for f in fields)
     return False
 
 
@@ -108,8 +130,14 @@ def active_rules(db: Session, user_id) -> list[CategoryRule]:
         .all()
     )
     rules = [r for r in rules if r.pack is None or r.pack.enabled]
-    rules.sort(key=_precedence)
-    return rules
+    # A regex stored before RE2 that it can't run is skipped (it would match
+    # nothing anyway); the count only is logged, never the pattern.
+    runnable = [r for r in rules if r.match_type != "regex" or _compiled(r.pattern.strip()[:MAX_PATTERN_LENGTH])]
+    if len(runnable) < len(rules):
+        skipped = len(rules) - len(runnable)
+        logger.warning("Skipped %d stored regex rule(s) the matching engine can't run", skipped)
+    runnable.sort(key=_precedence)
+    return runnable
 
 
 def categorize(rules: list[CategoryRule], tx: Transaction) -> str | None:

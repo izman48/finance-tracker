@@ -418,7 +418,9 @@ def share_pack(
     """
     pack = _own_pack(db, current_user.id, pack_id)
     if not pack.share_code:
-        pack.share_code = secrets.token_urlsafe(6)
+        # 120 bits (20 characters, the column's width), so a code can't be
+        # guessed (T-12-10b); older 6-byte codes keep working until unshared.
+        pack.share_code = secrets.token_urlsafe(15)
     pack.share_snapshot = json.dumps(
         [
             {
@@ -463,6 +465,7 @@ def preview_shared_pack(
     Reads the share-time snapshot: the live rules are encrypted with the
     owner's key, which this viewer doesn't hold.
     """
+    limit_user("shared-lookup", current_user.id)
     pack = (
         db.query(RulePack)
         .filter(RulePack.share_code == share_code)
@@ -492,8 +495,11 @@ def import_pack(
     """Copy a shared pack into my account (a snapshot I own and can edit).
 
     Copies from the share-time snapshot — the copied rules are re-encrypted
-    under the importer's own key on write.
+    under the importer's own key on write. The snapshot is another user's
+    text, so every pattern is validated again first (T-12-10b): one bad or
+    catastrophic pattern refuses the whole import and nothing is written.
     """
+    limit_user("shared-lookup", current_user.id)
     source = (
         db.query(RulePack)
         .filter(RulePack.share_code == body.share_code)
@@ -505,6 +511,10 @@ def import_pack(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This is already your pack")
 
     rules = json.loads(source.share_snapshot or "[]")
+    for r in rules:
+        problem = categorization.validate_pattern(r.get("pattern", ""), r.get("match_type", "contains"))
+        if problem:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"This pack can't be imported: {problem}.")
     copy = RulePack(
         user_id=current_user.id,
         name=source.name,

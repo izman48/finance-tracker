@@ -138,6 +138,8 @@ LIMITS: dict[str, tuple[int, int]] = {
     "rules-impact": (10, 60),
     "transactions": (60, 60),
     "packs-bulk": (10, 60 * 60),
+    # Share-code lookups (preview and import): guessing codes must not pay.
+    "shared-lookup": (20, 60 * 60),
 }
 
 

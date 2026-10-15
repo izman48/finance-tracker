@@ -26,6 +26,12 @@ python-multipart>=0.0.27  # DoS advisories fixed
 # HTTP client for Open Banking
 httpx==0.26.0
 
+# Linear-time regex engine for user and shared-pack rules (T-12-10b, lead
+# decision on #248): Python's re backtracks and has no timeout, and the
+# structural ReDoS check was bypassable. Prebuilt wheels for cp312 on
+# manylinux_2_28 (python:3.12-slim) and macOS.
+google-re2==1.1.20250805
+
 # Validation & settings
 pydantic[email]==2.9.2  # FastAPI 0.136 needs >=2.9
 pydantic-settings==2.1.0

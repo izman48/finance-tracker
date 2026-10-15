@@ -25,14 +25,14 @@ create a whole pack in one call.
 | `DELETE /api/v1/rules/packs/{pack_id}` | `CurrentUser` |
 | `POST /api/v1/rules/packs/{pack_id}/share` | `CurrentUser` (plaintext `share_snapshot`) |
 | `DELETE /api/v1/rules/packs/{pack_id}/share` | `CurrentUser` |
-| `GET /api/v1/rules/shared/{share_code}` | `CurrentUser` (any user) |
-| `POST /api/v1/rules/import` | `CurrentUser` (re-encrypted under the importer's key) |
+| `GET /api/v1/rules/shared/{share_code}` | `CurrentUser` (any user); `shared-lookup` limit per user (T-12-10b) |
+| `POST /api/v1/rules/import` | `CurrentUser` (re-encrypted under the importer's key); same lookup limit; every snapshot pattern re-validated, one bad one refuses the import (400) |
 
 **Tables**: `rule_packs` (plaintext, including the share snapshot),
 `category_rules` (encrypted `pattern`).
 
 **Services**: `services/categorization.py`: `category_from_provider`,
-`validate_pattern`, precedence (own beats imported; exact beats contains
+`validate_pattern` (length cap; a regex must compile on RE2, the linear-time engine every regex rule runs on since T-12-10b, so no back-references, look-arounds or conditional groups; a stored regex RE2 can't run is skipped by `active_rules`, logging a count only), precedence (own beats imported; exact beats contains
 beats regex; longer beats shorter), `apply_rules` (respects per-field locks),
 `learn_and_apply`.
 

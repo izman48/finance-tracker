@@ -18,6 +18,7 @@ from app.models import AccountSetting, CardPlan, CommitmentRule
 from app.services.analytics.common import _add_months
 from tests.clock import TODAY
 from tests.integration.test_card_plans_api import NEXT, World, API
+from tests.integration.test_oauth import READ, _bearer, _connect
 
 LABEL = "Test Plan instalment"
 
@@ -126,3 +127,18 @@ def test_another_users_plan_never_reaches_my_forecast(client, db_session):
     bob = World(client, db_session, "instal-bob@example.com")
     assert _plan_events(bob) == []
     assert _plan_events(alice)[0] == (NEXT.isoformat(), "-102.50")
+
+
+def test_claude_sees_a_generic_label_never_the_plan_name(client, db_session):
+    # Lead / sec S-7 (2026-10-15): plans reach Claude only as totals, so its
+    # forecast events say "Card plan instalment"; the app keeps the name.
+    email = "instal-claude@example.com"
+    _, _, tokens = _connect(client, scopes=(READ,), email=email)
+    world = World(client, db_session, email)
+    world.plan(instalments_remaining=1)
+    claude = world.client.get(f"{API}/analytics/forecast", params={"horizon": "90"},
+                              headers=_bearer(tokens["access_token"])).json()
+    events = [(e["label"], e["amount"]) for day in claude["timeline"] for e in day["events"]]
+    assert ("Card plan instalment", "-102.50") in events
+    assert "Test Plan" not in str(claude)
+    assert _plan_events(world) == [(NEXT.isoformat(), "-102.50")]

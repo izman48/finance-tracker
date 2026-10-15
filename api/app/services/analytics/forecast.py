@@ -124,7 +124,12 @@ def _account_breaches(
     return out
 
 
-def get_forecast(db: Session, user, horizon: str = "payday") -> dict:
+# Plans reach Claude only as totals (sec S-7): its forecast events never
+# carry a plan's name.
+CLAUDE_PLAN_LABEL = "Card plan instalment"
+
+
+def get_forecast(db: Session, user, horizon: str = "payday", for_claude: bool = False) -> dict:
     """Project the spending-account balance forward across the horizon.
 
     Applies confirmed recurring income/expenses, credit-card repayments and
@@ -238,8 +243,8 @@ def get_forecast(db: Session, user, horizon: str = "payday") -> dict:
         # A plan whose card has gone has no account: it lands on the fallback.
         card_setting = settings.get(uuid.UUID(r["account_id"])) if r["account_id"] else None
         pay_from = card_setting.pay_from_account_id if card_setting else None
-        add(r["due_date"], pay_from,
-            {"label": r["label"], "amount": -_d(r["amount"]), "kind": "repayment"})
+        label = CLAUDE_PLAN_LABEL if for_claude and r.get("card_plan") else r["label"]
+        add(r["due_date"], pay_from, {"label": label, "amount": -_d(r["amount"]), "kind": "repayment"})
 
     # Walk day by day, accumulating the pooled running balance.
     timeline: list[dict] = [{"date": today, "balance": start_balance, "events": []}]

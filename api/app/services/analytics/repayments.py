@@ -430,5 +430,6 @@ def plan_instalment_events(db: Session, user, start: date, end: date) -> list[di
             due = next(_pay_days(s, positions.get(card.id), charged), charged) if has_pay_day else charged
             if start <= due <= end:
                 out.append({"account_id": str(card.id) if card is not None else None,
-                            "label": f"{plan.name} instalment", "amount": amount, "due_date": due})
+                            "label": f"{plan.name} instalment", "amount": amount, "due_date": due,
+                            "card_plan": True})
     return out

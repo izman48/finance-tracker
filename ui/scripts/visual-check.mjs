@@ -346,8 +346,8 @@ for (const [vpName, viewport] of viewports) {
   // The Spending account filter groups accounts as Wealth and Cashflow do (T-10-16).
   if (vpName === 'desktop') {
     await page.goto(`${BASE}/insights?section=activity`, { waitUntil: 'networkidle' })
-    await page.locator('select optgroup').first().waitFor({ state: 'attached' })
-    const labels = await page.locator('select optgroup').evaluateAll((els) => els.map((e) => e.getAttribute('label')))
+    await page.getByRole('combobox', { name: 'Account' }).locator('optgroup').first().waitFor({ state: 'attached' })
+    const labels = await page.getByRole('combobox', { name: 'Account' }).locator('optgroup').evaluateAll((els) => els.map((e) => e.getAttribute('label')))
     const want = ['Current accounts', 'Savings', 'Credit cards']
     if (JSON.stringify(labels.filter((l) => want.includes(l))) !== JSON.stringify(want.filter((l) => labels.includes(l))) || !labels.includes('Credit cards')) {
       errors.push(`[${vpName}] account filter groups: ${labels.join(', ')}`)

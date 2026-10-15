@@ -28,7 +28,8 @@ tab too ([budgets.md](budgets.md)).
 `lib/categoryColors.ts`. Home Spending card. The account filter lists
 accounts in `<optgroup>`s, Current accounts, Savings, Credit cards (roles from
 the summary, as Wealth and Cashflow; excluded accounts left out;
-`lib/accountOptions.ts`, T-10-16).
+`lib/accountOptions.ts`, T-10-16). Excluded accounts can't be picked in the
+filter.
 
 **MCP**: `spending`, `spending_trend`.
 

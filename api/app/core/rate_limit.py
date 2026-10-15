@@ -140,6 +140,11 @@ LIMITS: dict[str, tuple[int, int]] = {
     "packs-bulk": (10, 60 * 60),
     # Share-code lookups (preview and import): guessing codes must not pay.
     "shared-lookup": (20, 60 * 60),
+    # The other MCP-reachable reads that decrypt the ledger (part 3, sec-2).
+    # Generous: the app loads them on every visit and filter change.
+    "summary": (120, 60),
+    "forecast": (120, 60),
+    "spending": (120, 60),
 }
 
 

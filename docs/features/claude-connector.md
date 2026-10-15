@@ -59,6 +59,11 @@ sync and budgets are opt-in. A refresh never widens scopes.
 | `resume_budget` | write (budgets) | `POST /api/v1/planning/budgets/{budget_id}/resume` |
 | `remove_budget` | write (budgets) | `POST /api/v1/planning/budgets/{budget_id}/remove` |
 
+The reads that decrypt the whole ledger are limited per user, never per IP
+(every MCP call arrives from one address): summary, forecast, spending and
+its trend (`rate_limit.LIMITS`, 120 a minute each), rules preview and impact,
+the transactions list and search (T-12-10b).
+
 **Holdings (T-11-7, sec T-11-7):** `list_holdings` (read-only, no inputs,
 one fixed path) returns at most 100 holdings (`count`, `truncated`), each
 with exactly `id`, `name`, `kind`, `value` (today; debts negative),

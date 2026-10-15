@@ -91,7 +91,8 @@ class HoldingKind:
 **Fail closed:** a stored type with no registry entry maps to kind
 `unknown` (group other, model flat). It counts in net worth at its stored
 value with its stored sign, is never filtered by any tick box, and logs a
-warning. A test stores an unknown `asset_type` and checks net worth.
+warning with the plaintext stored type only (never the name or an id).
+A test stores an unknown `asset_type` and checks net worth.
 
 ### 3. One generic link, one guard
 
@@ -108,7 +109,15 @@ New table **`commitment_links`** (one migration, in T-11-3):
 | `commitment_created` | bool (opt-out deletes only a bill the link created) |
 | `created_on` | date the link started (contributions count from here) |
 
-CHECK: exactly one of `asset_id`, `liability_id` is set. No encrypted
+CHECK: exactly one of `asset_id`, `liability_id` is set.
+
+**Server-set fields:** `user_id`, `role`, `commitment_created` and
+`created_on` (today, UK date) are set only by the server. Link requests use
+`extra="forbid"` with an allowlist (`commitment_choice`: `new` or a
+candidate id, and the contribution amount and day); a test sends each
+server field and gets 422. The service checks the holding and the
+commitment both belong to the caller (rule 6); a test uses another user's
+real ids. No encrypted
 column, so it is not in `KNOWN_ENCRYPTED_TABLES`; it joins `_OWNED_BY_USER`
 before `Liability`, `Asset` and `CommitmentRule`.
 
@@ -155,6 +164,8 @@ site for a contribution link (the checklist's section 9 item), using
    is unlinked and kept.
 4. Editing the holding's contribution updates the commitment.
 5. Deleting the holding keeps the commitment as an ordinary bill (D4).
+   The link row cascades in the same request, so the guard lifts at once;
+   a test then edits and dismisses the bill.
 6. Another user's holding or commitment id is 404, nothing written.
 
 Linking clears the holding's legacy `monthly_contribution` in the same
@@ -169,13 +180,15 @@ both counted, and a later deleted commitment never brings it back.
 | Average spending | Payments matched to the commitment are excluded as today. An unmatched direct debit counts in the average too: a double count on the safe side (lower) | yes |
 | Budget line | Budgets exclude commitment-covered categories as today; an unmatched payment stays in spend (safe side) | yes |
 | Projection | The surplus leg keeps the commitment as a bill (−C); the holding engine adds C to the holding. Net worth is neutral that month. The legacy `monthly_contribution` is used only when there is no link | equality test |
-| Net worth today and history | Value today = latest valuation + linked contributions paid since (on or after `created_on`, no growth). So the bank drop on payment day is matched and net worth does not fall. A new valuation re-bases. Same principle as linked loans following their schedule | yes |
+| Net worth today and history | Value today = latest valuation + linked contributions (no growth) dated **strictly after** that valuation's date, on or after `created_on`, on or before today (UK), and at most 90 days after the valuation (the stale-nudge window, so at most about three are ever assumed), counted only while the commitment is confirmed. History uses the same rule at each point. So the bank drop on payment day is matched and net worth does not fall; a valuation dated on a payment day already includes it. A new valuation re-bases | valuation on a payment day; 6-month-old valuation adds at most 3 |
+| Link removed (opt-out, commitment deleted) | The accrued contributions stop counting, so value today steps back to the last valuation. Opt-out writes a valuation at the current value today in the same request (user's key), so nothing steps; a web delete of the commitment can't, and the step down is accepted (safe side) | yes |
 | Commitment deleted | Link row cascades: holding shows "not linked", contribution 0, the forecast no longer shows it leaving cash. Nothing raises safe-to-spend without the user acting | yes |
 
 ### 5. Projection engine (eng-b, T-11-4)
 
 `api/app/services/holdings/projection.py`, pure (no DB). The adapter
-(eng-a) builds inputs in the request with the caller's DEK; no background
+`holdings/inputs.holding_inputs` (eng-b, T-11-4; T-11-3 adds the link and
+registry lookups) builds inputs in the request with the caller's DEK; no background
 job, no SQL filter on encrypted columns.
 
 ```python
@@ -214,13 +227,26 @@ contribution up to 10,000,000, horizon up to 600 months,
 `include_investments` a strict boolean. The engine uses the same range, no
 hidden clamp (today's `_monthly_rate` clamps at −50; T-11-4 aligns it).
 At most 100 holdings per user (409 past that), since every read projects
-each. Worst case (50%, 600 months, the largest values) stays finite in
-`Decimal` and under 1 s; a test pins it.
+each (check-then-act, so not a hard bound the engine relies on). Worst
+case, 100 holdings × 600 months at 50% with the largest values, stays
+finite in `Decimal` and under 1 s through both `GET /holdings/projection`
+and the net-worth projection; a test pins it.
 
 ### 7. Migration and rollback (sec item 4)
 
 - One migration, `commitment_links` (T-11-3): create table, backfill loan
-  rows. Additive; `assets` and `liabilities` untouched; no encrypted value
+  rows. The backfill is idempotent and checked against the user:
+  `INSERT … SELECT gen_random_uuid(), l.user_id, l.linked_commitment_id,
+  l.id, 'repayment', l.commitment_created, <migration date> FROM liabilities
+  l JOIN commitment_rules c ON c.id = l.linked_commitment_id AND c.user_id
+  = l.user_id WHERE l.linked_commitment_id IS NOT NULL AND NOT EXISTS
+  (SELECT 1 FROM commitment_links k WHERE k.commitment_id =
+  l.linked_commitment_id)` (ids made in Python on SQLite). It logs the
+  source and inserted counts only, through the `alembic` logger (prod drops
+  app INFO, #187), never raises on a mismatch (migrations run at boot), and
+  the counts are checked in the api container logs after deploy. Tests: a
+  second run inserts nothing, a user mismatch is skipped, counts agree on a
+  fixture with two loans, one linked. Additive; `assets` and `liabilities` untouched; no encrypted value
   read or copied; no migrate-on-read. T-11-4 needs none
   (`include_investments` is a parameter).
 - Downgrade drops the table. It restores nothing, so no foreign key can
@@ -250,14 +276,15 @@ each. Worst case (50%, 600 months, the largest values) stays finite in
 - New kinds are a registry entry plus tests; a missing surface fails CI.
 - Until Sprint 12, loan links are stored twice (column and link row). Both
   are written in one transaction, and a test checks they agree after link,
-  opt-out, delete and commitment delete.
+  opt-out, delete, commitment delete, key-loss purge and account deletion
+  (Postgres, foreign keys on), with every read 200 afterwards.
 - Linked holdings' value today includes contributions the bank may not have
-  paid. It is shown with its "as of" date and the stale nudge (90 days) as
-  for loans.
+  paid, bounded to 90 days after the last valuation. It is shown with its
+  "as of" date and the stale nudge as for loans.
 
 ## Ticket order
 
-T-11-3 is split to stay under 400 lines: (a) registry, adapter and CI
+T-11-3 is split to stay under 400 lines: (a) registry and CI
 check, no figure moves (unblocks T-11-4); (b) `commitment_links`
 migration and the generalised guard; (c) the link API and counted-once
 tests. T-11-4 builds on (a).

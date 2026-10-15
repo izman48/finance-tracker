@@ -8,11 +8,11 @@ larger, £1,500.00, once." No overlap, no flag and no nudge. An unflagged
 item is never warned about. Synthetic figures only.
 """
 from datetime import timedelta
+from decimal import Decimal
 
 import pytest
 
-from tests.clock import TODAY
-from tests.integration.test_card_payment_once import Cards
+from tests.integration.test_card_payment_once import PAYDAY, Cards
 from tests.integration.test_linked_commitment_guards import API, _bearer
 
 
@@ -61,7 +61,19 @@ def test_an_unflagged_item_is_never_warned_about(w):
     assert _overlap_nudges(w) == []
 
 
-def test_the_nudge_id_changes_with_the_window(w):
+def test_the_nudge_id_is_anchored_on_payday_so_a_dismissal_lasts_the_window(w):
+    """The first window starts today, so an id from its start would change
+    every day and a dismissed nudge would come back each morning. It ends
+    the day before payday, which holds for the whole window."""
     w.planned("1500.00")
     (nudge,) = _overlap_nudges(w)
-    assert nudge["id"] == f"card_payment_overlap_{(TODAY + timedelta(days=1)).isoformat()}"
+    assert nudge["id"] == f"card_payment_overlap_{(PAYDAY - timedelta(days=1)).isoformat()}"
+
+
+def test_an_item_due_today_gets_the_chip_as_the_summary_counts_it(w):
+    """eng-b on #236: the summary's window starts today, so the overlap does
+    too. A monthly item due today (a one-off due today already lands
+    tomorrow, as it is still to come)."""
+    item = w.planned("1500.00", days=0, kind="recurring", cadence="monthly")
+    assert _rows(w)[item["id"]]["card_payment_overlap"] is True
+    assert w.committed() == Decimal("1500.00")

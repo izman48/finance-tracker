@@ -19,8 +19,10 @@ it. Claude's `add_planned_event` can't set the flag (key-set test). The
 Wealth projection is unchanged: a flagged item still counts there.
 The overlap is shown (T-12-4b): `GET /api/v1/analytics/planned-items`
 marks a flagged item `card_payment_overlap` while it falls in a pay window
-(next 92 days) with projected card bills, and `GET /api/v1/analytics/nudges`
-adds `card_payment_overlap_{window start}` with the aggregate figures ("Your
+(today to 92 days ahead, read with the summary's inputs, Claude holds
+included) with projected card bills, and `GET /api/v1/analytics/nudges`
+adds `card_payment_overlap_{payday anchor}` (the day before payday for the
+current window, so a dismissal lasts it) with the aggregate figures ("Your
 planned card payments (£X) overlap your projected card bills (£Y). nilu
 counts the larger, £Z, once."), dismissed in the browser like the other
 non-budget nudges.

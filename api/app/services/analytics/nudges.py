@@ -140,12 +140,17 @@ def _card_payment_overlap(db: Session, user) -> list[dict]:
     and which one nilu counts. Facts only; dismissed in the browser."""
     from .card_payments import overlap_windows
     from .common import _today
-    for window, _ in overlap_windows(db, user, _today()):
+    today = _today()
+    for window, _ in overlap_windows(db, user, today):
         if not window.overlaps:
             continue
         larger = max(window.planned, window.projected)
+        # Anchored on payday so a dismissal lasts the window: the first window
+        # starts today (it moves daily) and ends the day before payday; a
+        # later one starts on a payday.
+        anchor = window.end if window.start == today else window.start
         return [{
-            "id": f"card_payment_overlap_{window.start.isoformat()}",
+            "id": f"card_payment_overlap_{anchor.isoformat()}",
             "rank": 0,  # a number counted twice matters most
             "body": (f"Your planned card payments ({_money(window.planned)}) overlap your projected card "
                      f"bills ({_money(window.projected)}). nilu counts the larger, {_money(larger)}, once."),

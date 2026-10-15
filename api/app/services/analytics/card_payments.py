@@ -67,25 +67,33 @@ OVERLAP_HORIZON_DAYS = 92
 
 
 def overlap_windows(db, user, today: date) -> list[tuple[Window, set]]:
-    """Each pay window in the next 92 days with the flagged planned items in
-    it: (window, item ids). The same inputs as the forecast: confirmed bills
-    (for the card ties), projected card repayments and active planned items."""
-    from app.models import CommitmentDirection, CommitmentRule, CommitmentStatus, PlannedItem
+    """Each pay window from today to 92 days ahead with the flagged planned
+    items in it: (window, item ids). The summary's inputs, so the chip and
+    nudge quote the figures safe-to-spend counts: bills as Claude's pending
+    changes leave them (`counted_commitments`, for the card ties), projected
+    card repayments, and active planned items plus any Claude removed that
+    the user hasn't kept (`held_removed_planned`)."""
+    from app.models import CommitmentDirection, PlannedItem
+    from app.services.claude_keep import counted_commitments, held_removed_planned
 
+    from .cadence import commitment_occurrences
+    from .common import _d
     from .commitments import payday_dates
+    from .planned import planned_expense_occurrences
     from .planned_matching import planned_states
     from .repayments import scheduled_outflows
-    from .summary import _planned_occurrences
 
-    start, end = today + timedelta(days=1), today + timedelta(days=OVERLAP_HORIZON_DAYS)
-    rules = db.query(CommitmentRule).filter(
-        CommitmentRule.user_id == user.id, CommitmentRule.direction == CommitmentDirection.EXPENSE.value,
-        CommitmentRule.status == CommitmentStatus.CONFIRMED.value,
-    ).all()
+    start, end = today, today + timedelta(days=OVERLAP_HORIZON_DAYS)
+    rules = counted_commitments(
+        db, user.id, CommitmentDirection.EXPENSE.value,
+        lambda r: _d(r.amount) * len(commitment_occurrences(r, start, end)),
+    )
     _, repayments = scheduled_outflows(db, user, rules, start, end)
-    planned = db.query(PlannedItem).filter(PlannedItem.user_id == user.id, PlannedItem.active.is_(True)).all()
+    planned = db.query(PlannedItem).filter(
+        PlannedItem.user_id == user.id, PlannedItem.active.is_(True),
+    ).all() + held_removed_planned(db, user.id)
     states = planned_states(db, user, planned, today)
-    flagged = [(item.id, d, a) for item, d, a in _planned_occurrences(planned, states, start, end)
+    flagged = [(item.id, d, a) for item, d, a in planned_expense_occurrences(planned, states, start, end)
                if item.is_card_payment]
     _, _, windows = resolve(pay_windows(start, end, payday_dates(db, user, start, end)), flagged, repayments)
     return [(w, {i for i, d, _ in flagged if w.start <= d <= w.end}) for w in windows]

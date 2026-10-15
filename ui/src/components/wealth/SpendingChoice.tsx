@@ -35,6 +35,7 @@ export default function SpendingChoice(p: SpendingChoiceProps) {
                 value={value}
                 checked={p.shown === value}
                 disabled={disabled}
+                aria-describedby={disabled ? 'spending-budgets-why' : undefined}
                 onChange={() => p.onChoose(value)}
                 className="sr-only"
               />
@@ -44,7 +45,7 @@ export default function SpendingChoice(p: SpendingChoiceProps) {
         })}
       </div>
       {!p.budgetsAvailable && (
-        <p className="text-xs text-slate-400 mt-1">
+        <p id="spending-budgets-why" className="text-xs text-slate-400 mt-1">
           Add a <Link to="/insights?section=budgets" className="text-accent underline">budget</Link> to use this.
         </p>
       )}

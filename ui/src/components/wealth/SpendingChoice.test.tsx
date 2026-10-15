@@ -33,6 +33,13 @@ describe('SpendingChoice', () => {
     expect(h).toContain('href="/insights?section=budgets"')
   })
 
+  it('a disabled My budgets says why to a screen reader (eng-a nit on #202)', () => {
+    const h = html(props({ shown: 'average', budgetsAvailable: false }))
+    expect(h).toMatch(/<input[^>]*aria-describedby="spending-budgets-why"[^>]*value="budgets"/)
+    expect(h).toMatch(/id="spending-budgets-why"[^>]*>Add a/)
+    expect(html(props())).not.toContain('aria-describedby')
+  })
+
   it('P-4 the estimate box only under Average, with use measured when filled', () => {
     expect(html(props())).not.toContain('id="spending-estimate"')
     const h = html(props({ shown: 'average', estimate: '900' }))

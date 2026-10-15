@@ -18,7 +18,8 @@ from app.models import (
 )
 
 from .cadence import commitment_occurrences
-from .commitments import committed_window_end, next_payday
+from . import card_payments
+from .commitments import committed_window_end, next_payday, payday_dates
 from app.services.balance_sign import credit_owed as credit_owed_for
 
 from .common import _d, _load, _today, resolve_roles
@@ -89,10 +90,8 @@ def get_summary(db: Session, user) -> dict:
     # A planned expense Claude removed still counts until kept (T-08-21b).
     planned = active_planned + held_removed_planned(db, user.id)
     states = planned_states(db, user, planned, today)
-    committed = _outflow(db, user, expense_to_payday, today, window_end) + _planned_out(planned, states, today, window_end)
-    committed_as_is = (
-        _outflow(db, user, expense_now, today, window_end) + _planned_out(active_planned, states, today, window_end)
-    )
+    committed = _money_out(db, user, expense_to_payday, planned, states, today, window_end)
+    committed_as_is = _money_out(db, user, expense_now, active_planned, states, today, window_end)
     safe_pending_keep = max(Decimal(0), committed - committed_as_is)
 
     safe_to_spend = max(Decimal(0), available_cash - committed)
@@ -130,7 +129,8 @@ def get_summary(db: Session, user) -> dict:
     # savable until the credit lands (owner decision D1; an injected "refund
     # coming" must not unlock spending). It still shows in the forecast.
     expense_30 = counted_commitments(db, user.id, expense, money_in(today, horizon))
-    out_30 = _outflow(db, user, expense_30, today, horizon) + _planned_out(planned, states, today, horizon)
+    out_30 = _money_out(db, user, expense_30, planned, states, today, horizon,
+                        paydays=payday_dates(db, user, today, horizon))
     savable = max(Decimal(0), available_cash + income_30 - out_30)
 
     manual_assets = assets_total(db, user)
@@ -160,6 +160,26 @@ def get_summary(db: Session, user) -> dict:
     }
 
 
+def _money_out(db: Session, user, expense_rules: list, planned: list, states: dict, start, end,
+               paydays: list | None = None) -> Decimal:
+    """Bills, card repayments and planned expenses in [start, end]. A planned
+    item flagged as a card payment counts once with the projected card
+    repayments: in each pay window, the larger of the two (T-12-4a)."""
+    occurrences, repayments = scheduled_outflows(db, user, expense_rules, start, end)
+    flagged = [o for o in _planned_occurrences(planned, states, start, end) if o[0].is_card_payment]
+    other = sum((a for item, _, a in _planned_occurrences(planned, states, start, end)
+                 if not item.is_card_payment), Decimal(0))
+    kept_card, kept_repayments, _ = card_payments.resolve(
+        card_payments.pay_windows(start, end, paydays or []), flagged, repayments,
+    )
+    return (
+        sum((_d(rule.amount) for rule, _ in occurrences), Decimal(0))
+        + sum((r["amount"] for r in kept_repayments), Decimal(0))
+        + other
+        + sum((a for _, _, a in kept_card), Decimal(0))
+    )
+
+
 def _outflow(db: Session, user, expense_rules: list, start, end) -> Decimal:
     """Confirmed bills plus card repayments in [start, end], each card's
     repayment counted once (see scheduled_outflows)."""
@@ -168,6 +188,21 @@ def _outflow(db: Session, user, expense_rules: list, start, end) -> Decimal:
         sum((_d(rule.amount) for rule, _ in occurrences), Decimal(0))
         + sum((r["amount"] for r in repayments), Decimal(0))
     )
+
+
+def _planned_occurrences(planned: list, states: dict, start, end) -> list[tuple]:
+    """(item, date, amount > 0) for each planned expense due in [start, end],
+    by the same rules as `_planned_out`."""
+    out = []
+    for item in planned:
+        if item.direction == "income":
+            continue
+        state = states.get(item.id)
+        if state is None:  # recurring / payment plan: by schedule
+            out.extend((item, d, -a) for d, a in planned_events(item, start, end) if a < 0)
+        elif state.counted and max(item.start_date, start) <= end:
+            out.append((item, max(item.start_date, start), _d(item.amount)))
+    return out
 
 
 def _planned_out(planned: list, states: dict, start, end) -> Decimal:

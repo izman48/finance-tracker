@@ -8,6 +8,16 @@ into an instalment plan and drops the lump from spending. Claude can add
 one-offs and soft-remove the ones it created; a removed expense keeps
 counting until the user keeps the change.
 
+**Card payments (T-12-4a, owner 2026-10-15, card-agnostic)**: a planned
+item can be marked `is_card_payment` (a plain flag on create or PATCH; no
+card is chosen and nothing is matched by name). In each pay window (cut at
+paydays) the summary's safe-to-spend window, savable and the Cashflow
+forecast count the larger of the flagged planned card payments and the
+projected card repayments of all cards, never both and never a subtraction
+(`services/analytics/card_payments.py`). A window with only one side keeps
+it. Claude's `add_planned_event` can't set the flag (key-set test). The
+Wealth projection is unchanged: a flagged item still counts there.
+
 ## Code
 
 **API**:
@@ -16,6 +26,7 @@ counting until the user keeps the change.
 |---|---|
 | `GET /api/v1/analytics/planned-items` | `CurrentUser` |
 | `POST /api/v1/analytics/planned-items` | `CurrentUser` |
+| `PATCH /api/v1/analytics/planned-items/{item_id}` | `CurrentUser` (only `is_card_payment`, `extra="forbid"`; T-12-4a) |
 | `DELETE /api/v1/analytics/planned-items/{item_id}` | `CurrentUser` (hard delete) |
 | `POST /api/v1/analytics/planned/from-transaction` | `CurrentUser` (pay on finance) |
 | `GET /api/v1/planning/planned-events` | `CurrentUserOrMcpRead` (limit 200) |

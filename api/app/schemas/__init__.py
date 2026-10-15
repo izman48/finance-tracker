@@ -1064,6 +1064,16 @@ class PlannedItemCreate(BaseModel):
     apr: Decimal | None = None
     fee_amount: Decimal | None = None
     account_id: uuid.UUID | None = None
+    # Pays a credit card: counts once with the projected card bills (T-12-4a).
+    is_card_payment: StrictBool = False
+
+
+class PlannedItemFlags(BaseModel):
+    """PATCH /analytics/planned-items/{id}: the user's card-payment tick."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    is_card_payment: StrictBool
 
 
 class PlannedItemResponse(BaseModel):
@@ -1084,6 +1094,7 @@ class PlannedItemResponse(BaseModel):
     account_id: uuid.UUID | None
     source_transaction_id: uuid.UUID | None = None
     active: bool
+    is_card_payment: bool = False
     created_via: str = "web"
     # One-off items: the transaction that paid it (it then drops out of the
     # forecast and safe-to-spend), and whether expected income is late (T-08-7).

@@ -13,10 +13,11 @@ const store = (entries: Record<string, string>) => (key: string) => entries[key]
 
 describe('the stored choice and the legacy mapping', () => {
   it('a stored choice wins', () => {
-    expect(storedChoice(store({ 'wealth.spendingSource': 'none', 'wealth.subtractSpending': '1' }))).toBe('none')
+    // T-12-0 (owner, 2026-10-15): "None" is gone; a stored one reads as the default.
+    expect(storedChoice(store({ 'wealth.spendingSource': 'none', 'wealth.subtractSpending': '1' }))).toBeNull()
   })
-  it("P-7: the old unticked box (subtractSpending '0') is None", () => {
-    expect(storedChoice(store({ 'wealth.subtractSpending': '0' }))).toBe('none')
+  it("P-7: the old unticked box (subtractSpending '0') reads as the default, not no spending (T-12-0)", () => {
+    expect(storedChoice(store({ 'wealth.subtractSpending': '0' }))).toBeNull()
   })
   it('an old estimate is Average', () => {
     expect(storedChoice(store({ 'wealth.monthlySpend': '900' }))).toBe('average')
@@ -31,8 +32,7 @@ describe('what is sent', () => {
   it('no choice yet asks for budgets (the API falls back when there are none)', () => {
     expect(spendingParams(null, '')).toEqual({ spending_source: 'budgets' })
   })
-  it('P-3 None, and Average with and without an estimate', () => {
-    expect(spendingParams('none', '900')).toEqual({ spending_source: 'none' })
+  it('Average with and without an estimate', () => {
     expect(spendingParams('average', '')).toEqual({ spending_source: 'average' })
     expect(spendingParams('average', '900')).toEqual({ spending_source: 'average', monthly_spending: '900' })
   })
@@ -50,7 +50,6 @@ describe('what shows as selected', () => {
     expect(shownChoice('budgets', none)).toBe('average')
   })
   it('a stored choice shows as itself', () => {
-    expect(shownChoice('none', basis())).toBe('none')
   })
 })
 
@@ -65,10 +64,6 @@ describe('the evidence line, printed from the API', () => {
   it('P-4 the estimate', () => {
     expect(evidenceLine(basis({ spending_used: 'estimate', spending_choice: 'average', spending_applied: '900.00' })))
       .toEqual({ text: 'Your estimate: £900 a month.', warn: false })
-  })
-  it('P-3 None, in amber', () => {
-    expect(evidenceLine(basis({ spending_used: 'none', spending_choice: 'none', spending_applied: '0.00' })))
-      .toEqual({ text: 'Not subtracted: all your cashflow lands in wealth.', warn: true })
   })
   it('P-5 budgets chosen, none active: the fallback line', () => {
     expect(evidenceLine(basis({ spending_used: 'average', budgets_fallback: true, budgets_monthly: '0.00', spending_applied: '1020.00' })))

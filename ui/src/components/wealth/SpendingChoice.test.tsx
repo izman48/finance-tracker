@@ -13,11 +13,11 @@ const html = (p: SpendingChoiceProps) =>
 const text = (h: string) => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
 
 describe('SpendingChoice', () => {
-  it('a fieldset with legend Everyday spending and three native radios in order', () => {
+  it('a fieldset with legend Everyday spending and two native radios in order', () => {
     const h = html(props())
     expect(h).toContain('<fieldset')
-    expect(text(h)).toMatch(/Everyday spending .*My budgets .*Average past spending .*None/)
-    expect((h.match(/type="radio"/g) ?? []).length).toBe(3)
+    expect(text(h)).toMatch(/Everyday spending .*My budgets .*Average past spending/)
+    expect((h.match(/type="radio"/g) ?? []).length).toBe(2)
   })
 
   it('P-1 My budgets checked and the evidence line live', () => {
@@ -40,9 +40,10 @@ describe('SpendingChoice', () => {
     expect(text(h)).toContain('use measured')
   })
 
-  it('None shows the amber line', () => {
-    const h = html(props({ shown: 'none', evidence: { text: 'Not subtracted: all your cashflow lands in wealth.', warn: true } }))
-    expect(h).toMatch(/class="[^"]*text-warn[^"]*"[^>]*>Not subtracted/)
+  it('two choices only: My budgets and Average past spending; no None (owner, T-12-0)', () => {
+    const h = html(props())
+    expect((h.match(/type="radio"/g) ?? []).length).toBe(2)
+    expect(text(h)).not.toContain('None')
   })
 
   it('secondary text is slate-400', () => {

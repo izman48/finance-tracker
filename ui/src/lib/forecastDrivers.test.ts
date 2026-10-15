@@ -24,16 +24,28 @@ const projection = (over: Partial<Projection> = {}): Projection => ({
 })
 
 describe('forecastDrivers', () => {
-  it('cashflow: income, bills and commitments, budgets, then each holding paid into', () => {
+  it('cashflow: income, bills and commitments, budgets; a contribution is a move, never a gain (T-12-0)', () => {
     const d = forecastDrivers(projection())
     expect(d.rows).toEqual([
       { label: 'Income', detail: 'your income commitments', amount: 3200 },
       { label: 'Bills and commitments', detail: 'confirmed bills, card repayments left out', amount: -818.19 },
       { label: 'Everyday spending', detail: 'your budgets', amount: -1450 },
-      { label: 'Into InvestEngine ISA', detail: 'its monthly contribution', amount: 1000 },
+      { label: 'Into InvestEngine ISA', detail: '£1,000 moved from cash (no change to net worth)', amount: 0 },
     ])
-    expect(d.total).toBeCloseTo(1931.81, 2)
+    expect(d.total).toBeCloseTo(931.81, 2)
     expect(d.growthPct).toBe(5)
+  })
+
+  it("the owner's case: £1,000 income, £400 bills, £300 budgets, £200 into the ISA -> +£300 (not +£500)", () => {
+    const d = forecastDrivers(projection({
+      contribution_basis: basis({ income_monthly: '1000.00', bills_monthly: '400.00', spending_applied: '300.00',
+        budgets_monthly: '300.00', contributions_monthly: '200.00', contribution: '100.00' }),
+      asset_assumptions: [{ name: 'Test ISA', growth_pct: '0', monthly_contribution: '200.00' }],
+    }))
+    expect(d.total).toBe(300)
+    expect(d.rows.find((r) => r.label === 'Into Test ISA')).toEqual(
+      { label: 'Into Test ISA', detail: '£200 moved from cash (no change to net worth)', amount: 0 })
+    expect(d.rows.every((r) => !(r.label.startsWith('Into') && r.amount > 0))).toBe(true)
   })
 
   it('names where everyday spending came from', () => {
@@ -44,19 +56,14 @@ describe('forecastDrivers', () => {
     expect(detail({ spending_used: 'average', budgets_fallback: true })).toBe('your average (no active budgets)')
   })
 
-  it('leaves spending out when None was chosen, and says so', () => {
-    const d = forecastDrivers(projection({ contribution_basis: basis({ spending_used: 'none', spending_applied: '0.00', spending_subtracted: false }) }))
-    expect(d.rows.map((r) => r.label)).not.toContain('Everyday spending')
-    expect(d.notes).toContain('Everyday spending is not subtracted.')
-  })
 
   it('custom: the typed monthly figure replaces income, bills and spending', () => {
     const d = forecastDrivers(projection({ mode: 'custom', contribution_basis: null, monthly_contribution: '500.00' }))
     expect(d.rows).toEqual([
       { label: 'Your monthly figure', detail: 'typed in the target form', amount: 500 },
-      { label: 'Into InvestEngine ISA', detail: 'its monthly contribution', amount: 1000 },
+      { label: 'Into InvestEngine ISA', detail: '£1,000 moved from cash (no change to net worth)', amount: 0 },
     ])
-    expect(d.total).toBe(1500)
+    expect(d.total).toBe(500)
   })
 
   it('the total is the sum of the rows', () => {

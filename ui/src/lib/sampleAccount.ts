@@ -584,23 +584,27 @@ function projectionResponse(q: Record<string, any>) {
   const BILLS_MONTHLY = 1100 + 32 + 20 + 12.99 + 11.99 + CONTRIBUTION.amount
   const AVG_SPENDING = round2((980 + 1120 + 1040 + 1210 + 1005 + 1180) / 6)
   const derived = q.monthly_contribution == null
-  // subtract_spending=false: "all my forecasted cashflow lands in my wealth" —
-  // the average is shown but not subtracted. A custom monthly_spending
-  // replaces the measured average entirely (mirrors the backend).
-  // spending_source (T-10-15b) wins when sent; "budgets" uses the sample
+  // Spending is always subtracted (owner, T-12-0), as the API: "none" and an
+  // old subtract_spending=false read as budgets. A custom monthly_spending
+  // replaces the measured average under Average; "budgets" uses the sample
   // budgets' total (T-11-8), as the API uses the active, unpaused limits.
-  const source: string | null = q.spending_source ?? null
-  const subtractSpending = source ? source !== 'none' : String(q.subtract_spending ?? 'true') !== 'false'
+  const legacyNoSpending = q.spending_source == null && String(q.subtract_spending ?? 'true') === 'false'
+  const source: string | null = q.spending_source === 'none' || legacyNoSpending ? 'budgets' : q.spending_source ?? null
+  const subtractSpending = true
   const customSpend = q.monthly_spending != null && source !== 'budgets' ? Math.max(0, Number(q.monthly_spending)) : null
   const useBudgets = source === 'budgets'
-  const spendLeg = !subtractSpending ? 0 : useBudgets ? SAMPLE_BUDGETS_MONTHLY : customSpend != null ? customSpend : AVG_SPENDING
-  const spendingUsed = !source ? null : source === 'none' ? 'none' : useBudgets ? 'budgets' : customSpend != null ? 'estimate' : 'average'
+  const spendLeg = useBudgets ? SAMPLE_BUDGETS_MONTHLY : customSpend != null ? customSpend : AVG_SPENDING
+  const spendingUsed = !source ? null : useBudgets ? 'budgets' : customSpend != null ? 'estimate' : 'average'
+  // Unlinked (legacy) contributions move cash into their holdings (T-12-0);
+  // the sample's only contribution is linked, so a bill above.
+  const UNLINKED = ASSETS.filter((a) => !a.linked).reduce((s, a) => s + a.monthly, 0)
   const basis = derived
     ? {
         income_monthly: String(round2(INCOME_MONTHLY)),
         bills_monthly: String(round2(BILLS_MONTHLY)),
         avg_spending_monthly: String(AVG_SPENDING),
-        contribution: String(round2(INCOME_MONTHLY - BILLS_MONTHLY - spendLeg)),
+        contribution: String(round2(INCOME_MONTHLY - BILLS_MONTHLY - spendLeg - UNLINKED)),
+        contributions_monthly: UNLINKED.toFixed(2),
         spending_months_sampled: 6,
         spending_subtracted: subtractSpending,
         spending_applied: String(round2(spendLeg)),
@@ -616,7 +620,7 @@ function projectionResponse(q: Record<string, any>) {
         }),
       }
     : null
-  const monthly = derived ? round2(INCOME_MONTHLY - BILLS_MONTHLY - spendLeg) : Number(q.monthly_contribution) || 0
+  const monthly = derived ? round2(INCOME_MONTHLY - BILLS_MONTHLY - spendLeg - UNLINKED) : (Number(q.monthly_contribution) || 0) - UNLINKED
   const growth = Math.min(50, Math.max(-50, Number(q.annual_growth_pct) || 0)) / 100
   const r = Math.pow(1 + growth, 1 / 12) - 1
   const addM = (m: number) => {
@@ -697,7 +701,8 @@ function projectionResponse(q: Record<string, any>) {
     current_net_worth: String(round(netWorthNow)),
     target_amount: target != null ? String(target) : null,
     target_date,
-    monthly_contribution: String(round(monthly)),
+    // Custom: the typed figure, as the API echoes it (the whole monthly change).
+    monthly_contribution: String(round(derived ? monthly : Number(q.monthly_contribution) || 0)),
     contribution_basis: basis,
     annual_growth_pct: String(Number(q.annual_growth_pct) || 0),
     mode: derived ? 'cashflow' : 'custom',

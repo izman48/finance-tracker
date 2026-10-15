@@ -1,9 +1,13 @@
 /** What moves net worth each month in the Forecast view (owner 2026-10-15).
  *
  * Only the API's own figures: the projection's contribution basis (income
- * and bill commitments, the everyday spending it subtracted) and each
- * holding's monthly contribution. Growth comes on top, at the stated %. */
+ * and bill commitments, the everyday spending it subtracted). A holding's
+ * monthly contribution only moves cash into it, so it shows as a move with
+ * £0 in the sum (T-12-0). Growth comes on top, at the stated %. */
 import type { ContributionBasis, Projection } from '../services/api'
+import { gbp, gbp0 } from './format'
+
+const pounds = (n: number) => (Number.isInteger(n) ? gbp0(n) : gbp(n))
 
 export interface DriverRow {
   label: string
@@ -37,7 +41,6 @@ function cashflowRows(basis: ContributionBasis): { rows: DriverRow[]; notes: str
     { label: 'Income', detail: 'your income commitments', amount: Number(basis.income_monthly) },
     { label: 'Bills and commitments', detail: 'confirmed bills, card repayments left out', amount: -Number(basis.bills_monthly) },
   ]
-  if (basis.spending_used === 'none') return { rows, notes: ['Everyday spending is not subtracted.'] }
   rows.push({ label: 'Everyday spending', detail: spendingDetail(basis), amount: -Number(basis.spending_applied) })
   return { rows, notes: [] }
 }
@@ -50,9 +53,15 @@ export function forecastDrivers(projection: Projection): ForecastDrivers {
         rows: [{ label: 'Your monthly figure', detail: 'typed in the target form', amount: Number(projection.monthly_contribution) }],
         notes: [],
       }
+  // A contribution only moves cash into the holding (T-12-0, owner): shown
+  // as a move with £0 in the sum, never as a gain.
   const holdings = projection.asset_assumptions
     .filter((a) => Number(a.monthly_contribution) > 0)
-    .map((a) => ({ label: `Into ${a.name}`, detail: 'its monthly contribution', amount: Number(a.monthly_contribution) }))
+    .map((a) => ({
+      label: `Into ${a.name}`,
+      detail: `${pounds(Number(a.monthly_contribution))} moved from cash (no change to net worth)`,
+      amount: 0,
+    }))
   const rows = [...base.rows, ...holdings]
   return {
     rows,

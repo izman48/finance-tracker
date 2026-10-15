@@ -122,14 +122,25 @@ def test_kind_for_finds_a_stored_type():
 @pytest.mark.parametrize("source", ["assets", "liabilities"])
 def test_an_unknown_stored_type_fails_closed(source, caplog):
     kind = kind_for(source, "boat")
-    # Counted at its stored value, held flat, never hidden by a tick box.
+    # Held flat, never hidden by a tick box, no link; it keeps its table.
+    assert kind.source == source
     assert kind.model == "flat"
     assert not kind.is_investment
     assert kind not in INVESTMENT_KINDS
-    assert kind.group == "other"
     assert kind.link_role is None
-    assert "unknown holding kind" in caplog.text
+    assert "unknown holding kind" in caplog.text and "boat" in caplog.text
 
 
-def test_the_unknown_kind_declares_every_surface_too():
-    validate((registry.UNKNOWN,))
+def test_an_unknown_asset_type_counts_at_its_stored_sign():
+    kind = kind_for("assets", "boat")
+    assert (kind.group, kind.is_debt) == ("other", False)
+
+
+def test_an_unknown_liability_kind_counts_as_debt():
+    # Liabilities store the amount owed as positive: never add it as an asset.
+    kind = kind_for("liabilities", "boat")
+    assert (kind.group, kind.is_debt) == ("debt", True)
+
+
+def test_the_unknown_kinds_declare_every_surface_too():
+    validate((registry.UNKNOWN_ASSET, registry.UNKNOWN_LIABILITY))

@@ -57,7 +57,8 @@ link it can carry, and how it reaches every surface (net worth, projection,
 commitments, Cashflow, Claude, demo, purge, docs). `INVESTMENT_KINDS` (isa,
 investment, pension, crypto; owner D1) is the one list behind "Include
 investments" and `investments_total`. A stored type with no entry is the
-`unknown` kind: counted flat at its stored value, never hidden. Adding a
+`unknown` kind of its table, held flat and never hidden: an unknown asset
+counts at its stored value and sign, an unknown liability counts as debt. Adding a
 kind is a registry entry plus tests; `tests/unit/test_holding_registry.py`
 fails if it skips a surface, and `check_feature_docs.py` checks its docs
 file exists. Design: `docs/engineering/adr-002-holdings-and-flows.md`.

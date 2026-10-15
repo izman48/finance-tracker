@@ -6,8 +6,9 @@ debt or an investment, which commitment link it can carry, and how it reaches
 every surface. `tests/unit/test_holding_registry.py` runs `validate`, so a
 kind that leaves a surface undeclared fails CI.
 
-Fail closed: a stored type with no entry maps to `UNKNOWN`, which counts at
-its stored value, held flat, and is never hidden by a tick box.
+Fail closed: a stored type with no entry maps to `UNKNOWN_ASSET` (counted
+at its stored value and sign) or `UNKNOWN_LIABILITY` (counted as debt), held
+flat and never hidden by a tick box.
 """
 from __future__ import annotations
 
@@ -129,19 +130,27 @@ KINDS: tuple[HoldingKind, ...] = (
 
 INVESTMENT_KINDS: frozenset[HoldingKind] = frozenset(k for k in KINDS if k.is_investment)
 
-UNKNOWN = HoldingKind(
+_UNKNOWN = {
+    Surface.PROJECTION: "held flat at its stored value",
+    Surface.COMMITMENTS: "no: an unknown kind carries no link",
+    Surface.CASHFLOW: "no: a holding's value is not cash",
+    Surface.CLAUDE: "list_holdings as kind unknown",
+    Surface.DEMO: "no: sample data has no unknown kinds",
+    Surface.PURGE: "purged with its source table",
+    Surface.DOCS: "docs/features/net-worth.md",
+}
+# Fail closed, keeping the table's meaning: an unknown asset counts at its
+# stored value and sign; an unknown liability (stored as a positive amount
+# owed) counts as debt, never as an asset.
+UNKNOWN_ASSET = HoldingKind(
     source="assets", stored_type="unknown", group="other", model="flat",
     is_debt=False, is_investment=False, link_role=None,
-    surfaces={
-        Surface.NET_WORTH: "counted at its stored value and sign, never hidden",
-        Surface.PROJECTION: "held flat at its stored value",
-        Surface.COMMITMENTS: "no: an unknown kind carries no link",
-        Surface.CASHFLOW: "no: a holding's value is not cash",
-        Surface.CLAUDE: "list_holdings as kind unknown",
-        Surface.DEMO: "no: sample data has no unknown kinds",
-        Surface.PURGE: "purged with its source table",
-        Surface.DOCS: "docs/features/net-worth.md",
-    },
+    surfaces={**_UNKNOWN, Surface.NET_WORTH: "counted at its stored value and sign, never hidden"},
+)
+UNKNOWN_LIABILITY = HoldingKind(
+    source="liabilities", stored_type="unknown", group="debt", model="flat",
+    is_debt=True, is_investment=False, link_role=None,
+    surfaces={**_UNKNOWN, Surface.NET_WORTH: "counted as debt at its entered balance, never hidden"},
 )
 
 _BY_KEY = {(k.source, k.stored_type): k for k in KINDS}
@@ -149,11 +158,13 @@ _DOCS = re.compile(r"^docs/features/[a-z0-9-]+\.md$")
 
 
 def kind_for(source: Source, stored_type: str) -> HoldingKind:
-    """The registry entry for a stored type; `UNKNOWN` (fail closed) if none."""
+    """The registry entry for a stored type; an unknown kind of the same
+    table (fail closed) if none."""
     kind = _BY_KEY.get((source, stored_type))
     if kind is None:
+        # The plaintext stored type only: never a name or an id.
         log.warning("unknown holding kind %s:%s counted flat at its stored value", source, stored_type)
-        return UNKNOWN
+        return UNKNOWN_LIABILITY if source == "liabilities" else UNKNOWN_ASSET
     return kind
 
 

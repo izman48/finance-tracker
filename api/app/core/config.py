@@ -16,7 +16,9 @@ class Settings(BaseSettings):
 
     # Security
     secret_key: str
-    # Fernet key (urlsafe base64, 32 bytes) for encrypting bank tokens at rest.
+    # Server Fernet key (urlsafe base64, 32 bytes): wraps the user's data key
+    # inside their session token and protects a few server-side values. The
+    # data itself is encrypted under the per-user key (core/user_crypto.py).
     encryption_key: str = ""
     algorithm: str = "HS256"
     # 7 days: this is a personal-finance dashboard people open daily; 30-minute

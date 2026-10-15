@@ -1,231 +1,88 @@
-# Finance Tracker - Quick Start Guide
+# Quick start
 
-## Your App is Now Running! 🎉
+Run nilu. locally with Docker and connect a TrueLayer sandbox bank.
 
-### Access URLs
+## 1. Start the stack
 
-- **Frontend (React UI):** http://localhost:5173
-- **Backend API Docs:** http://localhost:8000/api/docs
-- **Database:** localhost:5433
-
-### Test Credentials
-
-```
-Email: test@example.com
-Password: testpassword123
-```
-
-## How to Use the App
-
-### Step 1: Login
-1. Open http://localhost:5173 in your browser
-2. Click "Login" in the navigation
-3. Enter the test credentials above
-
-### Step 2: Connect Your Bank (Sandbox)
-1. After logging in, you'll see the Dashboard
-2. Click the **"Connect Bank Account"** button
-3. A new window will open with TrueLayer's sandbox authorization
-4. Select any test bank (e.g., "Mock Bank")
-5. Login with any credentials (sandbox accepts anything)
-6. Select which accounts to connect
-7. Click "Allow" to authorize
-
-### Step 3: Wait for Sync
-After authorization:
-- The app will automatically sync your bank accounts
-- Then it will sync transactions (last 90 days)
-- You'll see success messages at the top of the dashboard
-- Your accounts will appear with balances
-
-### Step 4: Explore Your Data
-- View all connected accounts with current balances
-- Click "Sync Accounts" to refresh balances
-- Click "Sync Transactions" to pull latest transactions
-
-## What You Can See
-
-### Dashboard Features
-
-✅ **Bank Connection Status**
-- See if your bank is connected
-- Token expiration time
-- One-click reconnection if needed
-
-✅ **Account Cards**
-- All your connected accounts
-- Current and available balances
-- Last updated timestamp
-- Account type (Current, Savings, Credit Card)
-
-✅ **Sync Controls**
-- Manually refresh account balances
-- Pull new transactions
-- Real-time status updates
-
-✅ **Cashflow & safe-to-spend**
-- "Safe to spend" — your cash minus what's committed before next payday
-- Overdraft shown as a separate cushion; net worth and what's "owed (scheduled)"
-- A **balance forecast** graph (payday / 30d / 90d / 6mo / 1yr) with the low point flagged
-- Per-account setup: mark accounts as spending/savings/credit, set overdraft limits, and configure credit-card repayment (full balance, or pay-down installments like Monzo Flex)
-
-### Navigation
-- **Dashboard** — safe-to-spend, forecast graph, planned expenses, accounts
-- **Spending** — where it went: month-by-month trend + category/merchant breakdown (transfers & card payments filtered out)
-- **Commitments** — review auto-detected recurring income/bills (confirm/edit/dismiss) and add one-off or manual items
-- **Transactions** — full list; mark any transaction as recurring with one click
-
-## Testing with Sandbox Data
-
-The app is configured with TrueLayer Sandbox, which provides:
-- **Mock banks** with realistic test data
-- **Sample transactions** spanning several months
-- **Different account types** (Current, Savings, Credit Cards)
-- **Various transaction categories** (Shopping, Bills, Travel, etc.)
-
-### Common Sandbox Banks
-- Mock Bank
-- Lloyds Bank (Sandbox)
-- Barclays (Sandbox)
-- HSBC (Sandbox)
-- Monzo (Sandbox)
-
-All accept any credentials in sandbox mode!
-
-## API Endpoints (For Developers)
-
-You can also interact with the API directly:
-
-### Get an Auth Token
 ```bash
-curl -X POST http://localhost:8000/api/v1/auth/login \
+cp .env.example .env      # then fill in the values it asks for
+docker compose up -d      # api :8000, ui :5173, db :5433 (all on 127.0.0.1)
+```
+
+Migrations run when the API container starts.
+
+- App: http://localhost:5173
+- API docs: http://localhost:8000/api/docs
+- Health: http://localhost:8000/api/v1/health (503 if the database is down)
+
+## 2. Create your account
+
+There are no built-in users. Open the app, choose **Get started**, and create an account
+with any email and a password of 8 or more characters. The app then shows a
+**recovery code once**: keep it. Your data is encrypted under a key that only
+your password or that code unlocks, so a password reset without the code
+deletes your encrypted data.
+
+## 3. Connect a sandbox bank
+
+Set `TRUELAYER_CLIENT_ID` / `TRUELAYER_CLIENT_SECRET` from your own TrueLayer
+console (sandbox) in `.env` first (see [TRUELAYER_GUIDE.md](TRUELAYER_GUIDE.md)).
+
+1. Go to **Wealth** and choose **Connect a bank** (Cashflow offers it too when
+   you have no accounts).
+2. Pick a sandbox provider (e.g. Mock Bank) and sign in with its test
+   credentials.
+3. Back in the app, accounts and up to two years of transactions sync. Later
+   syncs ("Sync now" on Cashflow) fetch the last 88 days.
+
+## 4. Find your way around
+
+Four tabs:
+
+- **Home** — one summary card per tab: safe to spend, coming up, spending,
+  net worth and what you owe.
+- **Cashflow** — safe to spend, the balance forecast (with your budgets as a
+  dotted line), coming up, nudges, and your accounts. **Commitments** (bills,
+  income, planned items) is a page off Cashflow.
+- **Spending** — where the money went, by month, category and merchant, plus
+  budgets and the transaction list.
+- **Wealth** — the balance sheet: accounts, cards (with statements and
+  instalment plans), holdings, loans and mortgages, and a projection.
+
+The user menu has **Rules**, **Changes made by Claude**, **Privacy** and
+**Anonymize numbers** (demo mode: a synthetic sample account, no API
+requests, writes blocked; useful for screenshots). To connect Claude, see the
+landing page's Claude section or [api/mcp/README.md](api/mcp/README.md).
+
+## 5. Use the API directly
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "username=test@example.com&password=testpassword123"
+  -d "username=you@example.com&password=YOUR_PASSWORD" | jq -r .access_token)
+
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/v1/banking/status
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/v1/analytics/summary
+curl -H "Authorization: Bearer $TOKEN" "http://localhost:8000/api/v1/banking/transactions?page=1&page_size=20"
 ```
 
-### Check Bank Status
-```bash
-curl -X GET http://localhost:8000/api/v1/banking/status \
-  -H "Authorization: Bearer YOUR_TOKEN"
-```
+The token carries your session's encryption key, so every data route needs
+it. Full reference: http://localhost:8000/api/docs.
 
-### View All Accounts
-```bash
-curl -X GET http://localhost:8000/api/v1/banking/accounts \
-  -H "Authorization: Bearer YOUR_TOKEN"
-```
+## Troubleshooting
 
-### View Transactions
-```bash
-curl -X GET "http://localhost:8000/api/v1/banking/transactions?page=1&page_size=20" \
-  -H "Authorization: Bearer YOUR_TOKEN"
-```
+- **Blank page at :5173 with no console error**: a stale container. Restart
+  Docker, then `docker compose up -d --build`.
+- **`UndefinedColumn` errors after pulling**: the code is ahead of the schema;
+  `docker compose restart api` runs the new migrations.
+- **Bank connection fails**: check the redirect URI in `.env` matches the one
+  registered in the TrueLayer console, and that you're using sandbox
+  credentials with the sandbox environment.
+- **Logs**: `docker compose logs -f api` (or `ui`, `db`).
 
-Full interactive API documentation: http://localhost:8000/api/docs
+## Next
 
-## Common Issues
-
-### "Connect Bank Account" button does nothing
-- Check browser console for errors
-- Verify API is running: `docker compose ps`
-- Check API logs: `docker compose logs api`
-
-### Bank connection fails
-- Ensure you completed the full OAuth flow
-- Try disconnecting popup blockers
-- Check that redirect URI is correct in `.env`
-
-### No accounts appearing
-- Click "Sync Accounts" manually
-- Check you authorized at least one account
-- Verify in API docs that `/banking/accounts` returns data
-
-### Transactions not syncing
-- Ensure accounts are synced first
-- Click "Sync Transactions" manually
-- Sandbox accounts may have limited test data
-
-## Docker Commands
-
-```bash
-# View all logs
-docker compose logs -f
-
-# View specific service logs
-docker compose logs -f api
-docker compose logs -f ui
-
-# Restart a service
-docker compose restart api
-docker compose restart ui
-
-# Stop everything
-docker compose down
-
-# Start everything
-docker compose up -d
-
-# Rebuild and restart
-docker compose up -d --build
-```
-
-## What's Next?
-
-Now that you have transaction data flowing in, you can build:
-
-1. **Spending Analytics**
-   - Category breakdown charts
-   - Monthly spending trends
-   - Merchant analysis
-   - Budget vs actual
-
-2. **Recurring Payment Detection**
-   - Identify subscriptions (Netflix, Spotify, etc.)
-   - Calculate total recurring costs
-   - Find forgotten subscriptions
-   - Predict future spending
-
-3. **Opportunity Cost Calculator**
-   - "What if I invested instead?"
-   - Compare with S&P 500 returns
-   - Show compound growth over time
-   - Motivate better spending habits
-
-4. **Smart Insights**
-   - Unusual spending alerts
-   - Savings recommendations
-   - Bill payment reminders
-   - Financial health score
-
-## Project Structure
-
-```
-finance-tracker/
-├── api/                    # FastAPI backend
-│   ├── app/
-│   │   ├── core/          # Config, database, security
-│   │   ├── models/        # SQLAlchemy models
-│   │   ├── routers/       # API endpoints
-│   │   │   ├── auth.py    # User auth
-│   │   │   ├── banking.py # Open Banking (NEW!)
-│   │   │   └── health.py  # Health checks
-│   │   ├── schemas/       # Pydantic schemas
-│   │   └── services/      # Business logic
-│   │       └── truelayer.py # Open Banking service (NEW!)
-│   └── migrations/        # Database migrations
-├── ui/                     # React + TypeScript
-│   └── src/
-│       ├── pages/
-│       │   └── DashboardPage.tsx # Updated with banking!
-│       └── services/
-│           └── api.ts      # Updated with banking API
-└── docker-compose.yml
-```
-
-## Support
-
-- **API Docs:** http://localhost:8000/api/docs
-- **TrueLayer Guide:** See `TRUELAYER_GUIDE.md`
-- **Logs:** `docker compose logs -f`
-
-Happy tracking! 🚀
+- Tests and conventions: [README.md](README.md) and [CLAUDE.md](CLAUDE.md).
+- What each feature touches: [docs/features/](docs/features/).
+- Claude (MCP): [api/mcp/README.md](api/mcp/README.md).
+- Production: [DEPLOY.md](DEPLOY.md).

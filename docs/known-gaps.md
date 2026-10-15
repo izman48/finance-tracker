@@ -46,18 +46,7 @@ update the feature doc's touchpoints. Security-relevant items are marked 🔒.
 
 ## Stale docs and copy
 
-- `api/mcp/README.md` calls the server read-only, lists 19 of 24 tools and
-  omits `finance:budgets.write`. The `create_rule_pack` docstring and the
-  landing page's `AiAssistantSection` say the rule pack is the only write.
-- Reset-password copy (`routers/auth.py`, `ResetPasswordPage`) omits budgets
-  from what a reset without a recovery code deletes.
-- `README.md`: token lifetime (30 min vs 7 days), test command, no mention of
-  per-user encryption, Claude, budgets, Wealth, rules or demo mode.
-- `QUICKSTART.md`: test credentials that nothing creates, old navigation.
-- `TRUELAYER_GUIDE.md`: hard-coded sandbox client id, old `/banking/status`
-  shape. `REDESIGN_PLAN.md`: "three tabs", unticked shipped items,
-  instrument pricing that was dropped. `DEPLOY.md` architecture omits `mcp`.
-- `.env.example` lacks `FRONTEND_URL` and `SMTP_*`; its `ENCRYPTION_KEY`
-  comment says "bank tokens" only.
+- `REDESIGN_PLAN.md`: "three tabs", unticked shipped items, instrument
+  pricing that was dropped.
 - `CurrentUserOrMcpSync` is defined but unused; `POST /banking/sync` uses
   `scoped_caller(SCOPE_SYNC)` directly.

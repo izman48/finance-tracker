@@ -11,8 +11,13 @@ trustworthy "safe to spend" figure, a balance forecast, and clear spending insig
 - **Balance forecast** — project your balance up to a year out; see the low point and any overdraft breach
 - **Commitments** — auto-detect recurring income/bills and confirm once; add one-off or manual items, or mark any transaction recurring
 - **Spending** — where your money goes by month / category / merchant, split credit-vs-cash, with internal transfers and card repayments filtered out
-- **Planned expenses & payment plans** — model one-off costs and split purchases into installments (e.g. Monzo Flex)
-- **Credit-card modelling** — per-card repayment: full balance (e.g. Amex) or pay-down installments
+- **Planned expenses & payment plans** — model one-off costs and split purchases into installments; tick "Card payment" on a planned card bill and it counts once with the projected card bills
+- **Credit-card modelling** — per-card repayment (statement balance, full balance, fixed, instalments or a schedule), statements, and instalment plans (e.g. Amex Plan It) inside their card
+- **Budgets** — monthly limits per category, paced across your pay cycle, with a budget line on the forecast; budgets never change safe to spend
+- **Wealth** — net worth from accounts, holdings (ISAs, pensions, property…), loans, mortgages with house equity, and a projection towards a target
+- **Rules** — your own categorisation rules and shareable rule packs (regex runs on a linear-time engine)
+- **Claude (MCP)** — connect Claude to ask about your money; it reads by default, and any change it makes is previewed, audited, undoable, and never raises safe to spend until you keep it ([api/mcp/README.md](api/mcp/README.md))
+- **Demo mode** — "Anonymized" swaps in a synthetic sample account on every screen, sends no API request and blocks writes
 
 ## Tech Stack
 
@@ -58,25 +63,29 @@ docker compose exec api alembic upgrade head
 
 ### Development
 
-**Run tests**
+**Run tests** (the test image copies the source, so rebuild after editing)
 
 ```bash
-docker compose run --rm test
+docker compose --profile test build test
+docker compose --profile test run --rm test          # API, in parallel on in-memory SQLite
+docker compose --profile test run --rm --build mcp-test   # MCP server
+cd ui && npm ci && npx vitest run && npm run lint && npm run build
 ```
 
 **Run specific tests**
 
 ```bash
-docker compose exec api pytest tests/unit -v
-docker compose exec api pytest tests/integration -v
+docker compose --profile test run --rm test pytest tests/unit -v
 ```
 
 **Code formatting**
 
 ```bash
-docker compose exec api black .
 docker compose exec api ruff check .
 ```
+
+See [CLAUDE.md](CLAUDE.md) for conventions, gotchas and the CI wiring, and
+[docs/features/](docs/features/) for what each feature touches.
 
 ## Project Structure
 
@@ -116,10 +125,12 @@ Full interactive docs at `http://localhost:8000/api/docs`. Main groups:
 
 - Passwords hashed with bcrypt; minimum length enforced on registration
 - JWT tokens for authentication
-- Bank OAuth tokens encrypted at rest (Fernet) via `ENCRYPTION_KEY`
+- **Per-user encryption**: transactions, account details, amounts, names and bank tokens are encrypted under a key that only the user's password or recovery code unlocks (or a Claude connection they approve, while it is active); the server holds it only during a request. Every unencrypted column is listed in `api/app/core/privacy_plaintext.py` and on the privacy page
+- `ENCRYPTION_KEY` (server Fernet key) wraps the session copy of that key in the JWT and protects a few server-side secrets
 - `SECRET_KEY` strength enforced at startup in live mode (no placeholder keys)
 - OAuth `state` is a signed, short-lived token (CSRF protection)
-- Bank tokens revoked at TrueLayer on disconnect
+- Bank connections ended at TrueLayer on disconnect and on account deletion
+- Rate limits on login, signup, password routes, Claude's writes and decrypt-heavy reads (per user, since MCP calls share one address)
 - Secrets live only in `.env` files (gitignored); `.env.example` is the committed template
 - CORS restricted to known origins
 - Non-root Docker user
@@ -130,13 +141,13 @@ Full interactive docs at `http://localhost:8000/api/docs`. Main groups:
 
 The frontend stores the JWT in `localStorage`, which is readable by JavaScript
 and therefore vulnerable to token theft if an XSS bug is introduced. This is a
-deliberate, documented tradeoff for now; the access-token lifetime is kept short
-(`ACCESS_TOKEN_EXPIRE_MINUTES`, default 30) to limit the blast radius. Migrating
-to httpOnly, SameSite cookies is tracked as a follow-up.
+deliberate, documented tradeoff for now. The access-token lifetime is
+`ACCESS_TOKEN_EXPIRE_MINUTES` (default 7 days, `60 * 24 * 7`); shorten it to
+limit the blast radius. Migrating to httpOnly, SameSite cookies is tracked as a
+follow-up.
 
 ## Roadmap
 
-- Savings goals (fund toward a target with a safe-to-add amount)
 - httpOnly cookie auth (see the JWT tradeoff above)
 - Statement-balance precision and seasonal/one-off awareness for longer forecasts
 

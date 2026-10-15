@@ -1,6 +1,6 @@
 # Production deployment (any Docker-capable VPS)
 
-Architecture: Caddy (HTTPS, serves the built React app, proxies `/api/*`) → FastAPI → Postgres.
+Architecture: Caddy (HTTPS, serves the built React app, proxies `/api/*` and `/.well-known/oauth-*` to FastAPI, and `/mcp` to the MCP server) → FastAPI → Postgres. The MCP server (`api/mcp`, the `mcp` service) holds no credentials: it forwards each caller's OAuth token to the API, which verifies it. See [api/mcp/README.md](api/mcp/README.md).
 All in Docker via `docker-compose.prod.yml`; UI and API share one origin so no CORS is involved.
 
 ## One-time server setup

@@ -2,14 +2,23 @@
 
 ## Overview
 
-Your finance tracker now has full Open Banking integration via TrueLayer! You can connect your bank accounts, sync transactions, and analyze your spending.
+nilu. connects UK banks through TrueLayer Open Banking: you connect your
+accounts, it syncs balances and transactions, and everything is stored
+encrypted under your own key.
 
-## Current Setup
+## Setup
 
-Your app is configured with **TrueLayer Sandbox** credentials for testing:
-- Client ID: `sandbox-plutus-2e2a27`
-- Environment: Sandbox (test data)
-- Redirect URI: `http://localhost:8000/api/v1/banking/callback`
+Create an app in the [TrueLayer console](https://console.truelayer.com/) and
+put **your own** sandbox credentials in `.env` (never commit them):
+
+```bash
+TRUELAYER_CLIENT_ID=<your sandbox client id>
+TRUELAYER_CLIENT_SECRET=<your sandbox client secret>
+TRUELAYER_REDIRECT_URI=http://localhost:8000/api/v1/banking/callback
+TRUELAYER_SANDBOX=true
+```
+
+Register the same redirect URI in the console.
 
 ## Available Endpoints
 
@@ -22,10 +31,14 @@ Authorization: Bearer <your_jwt_token>
 **Response:**
 ```json
 {
-  "is_connected": false,
-  "is_expired": false,
-  "expires_at": null,
-  "message": "No bank connection"
+  "is_connected": true,
+  "connections_count": 1,
+  "last_synced_at": "2026-10-15T08:30:00+00:00",
+  "connections": [
+    {"id": "uuid", "provider_name": "Mock Bank", "is_expired": false,
+     "expires_at": "2027-01-13T08:30:00+00:00", "last_synced_at": "2026-10-15T08:30:00+00:00"}
+  ],
+  "message": "1 bank(s) connected"
 }
 ```
 
@@ -75,15 +88,19 @@ Authorization: Bearer <your_jwt_token>
 Content-Type: application/json
 
 {
-  "days": 90
+  "days": 88
 }
 ```
+
+The first sync after connecting fetches up to two years (banks allow more than
+90 days only in the first minutes after consent). Every later sync fetches the
+last 88 days, whatever `days` asks for. One sync per user runs at a time.
 
 **Response:**
 ```json
 {
   "transactions_synced": 147,
-  "message": "Successfully synced 147 new transaction(s) from the last 90 days"
+  "message": "Successfully synced 147 new transaction(s) from 1 bank(s) (last 88 days)"
 }
 ```
 
@@ -184,10 +201,9 @@ Visit http://localhost:8000/api/docs and test the endpoints interactively:
 3. Try the banking endpoints under the "banking" section
 
 ### Via Frontend
-The React app at http://localhost:5173 should have:
-- A "Connect Bank" button in the dashboard
-- Account list display
-- Transaction history view
+In the app at http://localhost:5173: **Wealth → Connect a bank** (or Cashflow
+when you have no accounts). Accounts appear on Cashflow and Wealth,
+transactions under Spending. "Sync now" on Cashflow refreshes.
 
 ## What Data Gets Synced
 
@@ -211,35 +227,18 @@ The React app at http://localhost:5173 should have:
 - Category (auto-categorized by TrueLayer)
 - Transaction date
 
+Amounts, descriptions, merchants, account names and balances are encrypted
+under your key; dates, categories, account types and the bank's own reference
+numbers stay plain (the privacy page lists every unencrypted field).
+
 ## Token Management
 
-- **Access Token:** Valid for ~1 hour
-- **Refresh Token:** Used to get new access tokens
-- **Auto-refresh:** The service automatically refreshes expired tokens
-
-## Next Steps
-
-Now that Open Banking is integrated, you can build:
-
-1. **Spending Analytics:**
-   - Category breakdown
-   - Monthly spending trends
-   - Top merchants
-
-2. **Recurring Payment Detection:**
-   - Identify subscriptions
-   - Calculate total recurring costs
-   - Detect missed payments
-
-3. **Opportunity Cost Calculator:**
-   - Show what spending could have become if invested
-   - Compare against S&P 500, index funds, etc.
-   - Long-term wealth projections
-
-4. **Budget Tracking:**
-   - Set category budgets
-   - Alert on overspending
-   - Savings goals
+- **Access token:** valid for about an hour; **refresh token:** used to get a new one.
+- Both are stored encrypted under your key, so they can only be used during a
+  request you make (there is no background sync). An expired access token is
+  refreshed during the next sync.
+- Disconnecting a bank, or deleting your account, ends the connection at
+  TrueLayer as well as deleting the tokens.
 
 ## Troubleshooting
 
@@ -248,9 +247,10 @@ Now that Open Banking is integrated, you can build:
 - Verify credentials in `.env` are correct
 - Check API logs: `docker compose logs api`
 
-**Token expired:**
-- Call `/banking/sync/accounts` - it auto-refreshes
-- Or reconnect via `/banking/connect`
+**Token expired or consent lapsed:**
+- The next sync refreshes an expired access token.
+- When the bank's consent has expired (usually 90 days), the app shows
+  "Reconnect"; reconnect via `/banking/connect`.
 
 **No transactions syncing:**
 - Ensure accounts are synced first

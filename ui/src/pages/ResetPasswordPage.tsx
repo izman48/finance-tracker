@@ -35,8 +35,9 @@ export default function ResetPasswordPage() {
       'Reset without your recovery code?\n\n' +
       "This can't be undone. Without your recovery code we can't unlock your " +
       'encrypted data, so it will be permanently deleted: bank data, commitments, ' +
-      "planned events, rules (a shared rule pack's public link will stop working), " +
-      'assets, debts and the history of changes made by Claude. Claude (MCP) access to ' +
+      "planned events, budgets, rules (a shared rule pack's public link will stop working), " +
+      'holdings (investments, property and other assets), debts (loans, mortgages and ' +
+      'card plans) and the history of changes made by Claude. Claude (MCP) access to ' +
       'your account will also be disconnected.\n\n' +
       'If you might still have your recovery code, choose Cancel and look for it ' +
       'first. Choose OK to reset your password and delete this data.'
@@ -144,8 +145,8 @@ export default function ResetPasswordPage() {
             <p className="text-xs text-slate-500 mt-1.5">
               The code you saved at signup. It unlocks your encrypted data so
               nothing is lost. Without it, your bank data, commitments, planned
-              events, rules, assets, debts and the history of changes made by Claude are
-              permanently deleted, and Claude access is disconnected.
+              events, budgets, rules, holdings, debts and the history of changes made by
+              Claude are permanently deleted, and Claude access is disconnected.
             </p>
           </div>
 

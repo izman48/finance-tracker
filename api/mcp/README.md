@@ -1,9 +1,11 @@
 # Finance Tracker — MCP server
 
-A read-only [Model Context Protocol](https://modelcontextprotocol.io) server that
+A [Model Context Protocol](https://modelcontextprotocol.io) server that
 exposes your cashflow data as tools, so an MCP client (Claude Code, Claude Desktop)
 can analyse it conversationally — "which month was worst?", "can I afford X?",
-"what's driving my spending?".
+"what's driving my spending?". It mostly reads. A few tools write, each behind
+its own scope: they preview first, every change is audited and can be undone in
+the app, and nothing an assistant changes raises safe-to-spend until you keep it.
 
 It's a thin client over the running REST API, so it's **fully isolated** from the
 backend's dependencies.
@@ -23,7 +25,8 @@ It runs two ways:
 
 | Tool | What it returns |
 |------|-----------------|
-| `cashflow_summary` | safe-to-spend, available cash, overdraft cushion, credit owed, net worth (less liabilities), next repayments |
+| `cashflow_summary` | safe-to-spend, available cash, overdraft cushion, credit owed, net worth (less liabilities), `investments_total`, debts only as totals, next repayments (each with `projected` and its `parts`) |
+| `list_holdings` | each holding that isn't a debt (at most 100): value today, growth %, monthly contribution, whether its bill is linked, projected values at 1, 5 and 10 years |
 | `forecast(horizon)` | balance projection timeline, lowest point, breaches, dated events |
 | `spending(period, frm, to, lens)` | credit-vs-cash breakdown by category & merchant; pass `frm`/`to` as `YYYY-MM-DD` for any date range; `lens='purchases'` to compare against `spending_trend` (see below) |
 | `spending_trend(months)` | real spending per month over the last N months (always 'purchases'-equivalent — see below) |
@@ -39,7 +42,12 @@ It runs two ways:
 | `rules` | every rule pack and personal rule: pattern, match type/field, category, `counts_as` |
 | `rule_impact` | per rule, `matched` vs `effective` (+ amounts), `shadowed`/`dead` flags, and `gaps` — uncategorized merchants ranked by value |
 | `preview_rule(pattern, match_type, match_field)` | dry-run a candidate rule: how many transactions it would match, with samples |
-| `create_rule_pack(name, rules, description, apply)` | **the only write tool** — create a new pack with all its rules, then backfill |
+| `create_rule_pack(name, rules, description, apply)` | **writes** (`finance:rules.write`): create a new pack with all its rules, then backfill; additive only |
+| `update_commitment(commitment_id, idempotency_key, ..., dry_run=true)` | **writes** (`finance:planning.write`): fix a commitment's name, amount, cadence, next date or card; only allow-listed fields, never the direction; held until kept |
+| `dismiss_commitment(commitment_id, idempotency_key, dry_run=true)` | **writes** (`finance:planning.write`): dismiss a wrong or duplicate commitment; still counts until kept |
+| `list_budgets` | this pay cycle's budgets: limit, spent, pace, status, and the cycle summary |
+| `set_budgets(budgets, idempotency_key, dry_run=true)` | **writes** (`finance:budgets.write`): set up to 8 budgets in one go, all or none |
+| `pause_budget` / `resume_budget` / `remove_budget(budget_id, idempotency_key, dry_run=true)` | **writes** (`finance:budgets.write`): pause, resume or remove one budget |
 
 ### `spending` has two lenses that don't compare
 
@@ -132,9 +140,11 @@ after every deploy.
 | `MCP_HOST` / `MCP_PORT` | bind address, default `0.0.0.0:8001` |
 
 Scopes: `finance:read` for every tool; `create_rule_pack` also needs
-`finance:rules.write`; `add_planned_event` and `remove_planned_event` need
-`finance:planning.write`. That scope (changing planned events and
-commitments) is a separate box on the consent screen, unticked by default, and
+`finance:rules.write`; `add_planned_event`, `remove_planned_event`,
+`update_commitment` and `dismiss_commitment` need `finance:planning.write`;
+`set_budgets`, `pause_budget`, `resume_budget` and `remove_budget` need
+`finance:budgets.write`. Each write scope is a separate box on the consent
+screen, unticked by default, and
 is enforced by the API itself, so a token without it is refused even when it
 calls the API directly. An existing connection never gains it: connect again
 to grant it.
@@ -193,12 +203,14 @@ pip install -r requirements-dev.txt && pytest
 
 ## Notes
 
-- **Read-only apart from `create_rule_pack`** — nothing here can move money. The one
-  write is additive and reversible by deleting the pack. `preview_rule` is a POST
+- **Nothing here can move money.** The writes are the tools marked above: each
+  needs its own scope, previews by default, is audited, and can be undone in the
+  app under "Changes made by Claude" (a rule pack by deleting it). `preview_rule` is a POST
   only because its input is awkward as a query string; it is a dry run and writes
   nothing. `search_transactions` is a POST so the search term stays out of access
-  logs; it is read-only too, and rate limited per user (30 a minute). Keep new tools on the read side unless there's a reason as clear as
-  this one.
+  logs; it is read-only too, and rate limited per user (30 a minute). Keep new
+  tools on the read side unless there's a clear reason, and give any write the
+  same preview, audit, undo and keep rules.
 - Your login credentials live in the MCP client config (kept locally).
 - Tool results are sent to the LLM you're using — only connect it to a model you're
   comfortable sharing financial data with.

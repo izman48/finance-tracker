@@ -42,8 +42,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 RESET_WITHOUT_RECOVERY_CODE_MESSAGE = (
-    "Password updated. We deleted your bank data, commitments, planned events, rules "
-    "(shared rule pack links no longer work), assets, debts and the history of changes made by "
+    "Password updated. We deleted your bank data, commitments, planned events, budgets, rules "
+    "(shared rule pack links no longer work), holdings (investments, property and other assets), "
+    "debts (loans, mortgages and card plans) and the history of changes made by "
     "Claude, and disconnected Claude (MCP) access. Reconnect your bank to start again, "
     "and reconnect Claude if you use it."
 )

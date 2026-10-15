@@ -15,8 +15,8 @@ const POINTS = [
   },
   {
     icon: ShieldCheck,
-    title: 'Read-only, on your terms',
-    body: 'It can’t move money or edit anything you’ve set. The one thing it can add, if you allow it, is a new rule pack. Rule packs can recategorise transactions but never ones you categorised by hand, and you can delete a pack in Rules.',
+    title: 'You approve every change',
+    body: 'It can’t move money, and it only reads unless you allow more. Then it can add rule packs, planned events and budgets, or fix a commitment: it shows you each change first, and every one is listed under Changes made by Claude, where you can undo it. Nothing it changes raises your safe to spend until you keep it.',
   },
 ]
 

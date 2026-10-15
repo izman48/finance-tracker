@@ -84,6 +84,11 @@ def test_adding_a_plan_returns_its_terms_and_read_time_figures(world):
     assert [p["id"] for p in world.client.get(f"{API}/card-plans", headers=world.h).json()] == [body["id"]]
 
 
+def test_the_monthly_total_keeps_its_pence(world):
+    # eng-a on #230: a whole-pound instalment must not round the fee away.
+    assert world.plan(instalment="100", fee="2.50").json()["monthly_total"] == "102.50"
+
+
 def test_the_name_and_amounts_are_encrypted_at_rest(world):
     world.plan()
     row = world.db.execute(text("SELECT name, balance, instalment, fee FROM card_plans")).one()

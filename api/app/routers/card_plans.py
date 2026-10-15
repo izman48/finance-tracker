@@ -53,7 +53,7 @@ def _response(db: Session, plan: CardPlan) -> CardPlanResponse:
         id=plan.id, card_account_id=plan.card_account_id, card_name=card.display_name if card else None,
         name=plan.name, balance=figures.balance, instalment=plan.instalment, fee=plan.fee,
         instalments_remaining=figures.instalments_remaining, next_date=figures.next_date,
-        final_date=figures.final_date, monthly_total=(plan.instalment + plan.fee).quantize(plan.instalment),
+        final_date=figures.final_date, monthly_total=service.monthly_total(plan),
         in_net_worth=service.in_net_worth(plan), provider_confirmed=service.provider_confirmed(card),
     )
 

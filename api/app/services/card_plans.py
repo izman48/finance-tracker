@@ -51,6 +51,11 @@ def figures(plan: CardPlan, today: date) -> PlanFigures:
     )
 
 
+def monthly_total(plan: CardPlan) -> Decimal:
+    """Instalment + fee, in pence: what the plan adds to each card payment."""
+    return (Decimal(str(plan.instalment)) + Decimal(str(plan.fee))).quantize(Decimal("0.01"))
+
+
 def owed_on(plan: CardPlan, today: date, day: date) -> Decimal:
     """What a standalone plan owes on `day`: today's balance, less the
     instalments due after today and on or before `day`."""

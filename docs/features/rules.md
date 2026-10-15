@@ -25,14 +25,14 @@ create a whole pack in one call.
 | `DELETE /api/v1/rules/packs/{pack_id}` | `CurrentUser` |
 | `POST /api/v1/rules/packs/{pack_id}/share` | `CurrentUser` (plaintext `share_snapshot`) |
 | `DELETE /api/v1/rules/packs/{pack_id}/share` | `CurrentUser` |
-| `GET /api/v1/rules/shared/{share_code}` | `CurrentUser` (any user) |
-| `POST /api/v1/rules/import` | `CurrentUser` (re-encrypted under the importer's key) |
+| `GET /api/v1/rules/shared/{share_code}` | `CurrentUser` (any user); `shared-lookup` limit per user (T-12-10b) |
+| `POST /api/v1/rules/import` | `CurrentUser` (re-encrypted under the importer's key); same lookup limit; every snapshot pattern re-validated, one bad one refuses the import (400) |
 
 **Tables**: `rule_packs` (plaintext, including the share snapshot),
 `category_rules` (encrypted `pattern`).
 
 **Services**: `services/categorization.py`: `category_from_provider`,
-`validate_pattern`, precedence (own beats imported; exact beats contains
+`validate_pattern` (length cap, valid regex, and since T-12-10b no nested unbounded repetition such as `(a+)+` or `(a|aa)+`, read from the parsed pattern), precedence (own beats imported; exact beats contains
 beats regex; longer beats shorter), `apply_rules` (respects per-field locks),
 `learn_and_apply`.
 

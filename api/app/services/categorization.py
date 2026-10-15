@@ -10,6 +10,12 @@ overwritten. When several rules match, precedence is deliberately boring:
 """
 import logging
 import re
+try:  # Python 3.11+
+    import re._constants as sre_constants
+    import re._parser as sre_parse
+except ImportError:  # pragma: no cover
+    import sre_constants
+    import sre_parse
 
 from sqlalchemy.orm import Session, joinedload
 
@@ -61,7 +67,46 @@ def validate_pattern(pattern: str, match_type: str) -> str | None:
             re.compile(pattern, re.IGNORECASE)
         except re.error as exc:
             return f"Invalid regex: {exc}"
+        if _catastrophic(pattern):
+            return CATASTROPHIC_PATTERN
     return None
+
+
+# Possessive repeats (3.11+) cannot backtrack, but are treated alike.
+_POSSESSIVE = getattr(sre_constants, "POSSESSIVE_REPEAT", None)
+CATASTROPHIC_PATTERN = "Pattern could take too long to match (nested repetition)"
+
+
+def _catastrophic(pattern: str) -> bool:
+    """Nested unbounded repetition, the ReDoS shape (T-12-10b, sec): an
+    unbounded repeat around another unbounded repeat (`(a+)+`, `(.*)*`) or
+    around alternatives (`(a|aa)+`). Python's `re` has no timeout, and a
+    shared pack's patterns run against every transaction, so these are
+    refused. Read from the parsed pattern, never by running it."""
+    return _nested_repeat(sre_parse.parse(pattern), inside=False)
+
+
+def _nested_repeat(tokens, inside: bool) -> bool:
+    for op, av in tokens:
+        if op in (sre_constants.MAX_REPEAT, sre_constants.MIN_REPEAT, _POSSESSIVE):
+            _, hi, sub = av
+            unbounded = hi == sre_constants.MAXREPEAT
+            if unbounded and inside:
+                return True
+            if _nested_repeat(sub, inside or unbounded):
+                return True
+        elif op == sre_constants.SUBPATTERN:
+            if _nested_repeat(av[-1], inside):
+                return True
+        elif op == sre_constants.BRANCH:
+            if inside:
+                return True
+            if any(_nested_repeat(branch, inside) for branch in av[1]):
+                return True
+        elif op in (sre_constants.ASSERT, sre_constants.ASSERT_NOT):
+            if _nested_repeat(av[1], inside):
+                return True
+    return False
 
 
 def _fields_for(tx: Transaction, match_field: str) -> list[str]:

@@ -25,8 +25,6 @@ update the feature doc's touchpoints. Security-relevant items are marked 🔒.
 ## Validation and safety
 
 - 🔒 No tests for the `reset-password` or `oauth/register` throttles.
-- 🔒 Shared rule-pack codes (`token_urlsafe(6)`) are not rate limited on
-  preview or import; import doesn't re-run `validate_pattern`.
 - 🔒 The main site has no Content-Security-Policy (only extra static sites
   set one).
 - 🔒 The privacy page understates plaintext fields (also plaintext: account

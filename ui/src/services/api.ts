@@ -144,6 +144,8 @@ export interface Rule {
   counts_as: string | null
   source: string
   enabled: boolean
+  /** A stored regex the matching engine can't run, and why; null when it runs. */
+  cant_run?: string | null
 }
 
 export interface RulePack {

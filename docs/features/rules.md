@@ -31,6 +31,18 @@ create a whole pack in one call.
 **Tables**: `rule_packs` (plaintext, including the share snapshot),
 `category_rules` (encrypted `pattern`).
 
+**Regex engine (T-12-10b)**: regex rules run on RE2 (`google-re2`), which
+matches in linear time, so no pattern can stall a request. It differs from
+Python's `re`: no back-references (`\1`), look-aheads or look-behinds
+(`(?=…)`, `(?<!…)`), conditional groups or possessive/atomic groups; repeat
+counts are capped at 1,000; `\b`, classes like `\d`/`\w`/`\s`, anchors,
+alternation and lazy quantifiers work as in `re`. Matching is
+case-insensitive. A new pattern using an unsupported feature is refused (create,
+preview, bulk, import). A stored one is skipped when rules load (count-only
+log) and `GET /api/v1/rules` marks it with `cant_run`, which the Rules page shows as
+"This rule can't run" with the reason (sec-1 on #248). Demo mode shows no
+rules, so there is nothing to mirror.
+
 **Services**: `services/categorization.py`: `category_from_provider`,
 `validate_pattern` (length cap; a regex must compile on RE2, the linear-time engine every regex rule runs on since T-12-10b, so no back-references, look-arounds or conditional groups; a stored regex RE2 can't run is skipped by `active_rules`, logging a count only), precedence (own beats imported; exact beats contains
 beats regex; longer beats shorter), `apply_rules` (respects per-field locks),

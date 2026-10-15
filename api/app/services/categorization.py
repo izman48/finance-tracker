@@ -79,6 +79,20 @@ _RE2_OPTIONS.log_errors = False
 _RE2_OPTIONS.never_capture = True
 
 
+# Shown on the Rules page for a stored regex RE2 can't run (sec-1 on #248).
+CANT_RUN_REASON = (
+    "Look-arounds and back-references aren't supported, so this rule can't run. "
+    "Delete it and add it again without them."
+)
+
+
+def cant_run_reason(rule: CategoryRule) -> str | None:
+    """Why a stored rule never matches, or None when it runs."""
+    if rule.match_type == "regex" and _compiled(rule.pattern.strip()[:MAX_PATTERN_LENGTH]) is None:
+        return CANT_RUN_REASON
+    return None
+
+
 @functools.lru_cache(maxsize=512)
 def _compiled(pattern: str):
     """The RE2 program for a regex rule, or None if RE2 can't run it. Cached

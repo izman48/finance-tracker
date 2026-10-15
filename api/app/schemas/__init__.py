@@ -403,6 +403,9 @@ class RuleResponse(BaseModel):
     counts_as: str | None = None
     source: str
     enabled: bool
+    # A stored regex the matching engine can't run, and why (set by the
+    # list route); null when the rule runs.
+    cant_run: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

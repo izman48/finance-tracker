@@ -89,10 +89,13 @@ def list_rules(current_user: CurrentUserOrMcpRead, db: Annotated[Session, Depend
         .order_by(CategoryRule.created_at.desc())
         .all()
     )
-    return {
-        "packs": [RulePackResponse.model_validate(p).model_dump(mode="json") for p in packs],
-        "personal": [RuleResponse.model_validate(r).model_dump(mode="json") for r in loose],
-    }
+    def rule(r: CategoryRule) -> dict:
+        return {**RuleResponse.model_validate(r).model_dump(mode="json"), "cant_run": categorization.cant_run_reason(r)}
+
+    def pack(p: RulePack) -> dict:
+        return {**RulePackResponse.model_validate(p).model_dump(mode="json"), "rules": [rule(r) for r in p.rules]}
+
+    return {"packs": [pack(p) for p in packs], "personal": [rule(r) for r in loose]}
 
 
 @router.post("", response_model=RuleResponse, status_code=status.HTTP_201_CREATED)

@@ -155,3 +155,63 @@ def test_code_lookups_are_limited_per_user(client, monkeypatch):
     assert client.get(f"{API}/rules/shared/nope3", headers=alice).status_code == 429
     assert client.post(f"{API}/rules/import", json={"share_code": "nope4"}, headers=alice).status_code == 429
     assert client.get(f"{API}/rules/shared/nope5", headers=bob).status_code == 404
+
+
+def test_the_rules_list_says_which_stored_rules_cannot_run(client, db_session):
+    # Lead / sec-1 on #248: say so on the Rules page instead of quietly not matching.
+    token = _web_login(client, "cant-run@example.com")
+    from tests.integration.test_reset_purge import _dek
+    from app.core import user_crypto
+    from app.models import User
+    user = db_session.query(User).filter(User.email == "cant-run@example.com").one()
+    ctx = user_crypto.current_dek.set(_dek(token))
+    try:
+        db_session.add_all([
+            CategoryRule(user_id=user.id, pattern="SHOP(?=X)", match_type="regex", category="Groceries"),
+            CategoryRule(user_id=user.id, pattern="^AMZN.*MKTP", match_type="regex", category="Shopping"),
+            CategoryRule(user_id=user.id, pattern="(a)\\1", match_type="contains", category="Other"),
+        ])
+        db_session.commit()
+    finally:
+        user_crypto.current_dek.reset(ctx)
+    rules = {r["pattern"]: r for r in client.get(f"{API}/rules", headers=_bearer(token)).json()["personal"]}
+    assert rules["SHOP(?=X)"]["cant_run"] == (  # ux on #253: rows offer Delete, not Edit
+        "Look-arounds and back-references aren't supported, so this rule can't run. "
+        "Delete it and add it again without them."
+    )
+    assert rules["^AMZN.*MKTP"]["cant_run"] is None
+    assert rules["(a)\\1"]["cant_run"] is None  # a contains rule is plain text
+
+
+RULE_KEYS = {"id", "pack_id", "pattern", "match_type", "match_field", "category", "counts_as", "source", "enabled",
+             "cant_run"}
+PACK_KEYS = {"id", "name", "description", "share_code", "imported_from", "enabled", "rules"}
+
+
+def test_claude_sees_exactly_the_pinned_rule_keys_and_only_the_fixed_reason(client, db_session):
+    # sec-2 on #253: Claude's `rules` tool reads this route; pin its keys and
+    # that `cant_run` can only ever be null or the fixed reason (never text
+    # built from a pattern).
+    from tests.integration.test_oauth import READ, _connect
+    web, _, tokens = _connect(client, scopes=(READ,), email="rules-mcp@example.com")
+    body = {"name": "Mine", "rules": [{"pattern": "TESCO", "category": "Groceries"},
+                                      {"pattern": "^AMZN.*MKTP", "match_type": "regex", "category": "Shopping"}]}
+    assert client.post(f"{API}/rules/packs/bulk", json=body, headers=_bearer(web)).status_code == 201
+    from tests.integration.test_reset_purge import _dek
+    from app.core import user_crypto
+    from app.models import User
+    user = db_session.query(User).filter(User.email == "rules-mcp@example.com").one()
+    ctx = user_crypto.current_dek.set(_dek(web))
+    try:
+        db_session.add(CategoryRule(user_id=user.id, pattern="SHOP(?=X)", match_type="regex", category="Groceries"))
+        db_session.commit()
+    finally:
+        user_crypto.current_dek.reset(ctx)
+    res = client.get(f"{API}/rules", headers=_bearer(tokens["access_token"]))
+    assert res.status_code == 200
+    data = res.json()
+    assert set(data) == {"packs", "personal"}
+    rules = data["personal"] + [r for p in data["packs"] for r in p["rules"]]
+    assert all(set(p) == PACK_KEYS for p in data["packs"])
+    assert all(set(r) == RULE_KEYS for r in rules) and len(rules) == 3
+    assert {r["cant_run"] for r in rules} == {None, categorization.CANT_RUN_REASON}

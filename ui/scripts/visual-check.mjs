@@ -343,6 +343,17 @@ for (const [vpName, viewport] of viewports) {
     if (new URL(page.url()).search) errors.push(`[${vpName}] Add statement left ${page.url()}`)
     console.log(`flow add-statement-${vpName} ok`)
   }
+  // The Spending account filter groups accounts as Wealth and Cashflow do (T-10-16).
+  if (vpName === 'desktop') {
+    await page.goto(`${BASE}/insights?section=activity`, { waitUntil: 'networkidle' })
+    await page.locator('select optgroup').first().waitFor({ state: 'attached' })
+    const labels = await page.locator('select optgroup').evaluateAll((els) => els.map((e) => e.getAttribute('label')))
+    const want = ['Current accounts', 'Savings', 'Credit cards']
+    if (JSON.stringify(labels.filter((l) => want.includes(l))) !== JSON.stringify(want.filter((l) => labels.includes(l))) || !labels.includes('Credit cards')) {
+      errors.push(`[${vpName}] account filter groups: ${labels.join(', ')}`)
+    }
+    console.log(`account filter groups: ${labels.join(', ')}`)
+  }
   // The loan form (T-10-10b): edit a linked loan, add one, and the
   // "Which bill is this?" step after a 409 choose_commitment.
   if (vpName === 'desktop' || vpName === 'mobile') {

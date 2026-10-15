@@ -393,7 +393,9 @@ def undo_write(db: Session, user, audit_id: uuid.UUID) -> AuditEntry:
         # Nothing to soft-delete it with; refuse rather than hard-delete.
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Can't undo this kind of change.")
     target = _load_target(db, spec, entry.target_id, user.id, lock=True)
-    if target is None:
+    if target is None or getattr(target, "deleted_at", None) is not None:
+        # Gone, or deleted by the user on the web (T-12-9b): an undo never
+        # brings back what the user deleted.
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Can't undo: the item no longer exists.")
     changes = json.loads(entry.changes)
     if entry.target_kind == "commitment":

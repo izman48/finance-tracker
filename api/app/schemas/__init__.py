@@ -1095,6 +1095,9 @@ class PlannedItemResponse(BaseModel):
     source_transaction_id: uuid.UUID | None = None
     active: bool
     is_card_payment: bool = False
+    # Flagged and in a pay window with projected card bills (T-12-4b): the
+    # row's "Overlaps card bills" chip.
+    card_payment_overlap: bool = False
     created_via: str = "web"
     # One-off items: the transaction that paid it (it then drops out of the
     # forecast and safe-to-spend), and whether expected income is late (T-08-7).

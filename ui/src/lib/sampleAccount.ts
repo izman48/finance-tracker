@@ -850,7 +850,7 @@ export function sampleResponse(url: string, params: unknown): unknown {
   if (path.includes('/analytics/spending/trend')) return trendResponse(Number(p.months) || 6)
   if (path.includes('/analytics/spending')) return spendingResponse(p as any)
   if (is('/analytics/commitments')) return commitmentsResponse()
-  if (is('/analytics/planned-items')) return [{ id: 'sp1', name: 'New laptop', direction: 'expense', kind: 'installment_plan', start_date: isoDate(nowPlus(9)), amount: null, total_amount: 1200, installments: 6, is_card_payment: false }]
+  if (is('/analytics/planned-items')) return [{ id: 'sp1', name: 'New laptop', direction: 'expense', kind: 'installment_plan', start_date: isoDate(nowPlus(9)), amount: null, total_amount: 1200, installments: 6, is_card_payment: false, card_payment_overlap: false }]
   if (is('/analytics/nudges')) return nudgesResponse()
   if (path.includes('/analytics/net-worth-decomposition')) return decompositionResponse(Number(p.months) || 12)
   if (path.includes('/analytics/net-worth-projection')) return projectionResponse(p as Record<string, any>)

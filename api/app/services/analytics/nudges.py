@@ -126,7 +126,36 @@ def get_nudges(db: Session, user) -> list[dict]:
             "as_of": None,
         })
 
+    nudges.extend(_card_payment_overlap(db, user))
     return sorted(nudges, key=lambda n: n["rank"])
+
+
+def _money(value: Decimal) -> str:
+    return f"£{value:,.2f}"
+
+
+def _card_payment_overlap(db: Session, user) -> list[dict]:
+    """The first pay window where the user's planned card payments and the
+    projected card bills overlap (T-12-4b, ux O-2/O-3): the aggregate figures
+    and which one nilu counts. Facts only; dismissed in the browser."""
+    from .card_payments import overlap_windows
+    from .common import _today
+    for window, _ in overlap_windows(db, user, _today()):
+        if not window.overlaps:
+            continue
+        larger = max(window.planned, window.projected)
+        return [{
+            "id": f"card_payment_overlap_{window.start.isoformat()}",
+            "rank": 0,  # a number counted twice matters most
+            "body": (f"Your planned card payments ({_money(window.planned)}) overlap your projected card "
+                     f"bills ({_money(window.projected)}). nilu counts the larger, {_money(larger)}, once."),
+            "detail": (f"Between {window.start:%-d %b} and {window.end:%-d %b}. Planned items you marked as a card "
+                       "payment and the card repayments nilu projects pay the same cards, so only the larger "
+                       "total counts in safe to spend and the forecast."),
+            "source": None,
+            "as_of": None,
+        }]
+    return []
 
 
 def _duplicate_commitment_groups(db: Session, user) -> list[list[CommitmentRule]]:

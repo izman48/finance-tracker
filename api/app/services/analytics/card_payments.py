@@ -60,3 +60,32 @@ def resolve(windows: list[tuple[date, date]], planned: list[tuple], repayments: 
         else:
             kept_planned = [e for e in kept_planned if not lo <= e[1] <= hi]
     return kept_planned, kept_repayments, out
+
+
+# How far ahead the overlap is looked for (the Cashflow forecast's longest view).
+OVERLAP_HORIZON_DAYS = 92
+
+
+def overlap_windows(db, user, today: date) -> list[tuple[Window, set]]:
+    """Each pay window in the next 92 days with the flagged planned items in
+    it: (window, item ids). The same inputs as the forecast: confirmed bills
+    (for the card ties), projected card repayments and active planned items."""
+    from app.models import CommitmentDirection, CommitmentRule, CommitmentStatus, PlannedItem
+
+    from .commitments import payday_dates
+    from .planned_matching import planned_states
+    from .repayments import scheduled_outflows
+    from .summary import _planned_occurrences
+
+    start, end = today + timedelta(days=1), today + timedelta(days=OVERLAP_HORIZON_DAYS)
+    rules = db.query(CommitmentRule).filter(
+        CommitmentRule.user_id == user.id, CommitmentRule.direction == CommitmentDirection.EXPENSE.value,
+        CommitmentRule.status == CommitmentStatus.CONFIRMED.value,
+    ).all()
+    _, repayments = scheduled_outflows(db, user, rules, start, end)
+    planned = db.query(PlannedItem).filter(PlannedItem.user_id == user.id, PlannedItem.active.is_(True)).all()
+    states = planned_states(db, user, planned, today)
+    flagged = [(item.id, d, a) for item, d, a in _planned_occurrences(planned, states, start, end)
+               if item.is_card_payment]
+    _, _, windows = resolve(pay_windows(start, end, payday_dates(db, user, start, end)), flagged, repayments)
+    return [(w, {i for i, d, _ in flagged if w.start <= d <= w.end}) for w in windows]

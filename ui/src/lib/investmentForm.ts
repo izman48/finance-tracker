@@ -224,3 +224,13 @@ export function stopBillConfirm(asset: Asset): ConfirmCopy {
     confirmLabel: 'Remove bill', cancelLabel: 'Cancel', danger: true,
   }
 }
+
+/** Which form a Wealth link asks for: `?edit=<id>` (one of the user's
+ *  investments) or `?add=investment`; anything else opens nothing. */
+export function formFromQuery(search: string, assets: Asset[]): Asset | 'add' | null {
+  const q = new URLSearchParams(search)
+  if (q.get('add') === 'investment') return 'add'
+  const id = q.get('edit')
+  const asset = id ? assets.find((a) => a.id === id) : undefined
+  return asset && ['isa', 'investment', 'pension', 'crypto'].includes(asset.asset_type) ? asset : null
+}

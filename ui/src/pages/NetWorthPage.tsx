@@ -33,6 +33,7 @@ import UpdateAssetValueModal from '../components/UpdateAssetValueModal'
 import InvestmentRow from '../components/wealth/InvestmentRow'
 import InvestmentValueModal from '../components/wealth/InvestmentValueModal'
 import InvestmentForm from '../components/wealth/InvestmentForm'
+import { formFromQuery } from '../lib/investmentForm'
 import { currentValue, isInvestment } from '../lib/investments'
 import AccountSettingsModal from '../components/AccountSettingsModal'
 import AddToBalanceSheetChooser from '../components/AddToBalanceSheetChooser'
@@ -169,6 +170,17 @@ export default function NetWorthPage() {
   const navigate = useNavigate()
 
   const revealRef = useReveal(!loading)
+
+  // "Set a growth rate" / "Add an investment" on the graph link here
+  // (?edit=<id> / ?add=investment): open the form once, then drop the query.
+  useEffect(() => {
+    if (loading || !location.search) return
+    const target = formFromQuery(location.search, assets)
+    if (target) {
+      setInvestmentForm(target)
+      navigate('/networth', { replace: true })
+    }
+  }, [loading, location.search, assets, navigate])
 
   const load = async (m = months) => {
     try {

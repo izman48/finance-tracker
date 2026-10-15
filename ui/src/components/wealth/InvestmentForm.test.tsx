@@ -44,9 +44,10 @@ describe('InvestmentFormView', () => {
     expect(off).toMatch(/<input[^>]*type="checkbox"[^>]*disabled=""/)
   })
 
-  it('ticked: Pay from (current accounts) and Day 1 to 28 follow it, with aria-expanded and aria-controls', () => {
+  it('ticked: Pay from (current accounts) and Day 1 to 28 follow it, tied by aria-controls (no aria-expanded on a checkbox, ux)', () => {
     const h = html({ form: { ...props().form, commit: true } })
-    expect(h).toMatch(/type="checkbox"[^>]*aria-expanded="true"[^>]*aria-controls="investment-bill-fields"/)
+    expect(h).toMatch(/type="checkbox"[^>]*aria-controls="investment-bill-fields"/)
+    expect(h).not.toContain('aria-expanded')
     expect(h).toContain('id="investment-bill-fields"')
     expect(text(h)).toContain('Pay from')
     expect(text(h)).toContain('Everyday Current')

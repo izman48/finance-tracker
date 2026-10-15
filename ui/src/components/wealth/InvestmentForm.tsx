@@ -81,7 +81,7 @@ function FormBody(p: InvestmentFormViewProps) {
       <div>
         <label className="flex items-center gap-3 min-h-[44px] text-sm text-slate-100" htmlFor="investment-commit">
           <input id="investment-commit" type="checkbox" disabled={p.saving || !box.enabled}
-            checked={p.form.commit && box.enabled} aria-expanded={p.form.commit && box.enabled}
+            checked={p.form.commit && box.enabled}
             aria-controls="investment-bill-fields" aria-describedby="investment-commit-help"
             onChange={(e) => p.onChange({ commit: e.target.checked })} />
           {box.text}

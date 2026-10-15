@@ -55,6 +55,8 @@ class LiabilityCreate(BaseModel):
     start_date: date
     end_date: date | None = None
     opted_out: StrictBool = False
+    # A mortgage only (T-12-6b): one of the caller's property assets.
+    property_asset_id: uuid.UUID | None = None
 
     @model_validator(mode="after")
     def _check_terms(self) -> LiabilityCreate:
@@ -71,6 +73,8 @@ class LiabilityCreate(BaseModel):
             raise ValueError("The balance can be at most £1,000,000")
         if self.kind == "mortgage" and self.apr > MORTGAGE_MAX_APR:
             raise ValueError(f"A mortgage's APR can be at most {MORTGAGE_MAX_APR}%")
+        if self.kind != "mortgage" and self.property_asset_id is not None:
+            raise ValueError("Only a mortgage can have a property")
         return self
 
 
@@ -100,6 +104,8 @@ class LiabilityUpdate(BaseModel):
     start_date: date | None = None
     end_date: date | None = None
     opted_out: StrictBool | None = None
+    # null clears it.
+    property_asset_id: uuid.UUID | None = None
     # Opting back in: as on create.
     commitment_choice: CommitmentChoice | None = None
 
@@ -123,6 +129,7 @@ class LiabilityResponse(BaseModel):
     start_date: date
     end_date: date | None
     opted_out: bool
+    property_asset_id: uuid.UUID | None = None
     # Derived on read, never stored. The schedule figures are null when the
     # user repays irregularly (they would be guesses).
     current_balance: Decimal

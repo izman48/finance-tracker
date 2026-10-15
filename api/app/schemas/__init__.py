@@ -150,6 +150,10 @@ class AssetResponse(BaseModel):
     # The holding engine's value today (the same as net worth): the latest
     # value plus linked contributions paid since. Null before a first value.
     value_today: Decimal | None = None
+    # A property with a mortgage (T-12-6b): what its mortgages owe today and
+    # value today minus that. Display only, never in a total; null otherwise.
+    mortgage_owed: Decimal | None = None
+    equity: Decimal | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

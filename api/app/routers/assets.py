@@ -27,6 +27,7 @@ from app.services import analytics_service, holding_links
 from app.services.holdings.inputs import asset_inputs
 from app.services.holdings.projection import value_on
 from app.services.holdings.registry import kind_for
+from app.services.liabilities import mortgages_owed_by_property
 
 logger = logging.getLogger(__name__)
 
@@ -74,13 +75,24 @@ def list_assets(current_user: CurrentUser, db: Annotated[Session, Depends(get_db
     links = {row.asset_id: (bills.get(row.commitment_id), row.commitment_created) for row in rows}
     today = analytics_service._today()
     values = {h.id: value_on(h, today) for h in asset_inputs(db, current_user, Decimal(0), today)}
+    owed = mortgages_owed_by_property(db, current_user.id, today)
     return [
         AssetResponse.model_validate(a).model_copy(update={
             "linked_commitment": _bill(*links.get(a.id, (None, False))),
             "value_today": _pennies(values.get(str(a.id))),
+            **_equity(a, _pennies(values.get(str(a.id))), owed.get(a.id)),
         })
         for a in assets
     ]
+
+
+def _equity(asset: Asset, value: Decimal | None, owed: Decimal | None) -> dict:
+    """A property with a mortgage: value today − what its mortgages owe
+    (T-12-6b). Display only; it may be negative."""
+    if asset.asset_type != "property" or value is None or owed is None:
+        return {}
+    owed = _pennies(owed)
+    return {"mortgage_owed": owed, "equity": value - owed}
 
 
 def _pennies(value: Decimal | None) -> Decimal | None:

@@ -281,3 +281,17 @@ def overpayment(liability: Liability, today: date, linked: bool, lump_sum: Decim
         "payoff_date_after": after[-1].due_date if after else None,
         "note": SAVINGS_NOTE,
     }
+
+
+def mortgages_owed_by_property(db: Session, user_id, today: date) -> dict:
+    """{property asset id: what its mortgages owe today} (T-12-6b), each at
+    the same balance net worth counts. For the equity line only."""
+    confirmed = confirmed_commitment_ids(db, user_id)
+    owed: dict = {}
+    mortgages = db.query(Liability).filter(
+        Liability.user_id == user_id, Liability.kind == "mortgage", Liability.property_asset_id.isnot(None),
+    )
+    for m in mortgages:
+        owed[m.property_asset_id] = owed.get(m.property_asset_id, Decimal(0)) + current_balance(
+            m, today, is_linked(m, confirmed))
+    return owed

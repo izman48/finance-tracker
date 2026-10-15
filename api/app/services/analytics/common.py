@@ -1,14 +1,11 @@
 """Shared helpers for the analytics package: dates, decimals, account roles."""
 from __future__ import annotations
 
-import calendar
-from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
 from app.models import Account, AccountRole, AccountSetting, AccountType
-from app.core.clock import uk_today
 
 _DEFAULT_ROLE_BY_TYPE = {
     AccountType.TRANSACTION: AccountRole.SPENDING,
@@ -24,21 +21,9 @@ _DEFAULT_ROLE_BY_TYPE = {
 }
 
 
-def _today() -> date:
-    """The UK day (T-11-9): every money path takes its day from here."""
-    return uk_today()
-
-
-def _d(value) -> Decimal:
-    return Decimal(str(value or 0))
-
-
-def _add_months(d: date, months: int) -> date:
-    month_index = d.month - 1 + months
-    year = d.year + month_index // 12
-    month = month_index % 12 + 1
-    day = min(d.day, calendar.monthrange(year, month)[1])
-    return date(year, month, day)
+# Re-exported (the same objects) so existing callers and the test clock are
+# unchanged; they live in app.core.basics to keep holdings free of a cycle.
+from app.core.basics import _add_months, _d, _today  # noqa: E402,F401
 
 
 def default_role(account: Account) -> AccountRole:

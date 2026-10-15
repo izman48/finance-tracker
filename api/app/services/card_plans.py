@@ -22,7 +22,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.models import Account, CardPlan
-from app.services.analytics.common import _add_months
+from app.core.basics import _add_months
 
 # Providers observed to include plan balances in the card balance (upper
 # case, as `balance_sign` normalises them). None confirmed yet.

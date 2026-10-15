@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
 
-from app.services.analytics.common import _add_months
+from app.core.basics import _add_months
 
 # Bounds (sec, T-11-4). The API rejects anything outside them with a 422;
 # the engine refuses rather than clamping, so nothing is quietly changed.

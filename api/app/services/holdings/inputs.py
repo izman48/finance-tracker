@@ -27,7 +27,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.models import Asset, CommitmentLink, CommitmentRule, CommitmentStatus, Liability
-from app.services.analytics.common import _add_months, _d, _today
+from app.core.basics import _add_months, _d, _today
 from app.services.liabilities import confirmed_commitment_ids, is_linked, owed_on
 
 from app.services import card_plans

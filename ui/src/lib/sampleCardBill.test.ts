@@ -31,8 +31,9 @@ describe('demo: the sample card shows both bill states (T-12-7a part 2, lead 202
   })
 
   it('the forecast takes each on its day, the projected one marked', () => {
-    const f = get<{ timeline: { date: string; events: { kind: string; amount: number; projected?: boolean }[] }[] }>('/analytics/forecast', { horizon: '90' })
-    const reps = f.timeline.flatMap((p) => p.events.filter((e) => e.kind === 'repayment' && !('plan' in e)).map((e) => [p.date, -e.amount, Boolean(e.projected)]))
+    const f = get<{ timeline: { date: string; events: { kind: string; label: string; amount: number; projected?: boolean }[] }[] }>('/analytics/forecast', { horizon: '90' })
+    // Card plan instalments (T-12-5b) are repayment rows of their own, not card bills.
+    const reps = f.timeline.flatMap((p) => p.events.filter((e) => e.kind === 'repayment' && !e.label.endsWith(' instalment')).map((e) => [p.date, -e.amount, Boolean(e.projected)]))
     expect(reps).toEqual(s.next_repayments.map((r) => [r.due_date, r.amount, r.projected]))
   })
 })

@@ -157,6 +157,19 @@ already pays the plan's remaining balance, so that card's repayment must then
 leave out the plan's principal, or the instalments count twice (today that
 can only overstate, the safe side).
 
+**Plans UI (T-12-7b, ux T-12-1 "Plans")**: card settings has an
+"Instalment plans" block (`components/card/InstalmentPlans.tsx`, form
+`PlanForm.tsx`, copy and checks in `lib/cardPlans.ts`): rows with Edit and
+Remove, Add a plan, and for an unconfirmed provider the "Not in net worth
+yet" notice with the monthly figure. On Wealth each card row lists its plans
+indented under it (`CardRow`): unconfirmed shows "£X left" with no minus and
+a chip, confirmed shows "−£X already counted"; neither is added to a total.
+A plan whose card has gone shows under Loans and finance with "Card
+disconnected" (`DisconnectedPlanRow`) at the API's figure. Payments left are
+shown as "N payments to go" (the API keeps no original count). Demo:
+`sampleAccount.ts` serves one unconfirmed "Laptop plan" on Harbor Rewards
+whose instalment + fee is in the sample forecast and safe to spend.
+
 **Tables**: `card_plans` (encrypted `name`, `balance`, `instalment`, `fee`,
 `apr`; plaintext `card_account_id`, `instalments_remaining`, `next_date`;
 migration `e5f7a9b1c3d5`, downgrade drops it).

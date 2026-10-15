@@ -11,7 +11,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { assetsAPI, analyticsAPI, bankingAPI, budgetsAPI, liabilitiesAPI, Asset, AssetDecomposition, Liability, NetWorthPoint, NetWorthPosition, Projection } from '../services/api'
+import { assetsAPI, analyticsAPI, bankingAPI, budgetsAPI, cardPlansAPI, liabilitiesAPI, Asset, CardPlan, AssetDecomposition, Liability, NetWorthPoint, NetWorthPosition, Projection } from '../services/api'
 import { BankStatus, CashflowSummary, SummaryAccount } from '../types'
 import { ASSET_TYPE_LABEL } from '../lib/assets'
 import { gbp0 as gbp, timeAgo } from '../lib/format'
@@ -19,7 +19,8 @@ import { settingsAccountFor } from '../lib/credit'
 import { bothCounted, equityLine, needsProperty, REPLACEABLE_ASSET_TYPES } from '../lib/liabilities'
 import { accountGroup, assetGroup, BALANCE_SHEET_GROUPS } from '../lib/balanceSheet'
 import CardRow from '../components/wealth/CardRow'
-import LiabilityRow, { BothCountedNotice, LoansLoadError } from '../components/wealth/LiabilityRow'
+import LiabilityRow, { BothCountedNotice, DisconnectedPlanRow, LoansLoadError } from '../components/wealth/LiabilityRow'
+import { plansOnCard, standalonePlans } from '../lib/cardPlans'
 import LiabilityForm from '../components/wealth/LiabilityForm'
 import SpendingChoice from '../components/wealth/SpendingChoice'
 import NetWorthKey from '../components/wealth/NetWorthKey'
@@ -133,6 +134,9 @@ export default function NetWorthPage() {
   // Liabilities load on their own, so a failure shows in their group and
   // never blanks the page (ux B.2); null = not loaded yet.
   const [liabilities, setLiabilities] = useState<Liability[] | null>(null)
+  // Card instalment plans (T-12-7b). Text under their card; never added to a
+  // total here (the API's totals already hold what counts).
+  const [plans, setPlans] = useState<CardPlan[]>([])
   const [liabilitiesFailed, setLiabilitiesFailed] = useState(false)
   // The loan form: 'add', a liability to edit, or closed.
   const [loanForm, setLoanForm] = useState<'add' | Liability | null>(null)
@@ -268,9 +272,19 @@ export default function NetWorthPage() {
     }
   }
 
+  const loadPlans = async () => {
+    try {
+      setPlans((await cardPlansAPI.list()).data)
+    } catch (e) {
+      // Plans are text on the card rows; the totals never depend on them.
+      console.error('Failed to load card plans', e)
+    }
+  }
+
   useEffect(() => {
     load()
     loadLiabilities()
+    loadPlans()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -510,7 +524,8 @@ export default function NetWorthPage() {
   const providers = Array.from(new Set((bankStatus?.connections ?? []).map((c) => c.provider_name)))
   const loans = liabilities ?? []
   const properties = assets.filter((a) => a.asset_type === 'property')
-  const hasAnything = rows.length > 0 || loans.length > 0 || liabilitiesFailed
+  const disconnectedPlans = standalonePlans(plans)
+  const hasAnything = rows.length > 0 || loans.length > 0 || disconnectedPlans.length > 0 || liabilitiesFailed
   // What the API says is owed on liabilities: the page never sums them.
   const liabilitiesTotal = Number(position?.liabilities ?? summary?.liabilities_total ?? 0)
 
@@ -791,8 +806,9 @@ export default function NetWorthPage() {
             const groupRows = rows.filter((r) => r.group === key)
             const isLoans = key === 'liabilities'
             const loanRows = isLoans ? loans : []
+            const planRows = isLoans ? disconnectedPlans : []
             const loansFailed = isLoans && liabilitiesFailed
-            if (groupRows.length === 0 && loanRows.length === 0 && !loansFailed) return null
+            if (groupRows.length === 0 && loanRows.length === 0 && planRows.length === 0 && !loansFailed) return null
             const excluded = key === 'excluded'
             // Loans and finance: the asset rows plus the API's liabilities
             // total, shown once; no subtotal while the liabilities failed (L-5, L-7).
@@ -824,8 +840,9 @@ export default function NetWorthPage() {
                     onOpen={(fromChip) => { setLoanFormFromChip(fromChip); setLoanFormProperty(false); setLoanForm(l) }}
                     onChooseProperty={needsProperty(l) ? () => { setLoanFormFromChip(false); setLoanFormProperty(true); setLoanForm(l) } : undefined} />
                 ))}
+                {planRows.map((p) => <DisconnectedPlanRow key={`plan-${p.id}`} plan={p} />)}
                 {groupRows.map((row) => row.card ? (
-                  <CardRow key={row.key} account={row.card} onOpen={row.onClick} />
+                  <CardRow key={row.key} account={row.card} plans={plansOnCard(plans, row.card.id)} onOpen={row.onClick} />
                 ) : row.investment ? (
                   <InvestmentRow key={row.key} asset={row.investment} onOpen={() => setInvestmentForm(row.investment!)}
                     onUpdateValue={() => setUpdatingValue(row.investment!)} />
@@ -1045,9 +1062,10 @@ export default function NetWorthPage() {
         <AccountSettingsModal
           account={settingsAccount}
           spendingAccounts={summary?.accounts.filter((a) => a.role === 'spending') ?? []}
-          onClose={() => setSettingsAccount(null)}
+          onClose={() => { setSettingsAccount(null); loadPlans() }}
           onSaved={async () => {
             setSettingsAccount(null)
+            loadPlans()
             await load()
           }}
         />

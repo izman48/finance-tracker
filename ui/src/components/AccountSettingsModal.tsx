@@ -8,6 +8,7 @@ import {
 } from '../lib/accountSettings'
 import StatementBlock from './card/StatementBlock'
 import RepaymentWarnings from './card/RepaymentWarnings'
+import InstalmentPlans from './card/InstalmentPlans'
 import { useToast } from './ui/Toast'
 import { aprTyping, validateApr, type RepaymentWarning } from '../lib/repaymentWarnings'
 
@@ -166,6 +167,10 @@ export default function AccountSettingsModal({
             onNotFound={onCardMissing}
             onLoaded={onStatementsLoaded}
           />
+        )}
+
+        {account.role === 'credit' && !cardMissing && (
+          <InstalmentPlans cardId={account.id} provider={account.provider_name} />
         )}
 
         {form.role === 'credit' && (

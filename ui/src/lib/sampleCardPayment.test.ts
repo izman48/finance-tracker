@@ -19,7 +19,12 @@ describe('demo: a planned card payment overlapping the projected card bill (T-12
 
   it("the nudge's figures come from the sample by the API's rule: the larger counts once", () => {
     const manual = planned.filter((p) => p.is_card_payment && inWindow(p.start_date)).reduce((s, p) => s + Number(p.amount), 0)
-    const projected = summary.next_repayments.filter((r) => inWindow(r.due_date)).reduce((s, r) => s + r.amount, 0)
+    // The projected side: the card bills and the card plan instalments (T-12-5b) in the window.
+    const forecast = get<{ timeline: { date: string; events: { kind: string; label: string; amount: number }[] }[] }>('/analytics/forecast', { horizon: '30' })
+    const instalments = forecast.timeline.filter((d) => inWindow(d.date))
+      .flatMap((d) => d.events.filter((e) => e.kind === 'repayment' && e.label.endsWith(' instalment')))
+      .reduce((s, e) => s - e.amount, 0)
+    const projected = summary.next_repayments.filter((r) => inWindow(r.due_date)).reduce((s, r) => s + r.amount, 0) + instalments
     const nudge = get<{ id: string; body: string }[]>('/analytics/nudges').find((n) => n.id.startsWith('card_payment_overlap'))!
     expect(nudge.body).toBe(
       `Your planned card payments (${gbp2(manual)}) overlap your projected card bills (${gbp2(projected)}). ` +

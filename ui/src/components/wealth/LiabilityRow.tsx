@@ -1,4 +1,4 @@
-import type { Asset, Liability } from '../../services/api'
+import type { Asset, CardPlan, Liability } from '../../services/api'
 import { gbp0 } from '../../lib/format'
 import { liabilityDetail, liabilityName, mortgageDetail, needsProperty } from '../../lib/liabilities'
 
@@ -83,6 +83,23 @@ export function BothCountedNotice({ onReplace }: { onReplace?: () => void }) {
           Replace an entry
         </button>
       )}
+    </div>
+  )
+}
+
+/** A card plan whose card has gone (bank disconnect): the API counts what is
+ *  left as debt of its own (safe side), so it shows here with that figure. */
+export function DisconnectedPlanRow({ plan }: { plan: CardPlan }) {
+  const left = Number(plan.balance)
+  const toGo = `${plan.instalments_remaining} ${plan.instalments_remaining === 1 ? 'payment' : 'payments'} to go`
+  return (
+    <div className="w-full min-h-[44px] flex items-center gap-3 px-4 py-3 border-t border-white/[0.06]">
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium text-slate-100 truncate">{plan.name}</span>
+        <span className="block text-xs text-slate-400">{gbp0(Number(plan.monthly_total))} a month · {toGo}</span>
+      </span>
+      <span className="chip-warn shrink-0">Card disconnected</span>
+      <span className="shrink-0 text-sm font-semibold tnum text-warn">−{gbp0(left)}</span>
     </div>
   )
 }

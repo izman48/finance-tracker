@@ -123,3 +123,31 @@ def test_a_pending_claude_move_of_payday_closer_keeps_the_horizon(w):
     assert (held["horizon_end"], held["end_balance"]) == (before["horizon_end"], before["end_balance"])
     assert w.keep(audit_id).status_code == 200
     assert _forecast(w)["horizon_end"] == (TODAY + timedelta(days=2)).isoformat()
+
+
+def test_a_pending_claude_move_of_payday_closer_keeps_the_budget_line(w):
+    """T-12-9d: the budget cycle (the "after budgets" strip) ends where the
+    summary's committed window does, so a pending salary move can't take
+    the bill before the old payday out of the strip and lift it."""
+    from app.models import Budget
+    def add_budget():
+        w.db.add(Budget(user_id=w.user.id, category="Groceries", limit_pounds=Decimal("90")))
+        w.db.commit()
+    w.as_user(add_budget)
+    before = _forecast(w)["budget_projection"]
+    assert before is not None
+    audit_id = w.claude_update(w.salary, next_date=(TODAY + timedelta(days=2)).isoformat())
+    held = _forecast(w)["budget_projection"]
+    assert (held["payday"], held["after_budgets_balance"]) == (before["payday"], before["after_budgets_balance"])
+    assert w.keep(audit_id).status_code == 200
+    assert _forecast(w)["budget_projection"]["payday"] == (TODAY + timedelta(days=2)).isoformat()
+
+
+def test_a_pending_claude_move_of_payday_closer_leaves_every_day_as_before(w):
+    """T-12-9d: the salary counts the same either way, so the tie goes to
+    before-Claude. Otherwise pay landing early in the chart would hide a dip
+    between the new and the old payday until the user keeps the move."""
+    before = _forecast(w)
+    w.claude_update(w.salary, next_date=(TODAY + timedelta(days=2)).isoformat())
+    held = _forecast(w)
+    assert [(p["date"], p["balance"]) for p in held["timeline"]] == [(p["date"], p["balance"]) for p in before["timeline"]]

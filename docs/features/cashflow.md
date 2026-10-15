@@ -28,7 +28,7 @@ compatibility shim over `services/analytics/`.
 
 **Rules worth knowing**: planned income never raises safe to spend; Claude's
 changes to income can't raise it until the user keeps them
-(`test_no_claude_raise.py`), and the forecast holds them the same way (T-12-9a); budgets never change any money figure
+(`test_no_claude_raise.py`), and the forecast holds them the same way (T-12-9a): its payday horizon, its daily balances and the budget cycle behind the "after budgets" strip all keep payday where it was before Claude until the change is kept (T-12-9d); budgets never change any money figure
 (`test_budget_invariance.py`).
 
 **UI**: `/dashboard` (`DashboardPage`: safe-to-spend and savable tiles,

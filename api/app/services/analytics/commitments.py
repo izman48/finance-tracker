@@ -576,6 +576,16 @@ def committed_window_end(db: Session, user, today: date, start: date | None = No
     return max(now, before)
 
 
+def held_next_payday(db: Session, user, start: date) -> date | None:
+    """Next payday on/after `start` as safe-to-spend sees it: the later of
+    payday now and payday before Claude, while a Claude income change is
+    unkept (T-12-9d, as `committed_window_end`). None with no payday at all."""
+    from app.services.claude_keep import pre_claude_payday_incomes
+
+    dates = [d for d in (next_payday(db, user, start), _first_payday(pre_claude_payday_incomes(db, user), start)) if d]
+    return max(dates) if dates else None
+
+
 def last_payday(db: Session, user, today: date) -> date | None:
     """Most recent payday income date on/before today (steps back from next_date)."""
     incomes = _payday_incomes(db, user)

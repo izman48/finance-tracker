@@ -199,16 +199,18 @@ def commitment_keep(rule: CommitmentRule, rows: list[AuditEntry],
 def held_back(rule: CommitmentRule, rows: list[AuditEntry], value) -> object | None:
     """The version of a commitment to count while Claude's changes to it are
     pending, judged by `value(version)` (the money it moves in some window).
-    An income counts the lower of now and before-Claude; an expense the safe
-    side of each part on its own (`_expense_held`). None if that is "not a
-    confirmed commitment" (it counts nothing)."""
+    An income counts the lower of now and before-Claude, and on a tie the
+    before-Claude version: the same money, but its dates stay put, so pay
+    Claude moved earlier can't hide a dip in the forecast (T-12-9d). An
+    expense counts the safe side of each part on its own (`_expense_held`).
+    None if that is "not a confirmed commitment" (it counts nothing)."""
     before = before_claude(rule, rows)
     if rule.direction != CommitmentDirection.INCOME.value:
         return _expense_held(rule, before, value)
     confirmed = CommitmentStatus.CONFIRMED.value
     now_worth = value(rule) if rule.status == confirmed else Decimal(0)
     before_worth = value(before) if before.status == confirmed else Decimal(0)
-    if now_worth <= before_worth:
+    if now_worth < before_worth or (now_worth == before_worth and before.status != confirmed):
         return rule if rule.status == confirmed else None
     if before.status != confirmed:
         return None

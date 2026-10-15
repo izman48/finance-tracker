@@ -35,7 +35,7 @@ from app.schemas.budgets import (
     CycleFigure,
     NotCounted,
 )
-from app.services.analytics.commitments import last_payday, next_payday, payday_dates
+from app.services.analytics.commitments import held_next_payday, last_payday, payday_dates
 from app.services.analytics.common import _today
 from app.services.budget_spend import UNCATEGORISED, BudgetSpend, budget_spend
 
@@ -63,7 +63,9 @@ def current_cycle(db: Session, user, today: date) -> Cycle:
     start = last_payday(db, user, today)
     if start is None:
         return Cycle(today - timedelta(days=FALLBACK_DAYS - 1), today, fallback=True)
-    nxt = next_payday(db, user, today + timedelta(days=1))
+    # A pending Claude move of payday closer doesn't shorten the cycle, so it
+    # can't lift the "after budgets" strip before the user keeps it (T-12-9d).
+    nxt = held_next_payday(db, user, today + timedelta(days=1))
     end = (nxt - timedelta(days=1)) if nxt else start + timedelta(days=FALLBACK_DAYS - 1)
     return Cycle(start, max(end, today), fallback=False)
 

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.ownership import owned_account, require_owned_account_ids
 from app.core.security import CurrentUser
+from app.core.rate_limit import limit_user
 from app.core.oauth_tokens import SCOPE_READ, Caller, CurrentUserOrMcpRead, scoped_caller
 from app.models import (
     AccountRole,
@@ -81,6 +82,7 @@ def get_summary(
     db: Annotated[Session, Depends(get_db)],
 ) -> CashflowSummary:
     """Dashboard cashflow summary: safe-to-spend, available cash, owed, etc."""
+    limit_user("summary", current_user.id)  # decrypts the whole ledger
     return CashflowSummary(**analytics_service.get_summary(db, current_user))
 
 
@@ -181,6 +183,7 @@ def get_forecast(
 ) -> ForecastResponse:
     """Balance-over-time projection across the horizon (payday|month|30|60|90).
     `budget_projection` (T-09-4) is added alongside; nothing else changes."""
+    limit_user("forecast", caller.user.id)
     from app.services.budgets import budget_projection
 
     current_user = caller.user
@@ -217,6 +220,7 @@ def get_spending(
     account_id/kind scope the category + merchant breakdown to the active drill
     (an account, or the cash/credit side) without changing the period figures.
     """
+    limit_user("spending", current_user.id)
     return SpendingResponse(
         **analytics_service.get_spending(
             db, current_user, period, frm, to, exclude_commitments,
@@ -234,6 +238,7 @@ def get_spending_trend(
     exclude_commitments: bool = False,
 ) -> SpendingTrendResponse:
     """Real spending per month over the last `months` months (noise excluded)."""
+    limit_user("spending", current_user.id)
     return SpendingTrendResponse(
         **analytics_service.get_spending_trend(db, current_user, months, exclude_commitments)
     )

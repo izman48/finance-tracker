@@ -375,7 +375,12 @@ def update_commitment(
                          ("interval_days", changed_interval_days_error),
                          ("interval_months", changed_interval_months_error)):
         if field in updates and updates[field] != getattr(rule, field):
-            problem = check(updates[field] if updates[field] is not None else "")
+            # Null clears an interval (the form sends it for other cadences);
+            # a label or amount can't be cleared.
+            if updates[field] is None:
+                problem = "can't be cleared" if field in ("label", "amount") else None
+            else:
+                problem = check(updates[field])
             if problem:
                 raise RequestValidationError([{"type": "value_error", "loc": ("body", field), "msg": problem,
                                                "input": None}])

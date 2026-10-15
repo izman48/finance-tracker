@@ -190,3 +190,25 @@ def test_unchanged_intervals_outside_the_bounds_still_save(web):
     db.commit()
     assert client.patch(f"{API}/analytics/commitments/{rule.id}", json={"interval_days": 400, "amount": "60.00"}).status_code == 200
     assert client.patch(f"{API}/analytics/commitments/{rule.id}", json={"interval_days": 401}).status_code == 422
+
+
+@pytest.mark.parametrize("body,expected", [
+    ({"cadence": "monthly", "interval_days": None}, 200),
+    ({"cadence": "monthly", "interval_months": None}, 200),
+    ({"amount": None}, 422),
+    ({"label": None}, 422),
+])
+def test_a_changed_field_sent_as_null_is_never_a_500(web, body, expected):
+    """eng-b on #249: the edit form sends interval_months: null for any
+    non-yearly cadence; a null must skip the change check, not compare a
+    number with a string."""
+    from app.models import CommitmentRule, User
+    client, db, _ = web
+    user = db.query(User).first()
+    rule = CommitmentRule(user_id=user.id, direction="expense", label="Cleaner", amount=50, cadence="custom_days",
+                          interval_days=14, interval_months=3, next_date=TODAY + timedelta(days=5),
+                          source="manual", status="confirmed")
+    db.add(rule)
+    db.commit()
+    res = client.patch(f"{API}/analytics/commitments/{rule.id}", json=body)
+    assert res.status_code == expected, res.text

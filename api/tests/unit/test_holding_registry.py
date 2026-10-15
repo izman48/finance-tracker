@@ -144,3 +144,10 @@ def test_an_unknown_liability_kind_counts_as_debt():
 
 def test_the_unknown_kinds_declare_every_surface_too():
     validate((registry.UNKNOWN_ASSET, registry.UNKNOWN_LIABILITY))
+
+
+def test_no_debt_kind_is_listed_to_claude():
+    # sec / lead (2026-10-15): debts reach Claude only as totals, never by name.
+    for kind in (*KINDS, registry.UNKNOWN_LIABILITY):
+        if kind.is_debt:
+            assert kind.surfaces[Surface.CLAUDE].startswith("no:"), kind.key

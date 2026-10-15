@@ -84,13 +84,14 @@ _LEGACY_DEBT = {
     **_NO_LINK,
     Surface.NET_WORTH: "Loans and finance group at its (negative) latest valuation",
     Surface.PROJECTION: "held flat unless the user set a growth %; stops at zero",
+    Surface.CLAUDE: "no: debts are not in list_holdings; counted in net_worth in cashflow_summary",
 }
 _LIABILITY = {
     Surface.NET_WORTH: "Loans and finance group via net_worth.liabilities_total",
     Surface.PROJECTION: "follows its amortisation schedule when linked, else flat",
     Surface.COMMITMENTS: "its repayment is a linked commitment (linked_commitment_id)",
     Surface.CASHFLOW: "its linked repayment leaves cash on its day",
-    Surface.CLAUDE: "list_holdings and liabilities_total in cashflow_summary",
+    Surface.CLAUDE: "no: not in list_holdings (no lender names); liabilities_total in cashflow_summary",
     Surface.DEMO: "sample liabilities in ui/src/lib/sampleAccount.ts",
     Surface.PURGE: "liabilities in _OWNED_BY_USER",
     Surface.DOCS: "docs/features/liabilities.md",
@@ -134,7 +135,6 @@ _UNKNOWN = {
     Surface.PROJECTION: "held flat at its stored value",
     Surface.COMMITMENTS: "no: an unknown kind carries no link",
     Surface.CASHFLOW: "no: a holding's value is not cash",
-    Surface.CLAUDE: "list_holdings as kind unknown",
     Surface.DEMO: "no: sample data has no unknown kinds",
     Surface.PURGE: "purged with its source table",
     Surface.DOCS: "docs/features/net-worth.md",
@@ -145,12 +145,14 @@ _UNKNOWN = {
 UNKNOWN_ASSET = HoldingKind(
     source="assets", stored_type="unknown", group="other", model="flat",
     is_debt=False, is_investment=False, link_role=None,
-    surfaces={**_UNKNOWN, Surface.NET_WORTH: "counted at its stored value and sign, never hidden"},
+    surfaces={**_UNKNOWN, Surface.NET_WORTH: "counted at its stored value and sign, never hidden",
+              Surface.CLAUDE: "list_holdings as kind unknown, unless worth less than nothing"},
 )
 UNKNOWN_LIABILITY = HoldingKind(
     source="liabilities", stored_type="unknown", group="debt", model="flat",
     is_debt=True, is_investment=False, link_role=None,
-    surfaces={**_UNKNOWN, Surface.NET_WORTH: "counted as debt at its entered balance, never hidden"},
+    surfaces={**_UNKNOWN, Surface.NET_WORTH: "counted as debt at its entered balance, never hidden",
+              Surface.CLAUDE: "no: debts are not in list_holdings; counted in liabilities_total"},
 )
 
 _BY_KEY = {(k.source, k.stored_type): k for k in KINDS}

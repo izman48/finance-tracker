@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.models import AccountRole, Asset, AssetFlow, AssetValuation, Liability, Transaction
 
 from app.services.balance_sign import credit_owed
-from app.services.holdings.inputs import holding_inputs
+from app.services.holdings.inputs import asset_inputs
 from app.services.holdings.projection import value_on
 from app.services.liabilities import confirmed_commitment_ids, current_balance, is_linked
 
@@ -23,8 +23,7 @@ def assets_total(db: Session, user, as_of: date | None = None) -> Decimal:
     `value_on` (ADR-002): its latest valuation on/before that day plus any
     linked contributions paid since. No as_of: its latest valuation."""
     day = as_of or date.max
-    holdings = holding_inputs(db, user, _today(), Decimal(0))
-    values = (value_on(h, day) for h in holdings if h.source == "assets")
+    values = (value_on(h, day) for h in asset_inputs(db, user, Decimal(0)))
     return sum((v for v in values if v is not None), Decimal(0))
 
 

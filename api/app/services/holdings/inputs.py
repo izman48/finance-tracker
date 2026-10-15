@@ -33,10 +33,11 @@ from .registry import kind_for
 
 def holding_inputs(db: Session, user, today: date, default_growth_pct: Decimal) -> list[HoldingInput]:
     """Every holding the user has, as engine inputs."""
-    return _asset_inputs(db, user, default_growth_pct) + _liability_inputs(db, user, today)
+    return asset_inputs(db, user, default_growth_pct) + _liability_inputs(db, user, today)
 
 
-def _asset_inputs(db: Session, user, default_growth_pct: Decimal) -> list[HoldingInput]:
+def asset_inputs(db: Session, user, default_growth_pct: Decimal) -> list[HoldingInput]:
+    """The `assets` rows only, for callers that need no liabilities."""
     inputs = []
     for a in db.query(Asset).filter(Asset.user_id == user.id).order_by(Asset.created_at).all():
         kind = kind_for("assets", a.asset_type)
@@ -65,7 +66,7 @@ def _liability_inputs(db: Session, user, today: date) -> list[HoldingInput]:
             owed = lambda day, x=x, linked=linked: owed_on(x, today, day, linked)  # noqa: E731
         else:
             # An unknown kind: still money owed, at its entered balance.
-            owed = lambda day, x=x: x.balance  # noqa: E731
+            owed = lambda day, balance=x.balance: balance  # noqa: E731
         inputs.append(HoldingInput(
             id=str(x.id), name=x.lender, kind=x.kind, model=kind.model,
             group=kind.group, is_investment=kind.is_investment, is_debt=kind.is_debt,

@@ -107,16 +107,16 @@ class TestNetWorthTakesValueTodayFromTheEngine:
 
         user = _world(db_session)
         today = svc._today()
-        real = net_worth.holding_inputs
+        real = net_worth.asset_inputs
 
-        def with_a_paid_contribution(db, u, day, pct):
+        def with_a_paid_contribution(db, u, pct):
             return [
                 replace(h, paid_contributions=((today, Decimal("200")),)) if h.name == "ISA" else h
-                for h in real(db, u, day, pct)
+                for h in real(db, u, pct)
             ]
 
         before = net_worth.assets_total(db_session, user, as_of=today)
-        monkeypatch.setattr(net_worth, "holding_inputs", with_a_paid_contribution)
+        monkeypatch.setattr(net_worth, "asset_inputs", with_a_paid_contribution)
         assert net_worth.assets_total(db_session, user, as_of=today) - before == Decimal("200")
         assert net_worth.assets_total(db_session, user) - before == Decimal("200")
 
@@ -151,3 +151,26 @@ class TestKindsComeFromTheRegistry:
         (h,) = holding_inputs(db_session, user, today, Decimal("5"))
         assert h.is_debt and h.source == "liabilities" and h.group == "debt"
         assert project_holdings([h], today, months=1).total[0][1] == Decimal("-700.00")
+
+
+class TestOneValueTodayOnEverySurface:
+    def test_summary_and_position_move_with_the_engines_value_today(self, db_session, monkeypatch):
+        from dataclasses import replace
+
+        from app.services.analytics import net_worth
+
+        user = _world(db_session)
+        today = svc._today()
+        real = net_worth.asset_inputs
+
+        def with_a_paid_contribution(db, u, pct):
+            return [
+                replace(h, paid_contributions=((today, Decimal("200")),)) if h.name == "ISA" else h
+                for h in real(db, u, pct)
+            ]
+
+        summary = svc.get_summary(db_session, user)["net_worth"]
+        position = svc.net_worth_position(db_session, user)["net_worth"]
+        monkeypatch.setattr(net_worth, "asset_inputs", with_a_paid_contribution)
+        assert svc.get_summary(db_session, user)["net_worth"] - summary == Decimal("200")
+        assert svc.net_worth_position(db_session, user)["net_worth"] - position == Decimal("200")

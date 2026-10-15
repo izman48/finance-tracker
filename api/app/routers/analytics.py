@@ -3,7 +3,7 @@ import logging
 import uuid
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -129,7 +129,8 @@ def get_net_worth_projection(
     db: Annotated[Session, Depends(get_db)],
     target_amount: Decimal | None = None,
     monthly_contribution: Decimal | None = None,
-    annual_growth_pct: Decimal = Decimal("5"),
+    # The holding engine refuses a rate outside -100..50 (sec T-11-4).
+    annual_growth_pct: Annotated[Decimal, Query(ge=-100, le=50)] = Decimal("5"),
     subtract_spending: bool = True,
     monthly_spending: Decimal | None = None,
     spending_source: Literal["budgets", "average", "none"] | None = None,

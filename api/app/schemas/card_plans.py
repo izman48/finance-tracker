@@ -62,7 +62,8 @@ class CardPlanUpdate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    name: Name | None = None
+    # Checked in the route, only when it changes (sec-1 on #249).
+    name: Annotated[str, Field(min_length=1, max_length=100)] | None = None
     balance: Balance | None = None
     instalment: Instalment | None = None
     fee: Fee | None = None

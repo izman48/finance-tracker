@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.display_text import refuse_hidden
 from app.core.database import get_db
 from app.core.ownership import require_owned_account_ids
 from app.core.security import CurrentUser
@@ -148,6 +149,8 @@ def update_asset(
 ) -> Asset:
     asset = _own_asset(db, current_user.id, asset_id)
     if body.name is not None:
+        if body.name.strip() != asset.name:
+            refuse_hidden("name", body.name)
         asset.name = body.name.strip()
     if body.asset_type is not None:
         asset.asset_type = body.asset_type

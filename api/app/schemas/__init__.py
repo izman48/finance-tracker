@@ -112,7 +112,9 @@ class AssetCreate(BaseModel):
 
 
 class AssetUpdate(BaseModel):
-    name: AssetName | None = None
+    # Checked for hidden characters in the route, only when it changes (a
+    # name stored before the check is sent back by the edit form; sec-1 on #249).
+    name: str | None = Field(default=None, min_length=1, max_length=100)
     asset_type: str | None = Field(
         default=None, pattern="^(isa|savings|investment|pension|property|crypto|other|mortgage|loan|other_liability)$"
     )

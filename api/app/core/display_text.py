@@ -35,3 +35,14 @@ def visible_text(text: str) -> str:
     if not text.strip() or has_hidden_characters(text):
         raise ValueError("must be visible text without control or hidden characters")
     return text
+
+
+def refuse_hidden(field: str, text: str) -> None:
+    """422 in FastAPI's validation shape if `text` isn't visible text: for a
+    route that checks a name only when it changes (sec-1 on #249)."""
+    from fastapi.exceptions import RequestValidationError
+
+    try:
+        visible_text(text)
+    except ValueError as exc:
+        raise RequestValidationError([{"type": "value_error", "loc": ("body", field), "msg": str(exc), "input": None}])

@@ -32,7 +32,7 @@ export default function LiabilityRow({ liability, onOpen, properties = [], onCho
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-medium text-slate-100 truncate">{liabilityName(liability)}</span>
         <span className="block text-xs text-slate-400">{mortgage ? mortgageDetail(liability, properties) : liabilityDetail(liability)}</span>
-        {warning && <span className="block text-xs text-amber-300">{warning}</span>}
+        {warning && <span className="block text-xs text-warn">{warning}</span>}
         {mortgage && liability.linked_commitment && <span className="chip-info mt-1 inline-block">Bill linked</span>}
         {/* Narrow widths: the chip gets its own line so the lender keeps its room (ux on #185). */}
         {chip && <span data-chip={chip.kind} className={`${chip.className} mt-1 inline-block sm:hidden`}>{chip.text}</span>}

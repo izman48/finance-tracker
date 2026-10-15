@@ -217,7 +217,7 @@ def update_liability(
     choice = updates.pop("commitment_choice", None)
     merged = {field: getattr(liability, field) for field in TERMS} | updates
     try:
-        terms = LiabilityCreate.model_validate(merged)
+        terms = LiabilityCreate.model_validate(merged, context={"stored_lender": liability.lender})
     except ValidationError as exc:
         raise RequestValidationError(exc.errors())
     if "property_asset_id" in updates:

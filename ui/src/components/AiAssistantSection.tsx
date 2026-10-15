@@ -16,7 +16,7 @@ const POINTS = [
   {
     icon: ShieldCheck,
     title: 'You approve every change',
-    body: 'It can’t move money, and it only reads unless you allow more. Then it can add rule packs, planned events and budgets, or fix a commitment: it shows you each change first, and every one is listed under Changes made by Claude, where you can undo it. Nothing it changes raises your safe to spend until you keep it.',
+    body: 'It only reads unless you allow more. Any change it makes is shown first, listed under Changes made by Claude, and can be undone. Nothing it changes raises your safe to spend until you keep it.',
   },
 ]
 

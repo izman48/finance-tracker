@@ -142,7 +142,7 @@ export default function ResetPasswordPage() {
               placeholder="XXXX-XXXX-XXXX-…"
               autoComplete="off"
             />
-            <p className="text-xs text-slate-500 mt-1.5">
+            <p className="text-xs text-slate-400 mt-1.5">
               The code you saved at signup. It unlocks your encrypted data so
               nothing is lost. Without it, your bank data, commitments, planned
               events, budgets, rules, holdings, debts and the history of changes made by

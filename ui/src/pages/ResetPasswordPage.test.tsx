@@ -10,5 +10,8 @@ describe('ResetPasswordPage', () => {
     const t = renderToStaticMarkup(<MemoryRouter initialEntries={['/reset-password?token=t']}><ResetPasswordPage /></MemoryRouter>)
       .replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
     expect(t).toContain('bank data, commitments, planned events, budgets, rules, holdings, debts and the history of changes made by Claude')
+    // ux on #254: the help line meets 4.5:1 contrast.
+    const h = renderToStaticMarkup(<MemoryRouter initialEntries={['/reset-password?token=t']}><ResetPasswordPage /></MemoryRouter>)
+    expect(h).toMatch(/<p class="text-xs text-slate-400 mt-1.5">\s*The code you saved at signup/)
   })
 })

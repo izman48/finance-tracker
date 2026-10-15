@@ -148,6 +148,11 @@ const netWorthHistory = Array.from({ length: 12 }, (_, i) => {
     bank: String(6000 + i * 220),
     assets: String(2000 + i * 180),
     net_worth: String(8000 + i * 400),
+    // Graph groups (T-11-6): cash + investments + property − debt = net worth.
+    cash: String(7000 + i * 220),
+    investments: String(1500 + i * 180),
+    property: '500',
+    debt: '1000',
   }
 })
 

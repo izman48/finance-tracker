@@ -3,8 +3,9 @@ import { Clock, Landmark, Plug, RefreshCw } from 'lucide-react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   Area,
-  AreaChart,
   CartesianGrid,
+  ComposedChart,
+  Line,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -22,6 +23,11 @@ import CardRow from '../components/wealth/CardRow'
 import LiabilityRow, { BothCountedNotice, LoansLoadError } from '../components/wealth/LiabilityRow'
 import LiabilityForm from '../components/wealth/LiabilityForm'
 import SpendingChoice from '../components/wealth/SpendingChoice'
+import NetWorthKey from '../components/wealth/NetWorthKey'
+import {
+  GROUPS, INCLUDE_KEY, LINES_KEY, NET_WORTH_COLOUR, chartRows, headline, keyRows, parseIncludeInvestments, parseLines,
+  type GroupKey,
+} from '../lib/netWorthLines'
 import {
   budgetPeriod, budgetsAvailable, evidenceLine, shownChoice, spendingParams, SPENDING_KEY, storedChoice,
   type SpendingChoice as SpendingChoiceValue,
@@ -88,8 +94,27 @@ function NetWorthTooltip({ active, payload, label }: any) {
   )
 }
 
+function stored(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function store(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    // Private mode or blocked storage: the choice lasts until reload.
+  }
+}
+
 export default function NetWorthPage() {
   const [history, setHistory] = useState<NetWorthPoint[]>([])
+  const [lines, setLines] = useState<GroupKey[]>(() => parseLines(stored(LINES_KEY)))
+  const [includeInvestments, setIncludeInvestments] = useState(() => parseIncludeInvestments(stored(INCLUDE_KEY)))
+  const [announcement, setAnnouncement] = useState('')
   const [assets, setAssets] = useState<Asset[]>([])
   // Liabilities load on their own, so a failure shows in their group and
   // never blanks the page (ux B.2); null = not loaded yet.
@@ -182,10 +207,11 @@ export default function NetWorthPage() {
     }
   }, [loading, location.search, assets, navigate])
 
-  const load = async (m = months) => {
+  const load = async (m = months, include = includeInvestments): Promise<NetWorthPoint | undefined> => {
+    let latest: NetWorthPoint | undefined
     try {
       const [h, a, s, b, d, pos] = await Promise.all([
-        assetsAPI.netWorthHistory(m),
+        assetsAPI.netWorthHistory(m, include),
         assetsAPI.list(),
         analyticsAPI.getSummary(),
         bankingAPI.getConnectionStatus(),
@@ -193,6 +219,7 @@ export default function NetWorthPage() {
         assetsAPI.netWorthPosition(),
       ])
       setHistory(h.data)
+      latest = h.data[h.data.length - 1]
       setAssets(a.data)
       setSummary(s.data)
       setBankStatus(b.data)
@@ -203,6 +230,7 @@ export default function NetWorthPage() {
     } finally {
       setLoading(false)
     }
+    return latest
   }
 
   useEffect(() => {
@@ -276,6 +304,7 @@ export default function NetWorthPage() {
           // Budgets / average (with the estimate) / none; the API applies it
           // and echoes what it used (T-10-15b).
           ...(contribMode === 'cashflow' ? spendingParams(spendingChoice, spendAmount) : {}),
+          ...(includeInvestments ? {} : { include_investments: 'false' as const }),
         })
         .then((res) => {
           if (cancelled) return
@@ -291,7 +320,26 @@ export default function NetWorthPage() {
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [target, monthly, growth, contribMode, spendingChoice, spendAmount])
+  }, [target, monthly, growth, contribMode, spendingChoice, spendAmount, includeInvestments])
+
+  // A line switch changes only what is drawn (ux N-2); the choice is kept in
+  // this browser (A6) and announced (X-2).
+  const toggleLine = (key: GroupKey) => {
+    const on = !lines.includes(key)
+    const next = on ? [...lines, key] : lines.filter((k) => k !== key)
+    setLines(next)
+    store(LINES_KEY, JSON.stringify(next))
+    const label = GROUPS.find((g) => g.key === key)?.label ?? ''
+    setAnnouncement(`${label} line ${on ? 'shown' : 'hidden'}.`)
+  }
+
+  // "Include investments" does change the figure: reload with it (N-4).
+  const chooseIncludeInvestments = async (include: boolean) => {
+    setIncludeInvestments(include)
+    store(INCLUDE_KEY, String(include))
+    const latest = await load(months, include)
+    if (latest) setAnnouncement(`${include ? 'Net worth' : 'Net worth without investments'} ${gbp(Number(latest.net_worth))}.`)
+  }
 
   const handleConnectBank = async () => {
     setConnecting(true)
@@ -375,12 +423,15 @@ export default function NetWorthPage() {
   const change = current - first
   const monthLabel = (d: string) =>
     new Date(d).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })
-  const historyRows = history.map((p) => ({
-    date: monthLabel(p.date),
-    'Net worth': Number(p.net_worth),
-    Banks: Number(p.bank),
-    Assets: Number(p.assets),
-  }))
+  const historyRows = chartRows(history, monthLabel)
+  const today = history.length ? history[history.length - 1] : null
+  const keyFigures = today ? keyRows(today, includeInvestments) : []
+  const hasInvestments = keyFigures.some((r) => r.key === 'investments')
+  // Not-included Investments can't be drawn (N-4); only known rows with a figure are.
+  const drawn = GROUPS.filter((g) => lines.includes(g.key) && keyFigures.some((r) => r.key === g.key && r.included))
+  // The area fill only when Net worth is alone (N-9).
+  const netWorthFill = drawn.length === 0
+
   // The dashed estimate extends the solid line: the junction row carries both
   // keys so the two areas connect, then projection-only rows follow.
   const projRows =
@@ -397,14 +448,6 @@ export default function NetWorthPage() {
   const targetMonthYear = projection?.target_date
     ? new Date(projection.target_date).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
     : null
-  // The evidence behind the spending average, for the caption tooltip: which
-  // months were sampled and what each measured — the first place to look when
-  // the figure seems too high.
-  const spendingEvidence = projection?.contribution_basis
-    ? `Measured from your last ${projection.contribution_basis.spending_months_sampled} complete months of purchases (recognised transfers between your connected accounts, recognised card repayments, and your confirmed bills are excluded): ${projection.contribution_basis.sampled_months
-        .map((m) => `${new Date(m.month + '-01').toLocaleDateString('en-GB', { month: 'short' })} ${gbp(Number(m.total))}`)
-        .join(' · ')}. If this looks too high, it usually contains money we can't recognise as saving — payments to investment platforms or unconnected banks, or card repayments with unusual descriptions. Check those months on the Spending tab; declare investment payments as contributions on the asset they go into; and set "match transactions" on manually-added commitments so bills aren't counted twice.`
-    : ''
 
   // Assemble the balance sheet: bank accounts (live) + manual assets, grouped.
   const now = Date.now()
@@ -467,7 +510,7 @@ export default function NetWorthPage() {
         <div className="orb w-72 h-72 bg-sky2/10 -top-24 -right-16" />
         <div className="relative">
           <div className="text-sm text-slate-400 mb-2 flex items-center gap-1.5">
-            Total net worth
+            {headline(includeInvestments)}
             <InfoTip text={EXPLAIN.netWorth} side="bottom" align="left" />
           </div>
           <div className="stat-figure text-5xl sm:text-6xl text-slate-50">
@@ -591,7 +634,7 @@ export default function NetWorthPage() {
         )}
 
         <ResponsiveContainer width="100%" height={280}>
-          <AreaChart data={chartData}>
+          <ComposedChart data={chartData}>
             <defs>
               <linearGradient id="nw" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#38BDF8" stopOpacity={0.3} />
@@ -610,7 +653,26 @@ export default function NetWorthPage() {
                 label={{ value: 'target', position: 'insideTopRight', fontSize: 11, fill: '#2DD4A7' }}
               />
             )}
-            <Area type="monotone" dataKey="Net worth" stroke="#38BDF8" strokeWidth={2} fill="url(#nw)" />
+            <Area
+              type="monotone"
+              dataKey="Net worth"
+              stroke={NET_WORTH_COLOUR}
+              strokeWidth={drawn.length ? 2.5 : 2}
+              fill={netWorthFill ? 'url(#nw)' : 'none'}
+              fillOpacity={netWorthFill ? 1 : 0}
+            />
+            {drawn.map((g) => (
+              <Line
+                key={g.key}
+                type="monotone"
+                dataKey={g.label}
+                stroke={g.colour}
+                strokeWidth={2.5}
+                dot={false}
+                isAnimationActive={!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches}
+                label={false}
+              />
+            ))}
             {projRows.length > 0 && (
               <Area
                 type="monotone"
@@ -622,11 +684,11 @@ export default function NetWorthPage() {
                 fillOpacity={0}
               />
             )}
-          </AreaChart>
+          </ComposedChart>
         </ResponsiveContainer>
 
         {projection && targetNum && (
-          <p className="text-xs text-slate-500 mt-3">
+          <p className="text-xs text-slate-400 mt-3">
             {targetMonthYear ? (
               <>
                 On these assumptions you'd reach <span className="text-slate-300 tnum">{gbp(targetNum)}</span> around{' '}
@@ -634,66 +696,7 @@ export default function NetWorthPage() {
               </>
             ) : (
               <>Not reached within 50 years on these assumptions.</>
-            )}{' '}
-            Your monthly surplus of{' '}
-            <span className="tnum">~{gbp(Number(projection.monthly_contribution))}/mo</span>
-            {projection.contribution_basis ? (
-              projection.contribution_basis.spending_subtracted ? (
-                <>
-                  {' '}(from your cashflow:{' '}
-                  <span className="tnum">
-                    {gbp(Number(projection.contribution_basis.income_monthly))} income −{' '}
-                    {gbp(Number(projection.contribution_basis.bills_monthly))} bills −{' '}
-                    {gbp(Number(projection.contribution_basis.spending_applied))}{' '}
-                    {projection.contribution_basis.spending_used === 'budgets'
-                      ? 'your budgets'
-                      : projection.contribution_basis.spending_source === 'custom'
-                        ? 'everyday spending (your estimate)'
-                        : 'avg spending'}
-                  </span>
-                  <span className="inline-flex align-middle ml-1">
-                    <InfoTip text={spendingEvidence} side="bottom" align="left" />
-                  </span>
-                  , month by month like the Cashflow forecast)
-                </>
-              ) : (
-                <>
-                  {' '}(all of your forecasted cashflow:{' '}
-                  <span className="tnum">
-                    {gbp(Number(projection.contribution_basis.income_monthly))} income −{' '}
-                    {gbp(Number(projection.contribution_basis.bills_monthly))} bills
-                  </span>
-                  ; your measured{' '}
-                  <span className="tnum">{gbp(Number(projection.contribution_basis.avg_spending_monthly))}/mo</span>{' '}
-                  everyday spending
-                  <span className="inline-flex align-middle mx-1">
-                    <InfoTip text={spendingEvidence} side="bottom" align="left" />
-                  </span>
-                  is <span className="text-warn">not subtracted</span>)
-                </>
-              )
-            ) : null}{' '}
-            is swept into investments at {Number(projection.annual_growth_pct)}%/yr; your{' '}
-            <span className="tnum">{gbp(Number(projection.bank_component))}</span> cash buffer stays as cash
-            (negative months drain it first, never compounding as debt);
-            each asset grows at its own assumed rate
-            {(() => {
-              const contribs = projection.asset_assumptions.filter((a) => Number(a.monthly_contribution) > 0)
-              return contribs.length ? (
-                <>
-                  {' '}plus your planned{' '}
-                  {contribs.map((a, i) => (
-                    <span key={a.name}>
-                      {i > 0 && ', '}
-                      <span className="tnum">{gbp(Number(a.monthly_contribution))}/mo</span> into {a.name}
-                    </span>
-                  ))}
-                </>
-              ) : (
-                <> (edit an asset to set its rate or a monthly contribution)</>
-              )
-            })()}
-            . An estimate based on your {projection.contribution_basis ? 'data' : 'inputs'}, not advice.
+            )}
           </p>
         )}
 
@@ -705,6 +708,19 @@ export default function NetWorthPage() {
             (tap it in the balance sheet below), or review what's inside the figure on the
             Spending tab.
           </p>
+        )}
+
+        {today && (
+          <NetWorthKey
+            rows={keyFigures}
+            netWorth={Number(today.net_worth)}
+            shown={lines}
+            includeInvestments={includeInvestments}
+            hasInvestments={hasInvestments}
+            announcement={announcement}
+            onToggle={toggleLine}
+            onIncludeInvestments={chooseIncludeInvestments}
+          />
         )}
       </div>
 

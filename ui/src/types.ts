@@ -90,6 +90,8 @@ export interface CashflowSummary {
   credit_owed: number
   // Owed on liabilities (loans, finance, BNPL), subtracted in net_worth (T-10-7b).
   liabilities_total?: number | string
+  // Value today of ISAs, investment accounts, pensions and crypto (T-11-7).
+  investments_total?: number | string
   // Card balances owed plus liabilities_total, summed by the server (T-10-14a).
   total_owed?: number | string | null
   net_worth: number

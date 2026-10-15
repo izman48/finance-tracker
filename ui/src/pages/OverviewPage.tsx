@@ -5,7 +5,7 @@ import { analyticsAPI, bankingAPI, assetsAPI, budgetsAPI, liabilitiesAPI, NetWor
 import { BankStatus, CashflowSummary, Commitment, PlannedItem } from '../types'
 import { gbp0 as gbp, dateDayMonth, monthLabel, timeAgo, changeTone, signedGbp, signedPct } from '../lib/format'
 import { buildUpcoming, upcomingAmount, upcomingShowsDate } from '../lib/upcoming'
-import { homeUpcomingLabel, loanLenders, owedRow } from '../lib/homeOwed'
+import { homeUpcomingLabel, investmentsRow, loanLenders, owedRow } from '../lib/homeOwed'
 import UpcomingLabel from '../components/UpcomingLabel'
 import AnimatedNumber from '../components/ui/AnimatedNumber'
 import Sparkline, { SparkPoint } from '../components/ui/Sparkline'
@@ -208,6 +208,7 @@ export default function OverviewPage() {
   const upcoming = buildUpcoming(commitments, summary?.next_repayments ?? [], planned, today, 3)
   // Cards plus loans, from the API's total_owed (ux T-10-13 H2); null hides the row.
   const owed = summary ? owedRow(summary) : null
+  const investments = summary ? investmentsRow(summary) : null
 
   const spendDelta = spending && spending.prevTotal !== null ? spending.total - spending.prevTotal : null
   const monthName = new Date().toLocaleDateString('en-GB', { month: 'long' })
@@ -398,6 +399,12 @@ export default function OverviewPage() {
                   )}
                 </div>
               ))}
+            {investments && (
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-slate-300">{investments.label}</span>
+                <span className="tnum text-slate-200 shrink-0">{gbp(investments.amount)}</span>
+              </div>
+            )}
             {owed && (
               <div className="flex items-baseline justify-between gap-3">
                 <span className="text-slate-300">{owed.label}</span>

@@ -41,3 +41,11 @@ export function loanLenders(
     liabilities.filter((l) => l.linked_commitment).map((l) => [l.linked_commitment!.id, l.lender] as [string, string]),
   )
 }
+
+/** Home's Investments row (ux T-11-2): the API's investments_total, shown
+ *  only when above 0. The figure is the API's; the browser adds nothing. */
+export function investmentsRow(summary: { investments_total?: number | string | null }):
+  { label: string; amount: number } | null {
+  const total = Number(summary.investments_total ?? 0)
+  return total > 0 ? { label: 'Investments', amount: total } : null
+}

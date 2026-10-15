@@ -161,8 +161,8 @@ quick overflow check, navigate a page and compare `document.documentElement
   `app.core.clock.uk_today()` (or `analytics.common._today()`, which calls
   it), never `date.today()` or a UTC `.date()`: between 00:00 and 01:00 BST
   UTC is still on yesterday, which moved payday and bills.
-  `tests/unit/test_uk_today.py` scans services, routers, schemas and the MCP
-  server for them. Timestamps stay UTC.
+  `tests/unit/test_uk_today.py` scans services, routers and schemas, and
+  `api/mcp/tests/test_no_server_clock_day.py` the MCP server, for them. Timestamps stay UTC.
 - **Client IP behind Caddy**: the auth rate limits key on `request.client.host`,
   which is only the real caller because prod uvicorn runs with
   `--forwarded-allow-ips` set to Caddy's pinned address on the `edge` network

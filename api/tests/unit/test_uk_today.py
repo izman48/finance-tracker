@@ -5,7 +5,8 @@ money path takes its day from it (through `analytics.common._today`), so
 just after midnight UK time, when UTC is still on the day before, payday,
 safe-to-spend and the next commitment date move with the user's calendar.
 A scan fails on a new `date.today()` or UTC `.date()` in the app's services,
-routers, schemas or the MCP server, with a self-test that it fires.
+routers and schemas, with a self-test that it fires (the MCP server has the
+same scan in its own suite).
 """
 import re
 import sys
@@ -18,7 +19,8 @@ from app.core import clock
 from tests.conftest import _real_today
 
 API = Path(__file__).resolve().parents[2]
-SCANNED = [API / "app" / "services", API / "app" / "routers", API / "app" / "schemas", API / "mcp"]
+# The MCP server has its own image and scans itself (mcp/tests/test_no_server_clock_day.py).
+SCANNED = [API / "app" / "services", API / "app" / "routers", API / "app" / "schemas"]
 FORBIDDEN = re.compile(
     r"date\.today\(\)|datetime\.today\(\)|utcnow\(\)\.date\(\)|date\.fromtimestamp\("
     r"|datetime\.now\([^)]*\)\.date\(\)"

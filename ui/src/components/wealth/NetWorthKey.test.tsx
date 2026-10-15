@@ -42,6 +42,15 @@ describe('NetWorthKey', () => {
     expect(text(html(props()))).toContain('Include investments in net worth')
   })
 
+  it('Forecast view: the groups are figures under "Today", not line switches', () => {
+    const h = html(props({ lineSwitches: false, shown: ['cash'] }))
+    expect(text(h)).toMatch(/^Today .*Cash .*£10,900 .*Investments .*£28,000 .*Net worth .*£98,900/)
+    expect(text(h)).not.toMatch(/Show on graph|\bShow\b|\bHide\b|Always shown/)
+    expect(h).not.toContain('aria-pressed=')
+    // The tick box still changes the forecast's figure, so it stays.
+    expect(text(h)).toContain('Include investments in net worth')
+  })
+
   it('X-2 a polite live region carries the announcement', () => {
     expect(html(props({ announcement: 'Investments line shown.' }))).toMatch(/aria-live="polite"[^>]*>Investments line shown\./)
   })

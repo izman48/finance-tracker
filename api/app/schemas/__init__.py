@@ -5,6 +5,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, EmailStr, Field, StrictBool, field_validator, model_serializer, model_validator
 
+from app.core.clock import uk_today
 from app.core.display_text import has_hidden_characters
 from app.models.account import AccountType
 from app.models.transaction import TransactionType
@@ -1128,7 +1129,7 @@ class AddPlannedEventRequest(PlanningWriteRequest):
     def _date_in_range(cls, value: date) -> date:
         from datetime import timedelta
 
-        today = date.today()
+        today = uk_today()
         if not today - timedelta(days=30) <= value <= _add_years(today, 5):
             raise ValueError("date must be within the last 30 days or the next 5 years")
         return value
@@ -1198,7 +1199,7 @@ class UpdateCommitmentRequest(PlanningWriteRequest):
     @classmethod
     def _date_window(cls, v: date | None) -> date | None:
         if v is not None:
-            today = date.today()
+            today = uk_today()
             # Never in the past (sec on #121): a past date would be rolled on
             # by sync, and there's no legitimate reason for Claude to set one.
             if not today <= v <= _add_years(today, 5):

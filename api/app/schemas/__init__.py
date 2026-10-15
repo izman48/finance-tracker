@@ -207,6 +207,13 @@ class NetWorthPoint(BaseModel):
     # Owed on liabilities (positive); net_worth = bank + assets - liabilities.
     liabilities: Decimal = Decimal(0)
     net_worth: Decimal
+    # The graph groups (T-11-6, ux T-11-2): net_worth = cash + property -
+    # debt, plus investments unless include_investments=false (the figure is
+    # still given so the key can say "Not included").
+    cash: Decimal = Decimal(0)
+    investments: Decimal = Decimal(0)
+    property: Decimal = Decimal(0)
+    debt: Decimal = Decimal(0)
 
 
 class NetWorthChange(BaseModel):

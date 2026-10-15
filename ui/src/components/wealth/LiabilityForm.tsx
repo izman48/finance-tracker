@@ -3,13 +3,16 @@ import { liabilitiesAPI, type Asset, type ChooseCandidate, type Liability } from
 import { dateLong, gbp0, money } from '../../lib/format'
 import { latestValue } from '../../lib/assets'
 import {
-  addedToast, blankForm, deleteConfirm, FOCUS, focusAfter, formFor, NOT_FOUND, optOutConfirm, replaceConfirm,
+  addedToast, blankForm, deleteConfirm, FOCUS, focusAfter, formFor, kindChange, NOT_FOUND, optOutConfirm, replaceConfirm,
   SAVE_ERROR, saveLiability, type FieldErrors, type FieldName, type LiabilityFormState,
 } from '../../lib/liabilityForm'
 import { useConfirm } from '../ui/ConfirmDialog'
 import { useToast } from '../ui/Toast'
 
-const KINDS: [Liability['kind'], string][] = [['loan', 'Loan'], ['finance', 'Retail finance'], ['bnpl', 'Buy now pay later']]
+const KINDS: [Liability['kind'], string][] = [
+  ['loan', 'Loan'], ['finance', 'Retail finance'], ['bnpl', 'Buy now pay later'], ['mortgage', 'Mortgage'],
+]
+
 const CADENCES: [Liability['cadence'], string][] = [
   ['monthly', 'Monthly'], ['weekly', 'Weekly'], ['fortnightly', 'Every 2 weeks'], ['four_weekly', 'Every 4 weeks'],
 ]
@@ -23,8 +26,10 @@ export interface LiabilityFormViewProps {
   message: string | null
   saving: boolean
   notFound: boolean
-  /** The user's `loan` / `other_liability` assets (add mode picker). */
+  /** The user's `loan` / `other_liability` / `mortgage` assets (add mode picker). */
   replaceable: Asset[]
+  /** The user's property assets, for a mortgage's Property select (T-12-7b). */
+  properties?: Asset[]
   /** Set after a 409 `choose_commitment`: the picker step replaces the form. */
   candidates: ChooseCandidate[] | null
   choice: string | null
@@ -41,7 +46,10 @@ export interface LiabilityFormViewProps {
 
 /** The add/edit form, as markup only (state lives in LiabilityForm). */
 export function LiabilityFormView(p: LiabilityFormViewProps) {
-  const title = p.mode === 'add' ? 'Add a loan or finance' : `Edit ${p.form.lender}`
+  const mortgage = p.form.kind === 'mortgage'
+  const title = p.mode === 'add'
+    ? mortgage ? 'Add a mortgage' : 'Add a loan or finance'
+    : mortgage ? 'Edit mortgage' : `Edit ${p.form.lender}`
   return (
     <div className="modal-backdrop">
       <div id="liability-form" className="modal-panel max-h-[90vh] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="liability-form-title">
@@ -97,10 +105,19 @@ function FormBody(p: LiabilityFormViewProps) {
         )}
         <Field label="Type" htmlFor="liability-kind" error={p.errors.kind}>
           <select {...field('kind')} className="input" value={p.form.kind}
-            onChange={(e) => p.onChange({ kind: e.target.value as Liability['kind'] })}>
+            onChange={(e) => p.onChange(kindChange(e.target.value as Liability['kind'], p.form.property_asset_id ?? '', p.properties ?? []))}>
             {KINDS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
           </select>
         </Field>
+        {p.form.kind === 'mortgage' && (
+          <Field label="Property" htmlFor="liability-property" help="Used to show your equity. It does not change your net worth.">
+            <select id="liability-property" className="input" disabled={disabled} value={p.form.property_asset_id ?? ''}
+              onChange={(e) => p.onChange({ property_asset_id: e.target.value })}>
+              <option value="">None</option>
+              {(p.properties ?? []).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </Field>
+        )}
         <Field label="Lender" htmlFor="liability-lender" error={p.errors.lender}>
           <input {...field('lender')} className="input" autoComplete="off" value={p.form.lender}
             onChange={(e) => p.onChange({ lender: e.target.value })} />
@@ -238,12 +255,15 @@ function Field({ label, htmlFor, error, help, children }: {
 
 /** Add or edit a liability (ux T-10-0 B.3-B.5): owns the form state, the
  *  confirmations and the server round trips. */
-export default function LiabilityForm({ liability, replaceable, today, focusBalance = false, onClose, onSaved, onOtherDebt }: {
+export default function LiabilityForm({ liability, replaceable, properties = [], today, focusBalance = false, focusProperty = false, onClose, onSaved, onOtherDebt }: {
   liability: Liability | null
   replaceable: Asset[]
+  properties?: Asset[]
   today: string
   /** Opened from the "Update balance" chip: start on Balance (ux B.3). */
   focusBalance?: boolean
+  /** Opened from a mortgage's "Choose a property": start on Property. */
+  focusProperty?: boolean
   onClose: () => void
   onSaved: (saved: Liability | null, toast: string) => void
   onOtherDebt: () => void
@@ -262,7 +282,8 @@ export default function LiabilityForm({ liability, replaceable, today, focusBala
 
   useEffect(() => {
     opener.current = document.activeElement
-    const first = focusBalance ? FOCUS.balance : replaceable.length && !liability ? 'liability-replace' : 'liability-kind'
+    const first = focusBalance ? FOCUS.balance : focusProperty ? 'liability-property'
+      : replaceable.length && !liability ? 'liability-replace' : 'liability-kind'
     document.getElementById(first)?.focus()
     const onKey = (e: KeyboardEvent) => {
       if (document.querySelector('[role="alertdialog"]')) return  // a confirm is the top layer
@@ -325,7 +346,7 @@ export default function LiabilityForm({ liability, replaceable, today, focusBala
   return (
     <LiabilityFormView
       mode={mode} form={form} errors={errors} message={message} saving={saving} notFound={notFound}
-      replaceable={replaceable} candidates={candidates} choice={choice}
+      replaceable={replaceable} properties={properties} candidates={candidates} choice={choice}
       linkedLabel={liability?.linked_commitment?.label ?? null} stale={!!liability?.balance_stale}
       onChange={(patch) => setForm({ ...form, ...patch })} onChoose={setChoice}
       onBack={() => { setCandidates(null); focusSoon(FOCUS.lender) }} onSubmit={submit} onCancel={onClose} onDelete={remove} onOtherDebt={onOtherDebt}

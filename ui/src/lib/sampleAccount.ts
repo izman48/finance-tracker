@@ -70,13 +70,16 @@ const ASSETS = [
   { id: 'sas1', name: 'Sample ISA', asset_type: 'isa', value: 18500, growth: 7, monthly: 400, linked: true },
   { id: 'sas2', name: 'Sample Pension', asset_type: 'pension', value: 24000, growth: 5, monthly: 0, linked: false },
   { id: 'sas3', name: 'Sample Crypto', asset_type: 'crypto', value: 1200, growth: 0, monthly: 0, linked: false },
+  // The house its mortgage names (T-12-7b, ux "Demo mode"): equity is display only.
+  { id: 'sas4', name: 'Sample House', asset_type: 'property', value: 250000, growth: 3, monthly: 0, linked: false },
 ]
 const INVESTMENT_TYPES = new Set(['isa', 'investment', 'pension', 'crypto'])
 const isInvestmentAsset = (a: (typeof ASSETS)[number]) => INVESTMENT_TYPES.has(a.asset_type)
 const CONTRIBUTION = { id: 'sc-isa-contribution', label: 'Sample ISA contribution', amount: 400, nextIn: 5, account: 'sa1' }
 /** Entered values: about 10% lower six months ago, then the value today. */
 const assetValuations = (a: (typeof ASSETS)[number]) => [
-  { id: `${a.id}-v0`, date: isoDate(nowMinus(180)), value: Math.round(a.value * (a.value < 0 ? 1.15 : 0.9)) },
+  // The house is entered at one value, so it adds no growth to the sample's headline.
+  { id: `${a.id}-v0`, date: isoDate(nowMinus(180)), value: a.asset_type === 'property' ? a.value : Math.round(a.value * (a.value < 0 ? 1.15 : 0.9)) },
   { id: `${a.id}-v1`, date: isoDate(nowMinus(40)), value: a.value },
 ]
 
@@ -91,7 +94,15 @@ const LIABILITIES = [
     id: 'sl2', kind: 'loan', lender: 'Northgate Motor Loans', balance: '6800.00', apr: '8.90', payment: '240.00',
     cadence: 'monthly', interest_remaining: '882.20', payments_remaining: 32, end_date: null, payoff_days: 960,
   },
+  {
+    id: 'sl3', kind: 'mortgage', lender: 'Sample Bank', balance: '120000.00', apr: '4.50', payment: '780.00',
+    cadence: 'monthly', interest_remaining: '62436.00', payments_remaining: 234, end_date: null, payoff_days: 7110,
+  },
 ] as const
+// The mortgage's property and bill (T-12-7b): the bill is a linked commitment,
+// edited through the mortgage, and leaves cash after payday.
+const MORTGAGE_PROPERTY = 'sas4'
+const MORTGAGE_BILL = { id: 'sc-mortgage', label: 'Sample Bank mortgage payment', amount: 780, nextIn: 27 }
 const LIABILITIES_TOTAL = LIABILITIES.reduce((s, l) => s + Number(l.balance), 0)
 
 // One authored ledger everything else is computed from. Spans ~6 months (a
@@ -362,6 +373,7 @@ const SAVINGS_TOTAL = 12000
 const CREDIT_OWED = 640.3
 const ASSETS_TOTAL = ASSETS.reduce((s, a) => s + a.value, 0)
 const INVESTMENTS_TOTAL = ASSETS.filter(isInvestmentAsset).reduce((s, a) => s + a.value, 0)
+const PROPERTY_TOTAL = ASSETS.filter((a) => a.asset_type === 'property').reduce((s, a) => s + a.value, 0)
 const NET_WORTH = AVAILABLE_CASH + SAVINGS_TOTAL + ASSETS_TOTAL - CREDIT_OWED - LIABILITIES_TOTAL
 
 function summaryResponse() {
@@ -417,6 +429,7 @@ function forecastTimeline(horizon = '30') {
     if (i > 0 && dom === 8) { bal -= CREDIT_OWED; events.push({ label: 'Harbor Rewards payment', amount: -CREDIT_OWED, kind: 'repayment' }) }
     if (i > 0 && dom === 15) { bal -= 1100; events.push({ label: 'Rent', amount: -1100, kind: 'commitment' }) }
     if (i > 0 && dom === 24) { bal += 3200; events.push({ label: 'Salary', amount: 3200, kind: 'income' }) }
+    if (i > 0 && dom === MORTGAGE_BILL.nextIn) { bal -= MORTGAGE_BILL.amount; events.push({ label: MORTGAGE_BILL.label, amount: -MORTGAGE_BILL.amount, kind: 'commitment' }) }
     bal = Math.round(bal * 100) / 100
     const date = isoDate(nowPlus(i))
     timeline.push({ date, balance: bal, events })
@@ -478,6 +491,9 @@ function commitmentsResponse() {
     // The ISA's contribution: a linked bill, edited through the holding.
     { ...mk(CONTRIBUTION.label, CONTRIBUTION.amount, 'expense', CONTRIBUTION.nextIn), id: CONTRIBUTION.id,
       source: 'manual', account_id: CONTRIBUTION.account, linked_holding: true },
+    // The mortgage's payment: follows the mortgage (T-12-7b).
+    { ...mk(MORTGAGE_BILL.label, MORTGAGE_BILL.amount, 'expense', MORTGAGE_BILL.nextIn), id: MORTGAGE_BILL.id,
+      source: 'manual', account_id: 'sa1', linked_liability: true, linked_mortgage: true },
   ]
 }
 
@@ -490,14 +506,15 @@ function netWorthHistory(months: number, includeInvestments = true) {
     const nw = r2(NET_WORTH - i * 520 - (i % 2) * 140)
     const assets = r2(ASSETS_TOTAL - i * 300)
     const bank = r2(nw - assets + LIABILITIES_TOTAL)
-    // Every sample asset is an investment; the groups add up to net worth
-    // (cash + investments + property - debt), as the API's (T-11-6a).
-    const investments = assets
+    // The house is property at one value; the rest are investments. The
+    // groups add up to net worth (cash + investments + property - debt), as
+    // the API's (T-11-6a).
+    const investments = r2(assets - PROPERTY_TOTAL)
     const shownAssets = includeInvestments ? assets : r2(assets - investments)
     out.push({
       date: isoDate(d), bank: String(bank), assets: String(shownAssets), liabilities: String(LIABILITIES_TOTAL),
       net_worth: String(r2(bank + shownAssets - LIABILITIES_TOTAL)),
-      cash: String(r2(bank + CREDIT_OWED)), investments: String(investments), property: '0.00',
+      cash: String(r2(bank + CREDIT_OWED)), investments: String(investments), property: PROPERTY_TOTAL.toFixed(2),
       debt: String(r2(CREDIT_OWED + LIABILITIES_TOTAL)),
     })
   }
@@ -761,7 +778,10 @@ function liabilitiesResponse() {
     payments_remaining: l.payments_remaining, payoff_date: isoDate(nowPlus(l.payoff_days)),
     interest_remaining: l.interest_remaining,
     total_cost: (Number(l.balance) + Number(l.interest_remaining)).toFixed(2),
-    paid_off: false, balance_stale: false, linked_commitment: null, link_result: null,
+    paid_off: false, balance_stale: false, link_result: null,
+    ...(l.kind === 'mortgage'
+      ? { property_asset_id: MORTGAGE_PROPERTY, linked_commitment: { id: MORTGAGE_BILL.id, label: MORTGAGE_BILL.label } }
+      : { property_asset_id: null, linked_commitment: null }),
   }))
 }
 
@@ -776,7 +796,15 @@ function assetsResponse() {
       : null,
     valuations: assetValuations(a).map((v) => ({ id: v.id, value: String(v.value), valued_at: v.date })),
     value_today: a.value.toFixed(2),
+    // The API's equity line (T-12-6b): value today minus its mortgages.
+    ...equityOf(a),
   }))
+}
+
+function equityOf(a: (typeof ASSETS)[number]) {
+  if (a.id !== MORTGAGE_PROPERTY) return { mortgage_owed: null, equity: null }
+  const owed = LIABILITIES.filter((l) => l.kind === 'mortgage').reduce((t, l) => t + Number(l.balance), 0)
+  return { mortgage_owed: owed.toFixed(2), equity: (a.value - owed).toFixed(2) }
 }
 
 function holdingsProjectionResponse(q: Record<string, any>) {

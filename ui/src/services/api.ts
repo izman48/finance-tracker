@@ -183,6 +183,10 @@ export interface Asset {
   /** Value today from the holding engine (a linked contribution paid since
    *  the last valuation included); null before a first value (#210). */
   value_today?: string | null
+  /** A property with a mortgage (T-12-6b): what its mortgages owe today and
+   *  value today minus that, both the API's; null otherwise. Display only. */
+  mortgage_owed?: string | null
+  equity?: string | null
   // The bill that carries its contribution while linked (T-11-3c).
   linked_commitment?: {
     id: string; label: string; amount?: string; next_date?: string; pay_from_account_id?: string | null
@@ -307,7 +311,7 @@ export interface Projection {
  *  decimal string; every derived figure comes from the API. */
 export interface Liability {
   id: string
-  kind: 'loan' | 'finance' | 'bnpl'
+  kind: 'loan' | 'finance' | 'bnpl' | 'mortgage'
   lender: string
   balance: string
   balance_as_of: string
@@ -317,6 +321,8 @@ export interface Liability {
   start_date: string
   end_date: string | null
   opted_out: boolean
+  /** A mortgage's property (T-12-6b), or null. */
+  property_asset_id?: string | null
   current_balance: string
   next_payment_date: string | null
   payments_remaining: number | null
@@ -341,6 +347,8 @@ export interface LiabilityBody {
   start_date: string
   end_date: string | null
   opted_out: boolean
+  /** A mortgage's property (T-12-6b); null for none, and for every other kind. */
+  property_asset_id?: string | null
   replaces_asset_id?: string
   commitment_choice?: string
 }

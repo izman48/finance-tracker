@@ -87,3 +87,37 @@ describe('LiabilityFormView', () => {
     expect(h).not.toContain('<img')
   })
 })
+
+// T-12-7b part 2 (ux T-12-1 "Mortgage and equity").
+describe('LiabilityFormView: a mortgage', () => {
+  const house = { id: 'h1', name: 'Sample House', asset_type: 'property', valuations: [] } as unknown as Asset
+  const flat = { id: 'h2', name: 'Sample Flat', asset_type: 'property', valuations: [] } as unknown as Asset
+  const mortgageForm = (over = {}) => ({ ...blankForm('2026-10-14'), kind: 'mortgage' as const, ...over })
+
+  it('Type offers Mortgage', () => {
+    expect(html(props())).toMatch(/<option value="mortgage">Mortgage<\/option>/)
+  })
+  it('titles: Add a mortgage / Edit mortgage', () => {
+    expect(text(html(props({ form: mortgageForm() })))).toContain('Add a mortgage')
+    expect(text(html(props({ mode: 'edit', form: mortgageForm({ lender: 'Sample Bank' }) })))).toContain('Edit mortgage')
+  })
+  it('a Property select (the properties plus None) with its help, after Type, only for a mortgage', () => {
+    const h = html(props({ form: mortgageForm({ property_asset_id: 'h1' }), properties: [house, flat] }))
+    expect(h).toMatch(/<label class="label" for="liability-property">Property<\/label>/)
+    expect(h).toMatch(/<option value="">None<\/option><option value="h1" selected="">Sample House<\/option><option value="h2">Sample Flat<\/option>/)
+    expect(text(h)).toContain('Used to show your equity. It does not change your net worth.')
+    expect(text(h).indexOf('Type')).toBeLessThan(text(h).indexOf('Property'))
+    expect(html(props({ properties: [house] }))).not.toContain('liability-property')
+  })
+})
+
+describe('choosing Mortgage preselects the only property', () => {
+  it('one property: picked; two: left for the user', async () => {
+    const { kindChange } = await import('../../lib/liabilityForm')
+    const house = { id: 'h1' } as Asset
+    expect(kindChange('mortgage', '', [house])).toEqual({ kind: 'mortgage', property_asset_id: 'h1' })
+    expect(kindChange('mortgage', '', [house, { id: 'h2' } as Asset])).toEqual({ kind: 'mortgage' })
+    expect(kindChange('mortgage', 'h2', [house])).toEqual({ kind: 'mortgage' })
+    expect(kindChange('loan', 'h1', [house])).toEqual({ kind: 'loan' })
+  })
+})

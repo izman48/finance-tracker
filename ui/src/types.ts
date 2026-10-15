@@ -130,6 +130,8 @@ export interface Commitment {
   keep?: 'pending' | 'kept' | null
   // Carries a loan's repayment / an investment's contribution: edit it there (T-10-8, T-11-3).
   linked_liability?: boolean
+  /** It carries a mortgage's repayment (T-12-6a): chip "Follows your mortgage". */
+  linked_mortgage?: boolean
   linked_holding?: boolean
   kept_at?: string | null
   // The audit rows the Keep button keeps, oldest first.

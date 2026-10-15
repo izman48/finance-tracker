@@ -8,6 +8,7 @@ const KIND_LABEL: Record<Liability['kind'], string> = {
   loan: 'Loan',
   finance: 'Retail finance',
   bnpl: 'Buy now pay later',
+  mortgage: 'Mortgage',
 }
 
 const CADENCE_WORDS: Record<Liability['cadence'], string> = {
@@ -36,9 +37,9 @@ export function liabilityDetail(l: Liability): string {
   return parts.join(' · ')
 }
 
-/** Asset types that may be the same debt as a liability (A8, sec): a loan or
- *  other debt typed in as a balance-sheet item. Mortgages aren't a kind yet. */
-const REPLACEABLE_ASSET_TYPES = new Set(['loan', 'other_liability'])
+/** Asset types that may be the same debt as a liability (A8, sec): a loan,
+ *  mortgage (T-12-6) or other debt typed in as a balance-sheet item. */
+export const REPLACEABLE_ASSET_TYPES = new Set(['loan', 'other_liability', 'mortgage'])
 
 /** Show the "both counted" notice: both kinds of entry exist, and both count. */
 export function bothCounted(assets: Asset[], liabilities: Liability[]): boolean {
@@ -61,6 +62,43 @@ export function linkedEditMessage(error: unknown): string | null {
 }
 
 /** The chip on a Commitments row whose bill follows an investment (ux T-11-2). */
-export function linkedChip(c: { linked_holding?: boolean; linked_liability?: boolean }): string | null {
-  return c.linked_holding ? 'Follows your investment' : null
+export function linkedChip(c: { linked_holding?: boolean; linked_liability?: boolean; linked_mortgage?: boolean }): string | null {
+  if (c.linked_holding) return 'Follows your investment'
+  return c.linked_mortgage ? 'Follows your mortgage' : null
+}
+
+// --- mortgages and equity (T-12-7b part 2; ux T-12-1) ------------------------ #
+
+/** The row's name: "{lender} mortgage" for a mortgage, else the lender. */
+export const liabilityName = (l: Liability) => (l.kind === 'mortgage' ? `${l.lender} mortgage` : l.lender)
+
+const monthYear = (iso: string) =>
+  new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' })
+
+/** A mortgage's line 2: `Mortgage · 4.5% APR · £780 a month · final payment Nov 2051 · for Sample House`. */
+export function mortgageDetail(l: Liability, properties: Asset[]): string {
+  if (l.paid_off || l.opted_out || l.payment === null) return liabilityDetail(l)
+  const parts = [`${KIND_LABEL.mortgage} · ${aprLabel(l.apr)} APR`, `${gbp0(Number(l.payment))} ${CADENCE_WORDS[l.cadence]}`]
+  const final = l.end_date ?? l.payoff_date
+  if (final) parts.push(`final payment ${monthYear(final)}`)
+  const property = properties.find((a) => a.id === l.property_asset_id)
+  if (property) parts.push(`for ${property.name}`)
+  return parts.join(' · ')
+}
+
+/** A mortgage with no property chosen: the row offers "Choose a property". */
+export const needsProperty = (l: Liability) => l.kind === 'mortgage' && !l.property_asset_id
+
+const signed0 = (n: number) => `${n < 0 ? '−' : ''}${gbp0(Math.abs(n))}`
+
+/** A property's equity line, from the API's figures only (display only, never
+ *  in a total), and its spoken form; null without a linked mortgage. */
+export function equityLine(a: Asset): { text: string; label: string; figure: string } | null {
+  if (a.equity == null || a.mortgage_owed == null || a.value_today == null) return null
+  const [value, owed, equity] = [gbp0(Number(a.value_today)), gbp0(Number(a.mortgage_owed)), signed0(Number(a.equity))]
+  return {
+    text: `Value ${value} − mortgage ${owed} = equity ${equity}`,
+    label: `Value ${value} minus mortgage ${owed} equals equity ${equity}`,
+    figure: equity,
+  }
 }

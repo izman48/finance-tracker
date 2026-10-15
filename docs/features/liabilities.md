@@ -43,6 +43,19 @@ list (T-10-10) build on it.
   value today − that, which can be negative. Display only: no total reads
   it, so net worth and Total owed never move (equality test). Deleting the
   property clears the link and keeps the mortgage.
+- **Mortgage UI (T-12-7b part 2, ux T-12-1)**: the loan form's Type offers
+  Mortgage (titles "Add a mortgage" / "Edit mortgage") with a Property select
+  (the user's property assets plus None, the only one preselected; help "Used
+  to show your equity…"); the server's mortgage bounds show in mortgage words.
+  The Wealth row reads "{lender} mortgage", line 2 `Mortgage · 4.5% APR · £780
+  a month · final payment Nov 2051 · for {property}`, chip Bill linked; with
+  no property a separate "Choose a property" button opens the form on
+  Property. A property row with a mortgage shows line 3 `Value − mortgage =
+  equity` from the API's `mortgage_owed`/`equity` (spoken "minus … equals").
+  Commitments shows "Follows your mortgage" from `linked_mortgage`. A legacy
+  `mortgage` asset joins the both-counted notice and the Replace picker.
+  Demo: Sample House £250,000 and Sample Bank mortgage £120,000 (equity
+  £130,000), its bill "Sample Bank mortgage payment" £780 after payday.
 - **Linked repayment (T-10-8):** a liability with a payment carries its
   repayment as one commitment, linked by the stored `linked_commitment_id`
   (FK, `ON DELETE SET NULL`, unique; set only by the server). Rules: a new

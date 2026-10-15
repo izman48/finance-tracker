@@ -113,7 +113,9 @@ describe('the sample investment graph (engine maths)', () => {
   it('the target projection grows each holding the same way (equality, as the API)', () => {
     const p = get<{ timeline: { assets: string }[] }>('/analytics/net-worth-projection', { annual_growth_pct: '5', monthly_contribution: '0' })
     const g = graph()
-    for (let m = 0; m <= 24; m++) expect(n(p.timeline[m].assets)).toBeCloseTo(n(g.total.forecast[m].worth), 1)
+    // The projection's assets also hold the sample house (T-12-7b), at its own 3%.
+    const house = engine(250000, 3, 0, 24)
+    for (let m = 0; m <= 24; m++) expect(n(p.timeline[m].assets) - house[m]).toBeCloseTo(n(g.total.forecast[m].worth), 1)
   })
 })
 

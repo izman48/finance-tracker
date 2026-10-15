@@ -23,7 +23,7 @@ PRIVACY_PHRASES: dict[str, str] = {
     "counts": "the growth rate you set for a holding, and how many payments are left or planned",
     "bank_refs": "your bank's own reference numbers for accounts and transactions, and their currency",
     "claude": "details of Claude connections you approve: the app's name, its web address and the access you granted",
-    "protected": "your password and keys, only in protected form: a salted password hash, keys wrapped under your password or recovery code, and hashes of access tokens",
+    "protected": "your password and keys, only in protected form: a salted password hash, keys wrapped under your password, your recovery code or a Claude connection's token (we keep only a hash of that token), and hashes of access tokens",
     "ids": "internal reference numbers that link one record to another",
 }
 

@@ -35,3 +35,15 @@ describe('PrivacyPage unencrypted fields', () => {
     expect(html).not.toContain('transaction dates, categories and account types.')
   })
 })
+
+// sec-1 on #252: a Claude connection also unlocks the key while active, and
+// Claude (Anthropic) receives what the user asks it about.
+describe('PrivacyPage and Claude connections', () => {
+  it('says a Claude connection unlocks the key while active, how to end it, and that Claude receives what you ask about', () => {
+    const t = renderToStaticMarkup(<MemoryRouter><PrivacyPage /></MemoryRouter>).replace(/&#x27;/g, "'").replace(/<[^>]+>/g, ' ')
+    expect(t).toContain('a Claude connection you approve while it is active')
+    expect(t).toContain('Revoking the connection ends that.')
+    expect(t).toContain('Once you connect Claude (Anthropic), it receives the data you ask it about.')
+    expect(t).toContain("a Claude connection's token (we keep only a hash of that token)")
+  })
+})

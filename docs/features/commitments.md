@@ -33,6 +33,19 @@ stays open. A linked repayment is never tied to a card: `link_card_commitments`
 skips it (a lender named "American Express" is not an Amex repayment) and
 `_card_ties` ignores any stored link, so a card's repayment can never replace
 it in safe-to-spend. The list marks such rows `linked_liability: true`.
+
+**Holding links (T-11-3b, ADR-002):** the link set is `commitment_links`
+(one row per linked commitment, `UNIQUE(commitment_id)`, owner = an asset
+or a liability, server-set `role`, `commitment_created`, `created_on`; FKs
+`ON DELETE CASCADE`). Loans write their row beside
+`linked_commitment_id`; `linked_commitments()` / `linked_commitment_ids()`
+(`services/linked_commitments.py`) read the union, so every guard above
+also covers a holding's contribution, which gets 409 `linked_to_holding`
+("This payment follows your investment. Change it on Wealth, under
+Investments.") and lists as `linked_holding: true`. A bill is linked to at
+most one loan or holding (the unique constraint; a race is a 409).
+Deleting the holding deletes its row in the same request, so the bill
+becomes an ordinary one the user can edit or dismiss (D4).
 `sync_suggestions` never suggests an expense with the same amount and
 cadence as a linked repayment *and* a payment date within 3 days of it; an
 unrelated bill of the same amount on another day is still suggested.
@@ -72,7 +85,8 @@ helpers), `cadence.py`, `card_links.py`, `late_income.py`,
 
 **Tests**: `api/tests/unit/test_commitment_dedupe.py`,
 `test_paypal_match_key.py`, `test_paypal_commitments.py`,
-`api/tests/integration/test_linked_commitment_guards.py`, `test_card_link.py`,
+`api/tests/integration/test_linked_commitment_guards.py`, `test_contribution_guards.py`,
+`test_commitment_links.py`, `test_commitment_links_migration.py`, `test_card_link.py`,
 `test_analytics_service.py`; `api/tests/integration/test_commitment_writes_api.py`,
 `test_keep_commitment_api.py`, `test_card_link_api.py`,
 `test_claude_payday_dismissal.py`, `test_claude_payday_window.py`,
@@ -84,8 +98,8 @@ UI `KeepControls.test.tsx`, `ClaudeMarker.test.tsx`, `keep.test.ts`.
 
 | # | Answer |
 |---|---|
-| 1 Tables | `commitment_rules`. |
-| 2 Purge | Yes. |
+| 1 Tables | `commitment_rules`; `commitment_links` (migration `c3e5a7b9d1f4`, backfills loan links; downgrade drops it). |
+| 2 Purge | Yes; `commitment_links` first (no encrypted column; it references commitments, assets and liabilities). |
 | 3 Deletion | Cascade from `users`; disconnecting a bank nulls `account_id`. |
 | 4 Demo mode | Served (`commitmentsResponse`). |
 | 5 Ownership | Yes for `account_id`, `card_account_id` and the planning update. |

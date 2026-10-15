@@ -32,6 +32,7 @@ from app.models import (
     BudgetNudge,
     CardStatement,
     CategoryRule,
+    CommitmentLink,
     CommitmentRule,
     Liability,
     OAuthAuthorizationCode,
@@ -53,6 +54,8 @@ _OWNED_BY_USER = (
     AuditEntry,
     CategoryRule,
     RulePack,
+    # Before liabilities, assets and commitment_rules: it references all three (ADR-002).
+    CommitmentLink,
     # Before commitment_rules: a liability will reference its commitment (T-10-8).
     Liability,
     CommitmentRule,

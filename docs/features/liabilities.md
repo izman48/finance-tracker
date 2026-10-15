@@ -40,7 +40,10 @@ list (T-10-10) build on it.
   `ends_on` is the final scheduled payment, so a paid-off loan stops leaving
   the forecast. Deleting the liability without opting out keeps the
   commitment as an ordinary bill with no end (owner D4). Cadences map to
-  `monthly`, `weekly`, or `custom_days` 14/28.
+  `monthly`, `weekly`, or `custom_days` 14/28. Linking also writes the
+  loan's `commitment_links` row in the same transaction (ADR-002), so a bill
+  can't be linked to a loan and a holding at once; opting out and deleting
+  the liability remove it.
 - **Today's balance:** linked to a *confirmed* commitment, it follows the schedule from the as-of
   balance (payments due before today count as made, since they are in the
   forecast), and `paid_off` is true once every payment is made. Not linked

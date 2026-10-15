@@ -7,7 +7,7 @@ import { canKeep, countsInListTotal, keepMovesSafeToSpend, keepToast, postEach }
 import { withTimeout } from '../lib/forecastLoad'
 import { Link, useNavigate } from 'react-router-dom'
 import { useToast } from '../components/ui/Toast'
-import { linkedEditMessage } from '../lib/liabilities'
+import { linkedChip, linkedEditMessage } from '../lib/liabilities'
 import { analyticsAPI, auditAPI } from '../services/api'
 import { Commitment, NextRepayment, PlannedItem } from '../types'
 import { gbp as formatCurrency, dateLong as formatDate } from '../lib/format'
@@ -104,7 +104,8 @@ export default function CommitmentsPage() {
     load()
   }, [load])
 
-  // A bill that carries a loan's repayment changes only on Wealth: the API
+  // A bill that carries a loan's repayment or an investment's contribution
+  // changes only on Wealth: the API
   // answers 409 and the toast says where to go (ux B.5).
   const linkedGuard = async (action: () => Promise<unknown>) => {
     try {
@@ -456,6 +457,7 @@ function renderCommitmentRow(
           <span className="truncate">{c.label}</span>
           {c.is_payday && <span className="chip-pos shrink-0">Payday</span>}
           {c.late && <span className="chip-warn shrink-0">Late</span>}
+          {linkedChip(c) && <span className="chip-info shrink-0">{linkedChip(c)}</span>}
           {c.changed_by_claude && <ClaudeMarker auditId={c.changed_by_claude.audit_id} />}
           {heldDismissal(c) && DISMISSED_CHIP}
         </div>

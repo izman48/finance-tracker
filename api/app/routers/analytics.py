@@ -48,7 +48,7 @@ from app.schemas import (
     SpendingTransaction,
     SpendingTrendResponse,
 )
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from app.services import analytics_service
@@ -497,18 +497,23 @@ def plan_from_transaction(
 
 @router.delete("/planned-items/{item_id}")
 def delete_planned_item(
-    item_id: str,
+    item_id: uuid.UUID,
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> dict:
+    """A soft delete (T-12-9b): the row stays, so Claude's changes on it keep
+    their history, but it counts nowhere and can never be brought back by an
+    undo. Key-loss purge and delete-account still remove it."""
     item = (
         db.query(PlannedItem)
-        .filter(PlannedItem.id == item_id, PlannedItem.user_id == current_user.id)
+        .filter(PlannedItem.id == item_id, PlannedItem.user_id == current_user.id,
+                PlannedItem.deleted_at.is_(None))
         .first()
     )
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Planned item not found")
-    db.delete(item)
+    item.active = False
+    item.deleted_at = datetime.now(timezone.utc)
     db.commit()
     return {"success": True}
 

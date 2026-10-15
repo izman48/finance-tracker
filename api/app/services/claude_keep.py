@@ -396,6 +396,8 @@ def planned_removal_states(db: Session, user_id: uuid.UUID,
         item = items.get(row.target_id)
         if item is None or item.direction != CommitmentDirection.EXPENSE.value:
             continue
+        if item.deleted_at is not None:
+            continue  # the user deleted it on the web: nothing is held (T-12-9b)
         if row.kept_at is not None:
             out[row.id] = (KEPT, item)
         elif not item.active:

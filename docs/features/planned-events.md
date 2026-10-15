@@ -27,7 +27,7 @@ Wealth projection is unchanged: a flagged item still counts there.
 | `GET /api/v1/analytics/planned-items` | `CurrentUser` |
 | `POST /api/v1/analytics/planned-items` | `CurrentUser` |
 | `PATCH /api/v1/analytics/planned-items/{item_id}` | `CurrentUser` (only `is_card_payment`, `extra="forbid"`; T-12-4a) |
-| `DELETE /api/v1/analytics/planned-items/{item_id}` | `CurrentUser` (hard delete) |
+| `DELETE /api/v1/analytics/planned-items/{item_id}` | `CurrentUser` (soft delete, T-12-9b: `active = False`, `deleted_at` set; counts nowhere, ends a pending Claude removal hold, an undo on it is 409; purge and delete-account remove the row) |
 | `POST /api/v1/analytics/planned/from-transaction` | `CurrentUser` (pay on finance) |
 | `GET /api/v1/planning/planned-events` | `CurrentUserOrMcpRead` (limit 200) |
 | `POST /api/v1/planning/planned-events` | `PlanningWriter` (dry run, idempotency, 24 h duplicate guard) |
@@ -64,7 +64,7 @@ Wealth projection is unchanged: a flagged item still counts there.
 | 5 Ownership | Yes (`account_id` on both POSTs). |
 | 6 Scopes | Read `finance:read`; Claude writes `finance:planning.write`. |
 | 7 Claude tools | listed above. |
-| 8 Audit | Yes, target `planned_event`. The web DELETE hard-deletes even Claude's items, which breaks their undo (gap). |
+| 8 Audit | Yes, target `planned_event`. The web DELETE is a soft delete (T-12-9b), so Claude's changes keep their history; an undo on a deleted item is 409. |
 | 9 Bank sync | Matching runs on read. |
 | 10 Home | Upcoming items on the Cashflow card. Owned by Cashflow. |
 | 11 UI routes | `/commitments`. |

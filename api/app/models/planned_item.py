@@ -67,6 +67,10 @@ class PlannedItem(Base):
     # once with the projected card repayments (the larger in each pay window).
     # No card is chosen and nothing is matched by name. A flag, so plaintext.
     is_card_payment: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Set when the user deletes it on the web (T-12-9b): a soft delete, so
+    # Claude's changes on it keep their history, but it counts nowhere and an
+    # undo can never bring it back. A timestamp, so plaintext.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Who made it: "web" (the app, including pay-on-finance plans) or "mcp"
     # (Claude). Claude may only remove its own one-off items (T-08-6).
     created_via: Mapped[str] = mapped_column(String(10), default="web", server_default="web")

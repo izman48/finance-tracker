@@ -77,3 +77,20 @@ def test_an_item_due_today_gets_the_chip_as_the_summary_counts_it(w):
     item = w.planned("1500.00", days=0, kind="recurring", cadence="monthly")
     assert _rows(w)[item["id"]]["card_payment_overlap"] is True
     assert w.committed() == Decimal("1500.00")
+
+
+def test_with_no_payday_the_nudge_id_holds_for_the_month(w):
+    """eng-b on #236: with no payday the one window ends 92 days out, which
+    moves daily too, so the id is the month instead."""
+    from app.models import CommitmentRule
+    with w.as_user():
+        w.db.query(CommitmentRule).filter(CommitmentRule.direction == "income").delete()
+        w.db.commit()
+    w.planned("1500.00")
+    (nudge,) = _overlap_nudges(w)
+    assert nudge["id"] == f"card_payment_overlap_{_month()}"
+
+
+def _month():
+    from tests.clock import TODAY
+    return TODAY.strftime("%Y-%m")

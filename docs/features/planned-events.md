@@ -22,7 +22,7 @@ marks a flagged item `card_payment_overlap` while it falls in a pay window
 (today to 92 days ahead, read with the summary's inputs, Claude holds
 included) with projected card bills, and `GET /api/v1/analytics/nudges`
 adds `card_payment_overlap_{payday anchor}` (the day before payday for the
-current window, so a dismissal lasts it) with the aggregate figures ("Your
+current window, or the month with no payday, so a dismissal lasts it) with the aggregate figures ("Your
 planned card payments (£X) overlap your projected card bills (£Y). nilu
 counts the larger, £Z, once."), dismissed in the browser like the other
 non-budget nudges.

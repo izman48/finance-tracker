@@ -9,6 +9,7 @@ as-of date. None of them says "you should…" or names a product to move to.
 """
 from __future__ import annotations
 
+from datetime import timedelta
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
@@ -134,6 +135,19 @@ def _money(value: Decimal) -> str:
     return f"£{value:,.2f}"
 
 
+def _overlap_anchor(window, today) -> str:
+    """A fixed point for the overlap nudge's id, so a dismissal lasts: a later
+    window starts on a payday; the first starts today (it moves daily), so it
+    ends the day before payday; with no payday it runs to the horizon, which
+    moves too, so the month (eng-b on #236)."""
+    from .card_payments import OVERLAP_HORIZON_DAYS
+    if window.start != today:
+        return window.start.isoformat()
+    if window.end < today + timedelta(days=OVERLAP_HORIZON_DAYS):
+        return window.end.isoformat()
+    return today.strftime("%Y-%m")
+
+
 def _card_payment_overlap(db: Session, user) -> list[dict]:
     """The first pay window where the user's planned card payments and the
     projected card bills overlap (T-12-4b, ux O-2/O-3): the aggregate figures
@@ -145,12 +159,8 @@ def _card_payment_overlap(db: Session, user) -> list[dict]:
         if not window.overlaps:
             continue
         larger = max(window.planned, window.projected)
-        # Anchored on payday so a dismissal lasts the window: the first window
-        # starts today (it moves daily) and ends the day before payday; a
-        # later one starts on a payday.
-        anchor = window.end if window.start == today else window.start
         return [{
-            "id": f"card_payment_overlap_{anchor.isoformat()}",
+            "id": f"card_payment_overlap_{_overlap_anchor(window, today)}",
             "rank": 0,  # a number counted twice matters most
             "body": (f"Your planned card payments ({_money(window.planned)}) overlap your projected card "
                      f"bills ({_money(window.projected)}). nilu counts the larger, {_money(larger)}, once."),

@@ -386,7 +386,8 @@ def test_linking_is_net_worth_neutral_in_the_projection(world):
     res = world.client.post(f"{API}/assets", json={"name": "Example ISA", "asset_type": "isa", "value": "1000.00",
                                                    "assumed_growth_pct": "5"}, headers=_bearer(world.web))
     isa = uuid.UUID(res.json()["id"])
-    url = f"{API}/analytics/net-worth-projection?annual_growth_pct=5&spending_source=none"
+    # T-12-0: "none" is gone; the average (no spending here) keeps the same check.
+    url = f"{API}/analytics/net-worth-projection?annual_growth_pct=5&spending_source=average"
     before = world.client.get(url, headers=_bearer(world.web)).json()["timeline"]
     world.put(isa)
     after = world.client.get(url, headers=_bearer(world.web)).json()["timeline"]

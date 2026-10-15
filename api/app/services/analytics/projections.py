@@ -30,7 +30,7 @@ from app.models import (
     PlannedItem,
 )
 from app.services.holdings.inputs import holding_inputs, without_investments
-from app.services.holdings.projection import exact_total_at, monthly_rate, project_holdings
+from app.services.holdings.projection import exact_total_at, monthly_rate, project_holdings, value_on
 
 from app.services.budgets import cycle_budgets
 from app.services.claude_keep import counted_commitments, held_removed_planned
@@ -207,9 +207,13 @@ def net_worth_projection(
     # at its own % (the global default when unset, 0% for a legacy
     # asset-liability) plus its monthly contribution; a liability follows its
     # schedule when its repayment is linked and stays flat when not (T-10-8).
-    # The contribution's cash side is already in measured spending or bills,
-    # so adding it to the asset moves money from "consumption" to "wealth".
+    # A contribution never adds to net worth (T-12-0, owner P0): it moves
+    # cash into the holding. A linked one is a bill, so the surplus already
+    # pays it; an unlinked (legacy) one is taken off the cash surplus here,
+    # in every mode. If it is also in measured spending, savings come out
+    # lower, never higher (the safe side).
     holdings = holding_inputs(db, user, today, annual_growth_pct)
+    unlinked, moved = _unlinked_contributions(holdings, today)
     if not include_investments:
         holdings = without_investments(holdings, today)
     engine = project_holdings(holdings, today, MAX_MONTHS)
@@ -223,16 +227,20 @@ def net_worth_projection(
         basis = derived_contribution(db, user)
         spend_leg = _spending_leg(db, user, basis, spending_source, subtract_spending, monthly_spending)
         basis["spending_applied"] = _round2(spend_leg)
+        basis["contributions_monthly"] = _round2(unlinked)
+        # The cash surplus, after the legacy contributions move into holdings.
         basis["contribution"] = _round2(
-            basis["income_monthly"] - basis["bills_monthly"] - spend_leg
+            basis["income_monthly"] - basis["bills_monthly"] - spend_leg - unlinked
         )
-        surplus = monthly_surplus_series(db, user, MAX_MONTHS, spend_leg)
+        surplus = [s - moved[m] for m, s in enumerate(monthly_surplus_series(db, user, MAX_MONTHS, spend_leg))]
         # Display figure: the first year's average — the math uses the series.
         year1 = surplus[:12]
         display_contribution = sum(year1, Decimal(0)) / len(year1)
     else:
         mode = "custom"
-        surplus = [monthly_contribution] * MAX_MONTHS
+        # The typed figure is the whole monthly change: the legacy
+        # contributions are part of it, moved from cash into the holdings.
+        surplus = [monthly_contribution - moved[m] for m in range(MAX_MONTHS)]
         display_contribution = monthly_contribution
 
     timeline: list[dict] = [{
@@ -324,6 +332,22 @@ def _chart_months(today: date, target_date: date | None) -> int:
     return min(MAX_MONTHS, to_target + 6)
 
 
+def _unlinked_contributions(holdings, today: date) -> tuple[Decimal, list[Decimal]]:
+    """The legacy (unlinked) monthly contributions: their stated total, and
+    the cash each month actually moves into the holdings, month 1 first. A
+    debt paid off stops taking its paydown, so its cash stops too."""
+    unlinked = [h for h in holdings if h.source == "assets" and not h.contribution_linked
+                and h.monthly_contribution and value_on(h, today) is not None]
+    stated = sum((h.monthly_contribution for h in unlinked), Decimal(0))
+    moved = [Decimal(0)] * MAX_MONTHS
+    for h, series in zip(unlinked, project_holdings(unlinked, today, MAX_MONTHS).per_holding):
+        rate = monthly_rate(h.growth_pct)
+        for m in range(1, MAX_MONTHS + 1):
+            # What the holding took this month beyond its own growth.
+            moved[m - 1] += series.exact[m][1] - series.exact[m - 1][1] * (1 + rate)
+    return stated, moved
+
+
 def _spending_leg(
     db: Session, user, basis: dict, spending_source: str | None, subtract_spending: bool,
     monthly_spending: Decimal | None,
@@ -331,32 +355,32 @@ def _spending_leg(
     """The monthly spending the projection subtracts, recorded in `basis`.
     The one place the precedence lives (sec T-10-15):
 
-    - No `spending_source` (old clients, demo): today's rule.
-      subtract_spending=False → nothing; monthly_spending → the user's
-      estimate; otherwise the measured average.
-    - With `spending_source` it wins, and subtract_spending is ignored:
-      "none" → nothing; "average" → the estimate if given, else the measured
-      average; "budgets" → the total of active, unpaused budget limits
+    - Spending is always subtracted (owner, 2026-10-15: "None" is gone; the
+      route refuses `spending_source=none`). An old client's
+      subtract_spending=False is read as "budgets", then the average, never
+      as no spending.
+    - No `spending_source` (old clients, demo): monthly_spending → the
+      user's estimate; otherwise the measured average.
+    - "average" → the estimate if given, else the measured average;
+      "budgets" → the total of active, unpaused budget limits
       (`cycle_budgets`, as the Cashflow budget line), falling back to the
       measured average when that is £0 (never "£0 spending").
     """
     average = basis["avg_spending_monthly"]
     estimate = max(Decimal(0), monthly_spending) if monthly_spending is not None else None
+    if spending_source is None and not subtract_spending:
+        spending_source = "budgets"
     if spending_source is None:
-        if not subtract_spending:
-            spend, legacy = Decimal(0), "measured"
-        elif estimate is not None:
+        if estimate is not None:
             spend, legacy = estimate, "custom"
         else:
             spend, legacy = average, "measured"
-        basis.update(spending_source=legacy, spending_subtracted=subtract_spending)
+        basis.update(spending_source=legacy, spending_subtracted=True)
         return spend
 
     budgets = cycle_budgets(db, user, _today()).total_limit
     fallback = spending_source == "budgets" and budgets <= 0
-    if spending_source == "none":
-        spend, used = Decimal(0), "none"
-    elif spending_source == "budgets" and not fallback:
+    if spending_source == "budgets" and not fallback:
         spend, used = budgets, "budgets"
     elif spending_source == "average" and estimate is not None:
         spend, used = estimate, "estimate"
@@ -364,7 +388,7 @@ def _spending_leg(
         spend, used = average, "average"
     basis.update(
         spending_source="custom" if used == "estimate" else "measured",
-        spending_subtracted=used != "none",
+        spending_subtracted=True,
         spending_choice=spending_source,
         spending_used=used,
         budgets_monthly=_round2(budgets),

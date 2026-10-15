@@ -139,17 +139,19 @@ def get_net_worth_projection(
     # The holding engine refuses a rate outside -100..50 (sec T-11-4).
     annual_growth_pct: Annotated[Decimal, Query(ge=-100, le=50)] = Decimal("5"),
     subtract_spending: bool = True,
-    monthly_spending: Annotated[Decimal | None, Query(le=MAX_HOLDING_AMOUNT)] = None,
-    spending_source: Literal["budgets", "average", "none"] | None = None,
+    # Never negative: a negative estimate would raise the surplus (sec-1, T-12-0).
+    monthly_spending: Annotated[Decimal | None, Query(ge=0, le=MAX_HOLDING_AMOUNT)] = None,
+    # "none" is gone (owner, 2026-10-15): spending is always subtracted.
+    spending_source: Literal["budgets", "average"] | None = None,
     include_investments: StrictBoolQuery = "true",
 ) -> ProjectionResponse:
     """Project net worth forward from stated assumptions (compound growth +
     monthly contributions). Omit monthly_contribution to derive it from the
-    user's own cashflow (income − bills − average everyday spending); the
-    basis is echoed back. subtract_spending=false is the "all my forecasted
-    cashflow lands in my wealth" scenario (income − bills only, matching the
-    Cashflow chart). spending_source (budgets / average / none, T-10-15) picks
-    the spending figure and wins over subtract_spending; see
+    user's own cashflow (income − bills − everyday spending − unlinked
+    holding contributions, which move into the holdings); the basis is
+    echoed back. spending_source (budgets / average) picks the spending
+    figure; spending is always subtracted (owner, 2026-10-15), so an old
+    client's subtract_spending=false reads as budgets. See
     projections._spending_leg. A factual calculation — an estimate, not advice."""
     return ProjectionResponse(
         **analytics_service.net_worth_projection(

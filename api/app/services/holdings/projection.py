@@ -64,6 +64,9 @@ class HoldingInput:
     # "Include investments" choice can hide it.
     group: str = "other"
     is_investment: bool = False
+    # Its contribution is a linked bill (already in the cash surplus); else
+    # a legacy figure the projection takes off cash itself (T-12-0).
+    contribution_linked: bool = False
     # Linked contributions already paid (date, amount), ADR-002.
     paid_contributions: tuple[Point, ...] = ()
     # Amortisation only: what is owed on a date (positive).

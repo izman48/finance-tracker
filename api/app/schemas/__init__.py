@@ -313,8 +313,12 @@ class ContributionBasis(BaseModel):
     income_monthly: Decimal
     bills_monthly: Decimal
     avg_spending_monthly: Decimal
+    # The cash surplus: income - bills - spending - unlinked contributions.
     contribution: Decimal
     spending_months_sampled: int
+    # Holdings' unlinked monthly contributions, moved from cash into them
+    # (net worth neutral, T-12-0). Linked ones are in bills.
+    contributions_monthly: Decimal = Decimal(0)
     # False = the "all my future cashflow into my wealth" scenario: the
     # measured average is shown but NOT subtracted from the surplus.
     spending_subtracted: bool = True

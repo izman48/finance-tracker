@@ -223,9 +223,10 @@ class TestDerivedContribution:
         # Surplus = 2000 − 500 − 100 = 1400 → month 1 = 1000 + 1400.
         assert p["timeline"][1]["value"] == Decimal("2400.00")
 
-    def test_subtract_spending_false_uses_income_minus_bills_only(self, db_session):
-        """The "all my future cashflow into my wealth" scenario: everyday
-        spending is measured (shown in the basis) but not subtracted."""
+    def test_subtract_spending_false_no_longer_skips_spending(self, db_session):
+        """Owner, 2026-10-15 (T-12-0): the "no spending" scenario is gone.
+        An old client's subtract_spending=False reads as budgets, then the
+        measured average: spending is always subtracted."""
         user = _user(db_session)
         acc = _account(db_session, user, 1000)
         self._commit(db_session, user, "income", 2000)
@@ -237,11 +238,12 @@ class TestDerivedContribution:
         p = svc.net_worth_projection(
             db_session, user, annual_growth_pct=Decimal("0"), subtract_spending=False,
         )
-        assert p["contribution_basis"]["spending_subtracted"] is False
-        # Measured average still reported for the caption…
-        assert p["contribution_basis"]["avg_spending_monthly"] > 0
-        # …but the surplus is income − bills only: 1000 + 1500.
-        assert p["timeline"][1]["value"] == Decimal("2500.00")
+        basis = p["contribution_basis"]
+        assert basis["spending_subtracted"] is True
+        assert basis["spending_used"] == "average" and basis["budgets_fallback"] is True  # no budgets
+        assert basis["spending_applied"] == basis["avg_spending_monthly"] > 0
+        # The surplus is income − bills − the average, not income − bills.
+        assert p["timeline"][1]["value"] < Decimal("2500.00")
 
     def test_custom_contribution_skips_derivation_and_allows_negative(self, db_session):
         user = _user(db_session)
@@ -334,22 +336,25 @@ class TestNetWorthProjection:
         assert by_name["Crypto"] == Decimal("12")
         assert by_name["Car loan"] == Decimal("0")
 
-    def test_asset_contribution_adds_monthly_on_top_of_surplus(self, db_session):
+    def test_asset_contribution_moves_cash_into_the_asset(self, db_session):
+        # T-12-0 (owner P0): this test used to pin the bug, the ISA gaining
+        # £500 a month "on top" as new money. A contribution only moves cash.
         user = _user(db_session)
-        _account(db_session, user, 1000)  # bank flat
+        _account(db_session, user, 1000)
         isa = _asset(db_session, user, "ISA", {date.today() - timedelta(days=1): "10000"})
         isa.monthly_contribution = Decimal("500")
         db_session.commit()
         p = svc.net_worth_projection(db_session, user, annual_growth_pct=Decimal("0"))
-        # No commitments/spending → surplus 0; the ISA gains 500/mo regardless:
-        # the £500 cash leg is already inside measured spending, so it lands
-        # on top, not double-counted against the surplus.
-        assert p["timeline"][1]["value"] == Decimal("11500.00")  # 1000 + 10500
-        assert p["timeline"][2]["value"] == Decimal("12000.00")
+        # No commitments or spending: cash pays the £500, the ISA gains it.
+        assert p["timeline"][1]["value"] == Decimal("11000.00")
+        assert p["timeline"][2]["value"] == Decimal("11000.00")
+        assert p["timeline"][2]["assets"] == Decimal("11000.00")
         by_name = {a["name"]: a for a in p["asset_assumptions"]}
         assert by_name["ISA"]["monthly_contribution"] == Decimal("500.00")
 
-    def test_liability_paydown_clamps_at_zero(self, db_session):
+    def test_liability_paydown_clamps_at_zero_and_its_cash_stops(self, db_session):
+        # T-12-0: paying down a debt is net worth neutral (cash down, debt
+        # down), and once it is paid off neither the debt nor the cash moves.
         user = _user(db_session)
         loan = Asset(user_id=user.id, name="Loan", asset_type="loan", monthly_contribution=Decimal("400"))
         db_session.add(loan)
@@ -358,9 +363,8 @@ class TestNetWorthProjection:
         db_session.commit()
         p = svc.net_worth_projection(db_session, user, annual_growth_pct=Decimal("0"))
         # −1000 → −600 → −200 → 0 (clamped; you stop paying a paid-off loan)
-        assert p["timeline"][1]["value"] == Decimal("-600.00")
-        assert p["timeline"][3]["value"] == Decimal("0.00")
-        assert p["timeline"][4]["value"] == Decimal("0.00")
+        assert [p["timeline"][m]["assets"] for m in (1, 3, 4)] == [Decimal("-600.00"), Decimal("0.00"), Decimal("0.00")]
+        assert {p["timeline"][m]["value"] for m in range(6)} == {Decimal("-1000.00")}
 
     def test_surplus_occurrence_later_this_month_lands_in_month_one(self, db_session):
         user = _user(db_session)

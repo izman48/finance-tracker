@@ -174,3 +174,28 @@ class TestOneValueTodayOnEverySurface:
         monkeypatch.setattr(net_worth, "asset_inputs", with_a_paid_contribution)
         assert svc.get_summary(db_session, user)["net_worth"] - summary == Decimal("200")
         assert svc.net_worth_position(db_session, user)["net_worth"] - position == Decimal("200")
+
+
+class TestWithoutInvestmentsKeepsMoneyOwed:
+    """An investment worth less than nothing is money owed, so it counts as
+    Debt (lead, 2026-10-15; #212, #213) and "Include investments" off never
+    hides it, on any day."""
+
+    def test_a_negative_investment_stays_on_the_day_it_is_negative(self):
+        from app.services.holdings.inputs import without_investments
+        from app.services.holdings.projection import HoldingInput
+
+        today = svc._today()
+        owed = HoldingInput(id="n", name="Margin account", kind="investment", model="growth", is_investment=True,
+                            valuations=((today - timedelta(days=30), Decimal("500")), (today, Decimal("-250"))))
+        fund = HoldingInput(id="f", name="Fund", kind="investment", model="growth", is_investment=True,
+                            valuations=((today, Decimal("900")),))
+        house = HoldingInput(id="h", name="Flat", kind="property", model="growth", valuations=((today, Decimal("1")),))
+        assert [h.id for h in without_investments([owed, fund, house], today)] == ["n", "h"]
+        assert [h.id for h in without_investments([owed, fund, house], today - timedelta(days=10))] == ["h"]
+
+    def test_net_worth_without_investments_still_subtracts_it(self, db_session):
+        user = _user(db_session)
+        _asset(db_session, user, "Margin account", "investment", "-250")
+        _asset(db_session, user, "Fund", "isa", "900")
+        assert svc.assets_total(db_session, user, include_investments=False) == Decimal("-250")

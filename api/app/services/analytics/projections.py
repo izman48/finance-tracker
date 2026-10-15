@@ -211,7 +211,7 @@ def net_worth_projection(
     # so adding it to the asset moves money from "consumption" to "wealth".
     holdings = holding_inputs(db, user, today, annual_growth_pct)
     if not include_investments:
-        holdings = without_investments(holdings)
+        holdings = without_investments(holdings, today)
     engine = project_holdings(holdings, today, MAX_MONTHS)
     asset_series = [s for s in engine.per_holding if s.source == "assets"]
     liability_series = [s for s in engine.per_holding if s.source == "liabilities"]

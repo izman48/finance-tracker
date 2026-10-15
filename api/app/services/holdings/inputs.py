@@ -27,7 +27,7 @@ from app.models import Asset, Liability
 from app.services.analytics.common import _d
 from app.services.liabilities import confirmed_commitment_ids, is_linked, owed_on
 
-from .projection import HoldingInput
+from .projection import HoldingInput, value_on
 from .registry import kind_for
 
 
@@ -36,11 +36,15 @@ def holding_inputs(db: Session, user, today: date, default_growth_pct: Decimal) 
     return asset_inputs(db, user, default_growth_pct) + _liability_inputs(db, user, today)
 
 
-def without_investments(holdings: list[HoldingInput]) -> list[HoldingInput]:
+def without_investments(holdings: list[HoldingInput], day: date) -> list[HoldingInput]:
     """The "Include investments" choice off: drops the investment kinds
-    (registry `is_investment`, owner D1) and nothing else. Debt is never an
-    investment (the registry's validator refuses it)."""
-    return [h for h in holdings if not h.is_investment]
+    (registry `is_investment`, owner D1) and nothing else. An investment
+    worth less than nothing on `day` is money owed, so it counts as Debt and
+    stays (lead, 2026-10-15). Debt kinds are never investments (validator)."""
+    def owed(h: HoldingInput) -> bool:
+        value = value_on(h, day)
+        return value is not None and value < 0
+    return [h for h in holdings if not h.is_investment or owed(h)]
 
 
 def asset_inputs(db: Session, user, default_growth_pct: Decimal) -> list[HoldingInput]:

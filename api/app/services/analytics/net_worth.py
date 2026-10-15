@@ -27,7 +27,7 @@ def assets_total(db: Session, user, as_of: date | None = None, include_investmen
     day = as_of or date.max
     holdings = asset_inputs(db, user, Decimal(0))
     if not include_investments:
-        holdings = without_investments(holdings)
+        holdings = without_investments(holdings, day)
     values = (value_on(h, day) for h in holdings)
     return sum((v for v in values if v is not None), Decimal(0))
 

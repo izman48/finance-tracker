@@ -18,17 +18,20 @@ from app.services.analytics.common import _today
 from .inputs import holding_inputs
 from .projection import HoldingInput, HoldingSeries, project_holdings, total_at, value_on
 
-# A holding with no growth % of its own grows at the target projection's
-# default, so the graph and the projection agree.
+# A holding with no growth % of its own grows at the default the caller
+# passes (the target form's growth %), so the graph and the projection agree.
 DEFAULT_GROWTH_PCT = Decimal("5")
 PENNY = Decimal("0.01")
 
 
-def investment_graph(db: Session, user, months: int, holding_id: str | None = None) -> dict | None:
+def investment_graph(
+    db: Session, user, months: int, holding_id: str | None = None,
+    default_growth_pct: Decimal = DEFAULT_GROWTH_PCT,
+) -> dict | None:
     """The graph payload, or None when `holding_id` is not one of the
     caller's investments (the route answers 404)."""
     today = _today()
-    investments = [h for h in holding_inputs(db, user, today, DEFAULT_GROWTH_PCT) if h.is_investment]
+    investments = [h for h in holding_inputs(db, user, today, default_growth_pct) if h.is_investment]
     if holding_id is not None:
         investments = [h for h in investments if h.id == holding_id]
         if not investments:

@@ -78,6 +78,15 @@ class TestInvestmentGraph:
                                 headers=world.h).json()["timeline"]
         assert [p["worth"] for p in graph[:25]] == [p["assets"] for p in proj[:25]]
 
+    def test_a_holding_without_its_own_rate_uses_the_same_default_as_the_projection(self, world):
+        world.asset("Test Pension", "pension", "8000")  # growth not set
+        graph = world.projection(months=12, annual_growth_pct="3").json()["total"]["forecast"]
+        proj = world.client.get(f"{API}/analytics/net-worth-projection",
+                                params={"annual_growth_pct": "3", "monthly_contribution": "0"},
+                                headers=world.h).json()["timeline"]
+        assert [p["worth"] for p in graph] == [p["assets"] for p in proj[:13]]
+        assert graph[12]["worth"] == "8240.00"
+
     def test_no_investments_is_an_empty_list(self, world):
         world.asset("Test House", "property", "100000")
         assert world.projection().json()["holdings"] == []
@@ -100,6 +109,7 @@ class TestSecurity:
 
     @pytest.mark.parametrize("params", [
         {"months": 601}, {"months": 0}, {"holding_id": "../assets"}, {"holding_id": "1"},
+        {"annual_growth_pct": "50.01"}, {"annual_growth_pct": "-100.01"},
     ])
     def test_bad_input_is_422(self, world, params):
         assert world.projection(**params).status_code == 422

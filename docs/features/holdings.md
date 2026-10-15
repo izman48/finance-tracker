@@ -20,7 +20,8 @@ crypto, owner D1) and their total: the valuations entered as history
 (nothing guessed between them), then the engine's monthly forecast with
 `paid_in` (value today plus the contributions from today), and the answer
 sentence's figures to the nearest £1,000. A holding with no growth % of its
-own uses 5%, the target projection's default.
+own uses `annual_growth_pct` (−100..50, default 5%), the same parameter and
+default as the target projection, so the two agree.
 
 **Services** (`api/app/services/holdings/`):
 

@@ -9,6 +9,8 @@ export interface InvestmentGraphViewProps {
   graph: InvestmentGraph | null
   months: number
   holdingId: string | null
+  /** Every investment, from an unfiltered load: the selector's options. */
+  options: { id: string; name: string }[]
   onMonths: (months: number) => void
   onHolding: (id: string | null) => void
   onRetry: () => void
@@ -100,7 +102,7 @@ function Body(p: InvestmentGraphViewProps) {
 }
 
 function Choices(p: InvestmentGraphViewProps) {
-  const holdings = p.graph?.holdings ?? []
+  const holdings = p.options
   const seg = (active: boolean) =>
     `${active ? 'seg-active' : 'seg'} min-h-[44px] sm:min-h-0 inline-flex items-center cursor-pointer has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-accent`
   return (

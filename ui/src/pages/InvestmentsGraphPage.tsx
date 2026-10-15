@@ -17,6 +17,19 @@ export default function InvestmentsGraphPage() {
   const [months, setMonths] = useState(120)
   const [graph, setGraph] = useState<InvestmentGraph | null>(null)
   const [status, setStatus] = useState<InvestmentGraphViewProps['status']>('loading')
+  // The selector lists every investment, whichever one is shown (eng-a on #217).
+  const [options, setOptions] = useState<{ id: string; name: string }[]>([])
+
+  const loadOptions = useCallback(async () => {
+    try {
+      const res = await holdingsAPI.projection({ months: 1 })
+      setOptions((res.data.holdings ?? []).map((h) => ({ id: h.id, name: h.name })))
+    } catch {
+      setOptions([])
+    }
+  }, [])
+
+  useEffect(() => { void loadOptions() }, [loadOptions])
 
   const load = useCallback(async () => {
     setStatus('loading')
@@ -50,9 +63,10 @@ export default function InvestmentsGraphPage() {
         graph={graph}
         months={months}
         holdingId={holdingId}
+        options={options}
         onMonths={setMonths}
         onHolding={chooseHolding}
-        onRetry={() => void load()}
+        onRetry={() => { void load(); void loadOptions() }}
         onAdd={() => navigate('/networth')}
         onEditGrowth={() => navigate('/networth')}
       />

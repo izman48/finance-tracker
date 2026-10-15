@@ -20,6 +20,7 @@ const graph: InvestmentGraph = {
 }
 const props = (over: Partial<InvestmentGraphViewProps> = {}): InvestmentGraphViewProps => ({
   status: 'ready', graph, months: 120, holdingId: null,
+  options: [{ id: 'a1', name: 'Test ISA' }, { id: 'a2', name: 'Test <b>Pension</b>' }],
   onMonths: () => {}, onHolding: () => {}, onRetry: () => {}, onAdd: () => {}, onEditGrowth: () => {}, ...over,
 })
 const html = (over: Partial<InvestmentGraphViewProps> = {}) => renderToStaticMarkup(<InvestmentGraphView {...props(over)} />)
@@ -49,6 +50,13 @@ describe('InvestmentGraphView', () => {
   it('a holding name with markup renders as text (I-5)', () => {
     expect(html()).toContain('Test &lt;b&gt;Pension&lt;/b&gt;')
     expect(html()).not.toContain('<b>Pension</b>')
+  })
+
+  it('with one holding chosen, the selector still lists every investment (eng-a on #217)', () => {
+    const filtered = { ...graph, holdings: [isa] }
+    const h = html({ graph: filtered, holdingId: 'a1' })
+    expect((h.match(/name="which-investment"/g) ?? []).length).toBe(3)
+    expect(h).toMatch(/<input[^>]*name="which-investment"[^>]*checked=""[^>]*value="a1"/)
   })
 
   it('one holding chosen: its own inputs line', () => {

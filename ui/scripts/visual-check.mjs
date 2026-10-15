@@ -251,6 +251,17 @@ const routes = [
   ['**/api/v1/analytics/net-worth-decomposition*', { start_date: iso(new Date(today.getFullYear() - 1, today.getMonth(), today.getDate())), end_date: iso(today), assets_start: '2000', assets_end: '3980', assets_delta: '1980', contributions: '1500', growth: '480', flows_recorded: 3 }],
   ['**/api/v1/analytics/nudges', []],
   ['**/api/v1/assets', assets],
+  // The investment graph (T-11-5): the two sample investments, synthetic.
+  ['**/api/v1/holdings/projection*', {
+    as_of: iso(today), months: 120,
+    holdings: [{ id: 'as1', name: 'Vanguard S&S ISA', kind: 'isa', value_today: '4650.00', value_as_of: daysFromNow(-10), growth_pct: '7.00', monthly_contribution: '200.00',
+      history: [{ date: daysFromNow(-200), worth: '4200.00' }, { date: daysFromNow(-10), worth: '4650.00' }],
+      forecast: [{ date: iso(today), worth: '4650.00', paid_in: '4650.00' }, { date: daysFromNow(1826), worth: '20900.00', paid_in: '16650.00' }, { date: daysFromNow(3652), worth: '43700.00', paid_in: '28650.00' }] }],
+    total: { value_today: '4650.00', monthly_contribution: '200.00',
+      history: [{ date: daysFromNow(-200), worth: '4200.00' }, { date: daysFromNow(-10), worth: '4650.00' }],
+      forecast: [{ date: iso(today), worth: '4650.00', paid_in: '4650.00' }, { date: daysFromNow(1826), worth: '20900.00', paid_in: '16650.00' }, { date: daysFromNow(3652), worth: '43700.00', paid_in: '28650.00' }],
+      answer: { months: 120, worth_about: '44000', paid_in: '29000' } },
+  }],
   ['**/api/v1/liabilities', liabilities],
   ['**/api/v1/banking/accounts', accounts.map(({ id, display_name, provider_name, account_type }) => ({ id, display_name, provider_name, account_type }))],
   ['**/api/v1/banking/transactions*', { items: transactions, total: transactions.length, page: 1, page_size: 100 }],
@@ -276,6 +287,7 @@ const pages = [
   ['insights', '/insights', true],
   ['commitments', '/commitments', true],
   ['networth', '/networth', true],
+  ['investments', '/networth/investments', true],
   ['rules', '/rules', true],
   ['oauth-consent', '/oauth/authorize?client_id=c&redirect_uri=http%3A%2F%2Flocalhost%3A33418%2Fcallback', true],
 ]

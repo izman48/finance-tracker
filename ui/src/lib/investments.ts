@@ -194,3 +194,9 @@ export function axisLabel(t: number, today: string): string {
   if (t > now) return `+${Math.round((t - now) / YEAR_MS)}y`
   return new Date(t).toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' })
 }
+
+/** Deep links that open Wealth's investment form: one holding's edit form
+ *  ("Set a growth rate"), or a new investment ("Add an investment"). */
+export function wealthFormLink(target: { edit: string } | { add: true }): string {
+  return 'edit' in target ? `/networth?edit=${encodeURIComponent(target.edit)}` : '/networth?add=investment'
+}

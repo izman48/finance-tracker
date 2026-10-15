@@ -34,7 +34,7 @@ non-budget nudges.
 | Route | Auth |
 |---|---|
 | `GET /api/v1/analytics/planned-items` | `CurrentUser` |
-| `POST /api/v1/analytics/planned-items` | `CurrentUser` |
+| `POST /api/v1/analytics/planned-items` | `CurrentUser` (T-12-12 bounds: name 1-100 visible characters, direction/kind/cadence enums, amounts above £0 to £1,000,000, APR 0-100, fee 0 or more; else 422) |
 | `PATCH /api/v1/analytics/planned-items/{item_id}` | `CurrentUser` (only `is_card_payment`, `extra="forbid"`; T-12-4a) |
 | `DELETE /api/v1/analytics/planned-items/{item_id}` | `CurrentUser` (soft delete, T-12-9b: `active = False`, `deleted_at` set; counts nowhere, ends a pending Claude removal hold, an undo on it is 409; purge and delete-account remove the row) |
 | `POST /api/v1/analytics/planned/from-transaction` | `CurrentUser` (pay on finance) |

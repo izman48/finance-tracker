@@ -43,8 +43,6 @@ update the feature doc's touchpoints. Security-relevant items are marked 🔒.
   settings amounts, asset growth %, budget categories, rule packs and
   categories, commitment status and cadence).
 - No UI or API to list or revoke connected Claude clients.
-- Transaction `category`/`subcategory` have no length limit (column is 100).
-  Commitment and planned-item web schemas don't validate enums or amounts.
 - A liability's `end_date` is stored but never compared with its schedule:
   a payoff date well after the lender's final payment usually means a wrong
   APR or payment, and nothing flags it yet (T-10-7a review).
@@ -53,8 +51,6 @@ update the feature doc's touchpoints. Security-relevant items are marked 🔒.
 
 ## Behaviour
 
-- Clearing a category in the UI sends `null`, which the API ignores, so the
-  learned rule is never forgotten *(inferred)*.
 - The UI asks for 365 or 1825 days of sync; non-history syncs are clamped to
   88 days.
 - Sharing a rule pack drops `counts_as`. The rules UI can't edit a rule's

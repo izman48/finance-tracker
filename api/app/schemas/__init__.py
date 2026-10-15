@@ -3,7 +3,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, EmailStr, Field, StrictBool, field_validator, model_serializer, model_validator
+from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, EmailStr, Field, StrictBool, field_validator, model_serializer, model_validator
 
 from app.core.clock import uk_today
 from app.core.display_text import has_hidden_characters
@@ -565,11 +565,54 @@ class TransactionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+# --- web write bounds (T-12-12; sec: lengths, enums, amounts, visible text) ---
+
+def _visible_or_empty(value: str) -> str:
+    """Visible text, as on the Claude path; an empty string is allowed where
+    it means "clear"."""
+    if value and (not value.strip() or has_hidden_characters(value)):
+        raise ValueError("must be visible text without control or hidden characters")
+    return value
+
+
+def _visible(value: str) -> str:
+    if not value.strip():
+        raise ValueError("must not be blank")
+    return _visible_or_empty(value)
+
+
+# A name or label the user types (columns hold up to 100 characters).
+WebLabel = Annotated[str, Field(min_length=1, max_length=100), AfterValidator(_visible)]
+# A category: the column holds 100; "" or null clears it.
+WebCategory = Annotated[str, Field(max_length=100), AfterValidator(_visible_or_empty)]
+# Merchant text a commitment matches on; "" clears the match key.
+WebMatchText = Annotated[str, Field(max_length=200), AfterValidator(_visible_or_empty)]
+WEB_MAX_AMOUNT = Decimal("1000000")
+# An amount of money the web writes: above 0, at most £1,000,000, pence.
+WebAmount = Annotated[Decimal, Field(gt=0, le=WEB_MAX_AMOUNT, decimal_places=2)]
+# A fee: 0 or more.
+WebFee = Annotated[Decimal, Field(ge=0, le=WEB_MAX_AMOUNT, decimal_places=2)]
+WebCadence = Literal["weekly", "monthly", "every_n_months", "custom_days"]
+IntervalDays = Annotated[int, Field(ge=1, le=366)]
+IntervalMonths = Annotated[int, Field(ge=1, le=24)]
+
+
+def changed_label_error(value: str) -> str | None:
+    """Why a new label isn't allowed (WebLabel's rule), or None."""
+    if not 1 <= len(value) <= 100:
+        return "must be 1 to 100 characters"
+    try:
+        _visible(value)
+    except ValueError as exc:
+        return str(exc)
+    return None
+
+
 class TransactionUpdate(BaseModel):
     """Schema for updating transaction fields."""
 
-    category: str | None = None
-    subcategory: str | None = None
+    category: WebCategory | None = None
+    subcategory: WebCategory | None = None
     # Reclassify what this transaction counts as; explicit null returns it to
     # automatic detection (field absent = leave unchanged).
     counts_as: str | None = Field(default=None, pattern="^(spending|transfer|card_payment)$")
@@ -884,33 +927,36 @@ class CommitmentFromTransaction(BaseModel):
 class CommitmentCreate(BaseModel):
     """Manually add a commitment."""
 
-    direction: str  # income | expense
-    label: str
-    amount: Decimal
-    cadence: str = "monthly"
-    interval_days: int | None = None
-    interval_months: int | None = None
+    direction: Literal["income", "expense"]
+    label: WebLabel
+    amount: WebAmount
+    cadence: WebCadence = "monthly"
+    interval_days: IntervalDays | None = None
+    interval_months: IntervalMonths | None = None
     next_date: date
     account_id: uuid.UUID | None = None
     # Optional merchant/description text to match transactions against, so a
     # manually-added commitment (e.g. "Rent") actually excludes its real
     # transactions even when their description differs from the label.
-    match_merchant: str | None = None
+    match_merchant: WebMatchText | None = None
 
 
 class CommitmentUpdate(BaseModel):
     """Confirm/dismiss or edit a commitment (all optional)."""
 
-    status: str | None = None  # suggested | confirmed | dismissed
-    label: str | None = None
-    amount: Decimal | None = None
-    cadence: str | None = None
-    interval_days: int | None = None
-    interval_months: int | None = None
+    status: Literal["suggested", "confirmed", "dismissed"] | None = None
+    # The edit form sends the label back with every save, and a detected
+    # label is bank text (it can be long or hold a tab), so only a *changed*
+    # label is held to `WebLabel` (`changed_label_error`, in the route).
+    label: str | None = Field(default=None, max_length=500)
+    amount: WebAmount | None = None
+    cadence: WebCadence | None = None
+    interval_days: IntervalDays | None = None
+    interval_months: IntervalMonths | None = None
     next_date: date | None = None
     account_id: uuid.UUID | None = None
     # See CommitmentCreate.match_merchant. Empty string clears the match key.
-    match_merchant: str | None = None
+    match_merchant: WebMatchText | None = None
     # "This is my payday" — only meaningful on income; the payday calc ignores
     # the flag on expenses.
     is_payday: bool | None = None
@@ -1068,19 +1114,19 @@ class SpendingTrendResponse(BaseModel):
 
 
 class PlannedItemCreate(BaseModel):
-    name: str
-    direction: str = "expense"
-    kind: str  # one_off | recurring | installment_plan
+    name: WebLabel
+    direction: Literal["income", "expense"] = "expense"
+    kind: Literal["one_off", "recurring", "installment_plan"]
     start_date: date
-    amount: Decimal | None = None
-    cadence: str | None = None
-    interval_days: int | None = None
-    interval_months: int | None = None
+    amount: WebAmount | None = None
+    cadence: WebCadence | None = None
+    interval_days: IntervalDays | None = None
+    interval_months: IntervalMonths | None = None
     end_date: date | None = None
-    total_amount: Decimal | None = None
+    total_amount: WebAmount | None = None
     installments: int | None = Field(default=None, ge=1, le=120)
-    apr: Decimal | None = None
-    fee_amount: Decimal | None = None
+    apr: Annotated[Decimal, Field(ge=0, le=100)] | None = None
+    fee_amount: WebFee | None = None
     account_id: uuid.UUID | None = None
     # Pays a credit card: counts once with the projected card bills (T-12-4a).
     is_card_payment: StrictBool = False

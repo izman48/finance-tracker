@@ -76,3 +76,19 @@ describe('UpcomingLabel just past due (O9)', () => {
     expect(h).not.toContain('chip-warn')
   })
 })
+
+describe('UpcomingLabel card bill parts (T-12-7a, ux C-1)', () => {
+  const bill = row({ key: 'r-1', label: 'Amex Gold bill (projected)', income: false, cardBill: true, billParts: [{ kind: 'spent_since', amount: '140.00' }] })
+  const withParts = (u: Upcoming, billParts: boolean) =>
+    renderToStaticMarkup(<MemoryRouter><UpcomingLabel item={u} linkMarker billParts={billParts} /></MemoryRouter>)
+
+  it('Cashflow shows line 2 under a projected bill; Home does not', () => {
+    expect(text(withParts(bill, true))).toContain('Spent since £140.00')
+    expect(text(withParts(bill, false))).not.toContain('Spent since')
+  })
+
+  it('a real statement shows no line 2', () => {
+    const real = { ...bill, label: 'Amex Gold bill', billParts: [{ kind: 'statement' as const, amount: '500.00' }] }
+    expect(text(withParts(real, true))).toBe('Amex Gold bill')
+  })
+})

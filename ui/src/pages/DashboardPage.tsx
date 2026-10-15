@@ -318,7 +318,7 @@ export default function DashboardPage() {
               <ul className="space-y-2.5 mt-4">
                 {upcoming.map((u) => (
                   <li key={u.key} className="flex items-baseline justify-between gap-3 text-sm group/up">
-                    <UpcomingLabel item={u} linkMarker />
+                    <UpcomingLabel item={u} linkMarker billParts />
                     <span className="shrink-0 flex items-baseline gap-2">
                       {u.commitmentId && (
                         <button

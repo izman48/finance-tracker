@@ -194,10 +194,7 @@ def repayment_events(db: Session, user, start: date, end: date) -> list[dict]:
             for item in scheduled.get(acc.id, []):
                 amt = _d(item.amount)
                 if start <= item.due_date <= end and amt > 0:
-                    out.append({
-                        "account_id": str(acc.id), "label": acc.display_name,
-                        "amount": amt, "due_date": item.due_date,
-                    })
+                    out.append(_event(acc, amt, item.due_date))
             continue
 
         if not _pays_on_card_due_date(s) and not s.repayment_cadence:
@@ -210,10 +207,10 @@ def repayment_events(db: Session, user, start: date, end: date) -> list[dict]:
             plan = _statement_plan(s, credit_owed(acc), position, pay_days)
         else:
             # Walk the schedule over the pay days (at most 200 of them).
-            plan = list(zip(pay_days, _repayment_schedule(s, credit_owed(acc))[:201]))
-        for due, amount in plan:
+            plan = [(due, amount, None) for due, amount in zip(pay_days, _repayment_schedule(s, credit_owed(acc))[:201])]
+        for due, amount, part in plan:
             if start <= due <= end and amount > 0:
-                out.append({"account_id": str(acc.id), "label": acc.display_name, "amount": amount, "due_date": due})
+                out.append(_event(acc, amount, due, part))
     out.sort(key=lambda r: r["due_date"])
     return out
 
@@ -275,8 +272,25 @@ def _month_ends(start: date) -> Iterator[date]:
         month = _add_months(month, 1)
 
 
+# What a bill under `statement_balance` is made of (T-12-7a, lead decision):
+# the statement's still-due amount is a real bill; the spend since it, and
+# the whole balance when there is no statement, are projections.
+STATEMENT, SPENT_SINCE, BALANCE = "statement", "spent_since", "balance"
+_PROJECTED_PARTS = frozenset({SPENT_SINCE, BALANCE})
+
+
+def _event(acc, amount: Decimal, due: date, part: str | None = None) -> dict:
+    """One repayment. `projected` and `parts` (summed to the amount) say what
+    the bill is made of; other strategies are not projected and have none."""
+    return {
+        "account_id": str(acc.id), "label": acc.display_name, "amount": amount, "due_date": due,
+        "projected": part in _PROJECTED_PARTS,
+        "parts": [{"kind": part, "amount": amount}] if part else [],
+    }
+
+
 def _statement_plan(s: AccountSetting, owed: Decimal, position, pay_days: Iterator[date]) -> list[tuple]:
-    """(date, amount) payments under `statement_balance`.
+    """(date, amount, part) payments under `statement_balance`.
 
     The amount still due goes on the statement's pay day and the unbilled
     spend on the one after, so the total is never below the full balance.
@@ -286,15 +300,15 @@ def _statement_plan(s: AccountSetting, owed: Decimal, position, pay_days: Iterat
     if owed <= 0:
         return []
     if position is None or position.statement.due_date < _today():
-        return [(_next_pay_day(pay_days), owed)]
+        return [(_next_pay_day(pay_days), owed, BALANCE)]
     plan = []
     # On a cadence, a paid statement's own payment day has already gone.
     if _pays_on_card_due_date(s) or not position.paid:
         statement_day = _next_pay_day(pay_days)
         if not position.paid:
-            plan.append((statement_day, position.amount_still_due))
+            plan.append((statement_day, position.amount_still_due, STATEMENT))
     if position.unbilled > 0:
-        plan.append((_next_pay_day(pay_days), position.unbilled))
+        plan.append((_next_pay_day(pay_days), position.unbilled, SPENT_SINCE))
     return plan
 
 

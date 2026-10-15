@@ -34,3 +34,13 @@ describe('ForecastTooltip', () => {
     expect(h).toContain('&lt;b&gt;x&lt;/b&gt; loan payment')
   })
 })
+
+describe('ForecastTooltip projected card bill (T-12-7a, ux C-6)', () => {
+  const bill = (projected: boolean) => renderToStaticMarkup(
+    <ForecastTooltip active payload={[{ payload: { date: '2026-10-31', balance: 1000, events: [{ label: 'Amex Gold', amount: -640, kind: 'repayment', projected }] } }]} />,
+  )
+  it('a projected bill says so; a real one reads as before', () => {
+    expect(bill(true)).toContain('Amex Gold bill (projected)')
+    expect(bill(false)).not.toContain('(projected)')
+  })
+})

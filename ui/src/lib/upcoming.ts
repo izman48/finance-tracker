@@ -5,6 +5,7 @@
 import { Commitment, NextRepayment, PlannedItem } from '../types'
 import { daysLate, moneyStyle } from './late'
 import { nextPlannedDate, plannedPerPayment } from './planned'
+import { cardBillLabel, type BillPart } from './cardBill'
 
 export interface Upcoming {
   key: string
@@ -23,8 +24,10 @@ export interface Upcoming {
   overdue?: { due: string; days: number }
   /** An unpaid one-off expense just past its date, inside the API's grace (O9): a normal row, still counted. */
   justDue?: { due: string }
-  /** A credit card's repayment (Home labels it "{card} bill", T-10-14d). */
+  /** A credit card's repayment: "{card} bill", or "{card} bill (projected)" (T-10-14d, T-12-7a). */
   cardBill?: boolean
+  /** What the card bill is made of, from the API; Cashflow's line 2. */
+  billParts?: BillPart[]
 }
 
 /** How a row's amount reads: late income is not money you have, so no "+" and no green. */
@@ -95,11 +98,12 @@ export function buildUpcoming(
       })),
     ...repayments.map((r) => ({
       key: `r-${r.account_id}-${r.due_date}`,
-      label: r.label,
+      label: cardBillLabel(r.label, Boolean(r.projected)),
       amount: Number(r.amount),
       date: r.due_date,
       income: false,
       cardBill: true,
+      billParts: r.parts,
     })),
     // A planned item its real transaction already paid is no longer coming (T-08-7).
     ...planned.filter((p) => !p.matched_transaction_id && !p.late && !(p.overdue && p.direction !== 'income') && !isJustDue(p, today)).flatMap((p) => {

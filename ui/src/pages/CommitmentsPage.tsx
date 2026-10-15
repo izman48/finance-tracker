@@ -15,6 +15,7 @@ import { cadenceLabel, isYearly, monthlyEquivalent } from '../lib/cadence'
 import { isRegularPlanned, plannedMonthly, plannedPerPayment } from '../lib/planned'
 import { CARD_OVERLAP_ANCHOR, canBeCardPayment, firstOverlapId } from '../lib/cardPayment'
 import CardPaymentToggle from '../components/CardPaymentToggle'
+import { billPartsLine, cardBillLabel } from '../lib/cardBill'
 import AddCommitmentModal from '../components/AddCommitmentModal'
 import EditCommitmentModal from '../components/EditCommitmentModal'
 import PlannedItems from '../components/PlannedItems'
@@ -421,11 +422,12 @@ function ConfirmedList({
               <div key={row.key} className="p-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
                 <div className="min-w-0 flex-1 basis-40">
                   <div className="font-medium text-slate-200 flex items-center gap-2">
-                    <span className="truncate">{row.repayment.label}</span>
+                    <span className="truncate">{cardBillLabel(row.repayment.label, Boolean(row.repayment.projected))}</span>
                     <span className="chip-warn shrink-0">Card</span>
                   </div>
                   <div className="text-sm text-slate-500">
                     Repayment · due {formatDate(row.repayment.due_date)}
+                    {billPartsLine(row.repayment.parts) && ` · ${billPartsLine(row.repayment.parts)}`}
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">

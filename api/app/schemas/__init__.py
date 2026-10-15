@@ -738,11 +738,22 @@ class AccountSettingUpdate(BaseModel):
         return self
 
 
+class RepaymentPart(BaseModel):
+    """One part of a card bill (T-12-7a): the statement's still-due amount,
+    the spend since it, or the whole balance with no statement."""
+    kind: Literal["statement", "spent_since", "balance"]
+    amount: Decimal
+
+
 class NextRepayment(BaseModel):
     account_id: str
     label: str
     amount: Decimal
     due_date: date
+    # A projection (the spend since the statement, or the balance with no
+    # statement), not a real statement; the parts sum to the amount.
+    projected: bool = False
+    parts: list[RepaymentPart] = []
 
 
 class SummaryStatement(BaseModel):
@@ -915,6 +926,9 @@ class ForecastEvent(BaseModel):
     # The commitment an income/expense event comes from (the UI names a
     # loan's linked bill by it); None for repayments and planned items.
     commitment_id: str | None = None
+    # A card repayment that is a projection (the spend since the statement,
+    # or the balance with none), not a real statement (T-12-7a).
+    projected: bool = False
 
 
 class ForecastPoint(BaseModel):

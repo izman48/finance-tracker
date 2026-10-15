@@ -158,7 +158,10 @@ describe('sample card statement (T-10-6)', () => {
     const s = sampleResponse('/api/v1/analytics/accounts/sa4/statements', {}) as CardStatementsShape
     expect(Number(s.next_payment.amount)).toBe(summary.next_repayments[0].amount)
     expect(s.next_payment.date).toBe(summary.next_repayments[0].due_date)
-    expect(Number(s.current.amount_still_due) + Number(s.current.unbilled)).toBe(summary.next_repayments[0].amount)
+    // statement_balance (T-12-7a): the still-due amount on the due date, the
+    // spend since the statement on the next pay day.
+    expect(Number(s.current.amount_still_due)).toBe(summary.next_repayments[0].amount)
+    expect(Number(s.current.unbilled)).toBe(summary.next_repayments[1].amount)
   })
 
   it('a non-card account has no statement', () => {

@@ -1,6 +1,7 @@
 import type { Upcoming } from '../lib/upcoming'
 import { dueLine, lateLine, overdueLine } from '../lib/late'
 import ClaudeMarker, { ClaudeChip, NOT_COUNTED_TEXT } from './changes/ClaudeMarker'
+import { billPartsLine } from '../lib/cardBill'
 
 /**
  * The label side of a coming-up row, shared by Home and Cashflow so both
@@ -8,14 +9,18 @@ import ClaudeMarker, { ClaudeChip, NOT_COUNTED_TEXT } from './changes/ClaudeMark
  * income isn't counted until it arrives. On Home the whole card is a link,
  * so the marker is plain text there (`linkMarker` false).
  */
-export default function UpcomingLabel({ item, linkMarker }: { item: Upcoming; linkMarker: boolean }) {
+export default function UpcomingLabel({ item, linkMarker, billParts = false }: { item: Upcoming; linkMarker: boolean; billParts?: boolean }) {
+  // Cashflow spells a card bill's parts under it (ux C-1); Home doesn't.
+  const parts = billParts && item.cardBill ? billPartsLine(item.billParts) : null
   return (
     <span className="min-w-0 flex-1">
       <span className="flex items-center gap-2 min-w-0">
-        <span className="text-slate-300 truncate">{item.label}</span>
+        {/* A card bill wraps rather than cut "(projected)" off (ux C-1, reflow). */}
+        <span className={`text-slate-300 ${item.cardBill ? 'min-w-0 break-words' : 'truncate'}`}>{item.label}</span>
         {item.late && <span className="chip-warn shrink-0">Late</span>}
         {item.overdue && <span className="chip-warn shrink-0">Overdue</span>}
       </span>
+      {parts && <span className="block text-xs text-slate-400">{parts}</span>}
       {item.claudeAuditId && (linkMarker ? <ClaudeMarker auditId={item.claudeAuditId} /> : <ClaudeChip />)}
       {item.justDue && <span className="block text-xs text-slate-400">{dueLine(item.justDue.due)}</span>}
       {item.overdue && (

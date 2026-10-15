@@ -47,7 +47,14 @@ fail-safe). Statement dates are at most 400 days old and never in the future.
 still due goes on the statement's pay day and the unbilled spend on the next
 one, so the total never falls below the full balance. With no statement, or
 once the current one's due date has passed with no newer one, the full
-current balance goes on the next pay day. **Pay day `card_due_date`** (any
+current balance goes on the next pay day. Each repayment says what it is
+(T-12-7a): `projected` and `parts` (summed to the amount by the API). The
+still-due amount is a real bill (`statement`, not projected); the unbilled
+spend (`spent_since`) and the no-statement balance (`balance`) are
+projected. Other strategies send `projected: false` and no parts. Coming
+up reads "{card} bill" or "{card} bill (projected)", and Cashflow adds
+line 2 ("Spent since £X" / "Balance £X"); card plan instalments stay
+their own rows. **Pay day `card_due_date`** (any
 formula strategy; the default when `statement_balance` has no cadence): the
 current statement's due date, then monthly, rolled forward past dates
 already gone; with no statement, the card's `repayment_day`, else 30 days

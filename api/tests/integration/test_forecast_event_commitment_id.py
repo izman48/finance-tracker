@@ -56,7 +56,8 @@ def test_events_not_from_a_commitment_carry_none(client, db_session):
 
 # What Claude's `forecast` tool receives (sec on #201): the exact key set of
 # an event of every kind, so the next new field fails here first.
-EVENT_KEYS = {"label", "amount", "kind", "commitment_id"}
+# `projected` (T-12-7a, sec plan: allowed on the card bill) is on every event, false but on a projected card bill.
+EVENT_KEYS = {"label", "amount", "kind", "commitment_id", "projected"}
 
 
 def test_claude_receives_exactly_these_event_fields(client, db_session):

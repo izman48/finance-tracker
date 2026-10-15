@@ -23,6 +23,7 @@ from app.models import (
     CommitmentSource,
     CommitmentStatus,
     Liability,
+    LiabilityKind,
 )
 from app.models.commitment_link import REPAYMENT, CommitmentLink
 from app.services.liabilities import derived_figures
@@ -114,7 +115,7 @@ def _new_commitment(db: Session, liability: Liability) -> CommitmentRule:
         id=uuid.uuid4(),
         user_id=liability.user_id,
         direction=CommitmentDirection.EXPENSE.value,
-        label=liability.lender,
+        label=commitment_label(liability),
         source=CommitmentSource.MANUAL.value,
         status=CommitmentStatus.CONFIRMED.value,
     )
@@ -136,7 +137,15 @@ def sync(liability: Liability, rule: CommitmentRule, today: date) -> None:
     rule.next_date = figures["next_payment_date"] or figures["payoff_date"]
     rule.ends_on = figures["payoff_date"]
     if liability.commitment_created:
-        rule.label = liability.lender
+        rule.label = commitment_label(liability)
+
+
+def commitment_label(liability: Liability) -> str:
+    """A bill the liability creates: the lender, or "{lender} mortgage
+    payment" for a mortgage (ux T-12-1)."""
+    if liability.kind == LiabilityKind.MORTGAGE.value:
+        return f"{liability.lender} mortgage payment"
+    return liability.lender
 
 
 def linked_rule(db: Session, liability: Liability) -> CommitmentRule | None:

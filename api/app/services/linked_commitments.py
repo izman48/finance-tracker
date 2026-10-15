@@ -18,7 +18,7 @@ from typing import Literal
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.models import CommitmentLink, Liability
+from app.models import CommitmentLink, Liability, LiabilityKind
 
 # `card_account_id` too (sec on #183): tying the bill to a card would let the
 # card's larger repayment replace it in safe-to-spend and the forecast.
@@ -28,6 +28,11 @@ GUARDED_FIELDS = frozenset({
 LINKED_DETAIL = {
     "code": "linked_to_liability",
     "message": "This payment follows your loan. Change it on Wealth, under Loans and finance.",
+}
+# Same code as a loan, so the app's "Go to Wealth" handling is shared.
+MORTGAGE_DETAIL = {
+    "code": "linked_to_liability",
+    "message": "This payment follows your mortgage. Change it on Wealth, under Loans and finance.",
 }
 HOLDING_DETAIL = {
     "code": "linked_to_holding",
@@ -39,10 +44,13 @@ HOLDING_DETAIL = {
 class LinkOwner:
     kind: Literal["liability", "holding"]
     owner_id: uuid.UUID
+    mortgage: bool = False
 
     @property
     def detail(self) -> dict:
-        return LINKED_DETAIL if self.kind == "liability" else HOLDING_DETAIL
+        if self.kind == "holding":
+            return HOLDING_DETAIL
+        return MORTGAGE_DETAIL if self.mortgage else LINKED_DETAIL
 
 
 class LinkedCommitmentEdit(Exception):
@@ -62,11 +70,11 @@ def linked_commitments(db: Session, user_id: uuid.UUID) -> dict[uuid.UUID, LinkO
         )
         for row in db.query(CommitmentLink).filter(CommitmentLink.user_id == user_id)
     }
-    loans = db.query(Liability.id, Liability.linked_commitment_id).filter(
+    loans = db.query(Liability.id, Liability.linked_commitment_id, Liability.kind).filter(
         Liability.user_id == user_id, Liability.linked_commitment_id.isnot(None),
     )
-    for liability_id, commitment_id in loans:
-        owners[commitment_id] = LinkOwner("liability", liability_id)
+    for liability_id, commitment_id, kind in loans:
+        owners[commitment_id] = LinkOwner("liability", liability_id, kind == LiabilityKind.MORTGAGE.value)
     return owners
 
 

@@ -256,7 +256,8 @@ def test_another_users_asset_is_a_404_and_nothing_is_written(world, client, db_s
     assert db_session.query(Asset).count() == 1  # Bob's asset is untouched
 
 
-@pytest.mark.parametrize("asset_type", ["isa", "property", "mortgage"])
+# A legacy mortgage converts since T-12-6 (test_mortgage.py).
+@pytest.mark.parametrize("asset_type", ["isa", "property"])
 def test_only_loan_type_assets_can_be_converted(world, db_session, asset_type):
     asset_id = world.loan_asset(asset_type=asset_type)
     assert world.add_liability(replaces_asset_id=asset_id).status_code == 422

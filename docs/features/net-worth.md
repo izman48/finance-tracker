@@ -18,7 +18,7 @@ compound projection with every assumption echoed back.
 | `GET /api/v1/analytics/net-worth-decomposition` | `CurrentUser` |
 | `GET /api/v1/analytics/net-worth-projection` | `CurrentUser` (`spending_source` = budgets / average / none, T-10-15b) |
 | `GET /api/v1/assets` | `CurrentUser` |
-| `POST /api/v1/assets` | `CurrentUser` |
+| `POST /api/v1/assets` | `CurrentUser` (at most 100 per user, 409 past that; ADR-002) |
 | `PATCH /api/v1/assets/{asset_id}` | `CurrentUser` (growth %, monthly contribution) |
 | `DELETE /api/v1/assets/{asset_id}` | `CurrentUser` |
 | `POST /api/v1/assets/{asset_id}/valuations` | `CurrentUser` (same date overwrites) |

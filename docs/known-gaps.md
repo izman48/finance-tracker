@@ -21,6 +21,12 @@ update the feature doc's touchpoints. Security-relevant items are marked 🔒.
   settings (T-10-12), but nothing is projected for it (owner D8: a notice, no
   fallback payment). See [features/accounts.md](features/accounts.md).
 
+- 🔒 Ending a bank connection at TrueLayer (delete-account, disconnect) uses
+  the documented `DELETE {auth}/api/delete`, refreshing once on 401, but it is
+  **unverified** against the TrueLayer sandbox: nobody has yet checked that
+  the old refresh token then fails with `invalid_grant` (T-12-10a, sec-2 on
+  #244).
+
 ## Validation and safety
 
 - 🔒 No rate limit on `change-password` or `delete-account` (both run a

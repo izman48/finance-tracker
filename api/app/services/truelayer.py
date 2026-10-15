@@ -305,37 +305,32 @@ class TrueLayerService:
             logger.info("Could not resolve provider info; using defaults")
             return unknown
 
-    async def revoke_token(self, token: str) -> None:
-        """Revoke an access/refresh token at TrueLayer (best-effort).
-
-        Called on disconnect so a deleted connection's token can no longer be
-        used to reach the user's bank data. Failures are logged, not raised.
-        """
-        try:
-            async with httpx.AsyncClient(timeout=TRUELAYER_TIMEOUT) as client:
-                response = await client.post(
-                    f"{self.auth_url}/connect/token/revoke",
-                    data={
-                        "client_id": self.client_id,
-                        "client_secret": self.client_secret,
-                        "token": token,
-                    },
-                    headers={"Content-Type": "application/x-www-form-urlencoded"},
-                )
-                response.raise_for_status()
-                logger.info("Revoked TrueLayer token on disconnect")
-        except Exception as e:
-            logger.warning(f"Token revocation failed (continuing): {type(e).__name__}")
-
     async def revoke_connection(self, access_token: str | None, refresh_token: str | None) -> None:
-        """Revoke both of a connection's tokens (sec T-12-10a): the refresh
-        token outlives the access token, so revoking only the access token
-        would leave a way back to the user's bank data. Best-effort, each
-        with the client's timeout; a failure is logged (never the token) and
-        never raised."""
-        for token in (access_token, refresh_token):
-            if token:
-                await self.revoke_token(token)
+        """End the connection at TrueLayer, so its tokens can no longer reach
+        the user's bank data (sec T-12-10a). TrueLayer's documented call is
+        `DELETE {auth}/api/delete` with the access token as bearer (it has no
+        RFC 7009 revoke endpoint, sec on #244). An expired access token (401)
+        is refreshed once with the refresh token and the delete retried.
+        Best-effort, each call with the client timeout: a failure is logged
+        by status or exception type, never with a token, and never raised."""
+        try:
+            status = await self._delete_connection(access_token) if access_token else 401
+            if status == 401 and refresh_token:
+                fresh = await self._token_request({"grant_type": "refresh_token", "refresh_token": refresh_token})
+                status = await self._delete_connection(fresh.get("access_token"))
+            if status >= 400:
+                logger.warning(f"Connection deletion at TrueLayer failed (continuing): HTTP {status}")
+            else:
+                logger.info("Deleted the connection at TrueLayer")
+        except Exception as e:
+            logger.warning(f"Connection deletion at TrueLayer failed (continuing): {type(e).__name__}")
+
+    async def _delete_connection(self, access_token: str | None) -> int:
+        if not access_token:
+            return 401
+        async with httpx.AsyncClient(timeout=TRUELAYER_TIMEOUT) as client:
+            response = await client.delete(f"{self.auth_url}/api/delete", headers={"Authorization": f"Bearer {access_token}"})
+        return response.status_code
 
     async def get_accounts(self, access_token: str) -> list[dict[str, Any]]:
         """

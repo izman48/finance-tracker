@@ -22,7 +22,7 @@ and transactions).
 `last_synced_at`). Cascades to `accounts`.
 
 **Services**: `services/truelayer.py` (auth link, token exchange and refresh,
-`revoke_token`; `ReauthRequired` on `invalid_grant`), `core/security.py`
+`revoke_connection`: TrueLayer's delete-connection call, refreshing once on 401; `ReauthRequired` on `invalid_grant`), `core/security.py`
 (`create_oauth_state`), `core/psu_ip.py`.
 
 **UI**: Wealth (`NetWorthPage`: connect, reconnect, sync, disconnect all),

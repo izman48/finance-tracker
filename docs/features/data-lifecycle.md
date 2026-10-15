@@ -45,10 +45,13 @@ that guard; add them to the purge by hand.
 `users` row, and relies on `ON DELETE CASCADE` from `users.id` for every other
 table (`transactions` cascade through `accounts`; asset children through
 `assets`). A new user-owned table must declare that cascade in both the model
-and the migration. Before the delete it asks TrueLayer to revoke each
-connection's access **and** refresh token (`truelayer_service.revoke_connection`,
-best-effort with the client timeout; a token it can't read or revoke never
-blocks the deletion, and no token value is logged). `test_delete_account.py`
+and the migration. Before the delete it ends each connection at
+TrueLayer (`truelayer_service.revoke_connection`: the documented `DELETE
+{auth}/api/delete` with the access token as bearer; on 401 it refreshes once
+with the refresh token and retries), best-effort with the client timeout per
+call and `REVOKE_TOTAL_SECONDS` (15 s) for the whole loop. A connection it
+can't read or end never blocks the deletion, and no token value is logged.
+The password check runs in the threadpool, off the event loop. `test_delete_account.py`
 builds the table list from `Base.metadata` (every table with a foreign key to
 `users`) and checks, with SQLite foreign keys on, that none holds a row of the
 deleted user and another user's rows are untouched (T-12-10a).

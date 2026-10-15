@@ -129,7 +129,7 @@ Full interactive docs at `http://localhost:8000/api/docs`. Main groups:
 - `ENCRYPTION_KEY` (server Fernet key) wraps the session copy of that key in the JWT and protects a few server-side secrets
 - `SECRET_KEY` strength enforced at startup in live mode (no placeholder keys)
 - OAuth `state` is a signed, short-lived token (CSRF protection)
-- Bank connections ended at TrueLayer on disconnect and on account deletion
+- Bank connections ended at TrueLayer on disconnect and on account deletion (`DELETE /api/delete`; not yet verified against the TrueLayer sandbox, see `docs/known-gaps.md`)
 - Rate limits on login, signup, password routes, Claude's writes and decrypt-heavy reads (per user, since MCP calls share one address)
 - Secrets live only in `.env` files (gitignored); `.env.example` is the committed template
 - CORS restricted to known origins

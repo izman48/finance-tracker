@@ -63,6 +63,10 @@ class PlannedItem(Base):
         ForeignKey("transactions.id", ondelete="SET NULL"), nullable=True, index=True
     )
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # The user marked it as paying a credit card (T-12-4a): it then counts
+    # once with the projected card repayments (the larger in each pay window).
+    # No card is chosen and nothing is matched by name. A flag, so plaintext.
+    is_card_payment: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # Who made it: "web" (the app, including pay-on-finance plans) or "mcp"
     # (Claude). Claude may only remove its own one-off items (T-08-6).
     created_via: Mapped[str] = mapped_column(String(10), default="web", server_default="web")

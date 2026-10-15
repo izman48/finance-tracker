@@ -17,8 +17,9 @@ from app.models import (
 
 from app.services.claude_keep import counted_commitments, held_removed_planned
 
+from . import card_payments
 from .cadence import commitment_occurrences
-from .commitments import committed_window_end
+from .commitments import committed_window_end, payday_dates
 from .common import _d, _load, _today, resolve_roles
 from .planned import planned_events
 from .planned_matching import planned_states
@@ -191,11 +192,6 @@ def get_forecast(db: Session, user, horizon: str = "payday") -> dict:
             "kind": rule.direction,
             "commitment_id": str(rule.id),
         })
-    for r in repayments:
-        card_setting = settings.get(uuid.UUID(r["account_id"]))
-        pay_from = card_setting.pay_from_account_id if card_setting else None
-        add(r["due_date"], pay_from,
-            {"label": r["label"], "amount": -_d(r["amount"]), "kind": "repayment"})
     planned = (
         db.query(PlannedItem)
         .filter(PlannedItem.user_id == user.id, PlannedItem.active.is_(True))
@@ -204,12 +200,21 @@ def get_forecast(db: Session, user, horizon: str = "payday") -> dict:
     # One-off items settle against the transactions that paid them (T-08-7).
     states = planned_states(db, user, planned, today)
     late_planned = []
+    # A planned card payment counts once with the projected card repayments:
+    # the larger in each pay window (T-12-4a). Collected first, added after.
+    card_planned: list[tuple] = []
+
+    def add_planned(day: date, item, amount: Decimal) -> None:
+        if item.is_card_payment and amount < 0:
+            card_planned.append(((item, amount), day, -amount))
+        else:
+            add(day, item.account_id, {"label": item.name, "amount": amount, "kind": "planned"})
+
     for item in planned:
         state = states.get(item.id)
         if state is None:  # recurring / payment plan: by schedule
             for occ_date, amount in planned_events(item, today + timedelta(days=1), end):
-                add(occ_date, item.account_id,
-                    {"label": item.name, "amount": amount, "kind": "planned"})
+                add_planned(occ_date, item, amount)
             continue
         if state.late:
             # Expected income that hasn't arrived: shown, never counted as cash.
@@ -221,7 +226,19 @@ def get_forecast(db: Session, user, horizon: str = "payday") -> dict:
         day = max(item.start_date, today + timedelta(days=1))
         if day <= end:
             sign = Decimal(1) if item.direction == "income" else Decimal(-1)
-            add(day, item.account_id, {"label": item.name, "amount": sign * _d(item.amount), "kind": "planned"})
+            add_planned(day, item, sign * _d(item.amount))
+
+    windows = card_payments.pay_windows(
+        today + timedelta(days=1), end, payday_dates(db, user, today + timedelta(days=1), end),
+    )
+    kept_card, kept_repayments, _ = card_payments.resolve(windows, card_planned, repayments)
+    for (item, amount), day, _ in kept_card:
+        add(day, item.account_id, {"label": item.name, "amount": amount, "kind": "planned"})
+    for r in kept_repayments:
+        card_setting = settings.get(uuid.UUID(r["account_id"]))
+        pay_from = card_setting.pay_from_account_id if card_setting else None
+        add(r["due_date"], pay_from,
+            {"label": r["label"], "amount": -_d(r["amount"]), "kind": "repayment"})
 
     # Walk day by day, accumulating the pooled running balance.
     timeline: list[dict] = [{"date": today, "balance": start_balance, "events": []}]

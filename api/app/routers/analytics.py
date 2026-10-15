@@ -39,6 +39,7 @@ from app.schemas import (
     NudgeResponse,
     PlanFromTransaction,
     PlannedItemCreate,
+    PlannedItemFlags,
     PlannedItemResponse,
     ProjectionResponse,
     RepaymentScheduleItemCreate,
@@ -445,6 +446,28 @@ def create_planned_item(
     require_owned_account_ids(db, current_user, data)
     item = PlannedItem(user_id=current_user.id, **data.model_dump())
     db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.patch("/planned-items/{item_id}", response_model=PlannedItemResponse)
+def update_planned_item_flags(
+    item_id: uuid.UUID,
+    data: PlannedItemFlags,
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> PlannedItem:
+    """The user ticks or unticks "Card payment" (T-12-4a). Web only; another
+    user's or an unknown item is a 404."""
+    item = (
+        db.query(PlannedItem)
+        .filter(PlannedItem.id == item_id, PlannedItem.user_id == current_user.id, PlannedItem.active.is_(True))
+        .first()
+    )
+    if not item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Planned item not found")
+    item.is_card_payment = data.is_card_payment
     db.commit()
     db.refresh(item)
     return item

@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowDownToLine, ChevronDown, SlidersHorizontal, X } from 'lucide-react'
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 import { analyticsAPI, bankingAPI, TransactionQuery } from '../services/api'
-import { Account, Transaction } from '../types'
+import { Account, CashflowSummary, Transaction } from '../types'
+import { accountOptionGroups } from '../lib/accountOptions'
 import { gbp, money, dateDMY } from '../lib/format'
 import MonthlySpendingChart from '../components/MonthlySpendingChart'
 import TransactionDetailSheet from '../components/TransactionDetailSheet'
@@ -133,6 +134,8 @@ export default function SpendingPage() {
   const [listLoading, setListLoading] = useState(true)
   const [page, setPage] = useState(1)
   const [accounts, setAccounts] = useState<Account[]>([])
+  // Each account's role from the summary, to group the account filter (T-10-16).
+  const [accountRoles, setAccountRoles] = useState<Map<string, string> | null>(null)
   const [facets, setFacets] = useState<{ categories: string[]; merchants: string[] }>({
     categories: [],
     merchants: [],
@@ -289,6 +292,10 @@ export default function SpendingPage() {
   // Accounts + facets (once, refreshed after edits)
   useEffect(() => {
     bankingAPI.getAccounts().then((res) => setAccounts(res.data)).catch(() => {})
+    analyticsAPI
+      .getSummary()
+      .then((res) => setAccountRoles(new Map((res.data as CashflowSummary).accounts.map((a) => [a.id, a.role]))))
+      .catch(() => setAccountRoles(null))
     bankingAPI.getTransactionFacets().then((res) => setFacets(res.data)).catch(() => {})
   }, [reloadKey])
 
@@ -929,11 +936,14 @@ export default function SpendingPage() {
               className="input md:!w-56"
             >
               <option value="">All accounts</option>
-              {accounts.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.display_name}
-                </option>
-              ))}
+              {accountOptionGroups(accounts, accountRoles).map(({ label, accounts: listed }) => {
+                const options = listed.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.display_name}
+                  </option>
+                ))
+                return label ? <optgroup key={label} label={label}>{options}</optgroup> : options
+              })}
             </select>
             <button
               onClick={() => setShowFilters((s) => !s)}

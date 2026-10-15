@@ -25,7 +25,10 @@ tab too ([budgets.md](budgets.md)).
 `financed_transaction_ids`), `services/analytics/common.py`.
 
 **UI**: `/insights` (`SpendingPage`), `MonthlySpendingChart`,
-`lib/categoryColors.ts`. Home Spending card.
+`lib/categoryColors.ts`. Home Spending card. The account filter lists
+accounts in `<optgroup>`s, Current accounts, Savings, Credit cards (roles from
+the summary, as Wealth and Cashflow; excluded accounts left out;
+`lib/accountOptions.ts`, T-10-16).
 
 **MCP**: `spending`, `spending_trend`.
 

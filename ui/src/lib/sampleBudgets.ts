@@ -145,3 +145,67 @@ export function sampleBudgetHistory(ledger: BudgetLedgerTx[], paydayAgo: number,
     has_more: false,
   }
 }
+
+type SampleList = ReturnType<typeof sampleBudgetList>
+const DAY_MS = 86400000
+const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / DAY_MS)
+
+/** The forecast's `budget_projection` (T-11-10), by the API's rule
+ *  (services/budgets.budget_projection): the scheduled line less this
+ *  cycle's budget left, spread evenly from tomorrow to the day before
+ *  payday, less the full budget total spread over each later 30-day cycle.
+ *  Paused budgets are not counted (the summary leaves them out). Null with
+ *  "no_budgets" when nothing is counted. `eveBalance` is the scheduled
+ *  balance on the day before payday, from a forecast that reaches it. */
+export function sampleBudgetProjection(list: SampleList, timeline: { date: string; balance: number }[], eveBalance: number) {
+  const left = Number(list.summary_this_cycle.left)
+  const total = Number(list.summary_this_cycle.total_limit)
+  if (total <= 0 || !timeline.length) return { projection: null, reason: 'no_budgets' as const }
+  const today = timeline[0].date
+  const toEve = daysBetween(today, list.cycle.end)
+  const spread = (amount: number, first: number, last: number, d: number) =>
+    d >= last ? amount : (amount * (d - first + 1)) / (last - first + 1)
+  const used = (d: number) => {
+    let out = d === 0 && toEve > 0 ? 0 : spread(left, 1, toEve, d)
+    for (let start = toEve + 1; start <= d; start += CYCLE_DAYS) out += spread(total, start, start + CYCLE_DAYS - 1, d)
+    return out
+  }
+  const payday = new Date(Date.parse(list.cycle.end) + DAY_MS).toISOString().slice(0, 10)
+  return {
+    projection: {
+      payday,
+      scheduled_balance: money(eveBalance),
+      after_budgets_balance: money(eveBalance - left),
+      series: timeline.map((t) => ({ date: t.date, balance: money(t.balance - used(daysBetween(today, t.date))) })),
+    },
+    reason: null,
+  }
+}
+
+const pounds = (n: number) => (Number.isInteger(n) ? `£${n.toLocaleString('en-GB')}` : `£${n.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
+const leftWords = (days: number) =>
+  days <= 0 ? 'on the last day of this pay cycle' : days === 1 ? 'with 1 day left' : `with ${days} days left`
+
+/** Budget nudges for /analytics/nudges (T-11-10), by the API's rule
+ *  (services/budgets.budget_nudges): an unpaused budget at or over its
+ *  limit, or ahead of pace in the first half of the cycle, with its fixed
+ *  copy. Dismissing is a write, so demo mode blocks it like any other. */
+export function sampleBudgetNudges(list: SampleList) {
+  const { days_left, days_total, start } = list.cycle
+  const early = days_left >= days_total / 2
+  const from = new Date(`${start}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })
+  return list.budgets.flatMap((b, i) => {
+    if (b.paused) return []
+    const spent = Number(b.spent)
+    const limit = b.limit_pounds
+    let body: string
+    if (spent > limit) body = `${b.category} is ${pounds(Math.round((spent - limit) * 100) / 100)} over its ${pounds(limit)} budget ${leftWords(days_left)}.`
+    else if (spent >= limit) body = `${b.category} has reached its ${pounds(limit)} budget ${leftWords(days_left)}.`
+    else if (b.status === 'ahead_of_pace' && early) body = `${b.category} is ahead of pace: ${pounds(spent)} of ${pounds(limit)} ${leftWords(days_left)}.`
+    else return []
+    return [{
+      id: `budget-00000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`, rank: 10, body,
+      detail: `Spent ${pounds(spent)} of ${pounds(limit)} this pay cycle, from ${from}.`, source: null, as_of: start,
+    }]
+  })
+}

@@ -6,10 +6,6 @@ update the feature doc's touchpoints. Security-relevant items are marked 🔒.
 
 ## Missed touchpoints (the "budgets in demo mode" class)
 
-- Budgets in demo mode: the list and past cycles are served (T-11-8), but
-  the sample forecast has no `budget_projection` (no dotted budget line) and
-  the sample nudges have no budget nudges. See
-  [features/budgets.md](features/budgets.md).
 - Other demo-mode gaps: `/banking/sync-status`, account repayments
   (`AccountSettingsModal` throws and logs), shared rule-pack preview. Connect
   and reconnect buttons set `window.location.href` to `undefined` in demo

@@ -35,6 +35,10 @@ const reads = () => [
   api.assetsAPI.netWorthPosition(),
   api.assetsAPI.netWorthProjection({ monthly_contribution: 0 }),
   api.analyticsAPI.getSummary(),
+  // T-11-10 (sec-2 on #224): the Cashflow budget line and the budget nudges.
+  api.analyticsAPI.getForecast('payday'),
+  api.analyticsAPI.getForecast('365'),
+  api.analyticsAPI.getNudges(),
 ]
 
 describe('demo mode never shows real holdings or writes to the real account', () => {
@@ -53,7 +57,7 @@ describe('demo mode never shows real holdings or writes to the real account', ()
     expect(network).toEqual([])
   })
 
-  it('with demo mode on, Update value, add, edit, link, unlink and delete are blocked before the network', async () => {
+  it('with demo mode on, Update value, add, edit, link, unlink, delete and dismissing a nudge are blocked before the network', async () => {
     anonymize.setAnonymized(true)
     network.length = 0
     const writes = [
@@ -63,6 +67,7 @@ describe('demo mode never shows real holdings or writes to the real account', ()
       api.assetsAPI.setContribution('sas1', { amount: '1.00', next_date: '2026-10-28' }),
       api.assetsAPI.stopContribution('sas1'),
       api.assetsAPI.remove('sas1'),
+      api.budgetsAPI.dismissNudge('00000000-0000-4000-8000-000000000001'),
     ]
     const results = await Promise.allSettled(writes)
     expect(results.every((r) => r.status === 'rejected')).toBe(true)

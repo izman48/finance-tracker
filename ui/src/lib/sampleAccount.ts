@@ -10,7 +10,9 @@
  *  sampleAccount.test.ts guards the reconciliation (headline == sum of parts).
  */
 
-import { SAMPLE_BUDGETS_MONTHLY, sampleBudgetHistory, sampleBudgetList, type BudgetLedgerTx } from './sampleBudgets'
+import {
+  SAMPLE_BUDGETS_MONTHLY, sampleBudgetHistory, sampleBudgetList, sampleBudgetNudges, sampleBudgetProjection, type BudgetLedgerTx,
+} from './sampleBudgets'
 import { sampleInvestmentGraph } from './sampleInvestments'
 
 // --- shape helpers --------------------------------------------------------- #
@@ -397,7 +399,7 @@ function summaryResponse() {
   }
 }
 
-function forecastResponse(horizon = '30') {
+function forecastTimeline(horizon = '30') {
   // The horizon control must actually move the chart: build a timeline whose
   // length matches the requested window, with the monthly income/bills cycle
   // repeated so a 1-year view looks like a year, not a stretched month.
@@ -425,6 +427,16 @@ function forecastResponse(horizon = '30') {
     end_balance: bal, min_balance: min, min_date: minDate, overdraft_limit: 500,
     breaches: [], timeline,
   }
+}
+
+// The forecast with its budget line (T-11-10): the sample budgets by the API's rule.
+function forecastResponse(horizon = '30') {
+  const forecast = forecastTimeline(horizon)
+  const list = sampleBudgetList(BUDGET_LEDGER, PAYDAY_AGO, false)
+  const reach = forecast.timeline.find((t) => t.date === list.cycle.end)
+    ?? forecastTimeline('payday').timeline.find((t) => t.date === list.cycle.end)
+  const { projection, reason } = sampleBudgetProjection(list, forecast.timeline, reach ? reach.balance : forecast.end_balance)
+  return { ...forecast, budget_projection: projection, budget_projection_reason: reason }
 }
 
 function trendResponse(months: number) {
@@ -541,6 +553,10 @@ function decompositionResponse(months: number) {
 }
 
 function nudgesResponse() {
+  return [...cashDragNudges(), ...sampleBudgetNudges(sampleBudgetList(BUDGET_LEDGER, PAYDAY_AGO, false))]
+}
+
+function cashDragNudges() {
   // Mirrors the backend cash-drag arithmetic for the sample's £12,000 saver
   // at the curated 4.5% benchmark (see api reference/uk_reference.py).
   const potential = Math.round(SAVINGS_TOTAL * 0.045)

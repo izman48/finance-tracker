@@ -18,7 +18,7 @@ from app.models import (
 from app.services.claude_keep import counted_commitments, held_removed_planned
 
 from .cadence import commitment_occurrences
-from .commitments import next_payday
+from .commitments import committed_window_end
 from .common import _d, _load, _today, resolve_roles
 from .planned import planned_events
 from .planned_matching import planned_states
@@ -33,8 +33,9 @@ def _horizon_end(db: Session, user, horizon: str, today: date) -> date:
     capped at 730 days.
     """
     if horizon == "payday":
-        payday = next_payday(db, user, today + timedelta(days=1))
-        return payday or (today + timedelta(days=30))
+        # Ends where the summary's committed window does: a pending Claude
+        # change that brings payday closer cuts no bill off (sec-1 on #229).
+        return committed_window_end(db, user, today, start=today + timedelta(days=1))
     if horizon == "month":
         return date(today.year, today.month, calendar.monthrange(today.year, today.month)[1])
     if str(horizon).isdigit():

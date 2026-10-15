@@ -98,3 +98,28 @@ def test_a_planned_expense_claude_removed_stays_in_the_forecast_until_kept(clien
     pw.client.post(f"{API}/audit/{audit_id}/keep", headers=_bearer(pw.web))
     kept = _forecast(pw, horizon="30")
     assert Decimal(str(kept["end_balance"])) - Decimal(str(before["end_balance"])) == Decimal("200.00")
+
+
+def _balance_before(forecast, day: str) -> Decimal:
+    """The forecast's running balance on the last day before `day`."""
+    return Decimal(str([p for p in forecast["timeline"] if p["date"] < day][-1]["balance"]))
+
+
+def test_with_a_pending_cut_the_forecast_reaches_payday_at_safe_to_spend(w):
+    """eng-b on #229: one figure, two surfaces. One account, no card, so the
+    balance the day before payday is what safe-to-spend leaves."""
+    w.claude_update(w.bill, amount="100.00")
+    summary = w.summary()
+    assert _balance_before(_forecast(w), summary["next_payday"]) == Decimal(summary["safe_to_spend"])
+
+
+def test_a_pending_claude_move_of_payday_closer_keeps_the_horizon(w):
+    """sec-1 on #229: the payday horizon ends where the summary's committed
+    window does, so moving the salary 8 days earlier drops no bill off the
+    chart until the user keeps the change."""
+    before = _forecast(w)
+    audit_id = w.claude_update(w.salary, next_date=(TODAY + timedelta(days=2)).isoformat())
+    held = _forecast(w)
+    assert (held["horizon_end"], held["end_balance"]) == (before["horizon_end"], before["end_balance"])
+    assert w.keep(audit_id).status_code == 200
+    assert _forecast(w)["horizon_end"] == (TODAY + timedelta(days=2)).isoformat()

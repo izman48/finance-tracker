@@ -107,6 +107,9 @@ def monthly_rate(annual_pct: Decimal) -> Decimal:
     """Monthly rate that compounds to `annual_pct` over twelve months."""
     if not MIN_GROWTH_PCT <= annual_pct <= MAX_GROWTH_PCT:
         raise ValueError(f"growth % must be between {MIN_GROWTH_PCT} and {MAX_GROWTH_PCT}")
+    # The float round-trip is deliberate: it is the arithmetic the Wealth
+    # projection has always used, so figures stay byte-identical. A pure
+    # Decimal power would move every projection by fractions of a penny.
     return Decimal(str((1 + float(annual_pct) / 100) ** (1 / 12) - 1))
 
 
@@ -148,7 +151,8 @@ def project_holdings(
     """Every holding with a value, and their total on each forecast date."""
     series = [project_holding(h, today, months, history_points) for h in holdings]
     series = [s for s in series if s.forecast]
-    total = [(when, total_at(series, i)) for i, (when, _) in enumerate(series[0].exact)] if series else []
+    dates = [_add_months(today, m) for m in range(months + 1)]
+    total = [(when, total_at(series, i)) for i, when in enumerate(dates)] if series else []
     return Projection(per_holding=series, total=total)
 
 

@@ -818,6 +818,7 @@ export const UNSAMPLED_BY_DESIGN: Record<string, string> = {
  *  deleting its line here (the coverage test then insists it stays served). */
 export const KNOWN_DEMO_GAPS: Record<string, string> = {
   '/banking/sync-status': 'Budget freshness line has no connections in demo mode.',
+  '/holdings/projection': 'Investment graph (T-11-5) has no sample investments yet; T-11-8 serves it.',
   '/analytics/accounts/:param/repayments': 'Account settings shows no repayment schedule in demo mode.',
   '/rules/shared/:param': 'Previewing a shared rule pack finds nothing in demo mode.',
 }

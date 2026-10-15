@@ -4,6 +4,7 @@ import { isAnonymized } from '../lib/anonymize'
 import { sampleResponse } from '../lib/sampleAccount'
 import type { AuditItem, AuditPage } from '../lib/changes'
 import type { BudgetEntry, BudgetsResponse, SuggestResponse } from '../lib/budgets'
+import type { InvestmentGraph } from '../lib/investments'
 import type { HistoryResponse } from '../lib/budgetHistory'
 
 // Unset -> local dev default; empty string -> same-origin (production behind Caddy)
@@ -179,6 +180,8 @@ export interface Asset {
   // Planned monthly saving into this asset (paydown on a liability).
   monthly_contribution: string | null
   valuations: AssetValuation[]
+  // The bill that carries its contribution while linked (T-11-3c).
+  linked_commitment?: { id: string; label: string; amount?: string } | null
 }
 
 export interface NetWorthPoint {
@@ -334,6 +337,16 @@ export const liabilitiesAPI = {
   create: (body: LiabilityBody) => api.post<Liability>('/liabilities', body),
   update: (id: string, body: LiabilityBody) => api.patch<Liability>(`/liabilities/${id}`, body),
   remove: (id: string) => api.delete(`/liabilities/${id}`),
+}
+
+// Investment graphs (T-11-4d): each investment and the total, from the
+// holding engine. Web session; a holding id that isn't the caller's is 404.
+export const holdingsAPI = {
+  projection: (params: { months: number; holding_id?: string | null; annual_growth_pct?: number }) =>
+    api.get<InvestmentGraph>('/holdings/projection', {
+      params: { months: params.months, ...(params.holding_id ? { holding_id: params.holding_id } : {}),
+        ...(params.annual_growth_pct != null ? { annual_growth_pct: params.annual_growth_pct } : {}) },
+    }),
 }
 
 export const assetsAPI = {

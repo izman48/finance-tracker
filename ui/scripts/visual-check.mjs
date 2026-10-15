@@ -109,6 +109,7 @@ const commitments = [
   { id: 'c6', direction: 'expense', label: 'Amazon Prime', amount: 95, cadence: 'every_n_months', interval_days: null, interval_months: 12, next_date: daysFromNow(30), source: 'manual', status: 'confirmed', account_id: 'a1' },
   // Linked to loan li1 below, so Home's Coming up reads "Lender A loan payment".
   { id: 'c-li1', direction: 'expense', label: 'Lender A', amount: 200, cadence: 'monthly', interval_days: null, interval_months: null, next_date: daysFromNow(3), source: 'manual', status: 'confirmed', account_id: 'a1' },
+  { id: 'c-li4', direction: 'expense', label: 'FINANCE DD', amount: 45, cadence: 'monthly', interval_days: null, interval_months: null, next_date: daysFromNow(4), source: 'manual', status: 'confirmed', account_id: 'a1' },
   { id: 'c7', direction: 'income', label: 'Annual bonus', amount: 1500, cadence: 'every_n_months', interval_days: null, interval_months: 12, next_date: daysFromNow(200), source: 'manual', status: 'confirmed', account_id: 'a1' },
 ]
 
@@ -179,6 +180,8 @@ const liability = (over) => ({
 })
 const liabilities = [
   liability({ id: 'li2', kind: 'finance', lender: 'Lender B with a rather long trading name', balance: '1500.00', current_balance: '1500.00', apr: '20.00', payment: '100.00', interest_remaining: '139.41', balance_stale: true, balance_as_of: daysFromNow(-120), linked_commitment: { id: 'c-li2', label: 'Lender B' } }),
+  // A 100-character lender (sec on P2): the Coming up row must still fit.
+  liability({ id: 'li4', kind: 'finance', lender: 'Example Consumer Finance Limited trading as Example Retail Credit for Household Goods and Furnishing', balance: '900.00', current_balance: '900.00', apr: '0.00', payment: '45.00', linked_commitment: { id: 'c-li4', label: 'FINANCE DD' } }),
   liability({}),
   liability({ id: 'li3', lender: 'Lender C', balance: '4000.00', current_balance: '4000.00', apr: '5.00', payment: null, opted_out: true, payoff_date: null, interest_remaining: null, total_cost: null, payments_remaining: null, next_payment_date: null, linked_commitment: null }),
 ]

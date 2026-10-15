@@ -44,7 +44,7 @@ import InvestmentRow from '../components/wealth/InvestmentRow'
 import InvestmentValueModal from '../components/wealth/InvestmentValueModal'
 import InvestmentForm from '../components/wealth/InvestmentForm'
 import { formFromQuery } from '../lib/investmentForm'
-import { currentValue, isInvestment } from '../lib/investments'
+import { GROWTH_MAX, GROWTH_MIN, currentValue, isInvestment, targetGrowthError } from '../lib/investments'
 import AccountSettingsModal from '../components/AccountSettingsModal'
 import AddToBalanceSheetChooser from '../components/AddToBalanceSheetChooser'
 import PositionStrip from '../components/PositionStrip'
@@ -149,6 +149,7 @@ export default function NetWorthPage() {
   const [target, setTarget] = useState(() => localStorage.getItem('wealth.target') ?? '')
   const [monthly, setMonthly] = useState(() => localStorage.getItem('wealth.monthly') ?? '')
   const [growth, setGrowth] = useState(() => localStorage.getItem('wealth.growth') ?? '5')
+  const growthError = targetGrowthError(growth)
   // 'cashflow' derives the contribution from income − bills − avg spending
   // server-side; 'custom' sends the typed figure.
   const [contribMode, setContribMode] = useState<'cashflow' | 'custom'>(
@@ -297,6 +298,7 @@ export default function NetWorthPage() {
       setProjection(null)
       return
     }
+    if (targetGrowthError(growth)) return // the input says why; no request the API would refuse
     let cancelled = false
     const timer = window.setTimeout(() => {
       assetsAPI
@@ -635,8 +637,22 @@ export default function NetWorthPage() {
               </div>
             </div>
             <div>
-              <label className="label">Growth %/yr</label>
-              <input type="number" step="0.5" value={growth} onChange={(e) => setGrowth(e.target.value)} className="input !w-24" />
+              <label className="label" htmlFor="target-growth">Growth %/yr</label>
+              <input
+                id="target-growth"
+                type="number"
+                step="0.5"
+                min={GROWTH_MIN}
+                max={GROWTH_MAX}
+                value={growth}
+                onChange={(e) => setGrowth(e.target.value)}
+                aria-invalid={growthError ? true : undefined}
+                aria-describedby={growthError ? 'target-growth-error' : undefined}
+                className="input !w-24"
+              />
+              {growthError && (
+                <p id="target-growth-error" role="alert" className="text-xs text-amber-300 mt-1">{growthError}</p>
+              )}
             </div>
             {target && (
               <button onClick={() => setTarget('')} className="btn-ghost !py-2">

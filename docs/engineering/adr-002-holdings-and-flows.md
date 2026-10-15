@@ -88,11 +88,19 @@ class HoldingKind:
 - Coverage: every value in `ASSET_TYPES` and `LiabilityKind` has a registry
   entry, so a new stored type cannot skip the registry.
 
-**Fail closed:** a stored type with no registry entry maps to kind
-`unknown` (group other, model flat). It counts in net worth at its stored
-value with its stored sign, is never filtered by any tick box, and logs a
-warning with the plaintext stored type only (never the name or an id).
-A test stores an unknown `asset_type` and checks net worth.
+**Fail closed:** a stored type with no registry entry maps to an
+`unknown` kind that takes `source` and `is_debt` from the table it came
+from, held flat, never filtered by any tick box, logging the plaintext
+stored type only (never the name or an id):
+
+- unknown `asset_type`: group other, counted at its latest valuation with
+  its stored sign;
+- unknown `liabilities.kind`: group debt, `is_debt`, counted as minus its
+  entered balance (liabilities store the amount owed as positive, so it must
+  never be added as an asset).
+
+Tests store an unknown `asset_type` (net worth includes it) and an unknown
+liability kind (net worth goes down, not up).
 
 ### 3. One generic link, one guard
 
@@ -194,31 +202,45 @@ job, no SQL filter on encrypted columns.
 ```python
 @dataclass(frozen=True)
 class HoldingInput:
-    id: UUID; name: str; kind: str
-    model: Literal["growth", "amortisation", "flat"]
-    valuations: tuple[tuple[date, Decimal], ...]          # sorted
-    paid_contributions: tuple[tuple[date, Decimal], ...]  # linked, since created_on
-    growth_pct: Decimal          # own % > global default; legacy debts 0
+    id: str; name: str; kind: str
+    model: str                     # "growth" | "amortisation" | "flat", from the registry
+    source: str                    # "assets" | "liabilities"
+    valuations: tuple[Point, ...]  # sorted
+    paid_contributions: tuple[Point, ...]  # adapter: since created_on, confirmed, <= today
+    growth_pct: Decimal            # own % > global default; legacy debts 0
     monthly_contribution: Decimal  # link amount if linked, else legacy; never both
-    schedule: list[ScheduleRow] | None   # amortisation: liabilities.remaining_schedule()
+    owed_on: Callable[[date], Decimal] | None  # amortisation: wraps liabilities.owed_on
     is_debt: bool
 
-def project_holding(h, today, months) -> HoldingSeries      # .history, .forecast
-def project_holdings(hs, today, months, *, include_investments=True) -> Projection
+def value_on(h, day) -> Decimal | None          # value today / at a history point
+def project_holding(h, today, months, history_points=None) -> HoldingSeries
+def project_holdings(hs, today, months, history_points=None) -> Projection
+def total_at(series, month) / exact_total_at(series, month)
 ```
 
 - Growth: v = v × (1 + r) + contribution each month, r = (1 + p)^(1/12) − 1
   (today's effective-annual rate, lead decision 2026-10-15), unrounded,
   penny-rounded at output. So no existing projection moves. Synthetic check:
   £0, £1,000 a month, 7%, 10 years = £171,051.73.
-- Amortisation: value at a date = the schedule's balance then (as
-  `owed_on`), so loans don't change. Flat: stored value held.
-- `include_investments=False` drops only `INVESTMENT_KINDS`.
-- Callers: `net_worth_projection` (replaces its per-asset loop and the
-  liabilities loop; the cash waterfall is unchanged), a new
-  `GET /api/v1/holdings/projection`, and `net_worth_history`
-  (`include_investments`). An equality test ties the target projection to
-  `project_holdings`.
+  Totals are summed unrounded and rounded once (`total_at`), so the full
+  projection payload is byte-identical to today's.
+- Amortisation: value at a date = `owed_on` (the Sprint 10 code), so loans
+  don't change. Flat: stored value held.
+- `value_on` applies the paid-contribution rule, with the 90-day window
+  enforced per point in the engine (`PAID_WINDOW_DAYS`), since the valuation
+  in effect differs per history point.
+- The engine is kind-agnostic: callers that take `include_investments` (the
+  holdings route, net worth history) drop `INVESTMENT_KINDS` before calling.
+- **One definition of value today.** `net_worth.assets_total` and
+  `_net_worth_at` take each holding's value from `value_on` over
+  `holding_inputs`, so every net worth surface agrees: summary (and Claude's
+  `cashflow_summary`), position, history and the projection's month 0. Test:
+  on payment day the summary's net worth equals the day before.
+- Callers: those net worth surfaces, `net_worth_projection` (replaces its
+  per-asset loop and the liabilities loop; the cash waterfall is unchanged),
+  and a new `GET /api/v1/holdings/projection`. An equality test ties the
+  target projection to `project_holdings`. While linked,
+  `asset_assumptions[].monthly_contribution` shows the commitment's amount.
 
 ### 6. Input bounds (sec item 5)
 

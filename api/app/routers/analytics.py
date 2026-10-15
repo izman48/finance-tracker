@@ -291,6 +291,7 @@ def list_commitments(
             "expected_date": late[r.id].expected_date if r.id in late else None,
             "linked_liability": r.id in linked and linked[r.id].kind == "liability",
             "linked_holding": r.id in linked and linked[r.id].kind == "holding",
+            "linked_mortgage": r.id in linked and linked[r.id].mortgage,
         })
         for r in rules
     ]

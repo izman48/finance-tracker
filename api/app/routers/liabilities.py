@@ -37,8 +37,10 @@ DB = Annotated[Session, Depends(get_db)]
 TERMS = tuple(LiabilityCreate.model_fields)
 # Every list read amortises each row, so the rows per user are bounded.
 LIABILITIES_PER_USER_MAX = 50
-# Asset types a liability can replace. A mortgage isn't a kind yet (ux A8).
-CONVERTIBLE_ASSET_TYPES = ("loan", "other_liability")
+# Asset types a liability can replace (a legacy mortgage since T-12-6).
+CONVERTIBLE_ASSET_TYPES = ("loan", "other_liability", "mortgage")
+# sec T-12-6: a mortgage is paid off within 40 years.
+MORTGAGE_MAX_YEARS = 40
 
 
 def _own(db: Session, user_id: uuid.UUID, liability_id: uuid.UUID) -> Liability:
@@ -57,9 +59,15 @@ def _check_schedule_clears(terms: LiabilityCreate) -> None:
         return
     first = service.next_payment_on(terms.start_date, terms.cadence, terms.balance_as_of, common._today())
     try:
-        service.amortise(terms.balance, terms.apr, terms.payment, first, terms.cadence)
+        schedule = service.amortise(terms.balance, terms.apr, terms.payment, first, terms.cadence)
     except service.PaymentTooLow as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=exc.message)
+    if terms.kind == "mortgage" and len(schedule.rows) > MORTGAGE_MAX_YEARS * service.PERIODS_PER_YEAR[terms.cadence]:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"At this payment the mortgage would take more than {MORTGAGE_MAX_YEARS} years to clear. "
+                   "Increase the payment.",
+        )
 
 
 def _response(

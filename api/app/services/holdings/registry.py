@@ -127,6 +127,7 @@ KINDS: tuple[HoldingKind, ...] = (
     _liability("loan"),
     _liability("finance"),
     _liability("bnpl"),
+    _liability("mortgage"),
     # A card instalment plan (T-12-5, owner D3/D4).
     HoldingKind(
         source="card_plans", stored_type="card_plan", group="debt", model="amortisation",

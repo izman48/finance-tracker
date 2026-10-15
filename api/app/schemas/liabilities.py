@@ -2,7 +2,9 @@
 
 Requests allow-list the user's terms only (`extra="forbid"`): the client can't
 send an id, user_id, link or any derived figure. Money is a decimal string
-with at most 2 dp, more than 0 and at most 1,000,000 (never a JSON float).
+with at most 2 dp, more than 0 and at most 1,000,000 (never a JSON float); a
+mortgage's balance may be up to 10,000,000 and its APR at most 25% (sec
+T-12-6).
 """
 from __future__ import annotations
 
@@ -13,14 +15,21 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, StrictBool, model_validator
 
-from app.schemas import PlanningAmount, _refuse_float
+from app.schemas import PLANNED_EVENT_MAX_AMOUNT, PlanningAmount, _refuse_float
 from app.services.analytics import common
 
-LiabilityKindName = Literal["loan", "finance", "bnpl"]
+LiabilityKindName = Literal["loan", "finance", "bnpl", "mortgage"]
 LiabilityCadenceName = Literal["monthly", "four_weekly", "fortnightly", "weekly"]
 Apr = Annotated[Decimal, Field(ge=0, le=100, decimal_places=2), BeforeValidator(_refuse_float)]
 Lender = Annotated[str, Field(min_length=1, max_length=100)]
 CommitmentChoice = Annotated[str, Field(min_length=1, max_length=36)]
+MORTGAGE_MAX_BALANCE = Decimal("10000000")
+MORTGAGE_MAX_APR = Decimal("25")
+# The widest balance any kind takes; the per-kind limit is checked on the
+# merged terms.
+Balance = Annotated[
+    Decimal, Field(gt=0, le=MORTGAGE_MAX_BALANCE, decimal_places=2), BeforeValidator(_refuse_float)
+]
 
 # Terms a PATCH may not clear (they have no "unknown" state). `payment` may
 # be cleared only together with opting out; the merged check enforces that.
@@ -38,7 +47,7 @@ class LiabilityCreate(BaseModel):
 
     kind: LiabilityKindName
     lender: Lender
-    balance: PlanningAmount
+    balance: Balance
     balance_as_of: date
     apr: Apr
     payment: PlanningAmount | None = None
@@ -58,6 +67,10 @@ class LiabilityCreate(BaseModel):
             raise ValueError("The final payment must be after the start date")
         if self.payment is None and not self.opted_out:
             raise ValueError('Enter the payment amount, or tick "I repay this loan irregularly"')
+        if self.kind != "mortgage" and self.balance > PLANNED_EVENT_MAX_AMOUNT:
+            raise ValueError("The balance can be at most £1,000,000")
+        if self.kind == "mortgage" and self.apr > MORTGAGE_MAX_APR:
+            raise ValueError(f"A mortgage's APR can be at most {MORTGAGE_MAX_APR}%")
         return self
 
 
@@ -79,7 +92,7 @@ class LiabilityUpdate(BaseModel):
 
     kind: LiabilityKindName | None = None
     lender: Lender | None = None
-    balance: PlanningAmount | None = None
+    balance: Balance | None = None
     balance_as_of: date | None = None
     apr: Apr | None = None
     payment: PlanningAmount | None = None

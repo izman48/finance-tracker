@@ -25,6 +25,16 @@ list (T-10-10) build on it.
 - **Bounded**: a payment that doesn't cover the first period's interest, or
   doesn't clear the balance within 50 years (600 months), is a 422 with a
   plain message. Nothing is stored.
+- **Mortgage (T-12-6, ADR-002 section 8):** `kind: "mortgage"` is a
+  liability like a loan (Loans and finance, amortisation, linked repayment;
+  registry entry `liabilities:mortgage`). Bounds (sec): balance up to
+  £10,000,000 (other kinds stay at £1,000,000), APR at most 25%, and the
+  schedule must clear within 40 years (422 otherwise). A bill it creates is
+  labelled "{lender} mortgage payment" and follows lender renames. Its guard
+  409 keeps the code `linked_to_liability` with the message "This payment
+  follows your mortgage…", and the commitments list sets `linked_mortgage`.
+  `replaces_asset_id` also takes a legacy `mortgage` asset. Claude sees it
+  only in `liabilities_total`, never in `list_holdings`.
 - **Linked repayment (T-10-8):** a liability with a payment carries its
   repayment as one commitment, linked by the stored `linked_commitment_id`
   (FK, `ON DELETE SET NULL`, unique; set only by the server). Rules: a new
@@ -148,7 +158,7 @@ the API's message with a link to Wealth.
 **Tests**: `api/tests/unit/test_amortisation.py` (hand-checked schedule for
 the synthetic £9,000 / £200 a month / 11% loan),
 `api/tests/integration/test_liabilities_api.py`,
-`test_liability_commitment_link.py` (rules 1-6), `test_liability_overpayment.py`, `test_reset_purge.py`,
+`test_liability_commitment_link.py` (rules 1-6), `test_liability_overpayment.py`, `test_mortgage.py`, `test_reset_purge.py`,
 `test_oauth.py` (Claude tokens refused).
 
 ## Touchpoints

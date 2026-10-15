@@ -320,7 +320,6 @@ INVALID = [
     ("apr", "100.01"),
     ("apr", 11.0),
     ("kind", "card_plan"),          # waits for stage 5
-    ("kind", "mortgage"),           # later
     ("kind", "revolving"),
     ("cadence", "yearly"),
     ("cadence", "custom_days"),

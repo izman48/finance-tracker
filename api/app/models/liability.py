@@ -18,10 +18,11 @@ from app.core.encryption import UserEncryptedDecimal, UserEncryptedString
 
 
 class LiabilityKind(str, Enum):
-    # Card plans and mortgages come in later stages of the liabilities spec.
     LOAN = "loan"
     FINANCE = "finance"
     BNPL = "bnpl"
+    # T-12-6 (ADR-002 section 8): wider balance, tighter APR and term.
+    MORTGAGE = "mortgage"
 
 
 class LiabilityCadence(str, Enum):

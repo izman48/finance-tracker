@@ -847,6 +847,8 @@ class CommitmentResponse(BaseModel):
     linked_liability: bool = False
     # Carries a holding's contribution (ADR-002): edit it through the holding.
     linked_holding: bool = False
+    # Of those, a mortgage's repayment (T-12-6): "Follows your mortgage".
+    linked_mortgage: bool = False
     # The audit rows the app's Keep button keeps (the pending ones), oldest first.
     keep_audit_ids: list[uuid.UUID] = []
     # While pending: the before-Claude amount / next date the figures still

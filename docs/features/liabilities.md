@@ -35,6 +35,12 @@ list (T-10-10) build on it.
   follows your mortgage…", and the commitments list sets `linked_mortgage`.
   `replaces_asset_id` also takes a legacy `mortgage` asset. Claude sees it
   only in `liabilities_total`, never in `list_holdings`.
+- **End date check (T-12-12):** when the API's `payoff_date` is more than
+  31 days after the final payment the user entered, the Wealth row adds
+  "nilu works out the last payment as {Mon YYYY}, after the final payment you
+  entered ({Mon YYYY}). Check the APR and payment." Text only. Lender names
+  (and asset and card-plan names) must be visible text: hidden or control
+  characters get 422, since they become labels Claude reads.
 - **House equity (T-12-6b, ux B7):** a mortgage may name one of the
   caller's `property` assets (`property_asset_id`; another user's or an
   unknown id is a 404, any other asset type a 422, and only a mortgage takes

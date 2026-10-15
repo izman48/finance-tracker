@@ -13,7 +13,9 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, StrictBool, model_validator
+from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field, StrictBool, model_validator
+
+from app.core.display_text import visible_text
 
 from app.schemas import PLANNED_EVENT_MAX_AMOUNT, PlanningAmount, _refuse_float
 from app.services.analytics import common
@@ -21,7 +23,7 @@ from app.services.analytics import common
 LiabilityKindName = Literal["loan", "finance", "bnpl", "mortgage"]
 LiabilityCadenceName = Literal["monthly", "four_weekly", "fortnightly", "weekly"]
 Apr = Annotated[Decimal, Field(ge=0, le=100, decimal_places=2), BeforeValidator(_refuse_float)]
-Lender = Annotated[str, Field(min_length=1, max_length=100)]
+Lender = Annotated[str, Field(min_length=1, max_length=100), AfterValidator(visible_text)]
 CommitmentChoice = Annotated[str, Field(min_length=1, max_length=36)]
 MORTGAGE_MAX_BALANCE = Decimal("10000000")
 MORTGAGE_MAX_APR = Decimal("25")

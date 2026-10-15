@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, EmailStr, Field, StrictBool, field_validator, model_serializer, model_validator
 
 from app.core.clock import uk_today
-from app.core.display_text import has_hidden_characters
+from app.core.display_text import has_hidden_characters, visible_text
 from app.models.account import AccountType
 from app.models.transaction import TransactionType
 
@@ -96,8 +96,12 @@ class AssetValuationCreate(BaseModel):
     valued_at: date | None = None
 
 
+# A holding's name: visible text (its contribution becomes a label, T-12-12).
+AssetName = Annotated[str, Field(min_length=1, max_length=100), AfterValidator(visible_text)]
+
+
 class AssetCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
+    name: AssetName
     asset_type: str = Field(default="other", pattern="^(isa|savings|investment|pension|property|crypto|other|mortgage|loan|other_liability)$")
     value: HoldingValue
     valued_at: date | None = None
@@ -108,7 +112,7 @@ class AssetCreate(BaseModel):
 
 
 class AssetUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=100)
+    name: AssetName | None = None
     asset_type: str | None = Field(
         default=None, pattern="^(isa|savings|investment|pension|property|crypto|other|mortgage|loan|other_liability)$"
     )

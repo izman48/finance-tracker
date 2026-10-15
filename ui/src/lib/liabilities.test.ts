@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { aprLabel, bothCounted, equityLine, liabilityDetail, liabilityName, linkedChip, LOANS_GROUP_LABEL, mortgageDetail, needsProperty } from './liabilities'
+import { aprLabel, bothCounted, endDateWarning, equityLine, liabilityDetail, liabilityName, linkedChip, LOANS_GROUP_LABEL, mortgageDetail, needsProperty } from './liabilities'
 import type { Asset, Liability } from '../services/api'
 
 // ux T-10-0 B.1 (Wealth: loans and finance). Synthetic fixture: A "Lender A"
@@ -129,5 +129,26 @@ describe('mortgage rows and equity', () => {
   })
   it('a legacy mortgage asset beside a liability shows the both-counted notice', () => {
     expect(bothCounted([asset('mortgage')], [loan()])).toBe(true)
+  })
+})
+
+
+// T-12-12 (T-10-7a review): the schedule nilu works out ends well after the
+// final payment the user entered, which usually means a wrong APR or payment.
+describe('end date vs computed payoff', () => {
+  it('warns when the payoff is more than a month after the final payment entered', () => {
+    // The fixture: final payment 1 Jan 2031, nilu's payoff 1 Aug 2031.
+    expect(endDateWarning(loan())).toBe(
+      'nilu works out the last payment as Aug 2031, after the final payment you entered (Jan 2031). Check the APR and payment.',
+    )
+  })
+
+  it('stays quiet within a month, with no end date, no payoff, paid off or opted out', () => {
+    expect(endDateWarning(loan({ payoff_date: '2031-01-25' }))).toBeNull()
+    expect(endDateWarning(loan({ payoff_date: '2030-06-01' }))).toBeNull()
+    expect(endDateWarning(loan({ end_date: null }))).toBeNull()
+    expect(endDateWarning(loan({ payoff_date: null }))).toBeNull()
+    expect(endDateWarning(loan({ paid_off: true }))).toBeNull()
+    expect(endDateWarning(loan({ opted_out: true }))).toBeNull()
   })
 })

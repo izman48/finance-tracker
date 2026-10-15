@@ -43,9 +43,6 @@ update the feature doc's touchpoints. Security-relevant items are marked 🔒.
   settings amounts, asset growth %, budget categories, rule packs and
   categories, commitment status and cadence).
 - No UI or API to list or revoke connected Claude clients.
-- A liability's `end_date` is stored but never compared with its schedule:
-  a payoff date well after the lender's final payment usually means a wrong
-  APR or payment, and nothing flags it yet (T-10-7a review).
 - Health returns 200 when the database is down, so the deploy smoke test
   can't catch it.
 

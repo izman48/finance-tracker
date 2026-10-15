@@ -25,3 +25,13 @@ def has_hidden_characters(text: str) -> bool:
 def without_hidden_characters(text: str) -> str:
     """For names stored before registration refused them."""
     return "".join(ch for ch in text if not _is_hidden(ch))
+
+
+def visible_text(text: str) -> str:
+    """A pydantic validator: text a person can see, nothing hidden (T-12-12).
+    Names the user types become labels Claude reads (a lender's repayment, a
+    holding's contribution, a card plan's instalment), so they follow the
+    same rule as commitment labels."""
+    if not text.strip() or has_hidden_characters(text):
+        raise ValueError("must be visible text without control or hidden characters")
+    return text

@@ -15,6 +15,7 @@ from app.core import user_crypto
 from app.core.config import get_settings
 from app.models import Account, BankConnection, Transaction, User
 from app.services import analytics_service
+from tests.clock import TODAY
 
 SECRET = get_settings().secret_key
 
@@ -258,7 +259,7 @@ class TestCountsAsPatch:
     def test_patch_sets_and_clears_the_override(self, client, db_session):
         user, ctx = _setup(client, db_session)
         acc = _account(db_session, user.id)
-        tx = _tx(db_session, acc, 500, date.today() - timedelta(days=2), merchant="Vanguard")
+        tx = _tx(db_session, acc, 500, TODAY - timedelta(days=2), merchant="Vanguard")
 
         # Mark it a transfer → the list labels it and the override is echoed.
         res = client.patch(f"/api/v1/banking/transactions/{tx.id}", json={"counts_as": "transfer"})

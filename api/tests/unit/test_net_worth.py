@@ -6,6 +6,7 @@ from app.models import Account, Asset, AssetFlow, AssetValuation, Transaction, U
 from app.models import CommitmentRule
 from app.models.commitment_rule import CommitmentStatus
 from app.services import analytics_service as svc
+from tests.clock import TODAY
 
 
 def _user(db):
@@ -62,33 +63,33 @@ class TestAssetsTotal:
     def test_latest_valuation_wins(self, db_session):
         user = _user(db_session)
         _asset(db_session, user, "S&S ISA", {
-            date.today() - timedelta(days=60): "5000",
-            date.today(): "6000",
+            TODAY - timedelta(days=60): "5000",
+            TODAY: "6000",
         })
         assert svc.assets_total(db_session, user) == Decimal("6000")
 
     def test_as_of_uses_step_function(self, db_session):
         user = _user(db_session)
         _asset(db_session, user, "S&S ISA", {
-            date.today() - timedelta(days=60): "5000",
-            date.today(): "6000",
+            TODAY - timedelta(days=60): "5000",
+            TODAY: "6000",
         })
-        as_of = date.today() - timedelta(days=30)
+        as_of = TODAY - timedelta(days=30)
         assert svc.assets_total(db_session, user, as_of=as_of) == Decimal("5000")
 
     def test_before_first_valuation_counts_zero(self, db_session):
         user = _user(db_session)
-        _asset(db_session, user, "S&S ISA", {date.today(): "6000"})
-        assert svc.assets_total(db_session, user, as_of=date.today() - timedelta(days=10)) == Decimal("0")
+        _asset(db_session, user, "S&S ISA", {TODAY: "6000"})
+        assert svc.assets_total(db_session, user, as_of=TODAY - timedelta(days=10)) == Decimal("0")
 
     def test_liability_negative_valuation_subtracts(self, db_session):
         """A liability is stored as a negative valuation and reduces the total."""
         user = _user(db_session)
-        _asset(db_session, user, "S&S ISA", {date.today(): "6000"})
+        _asset(db_session, user, "S&S ISA", {TODAY: "6000"})
         loan = Asset(user_id=user.id, name="Car loan", asset_type="loan")
         db_session.add(loan)
         db_session.flush()
-        db_session.add(AssetValuation(asset_id=loan.id, value=Decimal("-6800"), valued_at=date.today()))
+        db_session.add(AssetValuation(asset_id=loan.id, value=Decimal("-6800"), valued_at=TODAY))
         db_session.commit()
         assert svc.assets_total(db_session, user) == Decimal("-800")  # 6000 − 6800
 
@@ -308,7 +309,7 @@ class TestNetWorthProjection:
     def test_bank_cash_is_held_flat_but_assets_compound(self, db_session):
         user = _user(db_session)
         _account(db_session, user, 10000)  # bank buffer: must NOT compound
-        _asset(db_session, user, "ISA", {date.today() - timedelta(days=1): "10000"})
+        _asset(db_session, user, "ISA", {TODAY - timedelta(days=1): "10000"})
         p = svc.net_worth_projection(
             db_session, user, annual_growth_pct=Decimal("5"),
         )
@@ -319,7 +320,7 @@ class TestNetWorthProjection:
 
     def test_per_asset_growth_override_and_flat_liability(self, db_session):
         user = _user(db_session)
-        yesterday = date.today() - timedelta(days=1)
+        yesterday = TODAY - timedelta(days=1)
         fast = _asset(db_session, user, "Crypto", {yesterday: "1000"})
         fast.assumed_growth_pct = Decimal("12")
         loan = Asset(user_id=user.id, name="Car loan", asset_type="loan")
@@ -341,7 +342,7 @@ class TestNetWorthProjection:
         # £500 a month "on top" as new money. A contribution only moves cash.
         user = _user(db_session)
         _account(db_session, user, 1000)
-        isa = _asset(db_session, user, "ISA", {date.today() - timedelta(days=1): "10000"})
+        isa = _asset(db_session, user, "ISA", {TODAY - timedelta(days=1): "10000"})
         isa.monthly_contribution = Decimal("500")
         db_session.commit()
         p = svc.net_worth_projection(db_session, user, annual_growth_pct=Decimal("0"))
@@ -361,7 +362,7 @@ class TestNetWorthProjection:
                      monthly_contribution=Decimal("200"))
         db_session.add(boat)
         db_session.flush()
-        db_session.add(AssetValuation(asset_id=boat.id, value=Decimal("10000"), valued_at=date.today() - timedelta(days=1)))
+        db_session.add(AssetValuation(asset_id=boat.id, value=Decimal("10000"), valued_at=TODAY - timedelta(days=1)))
         db_session.commit()
         p = svc.net_worth_projection(db_session, user, annual_growth_pct=Decimal("0"), spending_source="average")
         assert p["contribution_basis"]["contributions_monthly"] == Decimal("0.00")
@@ -374,7 +375,7 @@ class TestNetWorthProjection:
         loan = Asset(user_id=user.id, name="Loan", asset_type="loan", monthly_contribution=Decimal("400"))
         db_session.add(loan)
         db_session.flush()
-        db_session.add(AssetValuation(asset_id=loan.id, value=Decimal("-1000"), valued_at=date.today() - timedelta(days=1)))
+        db_session.add(AssetValuation(asset_id=loan.id, value=Decimal("-1000"), valued_at=TODAY - timedelta(days=1)))
         db_session.commit()
         p = svc.net_worth_projection(db_session, user, annual_growth_pct=Decimal("0"))
         # −1000 → −600 → −200 → 0 (clamped; you stop paying a paid-off loan)
@@ -443,8 +444,8 @@ class TestNetWorthHistory:
         user = _user(db_session)
         acc = _account(db_session, user, 1000)
         # Recent activity: spent 100, received 200 (both inside this month).
-        _tx(db_session, acc, 100, date.today() - timedelta(days=1), ttype="debit")
-        _tx(db_session, acc, 200, date.today() - timedelta(days=2), ttype="credit")
+        _tx(db_session, acc, 100, TODAY - timedelta(days=1), ttype="debit")
+        _tx(db_session, acc, 200, TODAY - timedelta(days=2), ttype="credit")
 
         history = svc.net_worth_history(db_session, user, months=1)
         today_point = history[-1]
@@ -459,7 +460,7 @@ class TestNetWorthHistory:
         _account(db_session, user, 1000, name="Cur")
         card = _account(db_session, user, 250, atype="CREDIT_CARD", name="Card")
         # Spent 50 on the card yesterday: owed before = 200.
-        _tx(db_session, card, 50, date.today() - timedelta(days=1), ttype="debit")
+        _tx(db_session, card, 50, TODAY - timedelta(days=1), ttype="debit")
 
         history = svc.net_worth_history(db_session, user, months=1)
         assert history[-1]["net_worth"] == Decimal("750")  # 1000 - 250

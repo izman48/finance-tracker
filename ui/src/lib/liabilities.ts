@@ -45,14 +45,22 @@ export function bothCounted(assets: Asset[], liabilities: Liability[]): boolean 
   return liabilities.length > 0 && assets.some((a) => REPLACEABLE_ASSET_TYPES.has(a.asset_type))
 }
 
-/** The API's message when a bill that carries a loan's repayment is edited,
- *  skipped or dismissed outside the loan (409 `linked_to_liability`), or
- *  null for any other failure. */
+const LINKED_CODES = new Set(['linked_to_liability', 'linked_to_holding'])
+
+/** The API's message when a bill that carries a loan's repayment or an
+ *  investment's contribution is edited, skipped or dismissed outside it
+ *  (409 `linked_to_liability` / `linked_to_holding`), or null for any other
+ *  failure. The browser shows the API's words and adds none. */
 export function linkedEditMessage(error: unknown): string | null {
   const res = (error as { response?: { status?: number; data?: { detail?: unknown } } })?.response
   const detail = res?.data?.detail as { code?: unknown; message?: unknown } | undefined
-  if (res?.status === 409 && detail?.code === 'linked_to_liability' && typeof detail.message === 'string') {
+  if (res?.status === 409 && LINKED_CODES.has(String(detail?.code)) && typeof detail?.message === 'string') {
     return detail.message
   }
   return null
+}
+
+/** The chip on a Commitments row whose bill follows an investment (ux T-11-2). */
+export function linkedChip(c: { linked_holding?: boolean; linked_liability?: boolean }): string | null {
+  return c.linked_holding ? 'Follows your investment' : null
 }

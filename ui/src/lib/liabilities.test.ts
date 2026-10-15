@@ -71,6 +71,20 @@ describe('a linked bill edited elsewhere (ux B.5)', () => {
     expect(linkedEditMessage(err)).toBe('This payment follows your loan. Change it on Wealth, under Loans and finance.')
   })
 
+  it("an investment's bill gives the API's message too (409 linked_to_holding)", async () => {
+    const { linkedEditMessage } = await import('./liabilities')
+    const message = 'This payment follows your investment. Change it on Wealth, under Investments.'
+    const err = { response: { status: 409, data: { detail: { code: 'linked_to_holding', message } } } }
+    expect(linkedEditMessage(err)).toBe(message)
+  })
+
+  it("only an investment's bill carries the Follows your investment chip", async () => {
+    const { linkedChip } = await import('./liabilities')
+    expect(linkedChip({ linked_holding: true })).toBe('Follows your investment')
+    expect(linkedChip({ linked_holding: false, linked_liability: true })).toBeNull()
+    expect(linkedChip({})).toBeNull()
+  })
+
   it('any other failure is not a linked-bill message', async () => {
     const { linkedEditMessage } = await import('./liabilities')
     expect(linkedEditMessage({ response: { status: 409, data: { detail: 'Conflict' } } })).toBeNull()

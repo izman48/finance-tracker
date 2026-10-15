@@ -126,6 +126,9 @@ export interface Commitment {
   expected_date?: string | null
   // Income Claude raised or confirmed: not counted in savable until kept (T-08-20).
   keep?: 'pending' | 'kept' | null
+  // Carries a loan's repayment / an investment's contribution: edit it there (T-10-8, T-11-3).
+  linked_liability?: boolean
+  linked_holding?: boolean
   kept_at?: string | null
   // The audit rows the Keep button keeps, oldest first.
   keep_audit_ids?: string[]

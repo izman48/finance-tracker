@@ -135,6 +135,7 @@ def _net_worth_at(db: Session, user, points: list[date], include_investments: bo
     earliest = datetime.combine(points[0], datetime.min.time(), tzinfo=timezone.utc)
 
     bank_at: dict[date, Decimal] = {p: Decimal(0) for p in points}
+    cards_at: dict[date, Decimal] = {p: Decimal(0) for p in points}
     for acc in accounts:
         role = roles[acc.id]
         if role == AccountRole.EXCLUDED:
@@ -159,12 +160,17 @@ def _net_worth_at(db: Session, user, points: list[date], include_investments: bo
                 # In credit (overpaid) is negative owed, so net worth goes up.
                 owed_at = credit_owed(acc) + delta_after
                 bank_at[p] -= owed_at
+                # Debt counts what is owed; a card in credit is Cash, as
+                # total_owed never lets one offset debt.
+                cards_at[p] += max(owed_at, Decimal(0))
             else:
                 bank_at[p] += _d(acc.current_balance) - delta_after
 
+    holdings = asset_inputs(db, user, Decimal(0))
     out = []
     for p in points:
-        assets_at = assets_total(db, user, as_of=p, include_investments=include_investments)
+        groups = _asset_groups(holdings, p)
+        assets_at = sum(groups.values(), Decimal(0)) - (Decimal(0) if include_investments else groups["investments"])
         owed_at = liabilities_total(db, user, as_of=p)
         out.append(
             {
@@ -173,9 +179,35 @@ def _net_worth_at(db: Session, user, points: list[date], include_investments: bo
                 "assets": assets_at,
                 "liabilities": owed_at,
                 "net_worth": bank_at[p] + assets_at - owed_at,
+                # The four groups (ux T-11-2 A1) add up to net_worth:
+                # cash + property - debt, plus investments when included.
+                "cash": bank_at[p] + cards_at[p] + groups["cash"],  # bank without what cards owe
+                "investments": groups["investments"],
+                "property": groups["property"],
+                "debt": cards_at[p] + owed_at - groups["debt"],
             }
         )
     return out
+
+
+# Registry group -> net worth graph group. Savings are cash; property, other
+# and unknown kinds are Property (nothing is dropped); a legacy debt asset
+# (stored negative) is Debt, and so is any asset worth less than nothing on
+# the day, investments too (lead / sec-2, fail-safe: "Include investments"
+# never hides money owed), as on the balance sheet (Loans and finance).
+_GRAPH_GROUP = {"investments": "investments", "savings": "cash", "property": "property", "debt": "debt"}
+
+
+def _asset_groups(holdings, day: date) -> dict[str, Decimal]:
+    """Each graph group's sum of the assets' values on `day` (signed as stored)."""
+    groups = {"cash": Decimal(0), "investments": Decimal(0), "property": Decimal(0), "debt": Decimal(0)}
+    for h in holdings:
+        value = value_on(h, day)
+        if value is None:
+            continue
+        group = "debt" if value < 0 else _GRAPH_GROUP.get(h.group, "property")
+        groups[group] += value
+    return groups
 
 
 def net_worth_history(db: Session, user, months: int = 12, include_investments: bool = True) -> list[dict]:

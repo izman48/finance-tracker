@@ -93,6 +93,18 @@ label, amount, next date, pay-from account, `created`: whether nilu made the bil
 walked on the bill's monthly cycle both ways from `next_date` (which can be
 stale), at the bill's current amount.
 
+**Graph groups (T-11-6, ux T-11-2)**: every history point (and so
+position) also carries `cash` (bank accounts, cards excluded, plus manual
+savings), `investments` (owner D1 kinds), `property` (property, other and
+unknown asset types: nothing is dropped; shown as "Property & other", owner 2026-10-15) and `debt` (what cards owe, never
+offset by a card in credit, which stays in Cash, as `total_owed`;
+liabilities; legacy debt assets and any asset, investments included, worth
+less than nothing that day (lead / sec-2: "Include investments" never hides
+money owed), as the balance sheet's Loans and finance). `net_worth = cash + property −
+debt`, plus `investments` unless `include_investments=false`, when the
+figure is still returned for the "Not included" row. Groups come from the
+kind registry; tested in `test_net_worth_groups.py`.
+
 **Projection spending (T-10-15b)**: `spending_source` picks the monthly
 spending the projection subtracts: the total of active, unpaused budget
 limits (`budgets`, the same `cycle_budgets` figure as the Cashflow budget

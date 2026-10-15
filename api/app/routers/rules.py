@@ -7,6 +7,8 @@ from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
+
+from app.core.rate_limit import limit_user
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import get_settings
@@ -167,6 +169,7 @@ def preview_rule(
     db: Annotated[Session, Depends(get_db)],
 ) -> dict:
     """Dry-run: how many of my transactions would this rule match?"""
+    limit_user("rules-preview", current_user.id)  # decrypts every transaction
     error = categorization.validate_pattern(body.pattern, body.match_type)
     if error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error)
@@ -215,6 +218,7 @@ def rules_impact(
 
     Read-only. Amounts are DEK-encrypted, so every total is summed in Python.
     """
+    limit_user("rules-impact", current_user.id)  # decrypts every transaction and rule
     rules = categorization.active_rules(db, current_user.id)
     transactions = (
         db.query(Transaction)
@@ -329,6 +333,7 @@ def create_pack_bulk(
     anything is written, so a bad regex fails the whole request instead of
     leaving half a pack behind.
     """
+    limit_user("packs-bulk", current_user.id)  # backfills every transaction
     for i, rule in enumerate(body.rules):
         error = categorization.validate_pattern(rule.pattern, rule.match_type)
         if error:

@@ -29,12 +29,7 @@ update the feature doc's touchpoints. Security-relevant items are marked 🔒.
 
 ## Validation and safety
 
-- 🔒 No rate limit on `change-password` or `delete-account` (both run a
-  bcrypt check). No tests for the `reset-password` or `oauth/register`
-  throttles.
-- 🔒 No per-user rate limit on MCP-reachable reads that decrypt everything:
-  `/rules/preview`, `/rules/impact`, `GET /banking/transactions`,
-  `/rules/packs/bulk`.
+- 🔒 No tests for the `reset-password` or `oauth/register` throttles.
 - 🔒 Shared rule-pack codes (`token_urlsafe(6)`) are not rate limited on
   preview or import; import doesn't re-run `validate_pattern`.
 - 🔒 The main site has no Content-Security-Policy (only extra static sites

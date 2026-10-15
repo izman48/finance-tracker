@@ -3,7 +3,9 @@
 ## Health
 
 `GET /api/v1/health` (`routers/health.py`) runs `SELECT 1` and returns
-`{status: healthy|degraded, database}`, always with HTTP 200.
+`{status: healthy|degraded, database}`: HTTP 200 when the database answers,
+503 with the same fixed body (no driver text, host or port) when it doesn't
+(T-12-10b).
 `deploy/smoke.sh` calls it after every deploy.
 
 ## Local and production stack

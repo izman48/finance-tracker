@@ -6,7 +6,7 @@ user ticks it; the previous release ignores the column. The downgrade drops
 it (rollback: downgrade first, then revert).
 
 Revision ID: f8c0e2a4b6d9
-Revises: c3e5a7b9d1f4
+Revises: e5f7a9b1c3d5
 Create Date: 2026-10-15
 """
 from typing import Sequence, Union
@@ -15,7 +15,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "f8c0e2a4b6d9"
-down_revision: Union[str, None] = "c3e5a7b9d1f4"
+down_revision: Union[str, None] = "e5f7a9b1c3d5"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

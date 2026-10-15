@@ -21,6 +21,7 @@ compound projection with every assumption echoed back.
 | `POST /api/v1/assets` | `CurrentUser` (at most 100 per user, 409 past that; ADR-002) |
 | `PATCH /api/v1/assets/{asset_id}` | `CurrentUser` (growth %, monthly contribution) |
 | `DELETE /api/v1/assets/{asset_id}` | `CurrentUser` |
+| `GET /api/v1/holdings` | `CurrentUserOrMcpRead` (T-11-7: Claude's `list_holdings`, see claude-connector.md) |
 | `PUT /api/v1/assets/{asset_id}/contribution` | `CurrentUser` (opt in or edit; investments only) |
 | `DELETE /api/v1/assets/{asset_id}/contribution` | `CurrentUser` (opt out) |
 | `POST /api/v1/assets/{asset_id}/valuations` | `CurrentUser` (same date overwrites) |

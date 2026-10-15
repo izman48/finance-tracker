@@ -22,6 +22,8 @@ from .commitments import committed_window_end, next_payday
 from app.services.balance_sign import credit_owed as credit_owed_for
 
 from .common import _d, _load, _today, resolve_roles
+from app.services.holdings import listing as holdings_listing
+
 from .net_worth import assets_total, liabilities_total, total_owed
 from .planned import planned_events
 from .planned_matching import planned_states
@@ -141,6 +143,8 @@ def get_summary(db: Session, user) -> dict:
         "savings_total": savings_total,
         "assets_total": manual_assets,
         "liabilities_total": liabilities,
+        # Investment kinds only (owner D1), as net worth's Investments (T-11-7).
+        "investments_total": holdings_listing.investments_total(db, user),
         "total_owed": total_owed(credit_owed, liabilities),
         "net_worth": available_cash + savings_total + manual_assets + credit_in_favour - credit_owed - liabilities,
         "committed_before_payday": committed,

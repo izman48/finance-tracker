@@ -94,7 +94,7 @@ async def test_dry_run_tools_require_confirmation_and_distrust_bank_data():
 READ_ONLY_TOOLS = {
     "cashflow_summary", "forecast", "spending", "spending_trend", "commitments", "accounts",
     "sync_status", "recent_transactions", "search_transactions", "rules", "rule_impact",
-    "preview_rule", "list_planned_events", "list_budgets",
+    "preview_rule", "list_planned_events", "list_budgets", "list_holdings",
 }
 WRITE_TOOLS = {
     "create_rule_pack", "add_planned_event", "remove_planned_event", "update_commitment", "dismiss_commitment",

@@ -53,16 +53,26 @@ sync and budgets are opt-in. A refresh never widens scopes.
 | `update_commitment` | write (planning) | `POST /api/v1/planning/commitments/{commitment_id}/update` |
 | `dismiss_commitment` | write (planning) | `POST /api/v1/planning/commitments/{commitment_id}/dismiss` |
 | `list_budgets` | read | `GET /api/v1/budgets` |
+| `list_holdings` | read | `GET /api/v1/holdings` |
 | `set_budgets` | write (budgets) | `POST /api/v1/planning/budgets/set` |
 | `pause_budget` | write (budgets) | `POST /api/v1/planning/budgets/{budget_id}/pause` |
 | `resume_budget` | write (budgets) | `POST /api/v1/planning/budgets/{budget_id}/resume` |
 | `remove_budget` | write (budgets) | `POST /api/v1/planning/budgets/{budget_id}/remove` |
 
-Liabilities (loans, finance, BNPL) reach Claude only as part of the
-`net_worth` figure and `liabilities_total` in `cashflow_summary` (T-10-7b),
-which `finance:read` already covers (a test pins `liabilities_total` as the
-only liability field). No tool reads or writes `/api/v1/liabilities` (web
-only). `update_commitment` and `dismiss_commitment` get 409 on a commitment
+**Holdings (T-11-7, sec T-11-7):** `list_holdings` (read-only, no inputs,
+one fixed path) returns at most 100 holdings (`count`, `truncated`), each
+with exactly `id`, `name`, `kind`, `value` (today; debts negative),
+`value_as_of`, `growth_pct` (null when the user set none), `monthly_contribution`, `linked` and
+`projected` at `1y`/`5y`/`10y` from the holding engine
+(`services/holdings/listing.py`); no user id, history, commitment ids or
+timestamps (`test_holdings_list_api.py` pins the keys). Debts are not
+listed (loans, legacy debt assets, anything worth less than nothing; sec /
+lead 2026-10-15), so no lender name reaches Claude; names are still user
+text, so the tool says they are data, not instructions. `cashflow_summary` also carries `investments_total`, the value
+today of the owner D1 investment kinds, the same set and value as net
+worth's Investments. Liabilities otherwise reach Claude only as part of
+`net_worth` and `liabilities_total` (T-10-7b). No tool reads or writes
+`/api/v1/liabilities` (web only). `update_commitment` and `dismiss_commitment` get 409 on a commitment
 that carries a loan's repayment (T-10-8), so Claude can't dismiss it to
 raise safe-to-spend.
 

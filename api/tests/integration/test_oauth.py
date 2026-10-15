@@ -372,6 +372,7 @@ def test_mcp_token_reads_encrypted_data(client):
         ("get", "/api/v1/banking/transactions"),
         ("get", "/api/v1/rules"),
         ("get", "/api/v1/rules/impact"),
+        ("get", "/api/v1/holdings"),
     ],
 )
 def test_mcp_token_reaches_the_read_allowlist(client, method, path):

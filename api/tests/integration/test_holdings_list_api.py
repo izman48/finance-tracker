@@ -145,3 +145,14 @@ def test_no_investments_is_a_zero_total(world):
 @pytest.fixture
 def bob(client, db_session):
     return World(client, db_session, email="claude-holdings-bob@example.com")
+
+
+def test_a_negative_investment_is_debt_not_listed_or_in_the_total(world):
+    # Lead decision (sec-2, fail-safe): an investment worth less than nothing
+    # is Debt, as in net worth's groups.
+    _isa(world, value="5000")
+    world.client.post(f"{API}/assets", json={"name": "Margin account", "asset_type": "investment", "value": "-300"},
+                      headers=_bearer(world.web))
+    body = _list(world)
+    assert [h["name"] for h in body["holdings"]] == ["Example ISA"] and body["count"] == 1
+    assert Decimal(world.summary()["investments_total"]) == Decimal("5000.00")

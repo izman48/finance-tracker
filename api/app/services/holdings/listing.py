@@ -45,11 +45,12 @@ def list_holdings(db: Session, user) -> dict:
 
 
 def investments_total(db: Session, user) -> Decimal:
-    """Value today of the investment kinds (owner D1): the same set and the
-    same value as net worth's Investments and the "Include investments" box."""
+    """Value today of the investment kinds (owner D1) that are worth
+    something: the same figure as net worth's Investments group."""
     today = _today()
     values = (value_on(h, today) for h in asset_inputs(db, user, Decimal(0), today) if h.is_investment)
-    return sum((v for v in values if v is not None), Decimal(0)).quantize(PENNY)
+    # A negative investment is Debt in net worth's groups (lead, fail-safe).
+    return sum((v for v in values if v is not None and v > 0), Decimal(0)).quantize(PENNY)
 
 
 def _listed(h: HoldingInput, today: date) -> bool:

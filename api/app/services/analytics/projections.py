@@ -275,22 +275,22 @@ def net_worth_projection(
         value = cash + invested + assets_value - owed
         if target_amount is not None and target_date is None and value >= target_amount:
             target_date = when
-        # Chart points: up to the target (plus a little context past it), or a
-        # 10-year default when no target is set / it's far away.
-        months_wanted = DEFAULT_CHART_MONTHS
-        if target_date is not None:
-            months_wanted = min(MAX_MONTHS, (target_date.year - today.year) * 12 + (target_date.month - today.month) + 6)
-        if m <= months_wanted:
-            timeline.append({
-                "date": when,
-                "value": _round2(value),
-                "cash": _round2(cash),
-                "invested": _round2(invested),
-                "assets": _round2(assets_value),
-                "liabilities": _round2(owed),
-            })
-        elif target_amount is None or target_date is not None:
+        # Every month is kept while the target is still being searched for,
+        # then trimmed below, so the line never skips from month 120 to the
+        # target month.
+        timeline.append({
+            "date": when,
+            "value": _round2(value),
+            "cash": _round2(cash),
+            "invested": _round2(invested),
+            "assets": _round2(assets_value),
+            "liabilities": _round2(owed),
+        })
+        if m >= _chart_months(today, target_date) and (target_amount is None or target_date is not None):
             break
+    # Chart points: up to the target (plus a little context past it), or a
+    # 10-year default when no target is set or it is never reached.
+    del timeline[_chart_months(today, target_date) + 1:]
 
     return {
         "current_net_worth": _round2(current),
@@ -314,6 +314,14 @@ def net_worth_projection(
         "as_of": today,
         "timeline": timeline,
     }
+
+
+def _chart_months(today: date, target_date: date | None) -> int:
+    """How many monthly points the chart gets after today."""
+    if target_date is None:
+        return DEFAULT_CHART_MONTHS
+    to_target = (target_date.year - today.year) * 12 + (target_date.month - today.month)
+    return min(MAX_MONTHS, to_target + 6)
 
 
 def _spending_leg(

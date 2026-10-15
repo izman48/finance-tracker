@@ -106,7 +106,7 @@ figure is still returned for the "Not included" row. Groups come from the
 kind registry; tested in `test_net_worth_groups.py`.
 UI (T-11-6b, ux T-11-2): the "Over time" card draws Net worth alone by
 default; under it, `components/wealth/NetWorthKey.tsx` lists Cash,
-Investments, Property and Debt (a group at 0 is left out; Debt shows
+Investments, Property & other and Debt (a group at 0 is left out; Debt shows
 whenever anything is owed) with their figures, each a switch for its line
 (`aria-pressed`, announced), plus "Include investments in net worth", which
 reloads history and the projection with `include_investments=false` and

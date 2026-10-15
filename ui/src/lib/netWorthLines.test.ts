@@ -13,7 +13,7 @@ describe('net worth key rows (N-1, N-5, N-6, N-7)', () => {
   it('lists Cash, Investments, Property, Debt with their figures, Debt as minus', () => {
     expect(keyRows(point, true).map((r) => [r.key, r.label, r.value])).toEqual([
       ['cash', 'Cash', 10900], ['investments', 'Investments', 28000],
-      ['property', 'Property', 250000], ['debt', 'Debt', -190000],
+      ['property', 'Property & other', 250000], ['debt', 'Debt', -190000],
     ])
   })
 
@@ -31,7 +31,7 @@ describe('net worth key rows (N-1, N-5, N-6, N-7)', () => {
   })
 
   it('has the four groups in the spec order', () => {
-    expect(GROUPS.map((g) => g.label)).toEqual(['Cash', 'Investments', 'Property', 'Debt'])
+    expect(GROUPS.map((g) => g.label)).toEqual(['Cash', 'Investments', 'Property & other', 'Debt'])
   })
 })
 
@@ -63,7 +63,22 @@ describe('chart rows', () => {
   it('carry net worth and every group, Debt below zero, whatever is shown (N-2)', () => {
     const [row] = chartRows([point], (d) => d)
     expect(row).toEqual({
-      date: '2026-10-15', 'Net worth': 98900, Cash: 10900, Investments: 28000, Property: 250000, Debt: -190000,
+      date: '2026-10-15', 'Net worth': 98900, Cash: 10900, Investments: 28000, 'Property & other': 250000, Debt: -190000,
     })
+  })
+})
+
+describe('the key adds up (ux invariant, owner 2026-10-15)', () => {
+  it('Cash + Investments + Property & other − Debt = Net worth to the penny', () => {
+    const p = { ...point, cash: '10900.37', investments: '28000.01', property: '250000.10', debt: '190000.48',
+      net_worth: '98900.00' }
+    const sum = keyRows(p, true).reduce((s, r) => s + Math.round(r.value * 100), 0)
+    expect(sum).toBe(Math.round(Number(p.net_worth) * 100))
+  })
+
+  it('without investments, the included rows add up to the renamed headline', () => {
+    const p = { ...point, net_worth: '70900.00' }
+    const sum = keyRows(p, false).filter((r) => r.included).reduce((s, r) => s + Math.round(r.value * 100), 0)
+    expect(sum).toBe(7090000)
   })
 })

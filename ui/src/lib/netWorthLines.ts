@@ -11,7 +11,7 @@ export type GroupKey = 'cash' | 'investments' | 'property' | 'debt'
 export const GROUPS: { key: GroupKey; label: string; colour: string }[] = [
   { key: 'cash', label: 'Cash', colour: '#34D399' },
   { key: 'investments', label: 'Investments', colour: '#A78BFA' },
-  { key: 'property', label: 'Property', colour: '#F472B6' },
+  { key: 'property', label: 'Property & other', colour: '#F472B6' },
   { key: 'debt', label: 'Debt', colour: '#FBBF24' },
 ]
 export const NET_WORTH_COLOUR = '#38BDF8'

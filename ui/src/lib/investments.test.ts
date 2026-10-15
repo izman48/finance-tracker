@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   answerSentence, contributionOf, graphStateNotes, inputsLine, investmentLine, isInvestment, investmentsTotal,
-  LOOK_AHEAD, axisLabel, chartPoints, graphDefaultGrowth, lastValueLine, parseValueToday, tablePoints, type InvestmentGraph,
+  LOOK_AHEAD, axisLabel, chartPoints, wealthFormLink, graphDefaultGrowth, lastValueLine, parseValueToday, tablePoints, type InvestmentGraph,
 } from './investments'
 import type { Asset } from '../services/api'
 
@@ -169,5 +169,13 @@ describe('the Update value modal', () => {
     expect(parseValueToday('0')).toBe(0)
     expect(parseValueToday(' 18,500.25 ')).toBe(18500.25)
     for (const bad of ['', '-1', 'abc', '10000000.01']) expect(parseValueToday(bad)).toBeNull()
+  })
+})
+
+describe('links into Wealth\'s investment form (ux on #217)', () => {
+  it('edit one holding, or add an investment', () => {
+    expect(wealthFormLink({ edit: 'a1' })).toBe('/networth?edit=a1')
+    expect(wealthFormLink({ edit: 'a/b?c' })).toBe('/networth?edit=a%2Fb%3Fc')
+    expect(wealthFormLink({ add: true })).toBe('/networth?add=investment')
   })
 })

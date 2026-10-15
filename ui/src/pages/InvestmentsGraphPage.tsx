@@ -4,7 +4,7 @@ import { ArrowLeft } from 'lucide-react'
 import axios from 'axios'
 import { holdingsAPI } from '../services/api'
 import InvestmentGraphView, { type InvestmentGraphViewProps } from '../components/wealth/InvestmentGraphView'
-import { graphDefaultGrowth, type InvestmentGraph } from '../lib/investments'
+import { graphDefaultGrowth, wealthFormLink, type InvestmentGraph } from '../lib/investments'
 
 /** Wealth > Investments graph (`/networth/investments`, ux T-11-2 flow 3).
  *  The chosen holding is in the URL (`?holding=<id>`), so Back and reload
@@ -67,8 +67,8 @@ export default function InvestmentsGraphPage() {
         onMonths={setMonths}
         onHolding={chooseHolding}
         onRetry={() => { void load(); void loadOptions() }}
-        onAdd={() => navigate('/networth')}
-        onEditGrowth={() => navigate('/networth')}
+        onAdd={() => navigate(wealthFormLink({ add: true }))}
+        onEditGrowth={(id) => navigate(wealthFormLink({ edit: id }))}
       />
     </div>
   )

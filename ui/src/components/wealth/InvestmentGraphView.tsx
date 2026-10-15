@@ -123,7 +123,8 @@ function Choices(p: InvestmentGraphViewProps) {
       </fieldset>
       <fieldset>
         <legend className="text-sm text-slate-300 mb-1.5">Which investment</legend>
-        <div className="flex gap-2 overflow-x-auto pb-1">
+        {/* Padding so the focus outline isn't clipped by the scroll box (ux on #217). */}
+        <div className="flex gap-2 overflow-x-auto p-1 -m-1">
           <label className={`${seg(p.holdingId === null)} shrink-0`}>
             <input type="radio" name="which-investment" value="" checked={p.holdingId === null}
               onChange={() => p.onHolding(null)} className="sr-only" />
@@ -154,8 +155,7 @@ function Chart({ points, today }: { points: ChartPoint[]; today: string }) {
         <XAxis dataKey="t" type="number" scale="time" domain={[first, last]} ticks={ticks}
           tickFormatter={(t) => axisLabel(Number(t), today)} fontSize={12} tickLine={false} axisLine={false} stroke="#94A3B8" />
         <YAxis tickFormatter={(v) => gbp0(v)} width={80} fontSize={12} tickLine={false} axisLine={false} stroke="#94A3B8" />
-        <Tooltip labelFormatter={(t) => new Date(Number(t)).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-          formatter={(v) => gbp(Number(v))} />
+        <Tooltip content={<GraphTooltip />} />
         <ReferenceLine x={now} stroke="#94A3B8" strokeDasharray="2 2" label={{ value: 'Today', position: 'insideTop', fontSize: 11, fill: '#94A3B8' }} />
         <Line type="linear" dataKey="history" name="Worth" stroke={WORTH} strokeWidth={2.5} connectNulls isAnimationActive={false}
           dot={(props: { cx?: number; cy?: number; payload?: ChartPoint; index?: number }) =>
@@ -166,5 +166,22 @@ function Chart({ points, today }: { points: ChartPoint[]; today: string }) {
         <Line type="linear" dataKey="paidIn" name="Paid in" stroke={PAID_IN} strokeWidth={1.5} dot={false} isAnimationActive={false} />
       </ComposedChart>
     </ResponsiveContainer>
+  )
+}
+
+/** The Over time card's tooltip style (ux on #217): the date, then each shown line. */
+function GraphTooltip({ active, payload, label }: { active?: boolean; payload?: { name?: string; value?: number; color?: string }[]; label?: number }) {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="bg-card2 border border-white/10 rounded-xl shadow-pop p-3 text-sm">
+      <div className="font-medium text-slate-200">
+        {new Date(Number(label)).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+      </div>
+      {payload.filter((p) => p.value != null).map((p) => (
+        <div key={p.name} className="flex justify-between gap-4 text-slate-300">
+          <span>{p.name}</span><span className="tnum">{gbp(Number(p.value))}</span>
+        </div>
+      ))}
+    </div>
   )
 }

@@ -22,6 +22,11 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/assets", tags=["assets"])
 
+# Every net worth, projection and graph read projects each holding month by
+# month, so the count is bounded at create (ADR-002 section 6). A
+# check-then-act bound: nothing downstream relies on it.
+HOLDINGS_PER_USER_MAX = 100
+
 
 def _own_asset(db: Session, user_id, asset_id: str) -> Asset:
     asset = (
@@ -52,6 +57,12 @@ def create_asset(
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
 ) -> Asset:
+    held = db.query(Asset).filter(Asset.user_id == current_user.id).count()
+    if held >= HOLDINGS_PER_USER_MAX:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"You can track up to {HOLDINGS_PER_USER_MAX} holdings. Delete one to add another.",
+        )
     asset = Asset(
         user_id=current_user.id,
         name=body.name.strip(),

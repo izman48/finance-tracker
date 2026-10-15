@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { aprLabel, bothCounted, liabilityDetail, LOANS_GROUP_LABEL } from './liabilities'
+import { aprLabel, bothCounted, equityLine, liabilityDetail, liabilityName, linkedChip, LOANS_GROUP_LABEL, mortgageDetail, needsProperty } from './liabilities'
 import type { Asset, Liability } from '../services/api'
 
 // ux T-10-0 B.1 (Wealth: loans and finance). Synthetic fixture: A "Lender A"
@@ -58,8 +58,7 @@ describe('both-counted notice (A8, sec)', () => {
     expect(bothCounted([asset('other_liability')], [loan()])).toBe(true)
   })
 
-  it('not for a mortgage, nor without a liability', () => {
-    expect(bothCounted([asset('mortgage')], [loan()])).toBe(false)
+  it('not without a liability (a mortgage asset counts too since T-12-6: see below)', () => {
     expect(bothCounted([asset('loan')], [])).toBe(false)
   })
 })
@@ -89,5 +88,46 @@ describe('a linked bill edited elsewhere (ux B.5)', () => {
     const { linkedEditMessage } = await import('./liabilities')
     expect(linkedEditMessage({ response: { status: 409, data: { detail: 'Conflict' } } })).toBeNull()
     expect(linkedEditMessage(new Error('offline'))).toBeNull()
+  })
+})
+
+// T-12-7b part 2 (ux T-12-1 "Mortgage and equity"). Synthetic: Sample Bank,
+// £120,000 at 4.5%, £780 a month; Sample House £250,000.
+describe('mortgage rows and equity', () => {
+  const mortgage = (over: Partial<Liability> = {}) => loan({
+    kind: 'mortgage', lender: 'Sample Bank', balance: '120000.00', current_balance: '120000.00', apr: '4.50',
+    payment: '780.00', end_date: null, payoff_date: '2051-11-01', property_asset_id: 'h1', ...over,
+  })
+  const house = { id: 'h1', name: 'Sample House', asset_type: 'property' } as Asset
+
+  it('the row is named "{lender} mortgage"; a loan keeps its lender', () => {
+    expect(liabilityName(mortgage())).toBe('Sample Bank mortgage')
+    expect(liabilityName(loan())).toBe('Lender A')
+  })
+  it('line 2: kind, APR, payment, final payment month, and the property it is for', () => {
+    expect(mortgageDetail(mortgage(), [house])).toBe('Mortgage · 4.5% APR · £780 a month · final payment Nov 2051 · for Sample House')
+  })
+  it('no property chosen: line 2 stops before it, and the row offers Choose a property', () => {
+    expect(mortgageDetail(mortgage({ property_asset_id: null }), [house])).toBe('Mortgage · 4.5% APR · £780 a month · final payment Nov 2051')
+    expect(needsProperty(mortgage({ property_asset_id: null }))).toBe(true)
+    expect(needsProperty(mortgage())).toBe(false)
+    expect(needsProperty(loan())).toBe(false)
+  })
+  it('the equity line and its spoken form, from the API figures; negative keeps its minus', () => {
+    expect(equityLine({ ...house, value_today: '250000.00', mortgage_owed: '120000.00', equity: '130000.00' } as Asset)).toEqual({
+      text: 'Value £250,000 − mortgage £120,000 = equity £130,000',
+      label: 'Value £250,000 minus mortgage £120,000 equals equity £130,000',
+      figure: '£130,000',
+    })
+    expect(equityLine({ ...house, value_today: '250000.00', mortgage_owed: '255000.00', equity: '-5000.00' } as Asset)!.text)
+      .toBe('Value £250,000 − mortgage £255,000 = equity −£5,000')
+    expect(equityLine({ ...house, value_today: '250000.00', mortgage_owed: null, equity: null } as Asset)).toBeNull()
+  })
+  it('the Commitments chip for a mortgage payment', () => {
+    expect(linkedChip({ linked_liability: true, linked_mortgage: true })).toBe('Follows your mortgage')
+    expect(linkedChip({ linked_liability: true, linked_mortgage: false })).toBeNull()
+  })
+  it('a legacy mortgage asset beside a liability shows the both-counted notice', () => {
+    expect(bothCounted([asset('mortgage')], [loan()])).toBe(true)
   })
 })

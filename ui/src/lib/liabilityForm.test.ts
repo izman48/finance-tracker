@@ -186,3 +186,42 @@ describe('focus once the list has reloaded (ux on #190)', () => {
     expect(focusAfterReload(null)).toBe('wealth-add')
   })
 })
+
+// T-12-7b part 2 (ux T-12-1 "Mortgage and equity"; sec bounds 10m, 25%, 40 years).
+describe('a mortgage', () => {
+  const mortgage = () => ({ ...filled(), kind: 'mortgage' as const, lender: 'Sample Bank', balance: '120000.00', apr: '4.5', payment: '780.00' })
+
+  it('sends its property, or null for none', async () => {
+    const c = client()
+    await saveLiability(c, { ...mortgage(), property_asset_id: 'h1' }, null)
+    expect(c.create).toHaveBeenCalledWith(expect.objectContaining({ kind: 'mortgage', property_asset_id: 'h1' }))
+    await saveLiability(c, { ...mortgage(), property_asset_id: '' }, 'l-a')
+    expect(c.update).toHaveBeenCalledWith('l-a', expect.objectContaining({ property_asset_id: null }))
+  })
+  it('turning a mortgage into a loan clears its property; a plain loan sends no property', async () => {
+    const c = client()
+    await saveLiability(c, { ...filled(), property_asset_id: 'h1' }, 'l-a')
+    expect(c.update).toHaveBeenCalledWith('l-a', expect.objectContaining({ kind: 'loan', property_asset_id: null }))
+    await saveLiability(c, filled(), null)
+    expect(Object.keys((c.create as ReturnType<typeof vi.fn>).mock.calls[0][0])).not.toContain('property_asset_id')
+  })
+  it('the edit form starts from the stored property', () => {
+    expect(formFor(loan({ kind: 'mortgage', property_asset_id: 'h1' })).property_asset_id).toBe('h1')
+    expect(formFor(loan()).property_asset_id).toBe('')
+  })
+  it("the server's mortgage bounds land under their fields in mortgage words", async () => {
+    const out = await saveLiability(client({ create: vi.fn(() => fail(422, [
+      { loc: ['body', 'balance'], msg: 'Input should be less than or equal to 10000000' },
+      { loc: ['body'], msg: "Value error, A mortgage's APR can be at most 25%" },
+    ])) }), mortgage(), null)
+    expect(out).toEqual({ kind: 'invalid', errors: {
+      balance: 'Enter an amount above £0 and up to £10,000,000, like 120000.00.',
+      apr: "A mortgage's APR can be at most 25%.",
+    } })
+  })
+  it('a 40-year refusal is shown as the server says it', async () => {
+    const detail = 'At this payment the mortgage would take more than 40 years to clear. Increase the payment.'
+    expect(await saveLiability(client({ create: vi.fn(() => fail(422, detail)) }), mortgage(), null))
+      .toEqual({ kind: 'message', message: detail })
+  })
+})

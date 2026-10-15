@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import LiabilityRow, { LoansLoadError, BothCountedNotice } from './LiabilityRow'
-import type { Liability } from '../../services/api'
+import type { Asset, Liability } from '../../services/api'
 
 // ux T-10-0 B.1/B.2 (Wealth: loans and finance). Synthetic fixture.
 const loan = (over: Partial<Liability> = {}): Liability => ({
@@ -55,5 +55,31 @@ describe('BothCountedNotice (L-8)', () => {
   it('explains that both count', () => {
     const t = text(renderToStaticMarkup(<BothCountedNotice />))
     expect(t).toBe('You have a loan entered as a balance sheet item and a loan in this list. Both count towards what you owe. If they are the same debt, replace the old entry.')
+  })
+})
+
+// T-12-7b part 2 (ux T-12-1 "Mortgage and equity").
+describe('a mortgage row', () => {
+  const house = { id: 'h1', name: 'Sample House', asset_type: 'property' } as Asset
+  const mortgage = (over: Partial<Liability> = {}) => loan({
+    kind: 'mortgage', lender: 'Sample Bank', balance: '120000.00', current_balance: '120000.00', apr: '4.50',
+    payment: '780.00', end_date: null, payoff_date: '2051-11-01', property_asset_id: 'h1',
+    linked_commitment: { id: 'c1', label: 'Sample Bank mortgage payment' }, ...over,
+  })
+  const row = (l: Liability) => renderToStaticMarkup(<LiabilityRow liability={l} properties={[house]} onChooseProperty={() => {}} />)
+
+  it('"{lender} mortgage", its line 2 with the property, Bill linked, and the debt', () => {
+    const h = row(mortgage())
+    const t = text(h)
+    expect(t).toContain('Sample Bank mortgage')
+    expect(t).toContain('Mortgage · 4.5% APR · £780 a month · final payment Nov 2051 · for Sample House')
+    expect(h).toMatch(/class="chip-info[^"]*"[^>]*>Bill linked</)
+    expect(t).toContain('−£120,000')
+    expect(t).not.toContain('Choose a property')
+  })
+  it('no property: a separate Choose a property button, never inside the row button', () => {
+    const h = row(mortgage({ property_asset_id: null }))
+    expect(text(h)).toContain('Choose a property')
+    expect(h).not.toMatch(/<button[^>]*>(?:(?!<\/button>).)*<button/)
   })
 })

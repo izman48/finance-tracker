@@ -16,7 +16,7 @@ import { BankStatus, CashflowSummary, SummaryAccount } from '../types'
 import { ASSET_TYPE_LABEL } from '../lib/assets'
 import { gbp0 as gbp, timeAgo } from '../lib/format'
 import { settingsAccountFor } from '../lib/credit'
-import { bothCounted } from '../lib/liabilities'
+import { bothCounted, equityLine, needsProperty, REPLACEABLE_ASSET_TYPES } from '../lib/liabilities'
 import { accountGroup, assetGroup, BALANCE_SHEET_GROUPS } from '../lib/balanceSheet'
 import CardRow from '../components/wealth/CardRow'
 import LiabilityRow, { BothCountedNotice, LoansLoadError } from '../components/wealth/LiabilityRow'
@@ -74,7 +74,16 @@ interface Row {
   card?: SummaryAccount
   /** An investment (owner D1): rendered by InvestmentRow (T-11-5). */
   investment?: Asset
+  /** A property with a mortgage (T-12-7b): the API's equity, display only. */
+  equity?: { text: string; label: string; figure: string }
   onClick: () => void
+}
+
+/** Line 2 of a manual asset: its type, and for a property its growth (ux T-12-1). */
+function assetSub(asset: Asset): string {
+  const label = ASSET_TYPE_LABEL[asset.asset_type] ?? asset.asset_type
+  if (asset.asset_type !== 'property' || asset.assumed_growth_pct == null) return label
+  return `${label} · ${Number(asset.assumed_growth_pct)}% a year`
 }
 
 function ageLabel(days: number) {
@@ -128,6 +137,8 @@ export default function NetWorthPage() {
   // The loan form: 'add', a liability to edit, or closed.
   const [loanForm, setLoanForm] = useState<'add' | Liability | null>(null)
   const [loanFormFromChip, setLoanFormFromChip] = useState(false)
+  // Opened from a mortgage's "Choose a property" (T-12-7b): start on Property.
+  const [loanFormProperty, setLoanFormProperty] = useState(false)
   // What to focus once the reloaded list has rendered: the saved row (ux
   // L-10), or the Add button after a delete (ux on #190).
   const [pendingFocus, setPendingFocus] = useState<string | null>(null)
@@ -486,10 +497,11 @@ export default function NetWorthPage() {
       key: `asset-${asset.id}`,
       group: assetGroup(asset.asset_type, value),
       name: asset.name,
-      sub: ASSET_TYPE_LABEL[asset.asset_type] ?? asset.asset_type,
+      sub: assetSub(asset),
       value,
       live: false,
       ageDays,
+      equity: equityLine(asset) ?? undefined,
       investment: isInvestment(asset.asset_type) && value >= 0 ? asset : undefined,
       onClick: () => setUpdating(asset),
     })
@@ -497,6 +509,7 @@ export default function NetWorthPage() {
 
   const providers = Array.from(new Set((bankStatus?.connections ?? []).map((c) => c.provider_name)))
   const loans = liabilities ?? []
+  const properties = assets.filter((a) => a.asset_type === 'property')
   const hasAnything = rows.length > 0 || loans.length > 0 || liabilitiesFailed
   // What the API says is owed on liabilities: the page never sums them.
   const liabilitiesTotal = Number(position?.liabilities ?? summary?.liabilities_total ?? 0)
@@ -807,7 +820,9 @@ export default function NetWorthPage() {
                 {isLoans && bothCounted(assets, loans) && <BothCountedNotice onReplace={() => setLoanForm('add')} />}
                 {loansFailed && <LoansLoadError onRetry={loadLiabilities} />}
                 {loanRows.map((l) => (
-                  <LiabilityRow key={`liability-${l.id}`} liability={l} onOpen={(fromChip) => { setLoanFormFromChip(fromChip); setLoanForm(l) }} />
+                  <LiabilityRow key={`liability-${l.id}`} liability={l} properties={properties}
+                    onOpen={(fromChip) => { setLoanFormFromChip(fromChip); setLoanFormProperty(false); setLoanForm(l) }}
+                    onChooseProperty={needsProperty(l) ? () => { setLoanFormFromChip(false); setLoanFormProperty(true); setLoanForm(l) } : undefined} />
                 ))}
                 {groupRows.map((row) => row.card ? (
                   <CardRow key={row.key} account={row.card} onOpen={row.onClick} />
@@ -825,6 +840,15 @@ export default function NetWorthPage() {
                         {row.name}
                       </span>
                       <span className="block text-xs text-slate-400 truncate">{row.sub}</span>
+                      {row.equity && (
+                        <span className="block text-xs text-slate-300">
+                          <span aria-hidden="true">
+                            {row.equity.text.slice(0, -row.equity.figure.length)}
+                            <span className="font-semibold">{row.equity.figure}</span>
+                          </span>
+                          <span className="sr-only">{row.equity.label}</span>
+                        </span>
+                      )}
                     </span>
                     {row.live ? (
                       <span className="chip shrink-0" title={EXPLAIN.liveBalance}>live</span>
@@ -959,7 +983,9 @@ export default function NetWorthPage() {
       {loanForm && (
         <LiabilityForm
           liability={loanForm === 'add' ? null : loanForm}
-          replaceable={assets.filter((a) => a.asset_type === 'loan' || a.asset_type === 'other_liability')}
+          replaceable={assets.filter((a) => REPLACEABLE_ASSET_TYPES.has(a.asset_type))}
+          properties={properties}
+          focusProperty={loanForm !== 'add' && loanFormProperty}
           today={new Date().toLocaleDateString('en-CA')}
           focusBalance={loanForm !== 'add' && loanFormFromChip}
           onClose={() => setLoanForm(null)}

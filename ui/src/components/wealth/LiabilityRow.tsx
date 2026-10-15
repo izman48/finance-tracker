@@ -1,22 +1,27 @@
-import type { Liability } from '../../services/api'
+import type { Asset, Liability } from '../../services/api'
 import { gbp0 } from '../../lib/format'
-import { liabilityDetail } from '../../lib/liabilities'
+import { liabilityDetail, liabilityName, mortgageDetail, needsProperty } from '../../lib/liabilities'
 
 /** One loan, finance or BNPL row in the balance sheet's "Loans and finance"
  *  group (ux T-10-0 B.1). Every figure is the API's, only formatted; the
  *  lender renders as text. A button: its text is its accessible name. */
-export default function LiabilityRow({ liability, onOpen }: {
+export default function LiabilityRow({ liability, onOpen, properties = [], onChooseProperty }: {
   liability: Liability
   /** `fromChip`: the "Update balance" chip was pressed, so start on Balance. */
   onOpen?: (fromChip: boolean) => void
+  /** For a mortgage's line 2 (T-12-7b): the user's property assets. */
+  properties?: Asset[]
+  /** A mortgage with no property: "Choose a property" opens the form. */
+  onChooseProperty?: () => void
 }) {
+  const mortgage = liability.kind === 'mortgage'
   const owed = Number(liability.current_balance)
   const chip = liability.paid_off
     ? { className: 'chip-pos', text: 'Paid off', kind: 'paid' }
     : liability.balance_stale
       ? { className: 'chip-warn', text: 'Update balance', kind: 'stale' }
       : null
-  return (
+  const row = (
     <button
       type="button"
       id={`liability-row-${liability.id}`}
@@ -24,8 +29,9 @@ export default function LiabilityRow({ liability, onOpen }: {
       className="w-full min-h-[44px] flex items-center gap-3 px-4 py-3 border-t border-white/[0.06] text-left hover:bg-white/[0.03] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
     >
       <span className="min-w-0 flex-1">
-        <span className="block text-sm font-medium text-slate-100 truncate">{liability.lender}</span>
-        <span className="block text-xs text-slate-400">{liabilityDetail(liability)}</span>
+        <span className="block text-sm font-medium text-slate-100 truncate">{liabilityName(liability)}</span>
+        <span className="block text-xs text-slate-400">{mortgage ? mortgageDetail(liability, properties) : liabilityDetail(liability)}</span>
+        {mortgage && liability.linked_commitment && <span className="chip-info mt-1 inline-block">Bill linked</span>}
         {/* Narrow widths: the chip gets its own line so the lender keeps its room (ux on #185). */}
         {chip && <span data-chip={chip.kind} className={`${chip.className} mt-1 inline-block sm:hidden`}>{chip.text}</span>}
       </span>
@@ -35,6 +41,16 @@ export default function LiabilityRow({ liability, onOpen }: {
         {gbp0(owed)}
       </span>
     </button>
+  )
+  if (!needsProperty(liability) || !onChooseProperty) return row
+  // A separate button after the row, never nested inside it.
+  return (
+    <div>
+      {row}
+      <button type="button" onClick={onChooseProperty} className="text-xs text-accent underline ml-4 mb-3 min-h-[44px] sm:min-h-0">
+        Choose a property
+      </button>
+    </div>
   )
 }
 

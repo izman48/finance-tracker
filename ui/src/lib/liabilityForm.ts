@@ -17,8 +17,10 @@ export interface LiabilityFormState {
   start_date: string
   end_date: string
   opted_out: boolean
-  /** A `loan` / `other_liability` asset the picker returned (add only). */
+  /** A `loan` / `other_liability` / `mortgage` asset the picker returned (add only). */
   replaces_asset_id?: string
+  /** A mortgage's property asset id, '' for none (T-12-7b). */
+  property_asset_id?: string
 }
 
 export type FieldName = 'kind' | 'lender' | 'balance' | 'balance_as_of' | 'apr' | 'payment' | 'cadence' | 'start_date' | 'end_date'
@@ -36,6 +38,12 @@ export const FIELD_ERROR: Record<FieldName, string> = {
   end_date: 'The final payment must be after the start date.',
 }
 
+// A mortgage's own bounds (sec T-12-6), in place of the general ones.
+const MORTGAGE_FIELD_ERROR: Partial<Record<FieldName, string>> = {
+  balance: 'Enter an amount above £0 and up to £10,000,000, like 120000.00.',
+  apr: 'Enter a number from 0 to 25. Use the APR on your lender\'s statement.',
+}
+
 export const SAVE_ERROR = 'We could not save this loan. Nothing was changed. Check your connection and try again.'
 export const NOT_FOUND = 'We could not find this loan. Close this window and reload the page.'
 const INVALID = 'Some details are not valid. Check the fields marked below and try again.'
@@ -46,6 +54,8 @@ const CROSS_FIELD: [string, FieldName][] = [
   ['The start date must be within a year from today', 'start_date'],
   ['The final payment must be after the start date', 'end_date'],
   ['Enter the payment amount, or tick', 'payment'],
+  ['The balance can be at most', 'balance'],
+  ["A mortgage's APR can be at most", 'apr'],
 ]
 
 export function blankForm(today: string): LiabilityFormState {
@@ -60,7 +70,7 @@ export function formFor(l: Liability): LiabilityFormState {
   return {
     kind: l.kind, lender: l.lender, balance: l.balance, balance_as_of: l.balance_as_of, apr: l.apr,
     payment: l.payment ?? '', cadence: l.cadence, start_date: l.start_date, end_date: l.end_date ?? '',
-    opted_out: l.opted_out,
+    opted_out: l.opted_out, property_asset_id: l.property_asset_id ?? '',
   }
 }
 
@@ -89,6 +99,11 @@ export function liabilityBody(form: LiabilityFormState): LiabilityBody {
     kind: form.kind, lender: form.lender.trim(), balance: form.balance.trim(), balance_as_of: form.balance_as_of,
     apr: form.apr.trim(), payment: payment === '' ? null : payment, cadence: form.cadence,
     start_date: form.start_date, end_date: form.end_date || null, opted_out: form.opted_out,
+    // A mortgage sends its property (or null); a kind changed away from
+    // mortgage clears it; any other loan sends none.
+    ...(form.kind === 'mortgage' || form.property_asset_id
+      ? { property_asset_id: form.kind === 'mortgage' ? form.property_asset_id || null : null }
+      : {}),
   }
 }
 
@@ -122,11 +137,11 @@ export async function saveLiability(
     const res = id ? await client.update(id, body) : await client.create(body)
     return { kind: 'saved', liability: res.data }
   } catch (e) {
-    return outcomeOf(e as ServerError)
+    return outcomeOf(e as ServerError, form.kind)
   }
 }
 
-function outcomeOf(e: ServerError): SaveOutcome {
+function outcomeOf(e: ServerError, kind: LiabilityFormState['kind']): SaveOutcome {
   const status = e.response?.status
   const detail = e.response?.data?.detail
   if (status === 404) return { kind: 'not_found' }
@@ -138,7 +153,8 @@ function outcomeOf(e: ServerError): SaveOutcome {
     for (const item of detail as { loc?: unknown[]; msg?: unknown }[]) {
       const field = item.loc?.[1]
       if (typeof field === 'string' && field in FIELD_ERROR) {
-        errors[field as FieldName] = FIELD_ERROR[field as FieldName]
+        const name = field as FieldName
+        errors[name] = (kind === 'mortgage' && MORTGAGE_FIELD_ERROR[name]) || FIELD_ERROR[name]
         continue
       }
       // A cross-field rule (loc []): our API's own fixed copy, shown as text
@@ -237,4 +253,10 @@ export function focusAfter(kind: SaveOutcome['kind']): string | null {
  *  button. */
 export function focusAfterReload(saved: Liability | null): string {
   return saved ? `liability-row-${saved.id}` : FOCUS.pageAdd
+}
+
+/** Choosing a type; Mortgage preselects the user's only property (ux T-12-1). */
+export function kindChange(kind: Liability['kind'], property: string, properties: Asset[]): Partial<LiabilityFormState> {
+  if (kind === 'mortgage' && !property && properties.length === 1) return { kind, property_asset_id: properties[0].id }
+  return { kind }
 }

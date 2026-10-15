@@ -159,7 +159,7 @@ def test_total_owed_is_one_shared_function():
 # --------------------------------------------------------------------------- #
 SUMMARY_KEYS = {
     "available_cash", "overdraft_cushion", "credit_owed", "savings_total", "assets_total",
-    "liabilities_total", "total_owed", "net_worth", "committed_before_payday", "safe_to_spend",
+    "liabilities_total", "investments_total", "total_owed", "net_worth", "committed_before_payday", "safe_to_spend",
     "savable", "savable_pending_keep_total", "safe_to_spend_pending_keep_total", "next_payday",
     "next_repayments", "accounts",
 }

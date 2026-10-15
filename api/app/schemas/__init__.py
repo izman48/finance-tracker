@@ -788,6 +788,8 @@ class CashflowSummary(BaseModel):
     savings_total: Decimal = Decimal(0)
     assets_total: Decimal = Decimal(0)
     liabilities_total: Decimal = Decimal(0)
+    # Value today of the investment kinds (owner D1), T-11-7.
+    investments_total: Decimal = Decimal(0)
     # Cards owed + liabilities_total, from net_worth.total_owed (T-10-14a).
     total_owed: Decimal = Decimal(0)
     net_worth: Decimal

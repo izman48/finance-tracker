@@ -83,7 +83,7 @@ to None and a stored `wealth.monthlySpend` to Average. The budgets line says
 cycle).
 
 **Holdings engine (ADR-002, T-11-4)**: every asset's value today and
-forecast come from the holding engine (`api/app/services/holdings/`);
+forecast come from the holding engine, see [holdings.md](holdings.md);
 `include_investments=true|false` on history and projection drops the
 investment kinds only (one worth less than nothing stays, as Debt). Growth % is bounded −100..50 and values ±10,000,000.
 

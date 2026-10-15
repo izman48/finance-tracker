@@ -162,3 +162,38 @@ def test_the_migration_downgrades_and_upgrades_with_foreign_keys_on(client, db_s
     finally:
         db_session.rollback()
         db_session.connection().exec_driver_sql("PRAGMA foreign_keys=OFF")
+
+
+def test_planning_a_transaction_again_after_a_web_delete_makes_a_fresh_item(client, db_session):
+    # eng-b on #231: reusing the deleted row would make it active with
+    # deleted_at still set (counted, but treated as deleted by holds and undo).
+    from datetime import timedelta
+
+    from tests.clock import TODAY
+    from tests.integration.test_transactions_endpoint import _account, _tx
+    w = World(client, db_session, email="soft-delete-replan@example.com")
+
+    def purchase():
+        acc = _account(db_session, w.user.id, name="Current", balance="2000")
+        return str(_tx(db_session, acc, "600.00", TODAY - timedelta(days=2), merchant="Sofa Shop").id)
+    tx_id = w.as_user(purchase)
+    body = {"transaction_id": tx_id, "months": 6, "monthly_amount": "100.00",
+            "start_date": (TODAY + timedelta(days=10)).isoformat()}
+    first = w.client.post(f"{API}/analytics/planned/from-transaction", json=body, headers=_bearer(w.web))
+    assert first.status_code == 201, first.text
+    _web_delete(w, first.json()["id"])
+    again = w.client.post(f"{API}/analytics/planned/from-transaction", json=body, headers=_bearer(w.web))
+    assert again.status_code == 201, again.text
+    assert again.json()["id"] != first.json()["id"]
+    new_active, new_deleted, _ = _row(w, again.json()["id"])
+    assert new_active and new_deleted is None
+    old_active, old_deleted, _ = _row(w, first.json()["id"])
+    assert not old_active and old_deleted is not None
+    assert _listed(w) == [again.json()["id"]]
+
+
+def test_claude_cannot_remove_an_item_the_user_deleted(client, db_session):
+    w = World(client, db_session, email="soft-delete-claude@example.com")
+    item_id = _added(w)
+    _web_delete(w, item_id)
+    assert w.remove(item_id).status_code == 404

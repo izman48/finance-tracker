@@ -359,7 +359,10 @@ def convert_transaction_to_plan(
 
     item = (
         db.query(PlannedItem)
-        .filter(PlannedItem.user_id == user.id, PlannedItem.source_transaction_id == tx.id)
+        # A plan the user deleted stays deleted (T-12-9b): planning the
+        # purchase again makes a fresh item.
+        .filter(PlannedItem.user_id == user.id, PlannedItem.source_transaction_id == tx.id,
+                PlannedItem.deleted_at.is_(None))
         .first()
     )
     if item:

@@ -44,10 +44,9 @@ def _isa(world, value="0", growth="7", name="Example ISA"):
 
 def test_the_response_keys_are_exactly_the_allowed_ones(world):
     world.put(_isa(world), amount="1000.00")
-    world.loan()
     body = _list(world)
     assert set(body) == {"holdings", "count", "truncated"}
-    assert body["count"] == 2 and body["truncated"] is False
+    assert body["count"] == 1 and body["truncated"] is False
     for h in body["holdings"]:
         assert set(h) == HOLDING_KEYS
         assert set(h["projected"]) == HORIZON_KEYS
@@ -63,11 +62,16 @@ def test_an_investment_reads_back_its_terms_and_engine_forecast(world):
     assert h["projected"]["10y"] == "171051.73"
 
 
-def test_a_loan_is_listed_as_debt_with_no_growth(world):
+def test_debts_are_never_listed(world):
+    # sec / lead (2026-10-15): Claude doesn't read lender names; debt reaches
+    # it only as liabilities_total in cashflow_summary.
     world.loan()
-    (h,) = _list(world)["holdings"]
-    assert h["kind"] == "loan" and Decimal(h["value"]) < 0
-    assert h["growth_pct"] is None and h["linked"] is True and h["monthly_contribution"] == "200.00"
+    world.client.post(f"{API}/assets", json={"name": "Old loan", "asset_type": "loan", "value": "-1500"},
+                      headers=_bearer(world.web))
+    _isa(world)
+    body = _list(world)
+    assert [h["kind"] for h in body["holdings"]] == ["isa"] and body["count"] == 1
+    assert "Example Bank" not in str(body) and "Old loan" not in str(body)
 
 
 def test_growth_not_set_reads_null_not_the_default(world):
@@ -75,16 +79,6 @@ def test_growth_not_set_reads_null_not_the_default(world):
                             headers=_bearer(world.web))
     (h,) = [x for x in _list(world)["holdings"] if x["id"] == res.json()["id"]]
     assert h["growth_pct"] is None
-
-
-def test_a_loan_whose_bill_is_not_confirmed_is_not_linked(world):
-    from app.models import CommitmentRule
-    loan = world.loan()
-    with world.as_user():
-        world.db.get(CommitmentRule, uuid.UUID(loan["linked_commitment"]["id"])).status = "suggested"
-        world.db.commit()
-    (h,) = _list(world)["holdings"]
-    assert h["linked"] is False
 
 
 def test_nothing_beyond_the_allowed_fields_leaks(world):

@@ -62,12 +62,13 @@ sync and budgets are opt-in. A refresh never widens scopes.
 **Holdings (T-11-7, sec T-11-7):** `list_holdings` (read-only, no inputs,
 one fixed path) returns at most 100 holdings (`count`, `truncated`), each
 with exactly `id`, `name`, `kind`, `value` (today; debts negative),
-`value_as_of`, `growth_pct` (null when the user set none), `monthly_contribution`, `linked` (a loan only when its bill is confirmed) and
+`value_as_of`, `growth_pct` (null when the user set none), `monthly_contribution`, `linked` and
 `projected` at `1y`/`5y`/`10y` from the holding engine
 (`services/holdings/listing.py`); no user id, history, commitment ids or
-timestamps (`test_holdings_list_api.py` pins the keys). Loans appear here
-with their lender as `name`, so the tool says names are data, not
-instructions. `cashflow_summary` also carries `investments_total`, the value
+timestamps (`test_holdings_list_api.py` pins the keys). Debts are not
+listed (loans, legacy debt assets, anything worth less than nothing; sec /
+lead 2026-10-15), so no lender name reaches Claude; names are still user
+text, so the tool says they are data, not instructions. `cashflow_summary` also carries `investments_total`, the value
 today of the owner D1 investment kinds, the same set and value as net
 worth's Investments. Liabilities otherwise reach Claude only as part of
 `net_worth` and `liabilities_total` (T-10-7b). No tool reads or writes

@@ -90,3 +90,28 @@ def test_a_retry_of_an_applied_planned_removal_replays_its_result(client, db_ses
     assert again.status_code == 200, again.text
     assert again.json()["audit_id"] == first.json()["audit_id"]
     assert db_session.query(AuditEntry).count() == before
+
+
+def test_bob_sending_alices_exact_request_gets_404_and_nothing_replays(w, client, db_session):
+    # Replay runs before the ownership check, so keys must be scoped per user.
+    budget_id = _budget(w)
+    first = w.claude("pause", budget_id, dry_run=False, idempotency_key="replay-alice-0001")
+    assert first.status_code == 200
+    bob = World(client, db_session, email="replay-bob@example.com")
+    counts = _counts(w)
+    r = bob.claude("pause", budget_id, dry_run=False, idempotency_key="replay-alice-0001")
+    assert r.status_code == 404
+    assert "audit_id" not in r.json()
+    assert _counts(w) == counts
+
+
+def test_an_expired_key_is_not_replayed(w, db_session):
+    # Past the idempotency TTL a key is forgotten (as run_write treats it):
+    # the action is checked again, so an already paused budget is a 422.
+    from datetime import datetime, timedelta, timezone
+    budget_id = _budget(w)
+    w.claude("pause", budget_id, dry_run=False, idempotency_key="replay-old-0001")
+    db_session.query(WriteIdempotency).filter(WriteIdempotency.key == "replay-old-0001").update(
+        {WriteIdempotency.created_at: datetime.now(timezone.utc) - timedelta(days=3)})
+    db_session.commit()
+    assert w.claude("pause", budget_id, dry_run=False, idempotency_key="replay-old-0001").status_code == 422

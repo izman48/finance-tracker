@@ -149,22 +149,19 @@ def replay_if_applied(db: Session, caller: Caller, req: WriteRequest, body: Plan
     `run_write` as before."""
     if body.dry_run:
         return None
+    # Scoped to the caller (another user's key never matches) and within the
+    # idempotency TTL, as `_claim_key` forgets older keys.
     existing = (
         db.query(WriteIdempotency)
-        .filter(WriteIdempotency.user_id == caller.user.id, WriteIdempotency.key == body.idempotency_key)
+        .filter(
+            WriteIdempotency.user_id == caller.user.id, WriteIdempotency.key == body.idempotency_key,
+            WriteIdempotency.created_at >= datetime.now(timezone.utc) - IDEMPOTENCY_TTL,
+        )
         .first()
     )
     if existing is None:
         return None
-    if not hmac.compare_digest(existing.request_hash, _request_hash(req, body)):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="This idempotency_key was already used for a different request.",
-        )
-    entry = db.get(AuditEntry, existing.audit_id) if existing.audit_id else None
-    if entry is None or entry.user_id != caller.user.id:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="That request is still being applied.")
-    return _entry_result(entry)
+    return _entry_result(_stored_entry(db, caller, existing, _request_hash(req, body)))
 
 
 def run_batch(db: Session, caller: Caller, reqs: list[WriteRequest], body: PlanningWriteRequest,
@@ -289,6 +286,13 @@ def _claim_key(db: Session, caller: Caller, key: str, request_hash: str, batch: 
         .filter(WriteIdempotency.user_id == caller.user.id, WriteIdempotency.key == key)
         .one()
     )
+    entry = _stored_entry(db, caller, existing, request_hash)
+    return _replay_batch(db, entry) if batch else _entry_result(entry)
+
+
+def _stored_entry(db: Session, caller: Caller, existing: WriteIdempotency, request_hash: str) -> AuditEntry:
+    """The audit row an earlier request under this key wrote; 409 if that
+    request was different or is still being applied."""
     if not hmac.compare_digest(existing.request_hash, request_hash):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -297,7 +301,7 @@ def _claim_key(db: Session, caller: Caller, key: str, request_hash: str, batch: 
     entry = db.get(AuditEntry, existing.audit_id) if existing.audit_id else None
     if entry is None or entry.user_id != caller.user.id:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="That request is still being applied.")
-    return _replay_batch(db, entry) if batch else _entry_result(entry)
+    return entry
 
 
 def _request_hash(req: WriteRequest, body: PlanningWriteRequest) -> str:

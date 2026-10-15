@@ -30,6 +30,7 @@ from app.models import (
     BudgetChange,
     BudgetCycleSnapshot,
     BudgetNudge,
+    CardPlan,
     CardStatement,
     CategoryRule,
     CommitmentLink,
@@ -62,6 +63,8 @@ _OWNED_BY_USER = (
     PlannedItem,
     RepaymentScheduleItem,
     CardStatement,
+    # Before accounts (its card); its amounts are encrypted (T-12-5).
+    CardPlan,
     AccountSetting,
 )
 

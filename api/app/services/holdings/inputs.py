@@ -30,13 +30,15 @@ from app.models import Asset, CommitmentLink, CommitmentRule, CommitmentStatus, 
 from app.services.analytics.common import _add_months, _d, _today
 from app.services.liabilities import confirmed_commitment_ids, is_linked, owed_on
 
+from app.services import card_plans
+
 from .projection import HoldingInput, value_on
 from .registry import kind_for
 
 
 def holding_inputs(db: Session, user, today: date, default_growth_pct: Decimal) -> list[HoldingInput]:
     """Every holding the user has, as engine inputs."""
-    return asset_inputs(db, user, default_growth_pct, today) + _liability_inputs(db, user, today)
+    return asset_inputs(db, user, default_growth_pct, today) + _liability_inputs(db, user, today) + _card_plan_inputs(db, user, today)
 
 
 def without_investments(holdings: list[HoldingInput], day: date) -> list[HoldingInput]:
@@ -133,3 +135,18 @@ def _liability_inputs(db: Session, user, today: date) -> list[HoldingInput]:
             source="liabilities", owed_on=owed,
         ))
     return inputs
+
+
+def _card_plan_inputs(db: Session, user, today: date) -> list[HoldingInput]:
+    """Standalone card plans (their card has gone) as debt that falls by its
+    instalments. A plan inside its card is never a holding on its own
+    (owner D4, T-12-5): the card's balance holds it, or it is hidden."""
+    kind = kind_for("card_plans", "card_plan")
+    return [
+        HoldingInput(
+            id=str(p.id), name=p.name, kind=kind.stored_type, model=kind.model, group=kind.group,
+            is_investment=False, is_debt=True, source="liabilities",
+            owed_on=lambda day, p=p: card_plans.owed_on(p, today, day),
+        )
+        for p in card_plans.standalone_plans(db, user)
+    ]

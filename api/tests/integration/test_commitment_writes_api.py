@@ -7,7 +7,7 @@ allow-listed fields can change, every value is bounded, and an edited
 commitment is never re-keyed or re-added by `sync_suggestions`.
 """
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -17,6 +17,7 @@ from app.models import AuditEntry, CommitmentRule, Transaction, User
 from app.services import analytics_service as svc
 from tests.integration.test_oauth import READ, _bearer, _connect, _web_login
 from tests.integration.test_transactions_endpoint import _account, _dek_from_token
+from tests.clock import TODAY
 
 PLANNING = "finance:planning.write"
 API = "/api/v1"
@@ -153,8 +154,8 @@ def test_another_users_commitment_is_404_and_nothing_is_audited(client, db_sessi
     {"label": "x" * 101},
     {"label": "Rent‮"},
     {"label": "Rent\n"},
-    {"next_date": (date.today() - timedelta(days=400)).isoformat()},
-    {"next_date": (date.today() + timedelta(days=5 * 366 + 2)).isoformat()},
+    {"next_date": (TODAY - timedelta(days=400)).isoformat()},
+    {"next_date": (TODAY + timedelta(days=5 * 366 + 2)).isoformat()},
     {"status": "suggested"},
     {"status": "dismissed"},
     {"cadence": "yearly"},

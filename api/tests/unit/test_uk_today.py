@@ -93,3 +93,19 @@ def test_the_scan_fires_on_a_server_clock_day(tmp_path, line):
     bad = tmp_path / "bad.py"
     bad.write_text(f"from datetime import date, datetime, timezone\n{line}\n")
     assert FORBIDDEN.search(bad.read_text())
+
+
+def test_no_test_takes_the_day_from_the_server_clock():
+    """P0 (2026-10-16): a test built a date from `date.today()` (the machine's
+    day) while the app's day is the UK day, so between 00:00 and 01:00 BST a
+    CI run in UTC sent "yesterday" and the deploy stopped. Tests take the day
+    from `tests.clock.TODAY` (the UK day, pinned for the run)."""
+    tests_root = API / "tests"
+    found = []
+    for f in tests_root.rglob("*.py"):
+        if f.name in ("test_uk_today.py", "clock.py"):
+            continue  # this file's own fixtures; the clock itself
+        for n, line in enumerate(f.read_text().splitlines(), 1):
+            if FORBIDDEN.search(line):
+                found.append(f"{f.relative_to(API)}:{n}")
+    assert found == []

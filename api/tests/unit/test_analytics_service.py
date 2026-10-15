@@ -126,7 +126,7 @@ class TestDetection:
         acc = _account(db_session, user, name="Cur")
         # Anchor to today so the patterns read as still-active (detection
         # skips series whose next occurrence is well overdue).
-        base = svc._add_months(date.today(), -3)
+        base = svc._add_months(TODAY, -3)
         for i in range(4):
             _tx(db_session, acc, 50, svc._add_months(base, i), ttype="debit", merchant="Netflix")
         for i in range(3):
@@ -137,13 +137,13 @@ class TestDetection:
         assert ("income", "Salary") in found
         assert found[("expense", "Netflix")]["cadence"] == "monthly"
         # Surfaced next dates are never in the past.
-        assert found[("expense", "Netflix")]["next_date"] >= date.today()
+        assert found[("expense", "Netflix")]["next_date"] >= TODAY
 
     def test_lapsed_pattern_not_suggested(self, db_session):
         """A series whose next occurrence is months overdue is treated as ended."""
         user = _user(db_session)
         acc = _account(db_session, user, name="Cur")
-        base = svc._add_months(date.today(), -9)
+        base = svc._add_months(TODAY, -9)
         for i in range(4):  # last occurrence ~5 months ago
             _tx(db_session, acc, 9.99, svc._add_months(base, i), ttype="debit", merchant="OldGym")
 
@@ -1018,7 +1018,7 @@ class TestDetectionExclusions:
         every month used to land in groups of one and never be suggested."""
         user = _user(db_session)
         acc = _account(db_session, user, name="Cur")
-        base = svc._add_months(date.today(), -3)
+        base = svc._add_months(TODAY, -3)
         for i in range(4):
             _tx_desc(
                 db_session, acc, 250, svc._add_months(base, i),
@@ -1036,7 +1036,7 @@ class TestDetectionExclusions:
         detecting them again would double-count them in safe-to-spend."""
         user = _user(db_session)
         cur = _account(db_session, user, name="Cur")
-        base = svc._add_months(date.today(), -3)
+        base = svc._add_months(TODAY, -3)
         for i in range(4):
             _tx_desc(
                 db_session, cur, 300, svc._add_months(base, i),
@@ -1052,7 +1052,7 @@ class TestDetectionExclusions:
         user = _user(db_session)
         cur = _account(db_session, user, name="Cur")
         sav = _account(db_session, user, atype="SAVINGS", name="Sav")
-        base = svc._add_months(date.today(), -3)
+        base = svc._add_months(TODAY, -3)
         for i in range(4):
             when = svc._add_months(base, i)
             _tx_desc(db_session, cur, 200, when, ttype="debit", description="MONTHLY SAVER")
@@ -1066,7 +1066,7 @@ class TestDetectionExclusions:
     def test_excluded_account_generates_no_commitments(self, db_session):
         user = _user(db_session)
         other = _account(db_session, user, atype="OTHER", name="Other")
-        base = svc._add_months(date.today(), -3)
+        base = svc._add_months(TODAY, -3)
         for i in range(4):
             _tx_desc(db_session, other, 75, svc._add_months(base, i), description="SOMETHING")
 
@@ -1089,7 +1089,7 @@ class TestLoanAccountRole:
         user = _user(db_session)
         _account(db_session, user, atype="MORTGAGE", balance="-200000", name="Mortgage")
         events = svc.repayment_events(
-            db_session, user, date.today(), date.today() + timedelta(days=90)
+            db_session, user, TODAY, TODAY + timedelta(days=90)
         )
         assert events == []
 
@@ -1102,7 +1102,7 @@ class TestMatchKeySelfHeal:
         _account(db_session, user, name="Cur")
         rule = CommitmentRule(
             user_id=user.id, direction="expense", label="LOAN PAYMENT REF 4471",
-            amount=Decimal("250"), cadence="monthly", next_date=date.today(),
+            amount=Decimal("250"), cadence="monthly", next_date=TODAY,
             source=CommitmentSource.DETECTED.value,
             status=CommitmentStatus.CONFIRMED.value,
             match_key="expense:loan payment ref 4471",  # pre-normalisation key
@@ -1120,7 +1120,7 @@ class TestMatchKeySelfHeal:
         _account(db_session, user, name="Cur")
         rule = CommitmentRule(
             user_id=user.id, direction="expense", label="My loan",
-            amount=Decimal("250"), cadence="monthly", next_date=date.today(),
+            amount=Decimal("250"), cadence="monthly", next_date=TODAY,
             source=CommitmentSource.MANUAL.value,
             status=CommitmentStatus.CONFIRMED.value,
             match_key="expense:santander 998877",

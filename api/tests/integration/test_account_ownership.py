@@ -26,6 +26,7 @@ from app.core import user_crypto
 from app.main import app
 from app.models import AccountSetting, CommitmentRule, User
 from tests.integration.test_transactions_endpoint import _account, _dek_from_token
+from tests.clock import TODAY
 
 WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 API = "/api/v1"
@@ -173,7 +174,7 @@ CASES: dict[tuple[str, str, str], Case] = {
     ("POST", f"{API}/card-plans", "card_account_id"): lambda w, acc: w.client.post(
         f"{API}/card-plans",
         json={"card_account_id": acc, "name": "Plan", "balance": "600.00", "instalment": "100.00",
-              "instalments_remaining": 6, "next_date": date.today().isoformat()},
+              "instalments_remaining": 6, "next_date": TODAY.isoformat()},
     ),
     ("PATCH", f"{API}/analytics/accounts/{{account_id}}/settings", "account_id"): lambda w, acc: w.client.patch(
         f"{API}/analytics/accounts/{acc}/settings", json={"role": "excluded"},
@@ -191,8 +192,8 @@ CASES: dict[tuple[str, str, str], Case] = {
     ),
     ("POST", f"{API}/analytics/accounts/{{account_id}}/statements", "account_id"): lambda w, acc: w.client.post(
         f"{API}/analytics/accounts/{acc}/statements",
-        json={"statement_balance": "5000.00", "statement_date": date.today().isoformat(),
-              "due_date": date.today().isoformat()},
+        json={"statement_balance": "5000.00", "statement_date": TODAY.isoformat(),
+              "due_date": TODAY.isoformat()},
     ),
     ("PATCH", f"{API}/analytics/accounts/{{account_id}}/statements/{{statement_id}}", "account_id"): lambda w, acc: w.client.patch(
         f"{API}/analytics/accounts/{acc}/statements/{uuid.uuid4()}", json={"statement_balance": "1.00"},
@@ -205,11 +206,11 @@ CASES: dict[tuple[str, str, str], Case] = {
     ),
     ("PUT", f"{API}/assets/{{asset_id}}/contribution", "pay_from_account_id"): lambda w, acc: w.client.put(
         f"{API}/assets/{w.isa()}/contribution",
-        json={"amount": "500.00", "next_date": date.today().isoformat(), "pay_from_account_id": acc},
+        json={"amount": "500.00", "next_date": TODAY.isoformat(), "pay_from_account_id": acc},
     ),
     ("POST", f"{API}/planning/planned-events", "account_id"): lambda w, acc: w.client.post(
         f"{API}/planning/planned-events",
-        json={"name": "Holiday", "amount": "500.00", "date": date.today().isoformat(), "direction": "expense",
+        json={"name": "Holiday", "amount": "500.00", "date": TODAY.isoformat(), "direction": "expense",
               "account_id": acc, "dry_run": False, "idempotency_key": "ownership-case-1"},
     ),
 }

@@ -1,0 +1,100 @@
+"""The forecast holds Claude's pending changes like the summary does
+(T-12-9a; sec T-12-9).
+
+Until the user keeps a Claude change, a bill counts the higher of now and
+before-Claude (a dismissal, a cut or a later date waits), an income the
+lower, and a planned expense Claude removed still counts. The summary and
+projection already read commitments through `counted_commitments` and
+planned items with `held_removed_planned`; the forecast read them as they
+are, so the Cashflow chart moved up while safe-to-spend didn't. Equality
+test: with a pending change, the forecast's bills before payday equal the
+summary's `committed_before_payday`. Synthetic figures only.
+"""
+from datetime import timedelta
+from decimal import Decimal
+
+import pytest
+
+from tests.clock import TODAY
+from tests.integration.test_no_claude_raise import World as BillWorld
+from tests.integration.test_oauth import _bearer
+from tests.integration.test_planned_events_api import World as PlanWorld
+from tests.integration.test_planned_removal_hold import _added
+from tests.integration.test_transactions_endpoint import _account
+
+API = "/api/v1"
+
+
+def _forecast(w, horizon="payday"):
+    r = w.client.get(f"{API}/analytics/forecast", params={"horizon": horizon}, headers=_bearer(w.web))
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def _bills_before(forecast, end) -> Decimal:
+    """Commitment and planned expenses in the forecast up to `end`."""
+    return -sum(
+        (Decimal(str(e["amount"])) for p in forecast["timeline"] for e in p["events"]
+         if e["kind"] in ("expense", "planned") and Decimal(str(e["amount"])) < 0 and p["date"] < end),
+        Decimal(0),
+    )
+
+
+@pytest.fixture
+def w(client, db_session):
+    world = BillWorld(client, db_session, email="forecast-holds@example.com")
+    world.as_user(lambda: _account(db_session, world.user.id, name="Current", balance="500"))
+    return world
+
+
+def _payday(w):
+    return w.summary()["next_payday"]
+
+
+@pytest.mark.parametrize("change", ["dismiss", "cut", "later"])
+def test_a_pending_claude_change_to_a_bill_leaves_the_forecast_as_before(w, change):
+    before = _forecast(w)
+    if change == "dismiss":
+        audit_id = w.claude_dismiss(w.bill)
+    elif change == "cut":
+        audit_id = w.claude_update(w.bill, amount="100.00")
+    else:
+        audit_id = w.claude_update(w.bill, next_date=(TODAY + timedelta(days=15)).isoformat())
+    held = _forecast(w)
+    assert (held["min_balance"], held["end_balance"]) == (before["min_balance"], before["end_balance"])
+    # sec's equality: the forecast's bills before payday = the summary's.
+    assert _bills_before(held, _payday(w)) == Decimal(w.summary()["committed_before_payday"])
+    # Kept, the change applies to both.
+    assert w.keep(audit_id).status_code == 200
+    kept = _forecast(w)
+    assert Decimal(str(kept["end_balance"])) > Decimal(str(before["end_balance"])) or change == "later"
+    assert _bills_before(kept, _payday(w)) == Decimal(w.summary()["committed_before_payday"])
+
+
+def test_a_pending_raise_of_an_income_waits_too(w):
+    before = _forecast(w, horizon="30")
+    audit_id = w.claude_update(w.salary, amount="2500.00")
+    assert _forecast(w, horizon="30")["end_balance"] == before["end_balance"]
+    w.keep(audit_id)
+    after = _forecast(w, horizon="30")
+    assert Decimal(str(after["end_balance"])) - Decimal(str(before["end_balance"])) == Decimal("500.00")
+
+
+def test_a_claude_raise_of_a_bill_applies_at_once(w):
+    before = _forecast(w)
+    w.claude_update(w.bill, amount="350.00")
+    after = _forecast(w)
+    assert Decimal(str(before["end_balance"])) - Decimal(str(after["end_balance"])) == Decimal("50.00")
+
+
+def test_a_planned_expense_claude_removed_stays_in_the_forecast_until_kept(client, db_session):
+    pw = PlanWorld(client, db_session, email="forecast-holds-plan@example.com")
+    item_id = _added(pw)
+    before = _forecast(pw, horizon="30")
+    audit_id = pw.remove(item_id).json()["audit_id"]
+    held = _forecast(pw, horizon="30")
+    assert held["end_balance"] == before["end_balance"]
+    assert any(e["label"] == "Car insurance" for p in held["timeline"] for e in p["events"])
+    pw.client.post(f"{API}/audit/{audit_id}/keep", headers=_bearer(pw.web))
+    kept = _forecast(pw, horizon="30")
+    assert Decimal(str(kept["end_balance"])) - Decimal(str(before["end_balance"])) == Decimal("200.00")

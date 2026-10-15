@@ -12,11 +12,12 @@ from sqlalchemy.orm import Session
 from app.models import (
     AccountRole,
     CommitmentDirection,
-    CommitmentRule,
-    CommitmentStatus,
     PlannedItem,
 )
 
+from app.services.claude_keep import counted_commitments, held_removed_planned
+
+from .cadence import commitment_occurrences
 from .commitments import next_payday
 from .common import _d, _load, _today, resolve_roles
 from .planned import planned_events
@@ -168,14 +169,17 @@ def get_forecast(db: Session, user, horizon: str = "payday") -> dict:
         if acc is not SKIP:
             moves.append((day, acc, event["amount"]))
 
-    confirmed = (
-        db.query(CommitmentRule)
-        .filter(
-            CommitmentRule.user_id == user.id,
-            CommitmentRule.status == CommitmentStatus.CONFIRMED.value,
-        )
-        .all()
-    )
+    # No Claude change moves the forecast up until the user keeps it, as in
+    # the summary and projection (T-12-9a): a bill counts the higher of now
+    # and before-Claude over the horizon, an income the lower.
+    def worth(version) -> Decimal:
+        return _d(version.amount) * len(commitment_occurrences(version, today + timedelta(days=1), end))
+
+    confirmed = [
+        version
+        for direction in (CommitmentDirection.INCOME.value, CommitmentDirection.EXPENSE.value)
+        for version in counted_commitments(db, user.id, direction, worth)
+    ]
     # Each card's repayment is counted once (see scheduled_outflows).
     occurrences, repayments = scheduled_outflows(db, user, confirmed, today + timedelta(days=1), end)
     for rule, occ in occurrences:
@@ -195,7 +199,7 @@ def get_forecast(db: Session, user, horizon: str = "payday") -> dict:
         db.query(PlannedItem)
         .filter(PlannedItem.user_id == user.id, PlannedItem.active.is_(True))
         .all()
-    )
+    ) + held_removed_planned(db, user.id)  # a planned expense Claude removed counts until kept
     # One-off items settle against the transactions that paid them (T-08-7).
     states = planned_states(db, user, planned, today)
     late_planned = []

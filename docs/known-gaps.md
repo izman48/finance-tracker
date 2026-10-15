@@ -21,8 +21,6 @@ update the feature doc's touchpoints. Security-relevant items are marked 🔒.
   `budget_nudges` is purged but not seeded or checked.
 - Claude's `create_rule_pack` isn't in `planning_writes.TARGETS`: no Changes
   entry, no undo.
-- The forecast doesn't apply Claude holds (`counted_commitments`,
-  `held_removed_planned`), while summary and projection do.
 - Web `DELETE /api/v1/analytics/planned-items/{item_id}` hard-deletes items
   Claude created, breaking their undo and removal hold.
 - Retrying an applied `pause_budget` / `resume_budget` / `remove_budget` /

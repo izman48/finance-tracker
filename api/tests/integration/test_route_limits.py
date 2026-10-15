@@ -121,3 +121,21 @@ def test_flows_per_holding_are_capped(client, db_session, monkeypatch):
 
 def test_the_flows_cap_is_1000():
     assert assets_router.FLOWS_PER_ASSET_MAX == 1000
+
+
+def test_the_delete_account_limit_comes_before_the_password_and_truelayer(client, small, monkeypatch):
+    # sec-2 on #246: past the limit, even the right password deletes nothing
+    # and no TrueLayer call is made.
+    from app.services.truelayer import truelayer_service
+    calls = []
+
+    async def no_truelayer(*a, **k):
+        calls.append(a)
+
+    monkeypatch.setattr(truelayer_service, "revoke_connection", no_truelayer)
+    small("delete-account", 1)
+    h = _login(client, "lim-first@example.com")
+    assert client.post(f"{API}/auth/delete-account", json={"password": "wrong-password-1"}, headers=h).status_code == 403
+    assert client.post(f"{API}/auth/delete-account", json={"password": PASSWORD}, headers=h).status_code == 429
+    assert calls == []
+    assert client.get(f"{API}/auth/me", headers=h).status_code == 200

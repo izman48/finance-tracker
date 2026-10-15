@@ -130,3 +130,22 @@ describe('Include investments in demo mode', () => {
     expect(n(on.current_net_worth) - n(off.current_net_worth)).toBe(43700)
   })
 })
+
+describe('demo projection to a far target', () => {
+  it('has every month up to a target more than 10 years out, with no gap after month 120', () => {
+    const p = get<{ target_date: string | null; timeline: { date: string }[] }>('/analytics/net-worth-projection', {
+      target_amount: '3000000', annual_growth_pct: '5', monthly_contribution: '1000',
+    })
+    const months = p.timeline.map((t) => {
+      const [y, m] = t.date.split('-').map(Number)
+      return y * 12 + m
+    })
+    const toTarget = (() => {
+      const [y, m] = (p.target_date ?? '').split('-').map(Number)
+      return y * 12 + m - months[0]
+    })()
+    expect(toTarget).toBeGreaterThan(120)
+    expect(months.slice(1).map((v, i) => v - months[i]).every((step) => step === 1)).toBe(true)
+    expect(p.timeline).toHaveLength(toTarget + 7)
+  })
+})

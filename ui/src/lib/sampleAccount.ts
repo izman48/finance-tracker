@@ -680,17 +680,19 @@ function projectionResponse(q: Record<string, any>) {
       target_date = addM(m)
       monthsWanted = Math.min(600, m + 6)
     }
-    if (m <= monthsWanted)
-      timeline.push({
-        date: addM(m),
-        value: String(round(value)),
-        cash: String(round(cash)),
-        invested: String(round(invested)),
-        assets: String(round(assetsValue)),
-        liabilities: owed,
-      })
-    else if (target == null || target_date) break
+    // Every month is kept while the target is still being searched for and
+    // trimmed after, as the API does, so the line never skips month 121 on.
+    timeline.push({
+      date: addM(m),
+      value: String(round(value)),
+      cash: String(round(cash)),
+      invested: String(round(invested)),
+      assets: String(round(assetsValue)),
+      liabilities: owed,
+    })
+    if (m >= monthsWanted && (target == null || target_date)) break
   }
+  timeline.splice(monthsWanted + 1)
   return {
     current_net_worth: String(round(netWorthNow)),
     target_amount: target != null ? String(target) : null,

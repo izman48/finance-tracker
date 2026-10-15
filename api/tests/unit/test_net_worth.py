@@ -385,6 +385,26 @@ class TestNetWorthProjection:
         )
         assert p["target_date"] == svc._today()
 
+    def test_far_target_timeline_has_every_month_up_to_it(self, db_session):
+        """A target more than 10 years out must not leave a gap between month
+        120 and the target month (the chart drew it as a vertical jump)."""
+        user = _user(db_session)
+        _account(db_session, user, 0)
+        p = svc.net_worth_projection(
+            db_session, user,
+            target_amount=Decimal("20000"),
+            monthly_contribution=Decimal("100"),
+            annual_growth_pct=Decimal("0"),
+        )
+        today = svc._today()
+        # 100/mo from 0 reaches 20000 at month 200.
+        assert p["target_date"] == svc._add_months(today, 200)
+        dates = [pt["date"] for pt in p["timeline"]]
+        # Today, then every month to the target plus six months of context.
+        assert dates == [today] + [svc._add_months(today, m) for m in range(1, 207)]
+        values = [pt["value"] for pt in p["timeline"]]
+        assert all(b - a == Decimal("100.00") for a, b in zip(values, values[1:]))
+
     def test_unreachable_target_returns_none(self, db_session):
         user = _user(db_session)
         _account(db_session, user, 100)

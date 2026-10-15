@@ -135,6 +135,13 @@ to None and a stored `wealth.monthlySpend` to Average. The budgets line says
 "a pay cycle" unless the budget cycle is a calendar month (budgets are per
 cycle).
 
+**Projection timeline**: one point a month from today, up to six months
+past the target month (capped at 50 years), or 120 months when no target is
+set or it is never reached. Every month up to the target is returned, so a
+target more than 10 years out draws as one continuous line (it used to skip
+from month 120 to the target month, a vertical jump). Demo mode builds the
+same shape; tested in `test_net_worth.py` and `sampleInvestments.test.ts`.
+
 **Holdings engine (ADR-002, T-11-4)**: every asset's value today and
 forecast come from the holding engine, see [holdings.md](holdings.md);
 `include_investments=true|false` on history and projection drops the

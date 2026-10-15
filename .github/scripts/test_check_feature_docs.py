@@ -106,6 +106,18 @@ def main():
     # Every feature doc answers the touchpoints checklist.
     expect_fail(with_doc(DOC.replace("## Touchpoints", "## Notes")), "Touchpoints")
 
+    # A holding kind's DOCS declaration names a feature doc that exists.
+    registry = 'Surface.DOCS: "docs/features/foo.md",\n'
+    r = run({**GOOD, "api/app/services/holdings/registry.py": registry})
+    assert r.returncode == 0, ("an existing holding doc must pass", r.stdout, r.stderr)
+    expect_fail(
+        {**GOOD, "api/app/services/holdings/registry.py": registry.replace("foo.md", "gone.md")},
+        "docs/features/gone.md",
+    )
+
+    # The check above only runs if the registry is where it looks.
+    assert (REPO / "api/app/services/holdings/registry.py").is_file(), "holding registry moved"
+
     # And this repo's own docs are complete.
     r = subprocess.run([sys.executable, str(CHECK), str(REPO)], capture_output=True, text=True)
     assert r.returncode == 0, ("the repo's feature docs are out of date", r.stdout, r.stderr)

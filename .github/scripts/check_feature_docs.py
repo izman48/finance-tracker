@@ -116,7 +116,19 @@ def check(root: pathlib.Path) -> list[str]:
     for path in sorted(ui_routes(root)):
         if f"`{path}`" not in text:
             problems.append(f"UI route {path} is not in any docs/features/*.md")
+    for doc in sorted(holding_docs(root)):
+        if not (root / doc).is_file():
+            problems.append(f"holding registry names {doc}, which does not exist")
     return problems
+
+
+def holding_docs(root: pathlib.Path) -> set[str]:
+    """Feature docs the holding kind registry declares (ADR-002): the API
+    tests run without the docs folder, so their existence is checked here."""
+    registry = root / "api/app/services/holdings/registry.py"
+    if not registry.is_file():
+        return set()
+    return set(re.findall(r"docs/features/[a-z0-9-]+\.md", registry.read_text()))
 
 
 def main() -> int:

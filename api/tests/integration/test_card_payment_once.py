@@ -126,3 +126,57 @@ def test_claudes_add_request_has_no_card_payment_field():
     assert set(AddPlannedEventRequest.model_fields) == {
         "name", "amount", "date", "direction", "account_id", "dry_run", "idempotency_key",
     }
+
+
+def test_a_bill_due_on_payday_is_its_own_window_in_the_summary_as_in_the_forecast(client, db_session):
+    # eng-b on #234: the summary must cut at payday like the forecast, or a
+    # projected repayment due ON payday and a flagged payment before it are
+    # maxed in safe-to-spend but summed in the forecast.
+    from tests.integration.test_linked_commitment_guards import NEXT
+    w = Cards(client, db_session, email="card-payment-payday@example.com")
+    w.amex_card(owed="640.00")  # due on NEXT
+    with w.as_user():
+        _account(db_session, w.user.id, name="Current", balance="5000")
+        db_session.add(CommitmentRule(user_id=w.user.id, direction="income", label="Salary", amount=Decimal("3000"),
+                                      cadence="monthly", next_date=NEXT, source="manual", status="confirmed",
+                                      is_payday=True))
+        db_session.commit()
+    w.planned("400.00", days=(NEXT - TODAY).days - 2)
+    f = w.client.get(f"{API}/analytics/forecast?horizon=30", headers=_bearer(w.web)).json()
+    forecast_out = -sum((Decimal(str(e["amount"])) for p in f["timeline"] for e in p["events"]
+                         if Decimal(str(e["amount"])) < 0 and p["date"] <= NEXT.isoformat()), Decimal(0))
+    assert forecast_out == Decimal("1040.00")  # two windows: 400 before payday, 640 on it
+    assert w.committed() == forecast_out
+
+
+def test_the_migration_downgrades_and_upgrades_with_foreign_keys_on(w, db_session):
+    import importlib.util
+    from pathlib import Path
+
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    from sqlalchemy import inspect
+
+    path = next((Path(__file__).resolve().parents[2] / "migrations" / "versions").glob("*_planned_card_payment.py"))
+    spec = importlib.util.spec_from_file_location("planned_card_payment_migration", path)
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+
+    def run(step):
+        with Operations.context(MigrationContext.configure(db_session.connection())):
+            step()
+        db_session.commit()
+
+    w.planned("1500.00")
+    db_session.commit()
+    connection = db_session.connection()
+    connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+    try:
+        assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar() == 1  # the control is on
+        run(migration.downgrade)
+        assert "is_card_payment" not in {c["name"] for c in inspect(db_session.connection()).get_columns("planned_items")}
+        run(migration.upgrade)
+        assert "is_card_payment" in {c["name"] for c in inspect(db_session.connection()).get_columns("planned_items")}
+    finally:
+        db_session.rollback()
+        db_session.connection().exec_driver_sql("PRAGMA foreign_keys=OFF")

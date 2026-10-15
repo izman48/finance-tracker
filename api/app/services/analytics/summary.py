@@ -90,8 +90,11 @@ def get_summary(db: Session, user) -> dict:
     # A planned expense Claude removed still counts until kept (T-08-21b).
     planned = active_planned + held_removed_planned(db, user.id)
     states = planned_states(db, user, planned, today)
-    committed = _money_out(db, user, expense_to_payday, planned, states, today, window_end)
-    committed_as_is = _money_out(db, user, expense_now, active_planned, states, today, window_end)
+    # Cut at payday like the forecast, so a bill due on payday is its own
+    # window (eng-b on #234).
+    window_paydays = payday_dates(db, user, today, window_end)
+    committed = _money_out(db, user, expense_to_payday, planned, states, today, window_end, window_paydays)
+    committed_as_is = _money_out(db, user, expense_now, active_planned, states, today, window_end, window_paydays)
     safe_pending_keep = max(Decimal(0), committed - committed_as_is)
 
     safe_to_spend = max(Decimal(0), available_cash - committed)
@@ -166,9 +169,9 @@ def _money_out(db: Session, user, expense_rules: list, planned: list, states: di
     item flagged as a card payment counts once with the projected card
     repayments: in each pay window, the larger of the two (T-12-4a)."""
     occurrences, repayments = scheduled_outflows(db, user, expense_rules, start, end)
-    flagged = [o for o in _planned_occurrences(planned, states, start, end) if o[0].is_card_payment]
-    other = sum((a for item, _, a in _planned_occurrences(planned, states, start, end)
-                 if not item.is_card_payment), Decimal(0))
+    due = _planned_occurrences(planned, states, start, end)
+    flagged = [o for o in due if o[0].is_card_payment]
+    other = sum((a for item, _, a in due if not item.is_card_payment), Decimal(0))
     kept_card, kept_repayments, _ = card_payments.resolve(
         card_payments.pay_windows(start, end, paydays or []), flagged, repayments,
     )
@@ -180,19 +183,9 @@ def _money_out(db: Session, user, expense_rules: list, planned: list, states: di
     )
 
 
-def _outflow(db: Session, user, expense_rules: list, start, end) -> Decimal:
-    """Confirmed bills plus card repayments in [start, end], each card's
-    repayment counted once (see scheduled_outflows)."""
-    occurrences, repayments = scheduled_outflows(db, user, expense_rules, start, end)
-    return (
-        sum((_d(rule.amount) for rule, _ in occurrences), Decimal(0))
-        + sum((r["amount"] for r in repayments), Decimal(0))
-    )
-
-
 def _planned_occurrences(planned: list, states: dict, start, end) -> list[tuple]:
     """(item, date, amount > 0) for each planned expense due in [start, end],
-    by the same rules as `_planned_out`."""
+    (a one-off already paid is left out; one overdue and unpaid is still due)."""
     out = []
     for item in planned:
         if item.direction == "income":
@@ -203,24 +196,6 @@ def _planned_occurrences(planned: list, states: dict, start, end) -> list[tuple]
         elif state.counted and max(item.start_date, start) <= end:
             out.append((item, max(item.start_date, start), _d(item.amount)))
     return out
-
-
-def _planned_out(planned: list, states: dict, start, end) -> Decimal:
-    """Planned expenses due in [start, end] (the third source of money out,
-    beside commitments and card repayments). Income is never counted here.
-
-    A one-off expense already paid (matched to its transaction) is left out,
-    so it isn't counted twice; one that is overdue and unpaid is still due."""
-    total = Decimal(0)
-    for item in planned:
-        if item.direction == "income":
-            continue
-        state = states.get(item.id)
-        if state is None:  # recurring / payment plan: by schedule
-            total += sum((-a for _, a in planned_events(item, start, end) if a < 0), Decimal(0))
-        elif state.counted and max(item.start_date, start) <= end:
-            total += _d(item.amount)
-    return total
 
 
 def _accounts(db: Session, user, accounts, roles, settings, today) -> list[dict]:

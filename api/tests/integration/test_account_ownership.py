@@ -123,11 +123,18 @@ class World:
             user_crypto.current_dek.reset(ctx)
         client.headers["Authorization"] = f"Bearer {token_a}"
 
+    def isa(self) -> str:
+        """An ISA of A's to link a contribution to."""
+        res = self.client.post(f"{API}/assets", json={"name": "Test ISA", "asset_type": "isa", "value": "100.00"})
+        assert res.status_code == 201, res.text
+        return res.json()["id"]
+
     def snapshot(self) -> dict[str, list]:
         """Raw rows (ciphertext included) of every table these routes write."""
         tables = [
             "commitment_rules", "planned_items", "account_settings",
             "repayment_schedule_items", "card_statements", "accounts", "audit_entries", "write_idempotency",
+            "commitment_links",
         ]
         return {
             t: sorted(map(tuple, self.db.execute(text(f"SELECT * FROM {t}")).fetchall()), key=str)
@@ -190,6 +197,10 @@ CASES: dict[tuple[str, str, str], Case] = {
     ),
     ("PUT", f"{API}/analytics/accounts/{{account_id}}/statements/{{statement_id}}/in-use", "account_id"): lambda w, acc: w.client.put(
         f"{API}/analytics/accounts/{acc}/statements/{uuid.uuid4()}/in-use",
+    ),
+    ("PUT", f"{API}/assets/{{asset_id}}/contribution", "pay_from_account_id"): lambda w, acc: w.client.put(
+        f"{API}/assets/{w.isa()}/contribution",
+        json={"amount": "500.00", "next_date": date.today().isoformat(), "pay_from_account_id": acc},
     ),
     ("POST", f"{API}/planning/planned-events", "account_id"): lambda w, acc: w.client.post(
         f"{API}/planning/planned-events",

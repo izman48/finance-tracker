@@ -21,6 +21,8 @@ compound projection with every assumption echoed back.
 | `POST /api/v1/assets` | `CurrentUser` (at most 100 per user, 409 past that; ADR-002) |
 | `PATCH /api/v1/assets/{asset_id}` | `CurrentUser` (growth %, monthly contribution) |
 | `DELETE /api/v1/assets/{asset_id}` | `CurrentUser` |
+| `PUT /api/v1/assets/{asset_id}/contribution` | `CurrentUser` (opt in or edit; investments only) |
+| `DELETE /api/v1/assets/{asset_id}/contribution` | `CurrentUser` (opt out) |
 | `POST /api/v1/assets/{asset_id}/valuations` | `CurrentUser` (same date overwrites) |
 | `DELETE /api/v1/assets/{asset_id}/valuations/{valuation_id}` | `CurrentUser` |
 | `POST /api/v1/assets/{asset_id}/flows` | `CurrentUser` |
@@ -62,6 +64,34 @@ counts at its stored value and sign, an unknown liability counts as debt. Adding
 kind is a registry entry plus tests; `tests/unit/test_holding_registry.py`
 fails if it skips a surface, and `check_feature_docs.py` checks its docs
 file exists. Design: `docs/engineering/adr-002-holdings-and-flows.md`.
+
+**Contribution link (T-11-3c, ADR-002)**: an investment (isa, investment,
+pension, crypto) can carry its monthly contribution as one linked bill.
+`PUT …/contribution` takes `amount` (2 dp, 0 < x ≤ 10,000,000),
+`next_date` (today to a year ahead), an optional `pay_from_account_id`
+(ownership-checked, 404 otherwise) and an optional `commitment_choice`
+(`extra="forbid"`; the server sets the link's user, role, start date and
+`commitment_created`, and the bill's monthly cadence). With no choice it
+creates "{name} contribution", unless an existing bill could be it: then
+409 `choose_commitment` with the candidates, even one (owner D2); `new`
+or a candidate id is the user's pick, and the response names the bill it
+linked. A candidate is the caller's own monthly expense of that amount or whose
+label contains the holding's name (ux A7), not dismissed, not tied to a
+card, not linked elsewhere. Linking clears the
+legacy `monthly_contribution`; while linked, PATCH refuses one (409) and a
+change to a kind without contributions. Opting out stores today's value as
+a valuation, puts the bill's amount back as the holding's own monthly
+contribution (ux: it "stays on the investment"), then deletes the bill only
+if the link created it. A bill deleted elsewhere brings nothing back. While the
+bill is confirmed the holding's contribution is the bill's amount, and its
+payments since the link started count in value today (the engine keeps
+those after the valuation, within 90 days), so net worth does not drop on
+the payment day; the bill counts once in safe-to-spend and the forecast.
+`GET /api/v1/assets` returns each asset's `linked_commitment` (id,
+label, amount, next date, pay-from account, `created`: whether nilu made the bill) and `value_today` (the engine's
+`value_on`, the same figure net worth uses; null before a first value). Payments since the link are
+walked on the bill's monthly cycle both ways from `next_date` (which can be
+stale), at the bill's current amount.
 
 **Projection spending (T-10-15b)**: `spending_source` picks the monthly
 spending the projection subtracts: the total of active, unpaused budget

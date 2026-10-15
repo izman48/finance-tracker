@@ -155,3 +155,26 @@ def test_code_lookups_are_limited_per_user(client, monkeypatch):
     assert client.get(f"{API}/rules/shared/nope3", headers=alice).status_code == 429
     assert client.post(f"{API}/rules/import", json={"share_code": "nope4"}, headers=alice).status_code == 429
     assert client.get(f"{API}/rules/shared/nope5", headers=bob).status_code == 404
+
+
+def test_the_rules_list_says_which_stored_rules_cannot_run(client, db_session):
+    # Lead / sec-1 on #248: say so on the Rules page instead of quietly not matching.
+    token = _web_login(client, "cant-run@example.com")
+    from tests.integration.test_reset_purge import _dek
+    from app.core import user_crypto
+    from app.models import User
+    user = db_session.query(User).filter(User.email == "cant-run@example.com").one()
+    ctx = user_crypto.current_dek.set(_dek(token))
+    try:
+        db_session.add_all([
+            CategoryRule(user_id=user.id, pattern="SHOP(?=X)", match_type="regex", category="Groceries"),
+            CategoryRule(user_id=user.id, pattern="^AMZN.*MKTP", match_type="regex", category="Shopping"),
+            CategoryRule(user_id=user.id, pattern="(a)\\1", match_type="contains", category="Other"),
+        ])
+        db_session.commit()
+    finally:
+        user_crypto.current_dek.reset(ctx)
+    rules = {r["pattern"]: r for r in client.get(f"{API}/rules", headers=_bearer(token)).json()["personal"]}
+    assert rules["SHOP(?=X)"]["cant_run"] == categorization.CANT_RUN_REASON
+    assert rules["^AMZN.*MKTP"]["cant_run"] is None
+    assert rules["(a)\\1"]["cant_run"] is None  # a contains rule is plain text

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import CantRunNote from '../components/rules/CantRunNote'
 import { rulesAPI, Rule, RulePack } from '../services/api'
 import AddRuleModal from '../components/AddRuleModal'
 import ImportRulePackModal from '../components/ImportRulePackModal'
@@ -236,6 +237,7 @@ function RuleList({
               </span>
             )}
             {r.source === 'learned' && <span className="ml-1 text-xs text-slate-600">(learned)</span>}
+            <CantRunNote reason={r.cant_run} />
           </div>
           <div className="flex gap-3 text-sm whitespace-nowrap">
             <button onClick={() => onToggle(r)} className="text-slate-400 hover:text-accent transition-colors">

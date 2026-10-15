@@ -15,7 +15,8 @@ export default function UpcomingLabel({ item, linkMarker, billParts = false }: {
   return (
     <span className="min-w-0 flex-1">
       <span className="flex items-center gap-2 min-w-0">
-        <span className="text-slate-300 truncate">{item.label}</span>
+        {/* A card bill wraps rather than cut "(projected)" off (ux C-1, reflow). */}
+        <span className={`text-slate-300 ${item.cardBill ? 'min-w-0 break-words' : 'truncate'}`}>{item.label}</span>
         {item.late && <span className="chip-warn shrink-0">Late</span>}
         {item.overdue && <span className="chip-warn shrink-0">Overdue</span>}
       </span>

@@ -360,11 +360,13 @@ function spendingResponse(q: {
 const AVAILABLE_CASH = 2480.55 + 940.2 // spending accounts
 const SAVINGS_TOTAL = 12000
 const CREDIT_OWED = 640.3
-// The sample card is on statement_balance (T-12-7a): £550.30 billed on its
-// last statement, due in 8 days, and £90.00 spent since, paid on the next
-// pay day (the same day a month on; the sample's months are 30 days).
-const STATEMENT_DUE_IN = 8
-const SPENT_SINCE_DUE_IN = STATEMENT_DUE_IN + 30
+// The sample card is on statement_balance, paid weekly (T-12-7a): £550.30
+// billed on its last statement goes on the next pay day, in 3 days, and the
+// £90.00 spent since on the one after, a week later. Both are among the
+// first rows of Coming up, so demo shows "Harbor Rewards bill" and
+// "Harbor Rewards bill (projected)" (ux on #242).
+const STATEMENT_DUE_IN = 3
+const SPENT_SINCE_DUE_IN = STATEMENT_DUE_IN + 7
 const SPENT_SINCE = 90
 const STATEMENT_OWED = Math.round((CREDIT_OWED - SPENT_SINCE) * 100) / 100
 const SAMPLE_REPAYMENTS = [
@@ -406,8 +408,8 @@ function summaryResponse() {
       account_type: a.account_type, role: a.role, current_balance: a.current_balance,
       credit_owed: a.role === 'credit' ? -a.current_balance : null,
       // T-10-14: the sample card's statement, the same bill as next_repayments.
-      overdraft_limit: a.overdraft_limit, repayment_cadence: a.role === 'credit' ? 'card_due_date' : null,
-      repayment_day: null, repayment_interval_months: null, repayment_anchor_date: null,
+      overdraft_limit: a.overdraft_limit, repayment_cadence: a.role === 'credit' ? 'weekly' : null,
+      repayment_day: null, repayment_interval_months: null, repayment_anchor_date: a.role === 'credit' ? isoDate(nowPlus(STATEMENT_DUE_IN)) : null,
       repayment_strategy: a.role === 'credit' ? 'statement_balance' : null,
       repayment_fixed_amount: null, repayment_installments: null, pay_from_account_id: null,
       // The card's statement, as statementsResponse has it (T-10-14a).
@@ -489,7 +491,7 @@ function commitmentsResponse() {
     // Two income streams so the payday picker has something to disambiguate;
     // the salary is the designated payday.
     mk('Salary', 3200, 'income', 24, 'monthly', true),
-    mk('Freelance', 480, 'income', 9),
+    mk('Freelance', 480, 'income', 11),
     mk('Rent', 1100, 'expense', 25),
     mk('Gym', 32, 'expense', 26),
     mk('Phone', 20, 'expense', 12),
@@ -585,7 +587,7 @@ const SAMPLE_CARD_BILL = { id: 'sp2', name: 'Card bill', amount: 400, dueIn: 6 }
 
 function plannedItemsResponse() {
   return [
-    { id: 'sp1', name: 'New laptop', direction: 'expense', kind: 'installment_plan', start_date: isoDate(nowPlus(9)), amount: null, total_amount: 1200, installments: 6, is_card_payment: false, card_payment_overlap: false },
+    { id: 'sp1', name: 'New laptop', direction: 'expense', kind: 'installment_plan', start_date: isoDate(nowPlus(13)), amount: null, total_amount: 1200, installments: 6, is_card_payment: false, card_payment_overlap: false },
     { id: SAMPLE_CARD_BILL.id, name: SAMPLE_CARD_BILL.name, direction: 'expense', kind: 'one_off', start_date: isoDate(nowPlus(SAMPLE_CARD_BILL.dueIn)), amount: SAMPLE_CARD_BILL.amount, total_amount: null, installments: null, cadence: null, interval_days: null, interval_months: null, end_date: null, apr: null, fee_amount: null, active: true, is_card_payment: true, card_payment_overlap: true },
   ]
 }

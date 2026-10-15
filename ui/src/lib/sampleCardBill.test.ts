@@ -36,3 +36,16 @@ describe('demo: the sample card shows both bill states (T-12-7a part 2, lead 202
     expect(reps).toEqual(s.next_repayments.map((r) => [r.due_date, r.amount, r.projected]))
   })
 })
+
+describe("demo: both Harbor rows are in Cashflow's first four Coming up rows (ux on #242)", () => {
+  it('shows the statement and the projected bill with its line 2', async () => {
+    const { buildUpcoming } = await import('./upcoming')
+    const { billPartsLine } = await import('./cardBill')
+    const s = get<{ next_repayments: never[] }>('/analytics/summary')
+    const rows = buildUpcoming(get('/analytics/commitments'), s.next_repayments, get('/analytics/planned-items'), new Date().toISOString().slice(0, 10))
+    const labels = rows.map((r) => r.label)
+    expect(labels).toContain('Harbor Rewards bill')
+    expect(labels).toContain('Harbor Rewards bill (projected)')
+    expect(billPartsLine(rows.find((r) => r.label === 'Harbor Rewards bill (projected)')!.billParts)).toBe('Spent since £90.00')
+  })
+})

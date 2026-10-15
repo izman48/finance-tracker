@@ -140,6 +140,33 @@ def run_write(db: Session, caller: Caller, req: WriteRequest, body: PlanningWrit
     return _entry_result(entry)
 
 
+def replay_if_applied(db: Session, caller: Caller, req: WriteRequest, body: PlanningWriteRequest) -> dict | None:
+    """The stored result when this exact request already applied under this
+    key (T-12-9c), else None. Routes that check their target before
+    `run_write` call it first, so a retry of an applied write replays instead
+    of failing the check ("already paused", "not found"). The same key with a
+    different request is a 409. Reads only: a new key is claimed by
+    `run_write` as before."""
+    if body.dry_run:
+        return None
+    existing = (
+        db.query(WriteIdempotency)
+        .filter(WriteIdempotency.user_id == caller.user.id, WriteIdempotency.key == body.idempotency_key)
+        .first()
+    )
+    if existing is None:
+        return None
+    if not hmac.compare_digest(existing.request_hash, _request_hash(req, body)):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This idempotency_key was already used for a different request.",
+        )
+    entry = db.get(AuditEntry, existing.audit_id) if existing.audit_id else None
+    if entry is None or entry.user_id != caller.user.id:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="That request is still being applied.")
+    return _entry_result(entry)
+
+
 def run_batch(db: Session, caller: Caller, reqs: list[WriteRequest], body: PlanningWriteRequest,
               batch_id: uuid.UUID) -> dict:
     """Several writes as one: all applied in one transaction with one audit

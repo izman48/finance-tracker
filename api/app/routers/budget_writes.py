@@ -25,7 +25,7 @@ from app.models.budget import CREATED_VIA_MCP
 from app.schemas.budgets import ClaudeBudgetActionRequest, ClaudeSetBudgetsRequest
 from app.services import budgets as svc
 from app.services.budget_history import ensure_baseline, record_change
-from app.services.planning_writes import WriteRequest, run_batch, run_write
+from app.services.planning_writes import WriteRequest, replay_if_applied, run_batch, run_write
 
 router = APIRouter(prefix="/planning/budgets", tags=["planning"])
 
@@ -65,9 +65,6 @@ def set_budgets(body: ClaudeSetBudgetsRequest, caller: BudgetsWriter, db: Annota
 
 def _action(budget_id: uuid.UUID, tool: str, body: ClaudeBudgetActionRequest, caller, db: Session, change,
             effect: str) -> dict:
-    budget = svc.owned_budget(db, caller.user, budget_id)  # another user's, or removed: 404
-    change(budget, check=True)
-
     def apply(db: Session, target: Budget) -> Budget:
         ensure_baseline(db, target)
         change(target, check=False)
@@ -75,6 +72,13 @@ def _action(budget_id: uuid.UUID, tool: str, body: ClaudeBudgetActionRequest, ca
         return target
 
     req = WriteRequest(tool=tool, target_kind="budget", target_id=budget_id, apply=apply)
+    # A retry of a change that already applied replays it, before the checks
+    # below would refuse it as already done (T-12-9c).
+    replay = replay_if_applied(db, caller, req, body)
+    if replay is not None:
+        return {**replay, "effect": f"{replay['target_label']}: {effect}"}
+    budget = svc.owned_budget(db, caller.user, budget_id)  # another user's, or removed: 404
+    change(budget, check=True)
     result = run_write(db, caller, req, body)
     # An honest preview (sec on T-09-14): what the change does to the line.
     return {**result, "effect": f"{budget.category}: {effect}"}

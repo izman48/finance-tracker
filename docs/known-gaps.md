@@ -25,9 +25,6 @@ update the feature doc's touchpoints. Security-relevant items are marked 🔒.
   `held_removed_planned`), while summary and projection do.
 - Web `DELETE /api/v1/analytics/planned-items/{item_id}` hard-deletes items
   Claude created, breaking their undo and removal hold.
-- Retrying an applied `pause_budget` / `resume_budget` / `remove_budget` /
-  `remove_planned_event` with the same idempotency key returns 422/404
-  instead of the replayed result (pre-checks run before `run_write`).
 
 - A credit card that owes money with no repayment set up is left out of the
   forecast, safe to spend and Coming up. The UI says so and links to its

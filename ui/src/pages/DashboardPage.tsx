@@ -17,7 +17,7 @@ import { money as formatCurrency, dateDayMonth as formatDate, timeAgo } from '..
 import { heroSubline } from '../lib/cashflowGroups'
 import AccountGroups from '../components/cashflow/AccountGroups'
 import { loanLenders } from '../lib/homeOwed'
-import { forecastLenders, withLoanLabels } from '../lib/loanLabel'
+import { withLoanLabels } from '../lib/loanLabel'
 import ForecastChart from '../components/ForecastChart'
 import NudgeFeed, { UiNudge } from '../components/NudgeFeed'
 import AnimatedNumber from '../components/ui/AnimatedNumber'
@@ -352,7 +352,7 @@ export default function DashboardPage() {
       {/* Balance forecast */}
       {summary && hasAccounts && (
         <div className="mb-6" data-reveal>
-          <ForecastChart refreshKey={forecastKey} lenders={forecastLenders(liabilities, commitments)} />
+          <ForecastChart refreshKey={forecastKey} lenders={loanLenders(liabilities)} />
         </div>
       )}
 

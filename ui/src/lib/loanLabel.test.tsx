@@ -3,9 +3,8 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter } from 'react-router-dom'
 import UpcomingLabel from '../components/UpcomingLabel'
 import { loanLenders } from './homeOwed'
-import { forecastLenders, withLoanLabels } from './loanLabel'
+import { withLoanLabels } from './loanLabel'
 import type { Upcoming } from './upcoming'
-import type { Commitment } from '../types'
 
 // P2 (owner 2026-10-15; ux P-10..P-12; sec): a bill linked to a loan reads
 // "{lender} loan payment" on Cashflow. Built here from the API's fields.
@@ -39,20 +38,5 @@ describe('withLoanLabels (Coming up)', () => {
     const h = renderToStaticMarkup(<MemoryRouter><UpcomingLabel item={item} linkMarker /></MemoryRouter>)
     expect(h).not.toContain('<b>')
     expect(h).toContain('&lt;b&gt;x&lt;/b&gt; loan payment')
-  })
-})
-
-describe('forecastLenders (forecast events carry only a label)', () => {
-  const commitment = (id: string, label: string) => ({ id, label }) as Commitment
-
-  it('maps a linked bill’s label to its lender', () => {
-    const map = forecastLenders([linked('c1', 'Lender A', 'LOAN DD')], [commitment('c1', 'LOAN DD'), commitment('c2', 'Gym')])
-    expect(map.get('LOAN DD')).toBe('Lender A')
-    expect(map.has('Gym')).toBe(false)
-  })
-
-  it('never renames when another commitment shares the label', () => {
-    const map = forecastLenders([linked('c1', 'Lender A', 'DD')], [commitment('c1', 'DD'), commitment('c2', 'DD')])
-    expect(map.size).toBe(0)
   })
 })

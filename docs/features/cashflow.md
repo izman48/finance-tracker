@@ -47,8 +47,9 @@ not set up" under its row, with a link to its settings (T-10-12, see
 accounts.md); on Home several such cards share one notice. A bill linked to a loan reads "{lender} loan payment" in
 Coming up and in the forecast's event list (P2, `lib/loanLabel.ts` with
 `homeOwed.loanPaymentLabel`): built in the browser from the liabilities list
-(`linked_commitment`, see liabilities.md), so the label never reaches Claude; forecast events
-carry only a label, so a label two commitments share is never renamed.
+(`linked_commitment`, see liabilities.md), so the label never reaches Claude. Both match on the
+commitment id: forecast income/expense events carry `commitment_id` (null for
+repayments and planned items).
 
 **MCP**: `cashflow_summary`, `forecast` (tool default horizon is `"90"`).
 

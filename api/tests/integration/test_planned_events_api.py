@@ -100,7 +100,7 @@ def test_add_creates_a_one_off_mcp_item_that_the_forecast_shows(client, db_sessi
 
     forecast = client.get(f"{API}/analytics/forecast", params={"horizon": "30"}, headers=_bearer(w.web)).json()
     day = next(p for p in forecast["timeline"] if p["date"] == SOON.isoformat())
-    assert {"label": "Car insurance", "amount": "-200.00", "kind": "planned"} in day["events"]
+    assert {"label": "Car insurance", "amount": "-200.00", "kind": "planned", "commitment_id": None} in day["events"]
 
 
 def test_a_read_only_token_cannot_add_or_remove(client, db_session):

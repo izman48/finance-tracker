@@ -66,7 +66,9 @@ describe('the sample contribution is a bill (D-3)', () => {
     // contribution, and the card repayments due before payday (as the API counts them).
     const counted = ['Rent', 'Phone', 'Netflix', 'Spotify', 'Gym', contribution.label]
     const cards = s.next_repayments.filter((r) => r.due_date < s.next_payday).reduce((t, r) => t + r.amount, 0)
-    expect(s.committed_before_payday).toBeCloseTo(bills.filter((b) => counted.includes(b.label)).reduce((t, b) => t + b.amount, 0) + cards, 2)
+    // And the card plan's instalment + fee, due before payday (T-12-5b/7b).
+    const plan = Number(get<{ monthly_total: string }[]>('/card-plans')[0].monthly_total)
+    expect(s.committed_before_payday).toBeCloseTo(bills.filter((b) => counted.includes(b.label)).reduce((t, b) => t + b.amount, 0) + cards + plan, 2)
     expect(s.safe_to_spend).toBeCloseTo(s.available_cash - s.committed_before_payday, 2)
   })
 

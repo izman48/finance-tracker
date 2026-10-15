@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import CardRow from './CardRow'
 import type { SummaryAccount } from '../../types'
+import type { CardPlan } from '../../services/api'
 import { dateDayMonth } from '../../lib/format'
 
 // ux T-10-13 Wealth card rows (G-4, G-5, G-7, G-13, G-14). Synthetic fixture.
@@ -59,5 +60,36 @@ describe('Wealth card row', () => {
 
   it('secondary text is slate-400, never slate-500', () => {
     expect(html(card())).not.toContain('text-slate-500')
+  })
+})
+
+// T-12-7b (ux T-12-1 "Plans", owner D4): plans indented under their card.
+const plan = (over: Partial<CardPlan> = {}): CardPlan => ({
+  id: 'p1', card_account_id: 'card-1', card_name: 'Test Card', name: 'Laptop plan', balance: '800.00',
+  instalment: '100.00', fee: '5.00', instalments_remaining: 8, next_date: '2026-11-04', final_date: '2027-06-04',
+  monthly_total: '105.00', in_net_worth: false, provider_confirmed: false, ...over,
+})
+const withPlans = (plans: CardPlan[]) => renderToStaticMarkup(<CardRow account={card()} plans={plans} onOpen={() => {}} />)
+const decoded = (h: string) => text(h).replace(/&#x27;/g, "'")
+
+describe('Wealth card row with plans', () => {
+  it('unconfirmed: a chip on the card, and the plan row with its own chip, why, and what is left (no minus)', () => {
+    const h = withPlans([plan()])
+    const t = decoded(h)
+    expect(h).toMatch(/class="chip-warn[^"]*"[^>]*>1 plan not in net worth yet</)
+    expect(h).toContain('aria-label="Plans on Test Card"')
+    expect(t).toContain("Laptop plan Not in net worth yet We haven't confirmed whether Test Bank includes plans in the card balance. £105 a month still counts in the card bill. £800 left")
+    expect(t).not.toContain('−£800')
+  })
+  it('confirmed: the card says what it includes; the plan is inside the balance, already counted', () => {
+    const t = decoded(withPlans([plan({ provider_confirmed: true, balance: '420.00', monthly_total: '60.00', instalments_remaining: 7 })]))
+    expect(t).toContain('· includes 1 plan')
+    expect(t).toContain('£60 a month · 7 payments to go · inside the card balance')
+    expect(t).toContain('−£420 already counted')
+  })
+  it('no plans: no list and no plan chip', () => {
+    const h = withPlans([])
+    expect(h).not.toContain('Plans on')
+    expect(h).not.toContain('not in net worth yet')
   })
 })

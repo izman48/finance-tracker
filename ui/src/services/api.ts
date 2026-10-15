@@ -374,6 +374,42 @@ export const liabilitiesAPI = {
   remove: (id: string) => api.delete(`/liabilities/${id}`),
 }
 
+// Card instalment plans (T-12-5a/7b): terms typed in, figures the API's.
+// `in_net_worth` and `provider_confirmed` are the API's; the UI never sets them.
+export interface CardPlan {
+  id: string
+  card_account_id: string | null
+  card_name: string | null
+  name: string
+  balance: string
+  instalment: string
+  fee: string
+  instalments_remaining: number
+  next_date: string
+  final_date: string
+  monthly_total: string
+  in_net_worth: boolean
+  provider_confirmed: boolean
+}
+
+export interface CardPlanBody {
+  card_account_id?: string
+  name: string
+  balance: string
+  instalment: string
+  fee: string
+  instalments_remaining: number
+  next_date: string
+  apr?: string
+}
+
+export const cardPlansAPI = {
+  list: () => api.get<CardPlan[]>('/card-plans'),
+  create: (body: CardPlanBody) => api.post<CardPlan>('/card-plans', body),
+  update: (id: string, body: Omit<CardPlanBody, 'card_account_id'>) => api.patch<CardPlan>(`/card-plans/${id}`, body),
+  remove: (id: string) => api.delete(`/card-plans/${id}`),
+}
+
 // Investment graphs (T-11-4d): each investment and the total, from the
 // holding engine. Web session; a holding id that isn't the caller's is 404.
 export const holdingsAPI = {

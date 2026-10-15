@@ -105,6 +105,24 @@ const MORTGAGE_PROPERTY = 'sas4'
 const MORTGAGE_BILL = { id: 'sc-mortgage', label: 'Sample Bank mortgage payment', amount: 780, nextIn: 27 }
 const LIABILITIES_TOTAL = LIABILITIES.reduce((s, l) => s + Number(l.balance), 0)
 
+// A card instalment plan (T-12-7b; lead 2026-10-15): one plan on Harbor
+// Rewards from a provider not yet confirmed, so it is never in net worth or
+// Total owed (D4), while its instalment + fee leaves on the card's pay day
+// with the card payment and counts in safe to spend (sec mitigation b).
+const CARD_PLAN = { id: 'scp1', card: 'sa4', name: 'Laptop plan', instalment: 100, fee: 5, remaining: 8, firstIn: 8 }
+const PLAN_MONTHLY = CARD_PLAN.instalment + CARD_PLAN.fee
+
+function cardPlansResponse() {
+  const p = CARD_PLAN
+  return [{
+    id: p.id, card_account_id: p.card, card_name: 'Harbor Rewards', name: p.name,
+    balance: (p.instalment * p.remaining).toFixed(2), instalment: p.instalment.toFixed(2), fee: p.fee.toFixed(2),
+    instalments_remaining: p.remaining, next_date: isoDate(nowPlus(p.firstIn)),
+    final_date: isoDate(nowPlus(p.firstIn + 30 * (p.remaining - 1))), monthly_total: PLAN_MONTHLY.toFixed(2),
+    in_net_worth: false, provider_confirmed: false,
+  }]
+}
+
 // One authored ledger everything else is computed from. Spans ~6 months (a
 // repeating monthly pattern + slight per-month variation) so the period/date
 // controls actually change the data, not just a shallow 30-day window.
@@ -384,6 +402,22 @@ const SAMPLE_REPAYMENTS = [
   { due_in: STATEMENT_DUE_IN, amount: STATEMENT_OWED, projected: false, kind: 'statement' as const },
   { due_in: SPENT_SINCE_DUE_IN, amount: SPENT_SINCE, projected: true, kind: 'spent_since' as const },
 ]
+
+/** The card's next weekly pay day on or after `day` days from now. */
+const cardPayDayFrom = (day: number) =>
+  day <= STATEMENT_DUE_IN ? STATEMENT_DUE_IN : STATEMENT_DUE_IN + 7 * Math.ceil((day - STATEMENT_DUE_IN) / 7)
+
+/** Every card repayment the sample's engine would send: the two Harbor bills
+ *  and the Laptop plan's instalment + fee, each on the card's next pay day on
+ *  or after its instalment date (T-12-5b). Not projected: a plan's amount is
+ *  fixed. */
+function cardRepaymentsDue() {
+  const plan = Array.from({ length: CARD_PLAN.remaining }, (_, k) => ({
+    due_in: cardPayDayFrom(CARD_PLAN.firstIn + 30 * k), amount: PLAN_MONTHLY, projected: false,
+    label: `${CARD_PLAN.name} instalment`,
+  }))
+  return [...SAMPLE_REPAYMENTS.map((r) => ({ ...r, label: 'Harbor Rewards' })), ...plan]
+}
 const ASSETS_TOTAL = ASSETS.reduce((s, a) => s + a.value, 0)
 const INVESTMENTS_TOTAL = ASSETS.filter(isInvestmentAsset).reduce((s, a) => s + a.value, 0)
 const PROPERTY_TOTAL = ASSETS.filter((a) => a.asset_type === 'property').reduce((s, a) => s + a.value, 0)
@@ -391,8 +425,9 @@ const NET_WORTH = AVAILABLE_CASH + SAVINGS_TOTAL + ASSETS_TOTAL - CREDIT_OWED - 
 
 function summaryResponse() {
   // rent + phone + subs + gym, the ISA contribution (a linked bill), and the
-  // card repayments due before payday, as the API counts them.
-  const cardBeforePayday = SAMPLE_REPAYMENTS.filter((r) => r.due_in < 24).reduce((t, r) => t + r.amount, 0)
+  // card repayments and the card plan's instalments due before payday, as
+  // the API counts them (T-12-7a, T-12-5b).
+  const cardBeforePayday = cardRepaymentsDue().filter((r) => r.due_in < 24).reduce((t, r) => t + r.amount, 0)
   const committed = Math.round((1100 + 20 + 12.99 + 11.99 + 32 + CONTRIBUTION.amount + cardBeforePayday) * 100) / 100
   return {
     available_cash: AVAILABLE_CASH,
@@ -445,8 +480,8 @@ function forecastTimeline(horizon = '30') {
     const dom = i % 30 // repeating monthly cycle
     const events: { label: string; amount: number; kind: string; projected?: boolean }[] = []
     if (i > 0 && dom === CONTRIBUTION.nextIn) { bal -= CONTRIBUTION.amount; events.push({ label: CONTRIBUTION.label, amount: -CONTRIBUTION.amount, kind: 'commitment' }) }
-    for (const r of SAMPLE_REPAYMENTS) {
-      if (i === r.due_in) { bal -= r.amount; events.push({ label: 'Harbor Rewards', amount: -r.amount, kind: 'repayment', projected: r.projected }) }
+    for (const r of cardRepaymentsDue()) {
+      if (i === r.due_in) { bal -= r.amount; events.push({ label: r.label, amount: -r.amount, kind: 'repayment', projected: r.projected }) }
     }
     if (i > 0 && dom === 15) { bal -= 1100; events.push({ label: 'Rent', amount: -1100, kind: 'commitment' }) }
     if (i > 0 && dom === 24) { bal += 3200; events.push({ label: 'Salary', amount: 3200, kind: 'income' }) }
@@ -619,7 +654,7 @@ function cardOverlapNudges() {
   const manual = SAMPLE_CARD_BILL.amount
   // The card repayments due in the window (today to the day before payday),
   // as the API's overlap reads them.
-  const projected = SAMPLE_REPAYMENTS.filter((r) => r.due_in < SAMPLE_PAYDAY_IN).reduce((t, r) => t + r.amount, 0)
+  const projected = cardRepaymentsDue().filter((r) => r.due_in < SAMPLE_PAYDAY_IN).reduce((t, r) => t + r.amount, 0)
   const larger = Math.max(manual, projected)
   const end = nowPlus(SAMPLE_PAYDAY_IN - 1)
   return [{
@@ -951,6 +986,7 @@ export function sampleResponse(url: string, params: unknown): unknown {
   if (is('/assets')) return assetsResponse()
   if (is('/holdings/projection')) return holdingsProjectionResponse(p as Record<string, any>)
   if (is('/liabilities')) return liabilitiesResponse()
+  if (is('/card-plans')) return cardPlansResponse()
   if (is('/budgets/history')) return sampleBudgetHistory(BUDGET_LEDGER, PAYDAY_AGO, Number(p.cycles) || 6)
   if (is('/budgets')) return sampleBudgetList(BUDGET_LEDGER, PAYDAY_AGO, p.include === 'categories')
   if (is('/rules')) return { packs: [], personal: [] }

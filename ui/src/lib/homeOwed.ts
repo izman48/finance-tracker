@@ -17,11 +17,12 @@ export function owedRow(summary: {
   return total > 0 ? { label: 'Total owed', amount: total } : null
 }
 
-/** How a coming-up row reads on Home: a card repayment is "{card} bill";
+/** How a coming-up row reads on Home: a card repayment keeps its "{card} bill"
+ *  label from `buildUpcoming`;
  *  a loan's linked repayment is "{lender} loan payment", or "{lender} payment"
  *  when the lender already says "loan" (owner P2, ux). */
 export function homeUpcomingLabel(u: Upcoming, lenders: Map<string, string> = new Map()): string {
-  if (u.cardBill) return `${u.label} bill`
+  if (u.cardBill) return u.label
   const lender = u.commitmentId ? lenders.get(u.commitmentId) : undefined
   return lender ? loanPaymentLabel(lender) : u.label
 }

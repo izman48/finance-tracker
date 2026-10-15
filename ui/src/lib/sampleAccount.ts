@@ -382,7 +382,9 @@ function summaryResponse() {
     safe_to_spend: Math.round((AVAILABLE_CASH - committed) * 100) / 100,
     savable: 820,
     next_payday: isoDate(nowPlus(24)),
-    next_repayments: [{ account_id: 'sa4', label: 'Harbor Rewards', amount: CREDIT_OWED, due_date: isoDate(nowPlus(8)) }],
+    // A real statement on a full-balance card: not projected and no parts, as
+    // the API sends it (T-12-7a). Reads "Harbor Rewards bill" on Cashflow and Home.
+    next_repayments: [{ account_id: 'sa4', label: 'Harbor Rewards', amount: CREDIT_OWED, due_date: isoDate(nowPlus(8)), projected: false, parts: [] }],
     accounts: ACCOUNTS.map((a) => ({
       id: a.id, display_name: a.display_name, provider_name: a.provider_name,
       account_type: a.account_type, role: a.role, current_balance: a.current_balance,
@@ -406,15 +408,15 @@ function forecastTimeline(horizon = '30') {
   const paydayIn = 24 // matches next_payday = nowPlus(24)
   const days = horizon === 'payday' ? paydayIn : Math.max(1, Math.min(Number(horizon) || 30, 365))
   const start = AVAILABLE_CASH
-  const timeline: { date: string; balance: number; events: { label: string; amount: number; kind: string }[] }[] = []
+  const timeline: { date: string; balance: number; events: { label: string; amount: number; kind: string; projected?: boolean }[] }[] = []
   let bal = start
   let min = start
   let minDate = isoDate(new Date())
   for (let i = 0; i <= days; i++) {
     const dom = i % 30 // repeating monthly cycle
-    const events: { label: string; amount: number; kind: string }[] = []
+    const events: { label: string; amount: number; kind: string; projected?: boolean }[] = []
     if (i > 0 && dom === CONTRIBUTION.nextIn) { bal -= CONTRIBUTION.amount; events.push({ label: CONTRIBUTION.label, amount: -CONTRIBUTION.amount, kind: 'commitment' }) }
-    if (i > 0 && dom === 8) { bal -= CREDIT_OWED; events.push({ label: 'Harbor Rewards payment', amount: -CREDIT_OWED, kind: 'repayment' }) }
+    if (i > 0 && dom === 8) { bal -= CREDIT_OWED; events.push({ label: 'Harbor Rewards payment', amount: -CREDIT_OWED, kind: 'repayment', projected: false }) }
     if (i > 0 && dom === 15) { bal -= 1100; events.push({ label: 'Rent', amount: -1100, kind: 'commitment' }) }
     if (i > 0 && dom === 24) { bal += 3200; events.push({ label: 'Salary', amount: 3200, kind: 'income' }) }
     bal = Math.round(bal * 100) / 100

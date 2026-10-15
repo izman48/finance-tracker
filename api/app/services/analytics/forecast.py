@@ -244,7 +244,8 @@ def get_forecast(db: Session, user, horizon: str = "payday", for_claude: bool = 
         card_setting = settings.get(uuid.UUID(r["account_id"])) if r["account_id"] else None
         pay_from = card_setting.pay_from_account_id if card_setting else None
         label = CLAUDE_PLAN_LABEL if for_claude and r.get("card_plan") else r["label"]
-        add(r["due_date"], pay_from, {"label": label, "amount": -_d(r["amount"]), "kind": "repayment"})
+        add(r["due_date"], pay_from, {"label": label, "amount": -_d(r["amount"]), "kind": "repayment",
+                                      "projected": r.get("projected", False)})
 
     # Walk day by day, accumulating the pooled running balance.
     timeline: list[dict] = [{"date": today, "balance": start_balance, "events": []}]

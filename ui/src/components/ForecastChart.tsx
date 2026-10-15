@@ -20,6 +20,7 @@ import { BudgetLegend, BudgetStrip } from './forecast/BudgetStrip'
 import { budgetTooltip, projectionNote, projectionUnavailable, withBudgetLine, type BudgetProjection, type ProjectionReason } from '../lib/budgetProjection'
 import { FORECAST_TIMEOUT_MS, focusAfter, forecastReducer, withTimeout, type ForecastView } from '../lib/forecastLoad'
 import { loanPaymentLabel } from '../lib/homeOwed'
+import { cardBillLabel } from '../lib/cardBill'
 
 interface ForecastEvent {
   label: string
@@ -27,6 +28,8 @@ interface ForecastEvent {
   kind: string
   /** The commitment an income/expense event comes from; null otherwise. */
   commitment_id?: string | null
+  /** A card repayment the API projects (spend since the statement, or the balance with none; T-12-7a). */
+  projected?: boolean
 }
 interface ForecastPoint {
   date: string
@@ -86,6 +89,7 @@ export function ForecastTooltip({ active, payload, lenders }: any) {
 }
 
 function eventLabel(e: ForecastEvent, lenders?: Map<string, string>) {
+  if (e.kind === 'repayment' && e.projected) return cardBillLabel(e.label, true)
   const lender = e.kind === 'expense' && e.commitment_id ? lenders?.get(e.commitment_id) : undefined
   return lender ? loanPaymentLabel(lender) : e.label
 }

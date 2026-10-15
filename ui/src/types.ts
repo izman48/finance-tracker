@@ -1,3 +1,4 @@
+import type { BillPart } from './lib/cardBill'
 import type { CardStatementSummary } from './lib/cardStatement'
 /** Shared API entity types — one declaration per entity.
  *  (Decimal fields arrive as strings from the API; coerce with Number(...)
@@ -55,6 +56,10 @@ export interface NextRepayment {
   label: string
   amount: number
   due_date: string
+  // T-12-7a: a projection, not a real statement, and what the bill is made
+  // of (summed to the amount by the API).
+  projected?: boolean
+  parts?: BillPart[]
 }
 
 export interface SummaryAccount {

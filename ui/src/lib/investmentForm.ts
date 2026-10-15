@@ -213,9 +213,9 @@ export function stopBillConfirm(asset: Asset): ConfirmCopy {
   const label = asset.linked_commitment?.label
   if (asset.linked_commitment?.created === false) {
     return {
-      title: 'Stop counting this as a bill?',
-      body: `"${label}" stays in your bills as a normal bill, no longer linked to this investment. The monthly contribution stays on the investment.`,
-      confirmLabel: 'Unlink bill', cancelLabel: 'Cancel', danger: false,
+      title: 'Stop linking this bill?',
+      body: `"${label}" stays in your bills as an ordinary bill. The monthly contribution stays on the investment.`,
+      confirmLabel: 'Stop linking', cancelLabel: 'Cancel', danger: false,
     }
   }
   return {

@@ -194,11 +194,12 @@ describe('confirm copy', () => {
       confirmLabel: 'Remove bill', cancelLabel: 'Cancel', danger: true,
     })
   })
-  it('unticking a bill the user already had says it stays as a normal bill (lead, #221)', () => {
-    expect(stopBillConfirm({ ...linked, linked_commitment: { ...linked.linked_commitment!, created: false } })).toEqual({
-      title: 'Stop counting this as a bill?',
-      body: '"Meridian S&S ISA contribution" stays in your bills as a normal bill, no longer linked to this investment. The monthly contribution stays on the investment.',
-      confirmLabel: 'Unlink bill', cancelLabel: 'Cancel', danger: false,
+  it('unticking a bill the user already had says it stays (ux T-11-2; never "removed")', () => {
+    const own = { ...linked, linked_commitment: { id: 'c2', label: 'Meridian ISA direct debit', created: false } } as Asset
+    expect(stopBillConfirm(own)).toEqual({
+      title: 'Stop linking this bill?',
+      body: '"Meridian ISA direct debit" stays in your bills as an ordinary bill. The monthly contribution stays on the investment.',
+      confirmLabel: 'Stop linking', cancelLabel: 'Cancel', danger: false,
     })
   })
 })

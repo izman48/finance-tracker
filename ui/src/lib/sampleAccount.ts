@@ -67,13 +67,13 @@ const ROLE: Record<string, Role> = Object.fromEntries(ACCOUNTS.map((a) => [a.id,
 // the ISA's £400 a month is a linked bill, so it is a commitment in Cashflow
 // and safe to spend, and the holding takes it (never also as its own figure).
 const ASSETS = [
-  { id: 'sas1', name: 'Sample Stocks & Shares ISA', asset_type: 'isa', value: 18500, growth: 7, monthly: 400, linked: true },
+  { id: 'sas1', name: 'Sample ISA', asset_type: 'isa', value: 18500, growth: 7, monthly: 400, linked: true },
   { id: 'sas2', name: 'Sample Pension', asset_type: 'pension', value: 24000, growth: 5, monthly: 0, linked: false },
   { id: 'sas3', name: 'Sample Crypto', asset_type: 'crypto', value: 1200, growth: 0, monthly: 0, linked: false },
 ]
 const INVESTMENT_TYPES = new Set(['isa', 'investment', 'pension', 'crypto'])
 const isInvestmentAsset = (a: (typeof ASSETS)[number]) => INVESTMENT_TYPES.has(a.asset_type)
-const CONTRIBUTION = { id: 'sc-isa-contribution', label: 'Sample Stocks & Shares ISA contribution', amount: 400, nextIn: 5, account: 'sa1' }
+const CONTRIBUTION = { id: 'sc-isa-contribution', label: 'Sample ISA contribution', amount: 400, nextIn: 5, account: 'sa1' }
 /** Entered values: about 10% lower six months ago, then the value today. */
 const assetValuations = (a: (typeof ASSETS)[number]) => [
   { id: `${a.id}-v0`, date: isoDate(nowMinus(180)), value: Math.round(a.value * (a.value < 0 ? 1.15 : 0.9)) },

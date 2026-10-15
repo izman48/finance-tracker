@@ -5,16 +5,17 @@
 import type { ContributionBasis } from '../services/api'
 import { gbp0, money } from './format'
 
-export type SpendingChoice = 'budgets' | 'average' | 'none'
-const CHOICES: SpendingChoice[] = ['budgets', 'average', 'none']
+// "None" is gone (owner, 2026-10-15, T-12-0): spending is always subtracted.
+export type SpendingChoice = 'budgets' | 'average'
+const CHOICES: SpendingChoice[] = ['budgets', 'average']
 export const SPENDING_KEY = 'wealth.spendingSource'
 
-/** The user's stored choice; old keys map onto it (ux): an unticked box was
- *  None, a stored estimate was Average. Null = not chosen (default). */
+/** The user's stored choice; old keys map onto it (ux): a stored estimate
+ *  was Average. A stored "none" or the old unticked box reads as not chosen,
+ *  so the default (budgets, then the average) applies (T-12-0). */
 export function storedChoice(read: (key: string) => string | null): SpendingChoice | null {
   const stored = read(SPENDING_KEY)
   if (stored !== null) return (CHOICES as string[]).includes(stored) ? (stored as SpendingChoice) : null
-  if (read('wealth.subtractSpending') === '0') return 'none'
   if ((read('wealth.monthlySpend') ?? '') !== '') return 'average'
   return null
 }
@@ -74,8 +75,6 @@ export function evidenceLine(basis: ContributionBasis, period: BudgetPeriod = 'a
       return { text: `Your budgets: ${applied} ${period}.`, warn: false }
     case 'estimate':
       return { text: `Your estimate: ${applied} a month.`, warn: false }
-    case 'none':
-      return { text: 'Not subtracted: all your cashflow lands in wealth.', warn: true }
     default:
       return { text: `Your average over the last ${basis.spending_months_sampled} months: ${applied} a month.`, warn: false }
   }

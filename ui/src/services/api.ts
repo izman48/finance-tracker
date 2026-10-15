@@ -277,8 +277,10 @@ export interface ContributionBasis {
   // T-10-15b, when the request sent spending_source: what was asked for,
   // what was used, the active budget total a month, and whether budgets fell
   // back to the average (no active budgets).
-  spending_choice?: 'budgets' | 'average' | 'none' | null
-  spending_used?: 'budgets' | 'average' | 'estimate' | 'none' | null
+  spending_choice?: 'budgets' | 'average' | null
+  spending_used?: 'budgets' | 'average' | 'estimate' | null
+  /** Holdings' unlinked monthly contributions moved from cash (T-12-0). */
+  contributions_monthly?: string
   budgets_monthly?: string | null
   budgets_fallback?: boolean
   // The evidence: each sampled month's measured spending (YYYY-MM).
@@ -403,7 +405,7 @@ export const assetsAPI = {
     annual_growth_pct?: number
     subtract_spending?: boolean
     monthly_spending?: number | string
-    spending_source?: 'budgets' | 'average' | 'none'
+    spending_source?: 'budgets' | 'average'
     include_investments?: 'false'
   }) => api.get<Projection>('/analytics/net-worth-projection', { params }),
 }

@@ -124,9 +124,10 @@ Under the Forecast graph, "What moves it each month"
 (`components/wealth/ForecastDrivers.tsx`, `lib/forecastDrivers.ts`) lists
 the projection's own monthly figures: income commitments, bills and
 commitments (card repayments left out), everyday spending with its source
-(budgets, average, estimate; left out for None), or the typed figure in
-custom mode, then each holding's monthly contribution, summed as "Net
-worth change before growth", with the growth % stated. The figures come from
+(budgets, average, estimate), or the typed figure in custom mode, summed as
+"Net worth change before growth", with the growth % stated. Each holding's
+monthly contribution is shown as a move, "£X moved from cash (no change to
+net worth)", with £0 in the sum (T-12-0). The figures come from
 `contribution_basis` and `asset_assumptions`; nothing is computed beyond
 their sum. Line choices and the tick box are kept in this browser
 (`wealth.lines`, `wealth.includeInvestments`; `lib/netWorthLines.ts`); hiding
@@ -136,19 +137,29 @@ Wealth card shows `investments_total` as "Investments" when above 0.
 **Projection spending (T-10-15b)**: `spending_source` picks the monthly
 spending the projection subtracts: the total of active, unpaused budget
 limits (`budgets`, the same `cycle_budgets` figure as the Cashflow budget
-line), the measured average or the user's estimate (`average`), or nothing
-(`none`). Budgets with a £0 total fall back to the average
-(`budgets_fallback`), never to £0 spending. Sent, it wins over the old
-`subtract_spending`; `monthly_spending` applies only to `average`; omitted,
-the result is today's. The basis echoes `spending_choice`, `spending_used`,
+line) or the measured average or the user's estimate (`average`). Spending
+is always subtracted (owner, 2026-10-15, T-12-0): `none` is a 422, and an
+old client's `subtract_spending=false` reads as `budgets`. Budgets with a £0
+total fall back to the average (`budgets_fallback`), never to £0 spending.
+`monthly_spending` (0 or more) applies only to `average`; omitted, the
+result is the measured average.
+
+**Contributions never add to net worth (T-12-0, owner P0)**: a holding's
+linked contribution is a bill, so the surplus already pays it; an unlinked
+(legacy `monthly_contribution`) one is taken off the cash surplus in every
+mode, month by month as the holding takes it (a paid-off debt stops), and
+added to the holding: net worth neutral. `contributions_monthly` in the
+basis says how much; `contribution` is the cash surplus after it. Invested
+money grows at its rate; cash does not. The basis echoes `spending_choice`, `spending_used`,
 `budgets_monthly` and the figure applied, so the UI's evidence line prints
 the API's numbers. Nothing is stored server-side. UI: the "Everyday
 spending" radio group (`components/wealth/SpendingChoice.tsx`,
 `lib/projectionSpending.ts`) in the target form's cashflow mode: My budgets
 (the default, disabled with "Add a budget to use this." when there are none),
-Average past spending (with the optional estimate) and None. The choice is
-kept in `wealth.spendingSource`; the old `wealth.subtractSpending = '0'` maps
-to None and a stored `wealth.monthlySpend` to Average. The budgets line says
+and Average past spending (with the optional estimate); there is no None.
+The choice is kept in `wealth.spendingSource`; a stored `none` or the old
+`wealth.subtractSpending = '0'` reads as not chosen (the default: budgets,
+then the average), and a stored `wealth.monthlySpend` as Average. The budgets line says
 "a pay cycle" unless the budget cycle is a calendar month (budgets are per
 cycle).
 

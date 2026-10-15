@@ -192,10 +192,11 @@ describe('sample projection spending', () => {
     expect(b.spending_used).toBe('estimate')
     expect(Number(b.spending_applied)).toBe(900)
   })
-  it('none subtracts nothing', () => {
-    const b = basis({ spending_source: 'none' })
-    expect(b.spending_used).toBe('none')
-    expect(Number(b.spending_applied)).toBe(0)
-    expect(Number(b.contribution)).toBe(Number(b.income_monthly) - Number(b.bills_monthly))
+  it('"none" and the old no-spending flag still subtract spending, as the API (T-12-0)', () => {
+    for (const q of [{ spending_source: 'none' }, { subtract_spending: 'false' }]) {
+      const b = basis(q)
+      expect(b.spending_subtracted).toBe(true)
+      expect(Number(b.spending_applied)).toBeGreaterThan(0)
+    }
   })
 })

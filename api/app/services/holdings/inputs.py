@@ -111,7 +111,7 @@ def asset_inputs(db: Session, user, default_growth_pct: Decimal, today: date | N
             group=kind.group, is_investment=kind.is_investment,
             valuations=tuple((v.valued_at, _d(v.value)) for v in a.valuations),
             growth_pct=pct, monthly_contribution=contribution, paid_contributions=paid,
-            is_debt=is_debt, source="assets",
+            contribution_linked=a.id in links, is_debt=is_debt, source="assets",
         ))
     return inputs
 

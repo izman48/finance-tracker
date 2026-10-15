@@ -94,7 +94,8 @@ def test_budgets_are_the_monthly_spending(world):
 def test_every_later_month_uses_the_same_budget_total(world):
     world.budget("Groceries", "890")
     with_budgets = world.projection(spending_source="budgets", target_amount="1000000")
-    none = world.projection(spending_source="none", target_amount="1000000")
+    # T-12-0: "none" is gone; with no purchases here the average is £0.
+    none = world.projection(spending_source="average", target_amount="1000000")
     # Same cashflow, £890 less each month: the invested gap grows by about £890 a month.
     gaps = [Decimal(n["invested"]) - Decimal(b["invested"]) for n, b in zip(none["timeline"][1:4], with_budgets["timeline"][1:4])]
     assert gaps[0] == Decimal("890.00")
@@ -132,10 +133,13 @@ def test_no_active_budgets_falls_back_to_the_average_never_zero(world, setup):
     assert Decimal(basis["spending_applied"]) == Decimal(basis["avg_spending_monthly"])
 
 
-def test_average_and_none_give_todays_results(world):
+def test_average_gives_todays_results_and_the_old_no_spending_flag_reads_as_budgets(world):
+    # T-12-0 (owner, 2026-10-15): "none" is gone; an old client's
+    # subtract_spending=false is read as budgets, never as no spending.
     world.budget("Groceries", "890")
     assert _legacy_view(world.projection(spending_source="average")) == _legacy_view(world.projection())
-    assert _legacy_view(world.projection(spending_source="none")) == _legacy_view(world.projection(subtract_spending="false"))
+    old = world.projection(subtract_spending="false")["contribution_basis"]
+    assert (old["spending_used"], Decimal(old["spending_applied"])) == ("budgets", Decimal("890.00"))
     est = world.projection(spending_source="average", monthly_spending="700")
     assert _legacy_view(est) == _legacy_view(world.projection(monthly_spending="700"))
     assert est["contribution_basis"]["spending_used"] == "estimate"
@@ -153,8 +157,6 @@ def test_spending_source_wins_over_the_old_params(world):
     # subtract_spending is ignored once spending_source is sent; monthly_spending only applies to average.
     assert _legacy_view(world.projection(spending_source="budgets", subtract_spending="false", monthly_spending="5")) == \
         _legacy_view(world.projection(spending_source="budgets"))
-    assert _legacy_view(world.projection(spending_source="none", monthly_spending="700")) == \
-        _legacy_view(world.projection(spending_source="none"))
 
 
 @pytest.mark.parametrize("value", ["budget", "BUDGETS", "", "average; drop"])

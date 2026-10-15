@@ -1,7 +1,8 @@
 import { Link } from 'react-router-dom'
 import type { SpendingChoice as Choice } from '../../lib/projectionSpending'
 
-const OPTIONS: [Choice, string][] = [['budgets', 'My budgets'], ['average', 'Average past spending'], ['none', 'None']]
+// "None" is gone (owner, 2026-10-15, T-12-0): spending is always subtracted.
+const OPTIONS: [Choice, string][] = [['budgets', 'My budgets'], ['average', 'Average past spending']]
 
 export interface SpendingChoiceProps {
   shown: Choice

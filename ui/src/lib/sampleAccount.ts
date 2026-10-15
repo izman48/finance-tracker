@@ -714,7 +714,7 @@ function assetsResponse() {
     // Linked: the bill carries the contribution, never the asset as well.
     monthly_contribution: a.monthly && !a.linked ? String(a.monthly) : null,
     linked_commitment: a.linked
-      ? { id: CONTRIBUTION.id, label: CONTRIBUTION.label, amount: CONTRIBUTION.amount.toFixed(2), next_date: isoDate(nowPlus(CONTRIBUTION.nextIn)), pay_from_account_id: CONTRIBUTION.account }
+      ? { id: CONTRIBUTION.id, label: CONTRIBUTION.label, amount: CONTRIBUTION.amount.toFixed(2), next_date: isoDate(nowPlus(CONTRIBUTION.nextIn)), pay_from_account_id: CONTRIBUTION.account, created: true }
       : null,
     valuations: assetValuations(a).map((v) => ({ id: v.id, value: String(v.value), valued_at: v.date })),
     value_today: a.value.toFixed(2),

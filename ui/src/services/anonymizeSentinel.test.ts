@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import axios from 'axios'
 
 // sec T-11-8: in demo ("Anonymize numbers") mode, real figures never reach
 // the new surfaces and no write leaves the browser. The real API is stubbed
@@ -71,6 +72,19 @@ describe('demo mode never shows real holdings or writes to the real account', ()
     ]
     const results = await Promise.allSettled(writes)
     expect(results.every((r) => r.status === 'rejected')).toBe(true)
+    expect(network).toEqual([])
+  })
+
+  it('with demo mode on, Connect and Reconnect never start a real bank connection (sec T-12-11)', async () => {
+    anonymize.setAnonymized(true)
+    network.length = 0
+    const events: string[] = []
+    const listen = (e: Event) => events.push(String((e as CustomEvent).detail ?? ''))
+    globalThis.addEventListener?.('anonymize:blocked', listen)
+    const results = await Promise.allSettled([api.bankingAPI.getBankConnectionURL(), api.bankingAPI.getReconnectURL('sc1')])
+    globalThis.removeEventListener?.('anonymize:blocked', listen)
+    expect(results.map((r) => r.status)).toEqual(['rejected', 'rejected'])
+    for (const r of results) expect(axios.isCancel((r as PromiseRejectedResult).reason)).toBe(true)
     expect(network).toEqual([])
   })
 })

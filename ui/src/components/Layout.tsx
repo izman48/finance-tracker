@@ -199,10 +199,12 @@ export default function Layout() {
                 {anonymized && (
                   <button
                     onClick={() => setAnonymized(false)}
-                    className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-warn/15 border border-warn/30 text-warn text-xs font-semibold"
+                    className="flex items-center gap-1.5 px-2 py-1 min-h-[44px] sm:min-h-0 rounded-lg bg-warn/15 border border-warn/30 text-warn text-xs font-semibold shrink-0"
                     title="Numbers and names are anonymized — tap to show your real data"
+                    aria-label="Anonymized. Show your real data"
                   >
-                    <EyeOff className="w-3.5 h-3.5" /> Anonymized
+                    {/* Icon only on the narrowest phones, so the header fits at 320px (T-12-11). */}
+                    <EyeOff className="w-3.5 h-3.5" aria-hidden="true" /> <span className="hidden min-[360px]:inline">Anonymized</span>
                   </button>
                 )}
                 <UserMenu />

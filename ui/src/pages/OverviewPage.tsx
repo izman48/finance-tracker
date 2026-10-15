@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { bankLinkError } from '../lib/bankLink'
 import { Link } from 'react-router-dom'
 import { ChevronRight, PieChart, Plug, RefreshCw, Sparkles, TrendingUp, Wallet } from 'lucide-react'
 import { analyticsAPI, bankingAPI, assetsAPI, budgetsAPI, liabilitiesAPI, NetWorthPosition } from '../services/api'
@@ -193,7 +194,7 @@ export default function OverviewPage() {
       const response = await bankingAPI.getBankConnectionURL()
       window.location.href = response.data.auth_url
     } catch (error: any) {
-      setMessage('Failed to get bank connection URL: ' + (error.response?.data?.detail || error.message))
+      setMessage(bankLinkError('Failed to get bank connection URL', error))
       setConnecting(false)
     }
   }

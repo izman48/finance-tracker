@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { bankLinkError } from '../lib/bankLink'
 import { Clock, Landmark, Plug, RefreshCw } from 'lucide-react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
@@ -366,7 +367,7 @@ export default function NetWorthPage() {
       const response = await bankingAPI.getBankConnectionURL()
       window.location.href = response.data.auth_url
     } catch (error: any) {
-      setMessage('Failed to get bank connection URL: ' + (error.response?.data?.detail || error.message))
+      setMessage(bankLinkError('Failed to get bank connection URL', error))
       setConnecting(false)
     }
   }
@@ -380,7 +381,7 @@ export default function NetWorthPage() {
       const response = await bankingAPI.getReconnectURL(connectionId)
       window.location.href = response.data.auth_url
     } catch (error: any) {
-      setMessage('Failed to start reconnecting: ' + (error.response?.data?.detail || error.message))
+      setMessage(bankLinkError('Failed to start reconnecting', error))
       setConnecting(false)
     }
   }

@@ -59,7 +59,7 @@ insists it stays served.
 | 1 Tables | none (UI only). |
 | 2 Purge | n/a. |
 | 3 Deletion | n/a. |
-| 4 Demo mode | This feature. Current gaps: `/banking/sync-status`, `/analytics/accounts/:param/repayments`, `/rules/shared/:param`. |
+| 4 Demo mode | This feature. No current gaps: `KNOWN_DEMO_GAPS` is empty and pinned (T-12-11). Connect and Reconnect are blocked before the network with their own toast; login skips the sync. |
 | 5 Ownership | n/a. |
 | 6 Scopes | n/a. |
 | 7 Claude tools | none. |

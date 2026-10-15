@@ -861,6 +861,26 @@ function statusResponse() {
   }
 }
 
+// Budget freshness (T-12-11): every sample bank synced with the status above.
+function syncStatusResponse() {
+  const s = statusResponse()
+  return {
+    connections: s.connections.map((c) => ({
+      connection_id: c.id, provider: c.provider_name, last_synced_at: s.last_synced_at, consent: 'active', stale: false,
+    })),
+  }
+}
+
+// A shared pack's preview (T-12-11): a small sample pack, never a real one.
+function sharedPackResponse() {
+  const rules = [
+    { pattern: 'FERNWOOD', match_type: 'contains', category: 'Groceries' },
+    { pattern: 'SOLENT TRANSIT', match_type: 'contains', category: 'Transport' },
+    { pattern: 'COBALT COFFEE', match_type: 'contains', category: 'Eating out' },
+  ]
+  return { name: 'Sample everyday pack', description: 'Shared in demo mode', rule_count: rules.length, rules, already_owned: false }
+}
+
 // --- param normalisation + dispatch ---------------------------------------- #
 
 function readParams(params: unknown): TxQuery & Record<string, any> {
@@ -930,6 +950,9 @@ export function sampleResponse(url: string, params: unknown): unknown {
 
   if (is('/auth/me')) return { id: 'sample-user', email: 'you@sample.example' }
   if (is('/banking/status')) return statusResponse()
+  if (is('/banking/sync-status')) return syncStatusResponse()
+  if (/\/analytics\/accounts\/[^/]+\/repayments$/.test(path)) return []
+  if (path.includes('/rules/shared/')) return sharedPackResponse()
   if (is('/banking/accounts')) return ACCOUNTS.map(({ id, display_name, provider_name, account_type }) => ({ id, display_name, provider_name, account_type }))
   if (is('/banking/transactions/facets')) return {
     categories: [...new Set(L.map((x) => x.category))].sort(),
@@ -976,8 +999,4 @@ export const UNSAMPLED_BY_DESIGN: Record<string, string> = {
 /** Reads that SHOULD show sample data but don't yet: each renders empty or
  *  errors in demo mode. Fix one by serving it from sampleResponse and
  *  deleting its line here (the coverage test then insists it stays served). */
-export const KNOWN_DEMO_GAPS: Record<string, string> = {
-  '/banking/sync-status': 'Budget freshness line has no connections in demo mode.',
-  '/analytics/accounts/:param/repayments': 'Account settings shows no repayment schedule in demo mode.',
-  '/rules/shared/:param': 'Previewing a shared rule pack finds nothing in demo mode.',
-}
+export const KNOWN_DEMO_GAPS: Record<string, string> = {}

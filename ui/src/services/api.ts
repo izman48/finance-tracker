@@ -21,6 +21,8 @@ const api = axios.create({
   },
 })
 
+const STARTS_BANK_CONNECTION = /\/banking\/(connect$|connect\?|connections\/[^/]+\/reconnect)/
+
 // Add auth token, and — while anonymized — serve the fixed sample account
 // instead of the real API (reads) and block writes.
 api.interceptors.request.use((config) => {
@@ -33,6 +35,12 @@ api.interceptors.request.use((config) => {
     const method = (config.method ?? 'get').toLowerCase()
     const url = config.url ?? ''
     const isAuth = url.includes('/auth/login') || url.includes('/auth/register')
+    // Connect and Reconnect start a real TrueLayer authorisation: never in
+    // demo mode (sec T-12-11), even though they are GETs.
+    if (STARTS_BANK_CONNECTION.test(url)) {
+      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('anonymize:blocked', { detail: 'connect' }))
+      return Promise.reject(new axios.Cancel('anonymized-connect-blocked'))
+    }
     if (method !== 'get' && !isAuth) {
       // Editing real data while looking at sample values invites mistakes —
       // block the write and let a listener surface a toast.

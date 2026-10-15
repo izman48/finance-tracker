@@ -5,7 +5,7 @@
 export const UNENCRYPTED_FIELDS: string[] = [
   "your email address",
   "dates and times, such as when a transaction, payment, statement or plan falls due and when a record was created or changed",
-  "categories and the rules that set them, including budget categories and rule packs (their names, descriptions and patterns)",
+  "categories, including budget categories and the category each rule sets; rule packs' names and descriptions; and, for a pack you share, a copy of its rules (patterns included) so others can import it. Your own rules' patterns are encrypted",
   "the type and settings of each record and its on/off switches, such as how often a bill repeats, whether it is your payday, an account's role, or a record's status",
   "overdraft limits and card repayment settings, including a fixed repayment amount you choose",
   "the growth rate you set for a holding, and how many payments are left or planned",
@@ -16,4 +16,4 @@ export const UNENCRYPTED_FIELDS: string[] = [
 ]
 
 export const DELETED_PLANNED_NOTE =
-  "A planned item you delete stops counting at once, but it is kept, still encrypted, so changes Claude made to it keep their history. It is removed when you delete your account or your data is purged."
+  "A planned item you delete stops counting at once, but it is kept, still encrypted, so changes Claude made to it keep their history. It is permanently deleted when you delete your account, or when you reset your password without your recovery code."

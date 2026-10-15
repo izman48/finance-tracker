@@ -17,7 +17,7 @@ fails when a phrase below is missing from the privacy page
 PRIVACY_PHRASES: dict[str, str] = {
     "email": "your email address",
     "dates": "dates and times, such as when a transaction, payment, statement or plan falls due and when a record was created or changed",
-    "categories": "categories and the rules that set them, including budget categories and rule packs (their names, descriptions and patterns)",
+    "categories": "categories, including budget categories and the category each rule sets; rule packs' names and descriptions; and, for a pack you share, a copy of its rules (patterns included) so others can import it. Your own rules' patterns are encrypted",
     "types": "the type and settings of each record and its on/off switches, such as how often a bill repeats, whether it is your payday, an account's role, or a record's status",
     "card_settings": "overdraft limits and card repayment settings, including a fixed repayment amount you choose",
     "counts": "the growth rate you set for a holding, and how many payments are left or planned",

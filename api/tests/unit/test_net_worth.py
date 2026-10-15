@@ -352,6 +352,21 @@ class TestNetWorthProjection:
         by_name = {a["name"]: a for a in p["asset_assumptions"]}
         assert by_name["ISA"]["monthly_contribution"] == Decimal("500.00")
 
+    def test_a_holding_that_takes_no_contribution_moves_no_cash(self, db_session):
+        # eng-a on #228: an unknown (flat) kind ignores its contribution, so
+        # no cash moves either, and the surplus is never raised.
+        user = _user(db_session)
+        _account(db_session, user, 1000)
+        boat = Asset(user_id=user.id, name="Boat", asset_type="not_a_type", assumed_growth_pct=Decimal("5"),
+                     monthly_contribution=Decimal("200"))
+        db_session.add(boat)
+        db_session.flush()
+        db_session.add(AssetValuation(asset_id=boat.id, value=Decimal("10000"), valued_at=date.today() - timedelta(days=1)))
+        db_session.commit()
+        p = svc.net_worth_projection(db_session, user, annual_growth_pct=Decimal("0"), spending_source="average")
+        assert p["contribution_basis"]["contributions_monthly"] == Decimal("0.00")
+        assert {p["timeline"][m]["value"] for m in range(6)} == {Decimal("11000.00")}
+
     def test_liability_paydown_clamps_at_zero_and_its_cash_stops(self, db_session):
         # T-12-0: paying down a debt is net worth neutral (cash down, debt
         # down), and once it is paid off neither the debt nor the cash moves.

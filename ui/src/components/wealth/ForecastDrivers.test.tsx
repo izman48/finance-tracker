@@ -21,6 +21,15 @@ describe('ForecastDrivers', () => {
     expect(t).toContain('Everyday spending is not subtracted.')
   })
 
+  it('a £0 move reads as plain £0 in the neutral colour, never a green +£0 (ux on #228)', () => {
+    const h = renderToStaticMarkup(<ForecastDrivers drivers={{
+      rows: [{ label: 'Into Test ISA', detail: '£200 moved from cash (no change to net worth)', amount: 0 }],
+      total: 300, growthPct: 5, notes: [],
+    }} />)
+    expect(h).toMatch(/<span class="tnum shrink-0 text-slate-200">£0<\/span>/)
+    expect(h).not.toContain('+£0')
+  })
+
   it('is a labelled list', () => {
     const h = renderToStaticMarkup(<ForecastDrivers drivers={drivers} />)
     expect(h).toMatch(/<section[^>]*aria-labelledby="forecast-drivers-heading"/)

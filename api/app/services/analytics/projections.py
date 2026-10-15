@@ -335,8 +335,11 @@ def _chart_months(today: date, target_date: date | None) -> int:
 def _unlinked_contributions(holdings, today: date) -> tuple[Decimal, list[Decimal]]:
     """The legacy (unlinked) monthly contributions: their stated total, and
     the cash each month actually moves into the holdings, month 1 first. A
-    debt paid off stops taking its paydown, so its cash stops too."""
-    unlinked = [h for h in holdings if h.source == "assets" and not h.contribution_linked
+    debt paid off stops taking its paydown, so its cash stops too. Only a
+    growth-model holding takes a contribution; a flat (unknown) kind ignores
+    it, so no cash moves (eng-a on #228). Never negative: the surplus is
+    never raised."""
+    unlinked = [h for h in holdings if h.source == "assets" and h.model == "growth" and not h.contribution_linked
                 and h.monthly_contribution and value_on(h, today) is not None]
     stated = sum((h.monthly_contribution for h in unlinked), Decimal(0))
     moved = [Decimal(0)] * MAX_MONTHS
@@ -344,7 +347,7 @@ def _unlinked_contributions(holdings, today: date) -> tuple[Decimal, list[Decima
         rate = monthly_rate(h.growth_pct)
         for m in range(1, MAX_MONTHS + 1):
             # What the holding took this month beyond its own growth.
-            moved[m - 1] += series.exact[m][1] - series.exact[m - 1][1] * (1 + rate)
+            moved[m - 1] += max(Decimal(0), series.exact[m][1] - series.exact[m - 1][1] * (1 + rate))
     return stated, moved
 
 

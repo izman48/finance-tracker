@@ -5,8 +5,11 @@ import { gbp0 as gbp } from '../../lib/format'
 import type { ForecastDrivers as Drivers } from '../../lib/forecastDrivers'
 
 function signed(value: number) {
+  if (value === 0) return gbp(0) // a move (T-12-0): plain £0, never "+£0"
   return value < 0 ? `−${gbp(Math.abs(value))}` : `+${gbp(value)}`
 }
+
+const tone = (value: number) => (value === 0 ? 'text-slate-200' : value < 0 ? 'text-slate-300' : 'text-accent')
 
 export default function ForecastDrivers({ drivers }: { drivers: Drivers }) {
   return (
@@ -21,7 +24,7 @@ export default function ForecastDrivers({ drivers }: { drivers: Drivers }) {
               <span className="block text-slate-300">{row.label}</span>
               <span className="block text-xs text-slate-400">{row.detail}</span>
             </span>
-            <span className={`tnum shrink-0 ${row.amount < 0 ? 'text-slate-300' : 'text-accent'}`}>{signed(row.amount)}</span>
+            <span className={`tnum shrink-0 ${tone(row.amount)}`}>{signed(row.amount)}</span>
           </li>
         ))}
       </ul>

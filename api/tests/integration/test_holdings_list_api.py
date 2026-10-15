@@ -156,3 +156,26 @@ def test_a_negative_investment_is_debt_not_listed_or_in_the_total(world):
     body = _list(world)
     assert [h["name"] for h in body["holdings"]] == ["Example ISA"] and body["count"] == 1
     assert Decimal(world.summary()["investments_total"]) == Decimal("5000.00")
+
+
+def test_investments_total_is_the_history_investments_figure(world):
+    # sec T-11-7: the summary's investments_total and net worth's
+    # Investments group (and what "Include investments" removes) never
+    # disagree, including a linked contribution paid since the last value and
+    # a negative investment (Debt in both).
+    isa = _isa(world, value="1000")
+    world.put(isa, amount="500.00")
+    from tests.integration.test_contribution_link_api import _add_months, _backdate
+    _backdate(world, uuid.UUID(isa), valued=TODAY - timedelta(days=20), linked=TODAY - timedelta(days=20),
+              next_date=_add_months(TODAY - timedelta(days=5), 1))
+    for name, kind, value in (("Example Pension", "pension", "2500"), ("Margin", "investment", "-300"),
+                              ("Example House", "property", "90000")):
+        world.client.post(f"{API}/assets", json={"name": name, "asset_type": kind, "value": value},
+                          headers=_bearer(world.web))
+    total = Decimal(world.summary()["investments_total"])
+    history = world.client.get(f"{API}/analytics/net-worth-history", headers=_bearer(world.web)).json()
+    without = world.client.get(f"{API}/analytics/net-worth-history", params={"include_investments": "false"},
+                               headers=_bearer(world.web)).json()
+    assert total == Decimal("4000.00")  # 1,000 + 500 paid + 2,500; the -300 is Debt
+    assert total == Decimal(str(history[-1]["investments"]))
+    assert total == Decimal(str(history[-1]["net_worth"])) - Decimal(str(without[-1]["net_worth"]))

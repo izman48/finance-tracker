@@ -28,13 +28,18 @@ describe('sample investments on Wealth (D-1)', () => {
   it('three sample holdings with their growth, and the ISA contribution as a linked bill', () => {
     const list = assets().filter((a) => ['isa', 'investment', 'pension', 'crypto'].includes(a.asset_type))
     expect(list.map((a) => [a.name, a.asset_type, a.assumed_growth_pct])).toEqual([
-      ['Sample Stocks & Shares ISA', 'isa', '7'],
+      ['Sample ISA', 'isa', '7'],
       ['Sample Pension', 'pension', '5'],
       ['Sample Crypto', 'crypto', '0'],
     ])
     const isa = list[0]
     expect(isa.monthly_contribution).toBeNull()
-    expect(isa.linked_commitment).toMatchObject({ label: 'Sample Stocks & Shares ISA contribution', amount: '400.00', pay_from_account_id: 'sa1' })
+    expect(isa.linked_commitment).toMatchObject({ label: 'Sample ISA contribution', amount: '400.00', pay_from_account_id: 'sa1' })
+  })
+
+  it('names the ISA short enough that "contribution" fits a 390px row (ux, Sprint 11 follow-up)', () => {
+    const bill = assets().find((a) => a.asset_type === 'isa')!.linked_commitment!
+    expect(bill.label.length).toBeLessThanOrEqual(24)
   })
 
   it('the investments total is £43,700, the sum of the rows, and the summary agrees', () => {
@@ -49,13 +54,13 @@ describe('the sample contribution is a bill (D-3)', () => {
 
   it('Commitments lists it by name, linked to the holding', () => {
     const rows = get<{ label: string; amount: number; linked_holding?: boolean; direction: string }[]>('/analytics/commitments')
-    expect(rows.find((r) => r.label === 'Sample Stocks & Shares ISA contribution')).toMatchObject({ amount: 400, direction: 'expense', linked_holding: true })
+    expect(rows.find((r) => r.label === 'Sample ISA contribution')).toMatchObject({ amount: 400, direction: 'expense', linked_holding: true })
   })
 
   it('it is due before payday and counted once in what is committed, so safe to spend is lower by it', () => {
     const s = summary()
     const bills = get<{ label: string; amount: number; direction: string; next_date: string }[]>('/analytics/commitments')
-    const contribution = bills.find((b) => b.label === 'Sample Stocks & Shares ISA contribution')!
+    const contribution = bills.find((b) => b.label === 'Sample ISA contribution')!
     expect(contribution.next_date < get<{ next_payday: string }>('/analytics/summary').next_payday).toBe(true)
     // The sample's committed bills (rent, phone, subscriptions, gym) plus the contribution.
     const counted = ['Rent', 'Phone', 'Netflix', 'Spotify', 'Gym', contribution.label]
@@ -65,8 +70,8 @@ describe('the sample contribution is a bill (D-3)', () => {
 
   it('the Cashflow forecast takes it on its day, named like the bill', () => {
     const f = get<{ timeline: { date: string; events: { label: string; amount: number }[] }[] }>('/analytics/forecast', { horizon: '30' })
-    const hits = f.timeline.flatMap((p) => p.events.filter((e) => e.label === 'Sample Stocks & Shares ISA contribution').map((e) => [p.date, e.amount]))
-    const bill = get<{ label: string; next_date: string }[]>('/analytics/commitments').find((r) => r.label === 'Sample Stocks & Shares ISA contribution')!
+    const hits = f.timeline.flatMap((p) => p.events.filter((e) => e.label === 'Sample ISA contribution').map((e) => [p.date, e.amount]))
+    const bill = get<{ label: string; next_date: string }[]>('/analytics/commitments').find((r) => r.label === 'Sample ISA contribution')!
     expect(hits).toEqual([[bill.next_date, -400]])
   })
 })
@@ -74,7 +79,7 @@ describe('the sample contribution is a bill (D-3)', () => {
 describe('the sample investment graph (engine maths)', () => {
   it('each holding follows the engine from its value today', () => {
     const g = graph()
-    const isa = g.holdings.find((h) => h.name === 'Sample Stocks & Shares ISA')!
+    const isa = g.holdings.find((h) => h.name === 'Sample ISA')!
     expect(isa.forecast.map((p) => n(p.worth))).toEqual(engine(18500, 7, 400, 120))
     expect(n(isa.forecast[120].paid_in)).toBe(18500 + 400 * 120)
     const crypto = g.holdings.find((h) => h.name === 'Sample Crypto')!
@@ -93,8 +98,8 @@ describe('the sample investment graph (engine maths)', () => {
   })
 
   it('history is the valuations entered', () => {
-    const isaAsset = assets().find((a) => a.name === 'Sample Stocks & Shares ISA')!
-    const isa = graph().holdings.find((h) => h.name === 'Sample Stocks & Shares ISA')!
+    const isaAsset = assets().find((a) => a.name === 'Sample ISA')!
+    const isa = graph().holdings.find((h) => h.name === 'Sample ISA')!
     expect(isa.history.map((p) => [p.date, n(p.worth)])).toEqual(isaAsset.valuations.map((v) => [v.valued_at, n(v.value)]))
   })
 

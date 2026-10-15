@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   answerSentence, contributionOf, graphStateNotes, inputsLine, investmentLine, isInvestment, investmentsTotal,
-  LOOK_AHEAD, axisLabel, chartPoints, currentValue, wealthFormLink, graphDefaultGrowth, lastValueLine, parseValueToday, tablePoints, type InvestmentGraph,
+  LOOK_AHEAD, axisLabel, chartPoints, currentValue, wealthFormLink, graphDefaultGrowth, lastValueLine, parseValueToday, tablePoints, targetGrowthError, type InvestmentGraph,
 } from './investments'
 import type { Asset } from '../services/api'
 
@@ -189,5 +189,16 @@ describe('value today comes from the API when it gives one', () => {
   it('falls back to the latest valuation for an older API', () => {
     expect(currentValue(asset())).toBe(18000)
     expect(currentValue(asset({ value_today: null }))).toBe(18000)
+  })
+})
+
+describe('the target form growth rate (sec, Sprint 11 follow-up)', () => {
+  it('accepts blank and any rate from -100 to 50, the API bounds', () => {
+    for (const raw of ['', '5', '-100', '50', '2.5']) expect(targetGrowthError(raw)).toBeNull()
+  })
+  it('refuses a rate outside -100..50 or not a number, before any request', () => {
+    for (const raw of ['50.5', '60', '-101', 'abc']) {
+      expect(targetGrowthError(raw)).toBe('Use a growth rate from −100% to 50% a year.')
+    }
   })
 })

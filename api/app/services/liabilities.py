@@ -23,7 +23,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from sqlalchemy.orm import Session
 
 from app.models import CommitmentRule, CommitmentStatus, Liability
-from app.services.analytics.common import _add_months
+from app.core.basics import _add_months
 
 # Bound on the schedule (sec, T-10-7a): a payment barely above the interest
 # must give a 422, never a loop that runs for centuries. 600 months.

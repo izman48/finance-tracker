@@ -24,7 +24,7 @@ compound projection with every assumption echoed back.
 | `GET /api/v1/holdings` | `CurrentUserOrMcpRead` (T-11-7: Claude's `list_holdings`, see claude-connector.md) |
 | `PUT /api/v1/assets/{asset_id}/contribution` | `CurrentUser` (opt in or edit; investments only) |
 | `DELETE /api/v1/assets/{asset_id}/contribution` | `CurrentUser` (opt out) |
-| `POST /api/v1/assets/{asset_id}/valuations` | `CurrentUser` (same date overwrites) |
+| `POST /api/v1/assets/{asset_id}/valuations` | `CurrentUser` (same date overwrites; a new date past 1,000 values per holding is 409, T-12-8) |
 | `DELETE /api/v1/assets/{asset_id}/valuations/{valuation_id}` | `CurrentUser` |
 | `POST /api/v1/assets/{asset_id}/flows` | `CurrentUser` |
 | `DELETE /api/v1/assets/{asset_id}/flows/{flow_id}` | `CurrentUser` |

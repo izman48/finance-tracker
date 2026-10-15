@@ -147,9 +147,22 @@ export function tablePoints(forecast: GraphForecastPoint[], months: number): Gra
 
 /** The growth % for holdings with none of their own: the target form's
  *  (`wealth.growth`), as the projection uses it, else 5% (the API default). */
+// The API's growth bounds (ADR-002 section 6): 422 outside them.
+export const GROWTH_MIN = -100
+export const GROWTH_MAX = 50
+
+const inGrowthRange = (n: number) => Number.isFinite(n) && n >= GROWTH_MIN && n <= GROWTH_MAX
+
 export function graphDefaultGrowth(raw: string | null): number {
   const n = raw == null || raw.trim() === '' ? NaN : Number(raw)
-  return Number.isFinite(n) && n >= -100 && n <= 50 ? n : 5
+  return inGrowthRange(n) ? n : 5
+}
+
+/** The target form's growth input: an error to show instead of sending a
+ *  rate the API would refuse, or null (blank means 0, as before). */
+export function targetGrowthError(raw: string): string | null {
+  if (raw.trim() === '' || inGrowthRange(Number(raw))) return null
+  return 'Use a growth rate from −100% to 50% a year.'
 }
 
 /** `Test ISA. Last value £18,000, 10 days ago.` (ux "Update value"). */

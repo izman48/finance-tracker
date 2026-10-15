@@ -108,7 +108,7 @@ export default function DashboardPage() {
     setMessage('')
     try {
       await bankingAPI.syncAccounts()
-      await bankingAPI.syncTransactions(90)
+      await bankingAPI.syncTransactions()
       await Promise.all([loadBankStatus(), loadSummary(), loadCommitments(), loadPlanned()])
     } catch (error: any) {
       setMessage('Failed to sync: ' + (error.response?.data?.detail || error.message))

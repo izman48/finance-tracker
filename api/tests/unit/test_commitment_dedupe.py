@@ -5,6 +5,8 @@ bugs was found: a mandate reference that rolls, an Amex settlement whose
 descriptor is truncated, and a merchant that renamed itself into a second
 commitment.
 """
+import pytest
+
 from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
@@ -122,3 +124,20 @@ class TestDuplicateCommitments:
     def test_single_commitment_is_never_flagged(self):
         rules = [_rule("OCTOPUS ENERGY", "147.49", date(2026, 9, 1))]
         assert _duplicate_commitment_groups(_FakeDb(rules), SimpleNamespace(id=uuid4())) == []
+
+
+class TestDuplicateNudgeCadence:
+    """The duplicate nudge names the rules' real cadence, not always
+    "/month" (T-12-12)."""
+
+    @pytest.mark.parametrize("cadence,months,days,words", [
+        ("weekly", None, None, ("weekly", "/week")),
+        ("monthly", None, None, ("monthly", "/month")),
+        ("every_n_months", 12, None, ("yearly", "/year")),
+        ("every_n_months", 3, None, ("every 3 months", " every 3 months")),
+        ("custom_days", None, 14, ("every 14 days", " every 14 days")),
+    ])
+    def test_cadence_words(self, cadence, months, days, words):
+        from app.services.analytics.nudges import _cadence_words
+        rule = SimpleNamespace(cadence=cadence, interval_months=months, interval_days=days)
+        assert _cadence_words(rule) == words

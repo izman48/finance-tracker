@@ -7,8 +7,13 @@ editing this file and deploying; the git history is the audit trail.
 from datetime import date
 from decimal import Decimal
 
-# FSCS deposit protection: per person, per banking licence.
-FSCS_LIMIT = Decimal("85000")
+# FSCS deposit protection: per person, per banking licence. £120,000 from
+# 1 December 2025 (was £85,000 from 2017). Source: Bank of England, "PRA
+# confirms FSCS deposit limit to be increased to £120,000 from 1 December",
+# 18 November 2025, bankofengland.co.uk/news/2025/november; and the FSCS
+# deposit limit page (fscs.org.uk). Checked 2026-10-15 (T-12-12).
+FSCS_LIMIT = Decimal("120000")
+FSCS_AS_OF = date(2025, 12, 1)
 FSCS_SOURCE = "FSCS deposit protection limit (fscs.org.uk)"
 
 # Best widely-available easy-access savings rate (AER %), curated from public

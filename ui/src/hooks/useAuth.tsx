@@ -67,7 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsSyncing(true)
         await bankingAPI.syncAccounts()
         // A year of history so custom date ranges reach past the last month.
-        await bankingAPI.syncTransactions(365)
+        await bankingAPI.syncTransactions()
       }
     } catch {
       // transient — the app still loads with whatever data it has
@@ -86,7 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (status.data?.is_connected) {
         await bankingAPI.syncAccounts()
         // A year of history so custom date ranges reach past the last month.
-        await bankingAPI.syncTransactions(365)
+        await bankingAPI.syncTransactions()
       }
     } catch {
       // No connections / transient sync error: the dashboard still loads and

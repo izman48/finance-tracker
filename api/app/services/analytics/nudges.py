@@ -106,17 +106,18 @@ def get_nudges(db: Session, user) -> list[dict]:
         first, second = group[0], group[1]
         amount = _d(first.amount)
         extra = amount * (len(group) - 1)
+        how_often, per = _cadence_words(first)
         nudges.append({
             "id": f"duplicate_commitment_{first.id}",
             "rank": 0,  # a wrong number matters more than an optimisation
             "body": (
                 f"“{first.label}” and “{second.label}” are both £{amount:,.2f} "
-                f"{first.cadence} around {first.next_date:%-d %b}. If they're the same "
-                f"payment, £{extra:,.2f}/month is being counted twice."
+                f"{how_often} around {first.next_date:%-d %b}. If they're the same "
+                f"payment, £{extra:,.2f}{per} is being counted twice."
             ),
             "detail": (
                 f"{len(group)} confirmed commitments share an amount (£{amount:,.2f}), a "
-                f"cadence ({first.cadence}) and a due date within "
+                f"cadence ({how_often}) and a due date within "
                 f"{DUPLICATE_DAY_TOLERANCE} days. That usually means the merchant changed "
                 f"its bank descriptor, so the new one was detected while the old one stayed "
                 f"confirmed. We don't merge them automatically because two genuinely "
@@ -129,6 +130,24 @@ def get_nudges(db: Session, user) -> list[dict]:
 
     nudges.extend(_card_payment_overlap(db, user))
     return sorted(nudges, key=lambda n: n["rank"])
+
+
+def _cadence_words(rule) -> tuple[str, str]:
+    """How often a commitment repeats, as words for the duplicate nudge:
+    ("monthly", "/month"), ("yearly", "/year"), ("every 3 months", " every 3
+    months") ... (T-12-12: it always said "/month")."""
+    if rule.cadence == "weekly":
+        return "weekly", "/week"
+    if rule.cadence == "monthly":
+        return "monthly", "/month"
+    if rule.cadence == "every_n_months":
+        months = rule.interval_months or 1
+        if months == 12:
+            return "yearly", "/year"
+        words = "monthly" if months == 1 else f"every {months} months"
+        return words, "/month" if months == 1 else f" {words}"
+    days = rule.interval_days or 30
+    return f"every {days} days", f" every {days} days"
 
 
 def _money(value: Decimal) -> str:

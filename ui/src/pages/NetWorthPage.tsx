@@ -390,7 +390,7 @@ export default function NetWorthPage() {
     setMessage('')
     try {
       await bankingAPI.syncAccounts()
-      await bankingAPI.syncTransactions(1825)
+      await bankingAPI.syncTransactions()
       await load()
       setMessage('Accounts and transactions synced.')
     } catch (error: any) {

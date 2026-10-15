@@ -5,14 +5,17 @@ interface ToastAction {
   onClick: () => void
 }
 
+/** ok: done (mint); err: failed (rose); info: neither, e.g. demo mode (neutral). */
+type Tone = 'ok' | 'err' | 'info'
+
 interface ToastOptions {
-  tone?: 'ok' | 'err'
+  tone?: Tone
   action?: ToastAction
 }
 
 interface ToastState {
   message: string
-  tone: 'ok' | 'err'
+  tone: Tone
   action?: ToastAction
 }
 
@@ -37,8 +40,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {toast && (
         <div
           role="status"
-          className={`fixed bottom-24 md:bottom-6 right-4 sm:right-6 z-50 flex items-center gap-3 font-medium px-4 py-3 rounded-xl shadow-pop text-ink-950 ${
-            toast.tone === 'err' ? 'bg-neg' : 'bg-accent'
+          className={`fixed bottom-24 md:bottom-6 right-4 sm:right-6 z-50 flex items-center gap-3 font-medium px-4 py-3 rounded-xl shadow-pop ${
+            toast.tone === 'err' ? 'bg-neg text-ink-950' : toast.tone === 'info' ? 'bg-card2 text-slate-100 border border-white/10' : 'bg-accent text-ink-950'
           }`}
         >
           {toast.message}

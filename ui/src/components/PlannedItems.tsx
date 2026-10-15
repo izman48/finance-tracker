@@ -4,6 +4,8 @@ import { PlannedItem } from '../types'
 import { gbp, dateLong as shortDate } from '../lib/format'
 import { perInstallment, stepPlannedDate } from '../lib/planned'
 import ClaudeMarker, { NOT_COUNTED_TEXT } from './changes/ClaudeMarker'
+import CardPaymentToggle from './CardPaymentToggle'
+import { canBeCardPayment, plannedBody } from '../lib/cardPayment'
 
 function previewDate(iso: string) {
   return new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
@@ -38,6 +40,7 @@ export default function PlannedItems({
     if (it.kind === 'recurring') return `${gbp(it.amount ?? 0)} recurring · from ${shortDate(it.start_date)}`
     return `${gbp(it.amount ?? 0)} · ${shortDate(it.start_date)}`
   }
+  const lineTwo = (it: PlannedItem) => `${it.is_card_payment ? 'Card payment · ' : ''}${describe(it)}`
 
   return (
     <div className="card-pad">
@@ -55,7 +58,7 @@ export default function PlannedItems({
       ) : (
         <div className="divide-y divide-white/[0.06]">
           {items.map((it) => (
-            <div key={it.id} className="py-3 flex items-center justify-between">
+            <div key={it.id} id={`planned-${it.id}`} tabIndex={-1} className="py-3 flex items-center justify-between">
               <div>
                 <div className="font-medium text-slate-200 flex flex-wrap items-center gap-x-2">
                   <span>{it.name}</span>
@@ -63,15 +66,20 @@ export default function PlannedItems({
                   {/* Its real transaction has landed (T-08-7). No detail or link: a match can be wrong. */}
                   {it.matched_transaction_id && <span className="chip-pos">Paid</span>}
                   {it.changed_by_claude && <ClaudeMarker auditId={it.changed_by_claude.audit_id} />}
+                  {/* The API decides it (T-12-4b): ticked, in a window with projected card bills. */}
+                  {it.card_payment_overlap && <span className="chip-warn">Overlaps card bills</span>}
                 </div>
                 {it.direction === 'income' && <p className="text-xs text-slate-400">{NOT_COUNTED_TEXT}</p>}
                 <div className={`text-sm tnum ${it.matched_transaction_id ? 'text-slate-400' : it.direction === 'income' ? 'text-pos' : 'text-slate-500'}`}>
-                  {it.direction === 'income' ? '+' : ''}{describe(it)}
+                  {it.direction === 'income' ? '+' : ''}{lineTwo(it)}
                 </div>
               </div>
+              <div className="flex items-center gap-3">
+              {canBeCardPayment(it.direction, it.kind) && <CardPaymentToggle item={it} onChanged={onChanged} />}
               <button onClick={() => remove(it.id)} className="text-sm text-slate-500 hover:text-neg transition-colors">
                 Remove
               </button>
+              </div>
             </div>
           ))}
         </div>
@@ -90,7 +98,7 @@ export default function PlannedItems({
   )
 }
 
-function AddPlannedModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
+export function AddPlannedModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
   const [direction, setDirection] = useState('expense')
   const [kind, setKind] = useState('one_off')
   const [name, setName] = useState('')
@@ -102,6 +110,7 @@ function AddPlannedModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
   const [withInterest, setWithInterest] = useState(false)
   const [apr, setApr] = useState('')
   const [fee, setFee] = useState('')
+  const [cardPayment, setCardPayment] = useState(false)
   const [saving, setSaving] = useState(false)
 
   const n = Number(installments) || 0
@@ -110,20 +119,10 @@ function AddPlannedModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
   const save = async () => {
     if (!name || !startDate) return
     setSaving(true)
-    const base: Record<string, unknown> = { name, direction, kind, start_date: startDate }
-    if (kind === 'installment_plan') {
-      Object.assign(base, {
-        total_amount: Number(total),
-        installments: n,
-        cadence,
-        apr: withInterest && apr ? Number(apr) : null,
-        fee_amount: withInterest && fee ? Number(fee) : null,
-      })
-    } else if (kind === 'recurring') {
-      Object.assign(base, { amount: Number(amount), cadence })
-    } else {
-      Object.assign(base, { amount: Number(amount) })
-    }
+    const base = plannedBody({
+      name, direction, kind, startDate, amount, cadence, total, installments: n,
+      apr: withInterest ? apr : null, fee: withInterest ? fee : null, cardPayment,
+    })
     try {
       await analyticsAPI.addPlannedItem(base)
       onAdded()
@@ -239,6 +238,25 @@ function AddPlannedModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
             <label className="label">{kind === 'one_off' ? 'Date' : 'Start date'}</label>
             <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="input" />
           </div>
+
+          {canBeCardPayment(direction, kind) && (
+            <div className="flex items-start gap-2 min-h-[44px]">
+              <input
+                id="planned-card-payment"
+                type="checkbox"
+                checked={cardPayment}
+                onChange={(e) => setCardPayment(e.target.checked)}
+                aria-describedby="planned-card-payment-help"
+                className="checkbox mt-1"
+              />
+              <div>
+                <label htmlFor="planned-card-payment" className="text-sm text-slate-300">Card payment</label>
+                <p id="planned-card-payment-help" className="text-xs text-slate-400">
+                  Tick this if it pays a credit card, so nilu counts it once with your projected card bills.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex justify-end gap-2 mt-5">

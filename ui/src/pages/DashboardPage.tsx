@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import UpcomingLabel from '../components/UpcomingLabel'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
+import { CARD_OVERLAP_ANCHOR, isCardOverlapNudge } from '../lib/cardPayment'
 import {
   Banknote,
   CalendarClock,
@@ -28,6 +29,7 @@ import { buildUpcoming, upcomingAmount, upcomingShowsDate } from '../lib/upcomin
 import { SafeToSpendNote, SavableNote } from '../components/changes/KeepControls'
 
 export default function DashboardPage() {
+  const navigate = useNavigate()
   const [bankStatus, setBankStatus] = useState<BankStatus | null>(null)
   const [summary, setSummary] = useState<CashflowSummary | null>(null)
   const [commitments, setCommitments] = useState<Commitment[]>([])
@@ -176,6 +178,10 @@ export default function DashboardPage() {
       id: n.id,
       body: <>{n.body}</>,
       detail: n.detail,
+      // ux O-2: Review opens the planned card payments it is about.
+      ...(isCardOverlapNudge(n.id)
+        ? { cta: { label: 'Review', onClick: () => navigate(`/commitments#${CARD_OVERLAP_ANCHOR}`) } }
+        : {}),
     })),
   ]
 

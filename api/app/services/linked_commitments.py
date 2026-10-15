@@ -73,6 +73,8 @@ def linked_commitments(db: Session, user_id: uuid.UUID) -> dict[uuid.UUID, LinkO
     loans = db.query(Liability.id, Liability.linked_commitment_id, Liability.kind).filter(
         Liability.user_id == user_id, Liability.linked_commitment_id.isnot(None),
     )
+    # The column wins over the link row: it carries the kind, so a mortgage
+    # keeps its own wording (eng-a on #235). Keep this loop last.
     for liability_id, commitment_id, kind in loans:
         owners[commitment_id] = LinkOwner("liability", liability_id, kind == LiabilityKind.MORTGAGE.value)
     return owners

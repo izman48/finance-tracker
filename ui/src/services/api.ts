@@ -10,6 +10,10 @@ import type { HistoryResponse } from '../lib/budgetHistory'
 // Unset -> local dev default; empty string -> same-origin (production behind Caddy)
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
+/** After the first sync, every transaction sync covers the last 88 days: the
+ *  API's FALLBACK_DAYS (banks serve 90 once consent is a few minutes old). */
+export const SYNC_WINDOW_DAYS = 88
+
 const api = axios.create({
   baseURL: `${API_URL}/api/v1`,
   headers: {
@@ -502,7 +506,8 @@ export const bankingAPI = {
   // Note: the OAuth code exchange happens server-side in /banking/callback,
   // which TrueLayer redirects to directly and then forwards to /dashboard.
   syncAccounts: () => api.post('/banking/sync/accounts'),
-  syncTransactions: (days: number = 90) => api.post('/banking/sync/transactions', { days }),
+  // The API fetches only this many days after the first sync (T-12-12).
+  syncTransactions: () => api.post('/banking/sync/transactions', { days: SYNC_WINDOW_DAYS }),
   getAccounts: () => api.get('/banking/accounts'),
   getTransactions: (params?: TransactionQuery) =>
     api.get('/banking/transactions', { params: listParams((params ?? {}) as Record<string, unknown>) }),

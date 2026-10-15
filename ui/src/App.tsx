@@ -22,6 +22,7 @@ import CallbackPage from './pages/CallbackPage'
 import OAuthConsentPage from './pages/OAuthConsentPage'
 import { PrivacyPage, TermsPage } from './pages/BetaInfoPage'
 import ProtectedRoute from './components/ProtectedRoute'
+import NotFoundPage from './pages/NotFoundPage'
 
 function App() {
   return (
@@ -128,6 +129,8 @@ function App() {
               </ProtectedRoute>
             }
           />
+          {/* Any other path (T-12-12). */}
+          <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>
       </ConfirmProvider>

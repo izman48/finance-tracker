@@ -51,17 +51,13 @@ update the feature doc's touchpoints. Security-relevant items are marked 🔒.
 
 ## Behaviour
 
-- The UI asks for 365 or 1825 days of sync; non-history syncs are clamped to
-  88 days.
 - Sharing a rule pack drops `counts_as`. The rules UI can't edit a rule's
   pattern, category or counts_as.
 - `bankingAPI.disconnectBank` and `assetsAPI.removeValuation` exist but
   nothing calls them; no UI calls `DELETE /assets/{id}/flows/{id}`;
   `GET /analytics/spending/transactions` is unused.
-- Duplicate-commitment nudge always says "/month". `FSCS_LIMIT` is £85,000;
-  check whether it should be £120,000.
-- No catch-all 404 route. `visual-check.mjs` skips `/changes`, `/`,
-  `/forgot-password`, `/reset-password`, `/r/:code`, `/callback`.
+- `visual-check.mjs` skips `/changes`, `/`, `/forgot-password`,
+  `/reset-password`, `/r/:code`, `/callback`.
 
 ## Stale docs and copy
 

@@ -731,7 +731,7 @@ export default function NetWorthPage() {
                   </h3>
                   <span className="inline-flex items-baseline gap-3">
                     {key === 'invest' && (
-                      <Link to="/networth/investments" className="text-sm text-accent hover:underline">See graph</Link>
+                      <Link to="/networth/investments" className="text-sm text-accent hover:underline inline-flex items-center min-h-[44px] sm:min-h-0 px-1">See graph</Link>
                     )}
                     {!excluded && !loansFailed && (
                       <span className={`text-sm tnum ${subtotal < 0 ? 'text-warn' : 'text-slate-400'}`}>

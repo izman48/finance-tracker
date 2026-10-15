@@ -530,9 +530,13 @@ function projectionResponse(q: Record<string, any>) {
   // subtract_spending=false: "all my forecasted cashflow lands in my wealth" —
   // the average is shown but not subtracted. A custom monthly_spending
   // replaces the measured average entirely (mirrors the backend).
-  const subtractSpending = String(q.subtract_spending ?? 'true') !== 'false'
-  const customSpend = q.monthly_spending != null ? Math.max(0, Number(q.monthly_spending)) : null
+  // spending_source (T-10-15b) wins when sent: the sample has no budgets, so
+  // "budgets" falls back to the average, as the API does.
+  const source: string | null = q.spending_source ?? null
+  const subtractSpending = source ? source !== 'none' : String(q.subtract_spending ?? 'true') !== 'false'
+  const customSpend = q.monthly_spending != null && source !== 'budgets' ? Math.max(0, Number(q.monthly_spending)) : null
   const spendLeg = !subtractSpending ? 0 : customSpend != null ? customSpend : AVG_SPENDING
+  const spendingUsed = !source ? null : source === 'none' ? 'none' : customSpend != null ? 'estimate' : 'average'
   const basis = derived
     ? {
         income_monthly: String(round2(INCOME_MONTHLY)),
@@ -543,6 +547,10 @@ function projectionResponse(q: Record<string, any>) {
         spending_subtracted: subtractSpending,
         spending_applied: String(round2(spendLeg)),
         spending_source: subtractSpending && customSpend != null ? 'custom' : 'measured',
+        spending_choice: source,
+        spending_used: spendingUsed,
+        budgets_monthly: source ? '0.00' : null,
+        budgets_fallback: source ? source === 'budgets' : null,
         sampled_months: [980, 1120, 1040, 1210, 1005, 1180].map((total, i) => {
           const d = new Date()
           d.setMonth(d.getMonth() - (6 - i))

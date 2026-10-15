@@ -390,6 +390,72 @@ for (const [vpName, viewport] of viewports) {
     console.log(`shot loan-form-picker-${vpName}`)
     await page.unroute('**/api/v1/liabilities')
   }
+  // Everyday spending (T-10-15b): the projection's radio group, its request
+  // and its evidence line. Synthetic budgets £500 + £390 = £890 on a
+  // four-weekly pay cycle, so the line says "a pay cycle".
+  if (vpName === 'desktop' || vpName === 'mobile') {
+    const sent = []
+    await page.route('**/api/v1/analytics/net-worth-projection*', (route) => {
+      const q = new URL(route.request().url()).searchParams
+      const source = q.get('spending_source')
+      sent.push(source)
+      const used = source === 'none' ? 'none' : source === 'budgets' ? 'budgets' : q.get('monthly_spending') ? 'estimate' : 'average'
+      const applied = { none: '0.00', budgets: '890.00', estimate: q.get('monthly_spending'), average: '1020.00' }[used]
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        current_net_worth: '10118.24', target_amount: '50000', target_date: daysFromNow(900), monthly_contribution: '1000.00',
+        annual_growth_pct: '5', mode: 'cashflow', bank_component: '2140.55', asset_assumptions: [], as_of: daysFromNow(0),
+        timeline: [{ date: daysFromNow(0), net_worth: '10118.24' }, { date: daysFromNow(900), net_worth: '50000.00' }],
+        contribution_basis: {
+          income_monthly: '3200.00', bills_monthly: '1180.00', avg_spending_monthly: '1020.00', contribution: '1000.00',
+          spending_months_sampled: 6, spending_subtracted: used !== 'none', spending_applied: applied,
+          spending_source: used === 'estimate' ? 'custom' : 'measured', spending_choice: source, spending_used: used,
+          budgets_monthly: '890.00', budgets_fallback: false, sampled_months: [],
+        },
+      }) })
+    })
+    await page.route('**/api/v1/budgets', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+      cycle: { start: daysFromNow(-1), end: daysFromNow(26), days_total: 28, days_left: 26, fallback: false },
+      budgets: [], other_spending: '0.00', not_counted: [], summary_this_cycle: null,
+    }) }))
+    await page.goto(`${BASE}/networth`, { waitUntil: 'networkidle' })
+    await page.evaluate(() => {
+      localStorage.setItem('wealth.target', '50000')
+      localStorage.removeItem('wealth.spendingSource')
+      localStorage.setItem('wealth.contribMode', 'cashflow')
+    })
+    await page.reload({ waitUntil: 'networkidle' })
+    const openTarget = () => page.getByRole('button', { name: /^Target £/ }).click()
+    await openTarget()
+    const group = page.getByRole('group', { name: 'Everyday spending' })
+    await group.waitFor()
+    await page.getByText('Your budgets: £890 a pay cycle.').waitFor()
+    if (sent.at(-1) !== 'budgets') errors.push(`[${vpName}] default spending_source was ${sent.at(-1)}`)
+    await group.scrollIntoViewIfNeeded()
+    await page.screenshot({ path: `${OUT}/spending-budgets-${vpName}.png`, fullPage: true })
+    console.log(`shot spending-budgets-${vpName}`)
+    // P-6: arrows move the choice, the projection follows, focus stays on a radio.
+    await page.getByRole('radio', { name: 'My budgets' }).focus()
+    await page.keyboard.press('ArrowRight')
+    await page.getByText('Your average over the last 6 months: £1,020 a month.').waitFor()
+    const focused = await page.evaluate(() => document.activeElement?.getAttribute('type'))
+    if (focused !== 'radio') errors.push(`[${vpName}] focus left the radio group (${focused})`)
+    if (sent.at(-1) !== 'average') errors.push(`[${vpName}] ArrowRight sent ${sent.at(-1)}`)
+    await page.screenshot({ path: `${OUT}/spending-average-${vpName}.png`, fullPage: true })
+    console.log(`shot spending-average-${vpName}`)
+    // P-3: None sends none, warns, and survives a reload.
+    await page.getByText('None', { exact: true }).click()
+    await page.getByText('Not subtracted: all your cashflow lands in wealth.').waitFor()
+    await page.reload({ waitUntil: 'networkidle' })
+    await openTarget()
+    await page.getByText('Not subtracted: all your cashflow lands in wealth.').waitFor()
+    if (!(await page.getByRole('radio', { name: 'None' }).isChecked())) errors.push(`[${vpName}] None did not persist`)
+    if (sent.at(-1) !== 'none') errors.push(`[${vpName}] None sent ${sent.at(-1)}`)
+    await page.screenshot({ path: `${OUT}/spending-none-${vpName}.png`, fullPage: true })
+    console.log(`shot spending-none-${vpName}`)
+    await page.evaluate(() => { localStorage.removeItem('wealth.target'); localStorage.removeItem('wealth.spendingSource') })
+    await page.unroute('**/api/v1/analytics/net-worth-projection*')
+    await page.unroute('**/api/v1/budgets')
+  }
   await ctx.close()
 }
 

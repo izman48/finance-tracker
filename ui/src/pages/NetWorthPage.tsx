@@ -11,7 +11,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { assetsAPI, analyticsAPI, bankingAPI, liabilitiesAPI, Asset, AssetDecomposition, Liability, NetWorthPoint, NetWorthPosition, Projection } from '../services/api'
+import { assetsAPI, analyticsAPI, bankingAPI, budgetsAPI, liabilitiesAPI, Asset, AssetDecomposition, Liability, NetWorthPoint, NetWorthPosition, Projection } from '../services/api'
 import { BankStatus, CashflowSummary, SummaryAccount } from '../types'
 import { ASSET_TYPE_LABEL, latestValue } from '../lib/assets'
 import { gbp0 as gbp, timeAgo } from '../lib/format'
@@ -23,7 +23,7 @@ import LiabilityRow, { BothCountedNotice, LoansLoadError } from '../components/w
 import LiabilityForm from '../components/wealth/LiabilityForm'
 import SpendingChoice from '../components/wealth/SpendingChoice'
 import {
-  budgetsAvailable, evidenceLine, shownChoice, spendingParams, SPENDING_KEY, storedChoice,
+  budgetPeriod, budgetsAvailable, evidenceLine, shownChoice, spendingParams, SPENDING_KEY, storedChoice,
   type SpendingChoice as SpendingChoiceValue,
 } from '../lib/projectionSpending'
 import { focusAfterReload } from '../lib/liabilityForm'
@@ -140,6 +140,18 @@ export default function NetWorthPage() {
   }
   const [showTargetForm, setShowTargetForm] = useState(false)
   const [projection, setProjection] = useState<Projection | null>(null)
+  // Budgets are per pay cycle: the evidence line says "a month" only when the
+  // cycle is a calendar month (sec on #195). Unknown = "a pay cycle".
+  const [budgetCycle, setBudgetCycle] = useState<{ start: string; end: string; fallback: boolean } | null>(null)
+  const usesBudgets = projection?.contribution_basis?.spending_used === 'budgets'
+  useEffect(() => {
+    if (!usesBudgets || budgetCycle) return
+    let cancelled = false
+    budgetsAPI.list()
+      .then((res) => !cancelled && setBudgetCycle(res.data.cycle))
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [usesBudgets, budgetCycle])
   const [decomp, setDecomp] = useState<AssetDecomposition | null>(null)
   const [position, setPosition] = useState<NetWorthPosition | null>(null)
   const [updating, setUpdating] = useState<Asset | null>(null)
@@ -548,7 +560,7 @@ export default function NetWorthPage() {
                 shown={shownChoice(spendingChoice, projection?.contribution_basis)}
                 budgetsAvailable={!projection?.contribution_basis || budgetsAvailable(projection.contribution_basis)}
                 estimate={spendAmount}
-                evidence={!projectionFailed && projection?.contribution_basis ? evidenceLine(projection.contribution_basis) : null}
+                evidence={!projectionFailed && projection?.contribution_basis ? evidenceLine(projection.contribution_basis, budgetPeriod(budgetCycle)) : null}
                 onChoose={chooseSpending}
                 onEstimate={setSpendAmount}
               />

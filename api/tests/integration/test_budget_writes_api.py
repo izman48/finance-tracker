@@ -20,7 +20,9 @@ from sqlalchemy import func, select, text
 
 from app.models import AuditEntry, Budget, BudgetChange
 from tests.integration.test_budgets_api import API, World as BudgetsWorld
+from tests.ciphertext import assert_ciphertext_of
 from tests.integration.test_oauth import READ, _bearer, _connect
+from tests.integration.test_transactions_endpoint import _dek_from_token
 
 BUDGETS_WRITE = "finance:budgets.write"
 PLANNING = "finance:planning.write"
@@ -277,7 +279,9 @@ def test_claude_cant_undo_or_read_the_trail(w):
 def test_the_audit_row_is_encrypted(w):
     w.claude_set([{"category": "Eating out", "limit_pounds": 150}], dry_run=False)
     raw = w.db.execute(text("SELECT target_label, changes FROM audit_entries")).first()
-    assert "Eating out" not in str(raw[0]) and "150" not in str(raw[1]).replace("1500", "")
+    dek = _dek_from_token(w.web)
+    assert_ciphertext_of(raw[0], dek, "Eating out")
+    assert_ciphertext_of(raw[1], dek, "150")
 
 
 @pytest.mark.parametrize("action", ["pause", "remove"])

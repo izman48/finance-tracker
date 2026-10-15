@@ -29,9 +29,6 @@ update the feature doc's touchpoints. Security-relevant items are marked 🔒.
   preview or import; import doesn't re-run `validate_pattern`.
 - 🔒 The main site has no Content-Security-Policy (only extra static sites
   set one).
-- 🔒 The privacy page understates plaintext fields (also plaintext: account
-  settings amounts, asset growth %, budget categories, rule packs and
-  categories, commitment status and cadence).
 - No UI or API to list or revoke connected Claude clients.
 - Health returns 200 when the database is down, so the deploy smoke test
   can't catch it.

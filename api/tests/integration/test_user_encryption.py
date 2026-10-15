@@ -20,6 +20,7 @@ from app.models import (
     Transaction,
     User,
 )
+from tests.ciphertext import assert_ciphertext_of
 
 SECRET = get_settings().secret_key
 
@@ -201,16 +202,17 @@ class TestEncryptedData:
         finally:
             user_crypto.current_dek.reset(ctx)
 
+        # Decrypt-based (T-12-13): an upper-cased random token could hold
+        # "WOS" by chance, which made this test flaky.
         checks = [
-            ("SELECT label, amount, match_key FROM commitment_rules", "NETFLIX"),
-            ("SELECT name, total_amount FROM planned_items", "WOS"),
-            ("SELECT name FROM assets", "VANGUARD"),
-            ("SELECT value FROM asset_valuations", "25000"),
+            ("SELECT label, amount, match_key FROM commitment_rules", ("Netflix", "15.99", "netflix")),
+            ("SELECT name, total_amount FROM planned_items", ("WOS BATTERSEA LONDON", "4100")),
+            ("SELECT name FROM assets", ("Vanguard ISA",)),
+            ("SELECT value FROM asset_valuations", ("25000",)),
         ]
-        for sql, needle in checks:
-            for stored in db_session.execute(text(sql)).one():
-                assert needle not in str(stored).upper()
-                assert str(stored).startswith("gA")
+        for sql, plaintexts in checks:
+            for stored, plaintext in zip(db_session.execute(text(sql)).one(), plaintexts):
+                assert_ciphertext_of(stored, dek, plaintext)
 
     def test_reading_without_dek_is_401_not_leak(self, client, db_session):
         """A token without a `dk` claim (predates encryption) can't read data."""

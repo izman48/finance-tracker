@@ -20,3 +20,18 @@ describe('PrivacyPage', () => {
     expect(section.indexOf('TrueLayer and the email provider')).toBeLessThan(section.indexOf(PSU_IP_NOTICE))
   })
 })
+
+// T-12-13 (sec): every unencrypted field group is listed, in the API's exact
+// words (api/app/core/privacy_plaintext.py; .github/scripts/check_privacy_copy.py
+// fails CI if a phrase goes missing), and deleted planned items are said to
+// be kept, encrypted, until purge.
+describe('PrivacyPage unencrypted fields', () => {
+  it('lists every group as an item, and says what happens to deleted planned items', async () => {
+    const { UNENCRYPTED_FIELDS, DELETED_PLANNED_NOTE } = await import('../copy/privacy')
+    const html = renderToStaticMarkup(<MemoryRouter><PrivacyPage /></MemoryRouter>).replace(/&#x27;/g, "'")
+    expect(UNENCRYPTED_FIELDS.length).toBe(10)
+    for (const phrase of UNENCRYPTED_FIELDS) expect(html).toContain(`<li>${phrase}</li>`)
+    expect(html).toContain(DELETED_PLANNED_NOTE)
+    expect(html).not.toContain('transaction dates, categories and account types.')
+  })
+})

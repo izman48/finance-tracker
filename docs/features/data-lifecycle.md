@@ -15,6 +15,13 @@ The rules every table has to follow. Read this before adding a table.
 - Consequences: no SQL filtering or aggregation on encrypted columns (compute
   in Python); no background jobs can read bank data; always scope queries by
   user.
+- Plaintext columns (T-12-13): every column that isn't encrypted (other than
+  primary and foreign keys) is listed, grouped, in
+  `api/app/core/privacy_plaintext.py`; `tests/unit/test_privacy_plaintext.py`
+  fails on a new unlisted one. Each group's phrase must appear verbatim in
+  `ui/src/copy/privacy.ts`, which the privacy page renders
+  (`.github/scripts/check_privacy_copy.py`, run in CI). A new plaintext
+  column means adding it there and, for a new group, a phrase on the page.
 
 ## Key-loss purge
 

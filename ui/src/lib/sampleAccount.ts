@@ -10,6 +10,8 @@
  *  sampleAccount.test.ts guards the reconciliation (headline == sum of parts).
  */
 
+import { SAMPLE_BUDGETS_MONTHLY, sampleBudgetHistory, sampleBudgetList, type BudgetLedgerTx } from './sampleBudgets'
+
 // --- shape helpers --------------------------------------------------------- #
 
 const nowMinus = (days: number) => {
@@ -119,6 +121,7 @@ function buildLedger(): SampleTx[] {
 }
 const L: SampleTx[] = buildLedger()
 
+
 function t(
   desc: string, merchant: string, category: string, amount: number,
   type: 'debit' | 'credit', account_id: string, daysAgo: number,
@@ -149,6 +152,17 @@ const isPurchase = (tx: SampleTx) =>
   (ROLE[tx.account_id] === 'spending' || ROLE[tx.account_id] === 'credit')
 
 const purchaseKind = (tx: SampleTx) => (ROLE[tx.account_id] === 'credit' ? 'credit' : 'cash')
+
+// Budgets (T-11-8) read the same ledger: purchases count, commitments,
+// transfers and card payoffs are named as not counted.
+const BUDGET_LEDGER: BudgetLedgerTx[] = L.map((tx) => ({
+  category: tx.category, amount: tx.amount, daysAgo: tx.daysAgo,
+  kind: tx.excluded_reason === 'internal_transfer' ? 'transfer'
+    : tx.excluded_reason === 'card_payment' ? 'card_payoff'
+    : !isPurchase(tx) ? 'other'
+    : tx.is_commitment ? 'commitment' : 'purchase',
+}))
+const PAYDAY_AGO = Math.min(...L.filter((x) => x.transaction_type === 'credit' && x.is_commitment).map((x) => x.daysAgo))
 
 function txResponse(q: TxQuery) {
   const cats = q.category && q.category.length ? new Set(q.category) : null
@@ -530,13 +544,14 @@ function projectionResponse(q: Record<string, any>) {
   // subtract_spending=false: "all my forecasted cashflow lands in my wealth" —
   // the average is shown but not subtracted. A custom monthly_spending
   // replaces the measured average entirely (mirrors the backend).
-  // spending_source (T-10-15b) wins when sent: the sample has no budgets, so
-  // "budgets" falls back to the average, as the API does.
+  // spending_source (T-10-15b) wins when sent; "budgets" uses the sample
+  // budgets' total (T-11-8), as the API uses the active, unpaused limits.
   const source: string | null = q.spending_source ?? null
   const subtractSpending = source ? source !== 'none' : String(q.subtract_spending ?? 'true') !== 'false'
   const customSpend = q.monthly_spending != null && source !== 'budgets' ? Math.max(0, Number(q.monthly_spending)) : null
-  const spendLeg = !subtractSpending ? 0 : customSpend != null ? customSpend : AVG_SPENDING
-  const spendingUsed = !source ? null : source === 'none' ? 'none' : customSpend != null ? 'estimate' : 'average'
+  const useBudgets = source === 'budgets'
+  const spendLeg = !subtractSpending ? 0 : useBudgets ? SAMPLE_BUDGETS_MONTHLY : customSpend != null ? customSpend : AVG_SPENDING
+  const spendingUsed = !source ? null : source === 'none' ? 'none' : useBudgets ? 'budgets' : customSpend != null ? 'estimate' : 'average'
   const basis = derived
     ? {
         income_monthly: String(round2(INCOME_MONTHLY)),
@@ -549,8 +564,8 @@ function projectionResponse(q: Record<string, any>) {
         spending_source: subtractSpending && customSpend != null ? 'custom' : 'measured',
         spending_choice: source,
         spending_used: spendingUsed,
-        budgets_monthly: source ? '0.00' : null,
-        budgets_fallback: source ? source === 'budgets' : null,
+        budgets_monthly: source ? SAMPLE_BUDGETS_MONTHLY.toFixed(2) : null,
+        budgets_fallback: source ? false : null,
         sampled_months: [980, 1120, 1040, 1210, 1005, 1180].map((total, i) => {
           const d = new Date()
           d.setMonth(d.getMonth() - (6 - i))
@@ -776,6 +791,8 @@ export function sampleResponse(url: string, params: unknown): unknown {
   if (is('/statements')) return statementsResponse(path)
   if (is('/assets')) return assetsResponse()
   if (is('/liabilities')) return liabilitiesResponse()
+  if (is('/budgets/history')) return sampleBudgetHistory(BUDGET_LEDGER, PAYDAY_AGO, Number(p.cycles) || 6)
+  if (is('/budgets')) return sampleBudgetList(BUDGET_LEDGER, PAYDAY_AGO, p.include === 'categories')
   if (is('/rules')) return { packs: [], personal: [] }
   if (is('/audit')) return { items: [], next_cursor: null }
   return {}
@@ -800,8 +817,6 @@ export const UNSAMPLED_BY_DESIGN: Record<string, string> = {
  *  errors in demo mode. Fix one by serving it from sampleResponse and
  *  deleting its line here (the coverage test then insists it stays served). */
 export const KNOWN_DEMO_GAPS: Record<string, string> = {
-  '/budgets': 'Spending > Budgets gets {} and BudgetsView reads data.budgets.filter, so the section crashes (no error boundary); Home shows no budget line.',
-  '/budgets/history': 'Past cycles view gets {} and reads data.cycles, so it crashes the same way.',
   '/banking/sync-status': 'Budget freshness line has no connections in demo mode.',
   '/analytics/accounts/:param/repayments': 'Account settings shows no repayment schedule in demo mode.',
   '/rules/shared/:param': 'Previewing a shared rule pack finds nothing in demo mode.',

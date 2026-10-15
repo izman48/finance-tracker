@@ -177,13 +177,15 @@ describe('sample projection spending', () => {
   const basis = (q: Record<string, unknown>) =>
     (sampleResponse('/api/v1/analytics/net-worth-projection', q) as any).contribution_basis
   // No spending_source keeps the legacy answer, as the API does (tested by the API).
-  it('budgets fall back to the average, saying so', () => {
+  // The sample has budgets since T-11-8, so "budgets" uses their total
+  // (sampleBudgets.test.tsx ties it to the served budgets), not the average.
+  it('budgets use the sample budgets total, not the average', () => {
     const b = basis({ spending_source: 'budgets' })
-    expect(b.budgets_fallback).toBe(true)
-    expect(b.budgets_monthly).toBe('0.00')
+    expect(b.budgets_fallback).toBe(false)
     expect(b.spending_choice).toBe('budgets')
-    expect(b.spending_used).toBe('average')
-    expect(Number(b.spending_applied)).toBe(Number(b.avg_spending_monthly))
+    expect(b.spending_used).toBe('budgets')
+    expect(Number(b.spending_applied)).toBe(Number(b.budgets_monthly))
+    expect(Number(b.spending_applied)).not.toBe(Number(b.avg_spending_monthly))
   })
   it('average with an estimate uses the estimate', () => {
     const b = basis({ spending_source: 'average', monthly_spending: '900' })

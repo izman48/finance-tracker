@@ -20,7 +20,7 @@ from app.models import PlannedItem, PlannedKind
 from app.schemas import AddPlannedEventRequest, PlannedEventItem, PlannedEventList, RemovePlannedEventRequest
 from app.services.analytics.common import _today
 from app.services.analytics.planned_matching import planned_states
-from app.services.planning_writes import WriteRequest, claude_markers, key_in_use, run_write
+from app.services.planning_writes import WriteRequest, claude_markers, key_in_use, replay_if_applied, run_write
 
 router = APIRouter(prefix="/planning", tags=["planning"])
 
@@ -70,6 +70,18 @@ def remove_planned_event(
     db: Annotated[Session, Depends(get_db)],
 ) -> dict:
     """Only an active one-off item Claude created; anything else is 404."""
+    def apply(db: Session, item: PlannedItem) -> PlannedItem:
+        item.active = False
+        return item
+
+    req = WriteRequest(
+        tool="remove_planned_event", target_kind="planned_event", target_id=item_id, apply=apply,
+        context_fields=("name", "amount", "start_date", "direction"),
+    )
+    # A retry of a removal that already applied replays it (T-12-9c).
+    replay = replay_if_applied(db, caller, req, body)
+    if replay is not None:
+        return {**replay, "duplicate": False}
     removable = (
         db.query(PlannedItem.id)
         .filter(
@@ -81,15 +93,6 @@ def remove_planned_event(
     )
     if removable is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Planned event not found")
-
-    def apply(db: Session, item: PlannedItem) -> PlannedItem:
-        item.active = False
-        return item
-
-    req = WriteRequest(
-        tool="remove_planned_event", target_kind="planned_event", target_id=item_id, apply=apply,
-        context_fields=("name", "amount", "start_date", "direction"),
-    )
     return {**run_write(db, caller, req, body), "duplicate": False}
 
 

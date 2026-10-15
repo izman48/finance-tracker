@@ -3,7 +3,7 @@
 Requests allow-list the user's terms (`extra="forbid"`): no id, user, link
 state or derived figure. Money is a decimal string with at most 2 dp, never
 a JSON float. Bounds (sec): balance up to 10,000,000, instalments 1-120,
-monthly fee and APR 0-100.
+monthly fee £0-£1,000 and APR 0-100.
 """
 from __future__ import annotations
 
@@ -20,7 +20,8 @@ from app.services.analytics import common
 Money = Annotated[Decimal, Field(decimal_places=2), BeforeValidator(_refuse_float)]
 Balance = Annotated[Decimal, Field(gt=0, le=Decimal("10000000"), decimal_places=2), BeforeValidator(_refuse_float)]
 Instalment = Annotated[Decimal, Field(gt=0, le=Decimal("10000000"), decimal_places=2), BeforeValidator(_refuse_float)]
-Fee = Annotated[Decimal, Field(ge=0, le=100, decimal_places=2), BeforeValidator(_refuse_float)]
+# Pounds a month (sec nit on #230).
+Fee = Annotated[Decimal, Field(ge=0, le=1000, decimal_places=2), BeforeValidator(_refuse_float)]
 Apr = Annotated[Decimal, Field(ge=0, le=100, decimal_places=2), BeforeValidator(_refuse_float)]
 Name = Annotated[str, Field(min_length=1, max_length=100)]
 Count = Annotated[int, Field(ge=1, le=120, strict=True)]

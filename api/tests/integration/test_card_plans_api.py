@@ -141,12 +141,17 @@ def test_when_the_card_goes_the_plan_stays_as_debt_and_counts(world, db_session)
 # --- input, ownership and bounds (sec T-12-5) --------------------------------
 
 @pytest.mark.parametrize("field,value", [
-    ("balance", "10000000.01"), ("balance", "-1"), ("instalment", "0"), ("fee", "100.01"), ("fee", "-0.01"),
+    ("balance", "10000000.01"), ("balance", "-1"), ("instalment", "0"), ("fee", "1000.01"), ("fee", "-0.01"),
     ("instalments_remaining", 0), ("instalments_remaining", 121), ("apr", "100.01"), ("name", ""),
 ])
 def test_out_of_bounds_input_is_422_and_writes_nothing(world, field, value):
     assert world.plan(**{field: value}).status_code == 422
     assert world.db.query(CardPlan).count() == 0
+
+
+def test_a_fee_up_to_1000_a_month_is_accepted(world):
+    # sec nit on #230: the fee is pounds a month, £0 to £1,000.
+    assert world.plan(fee="1000.00").json()["monthly_total"] == "1100.00"
 
 
 def test_server_fields_are_refused(world):

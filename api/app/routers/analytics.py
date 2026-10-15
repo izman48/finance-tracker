@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.ownership import owned_account, require_owned_account_ids
 from app.core.security import CurrentUser
-from app.core.oauth_tokens import CurrentUserOrMcpRead
+from app.core.oauth_tokens import SCOPE_READ, Caller, CurrentUserOrMcpRead, scoped_caller
 from app.models import (
     AccountRole,
     AccountSetting,
@@ -170,7 +170,7 @@ def get_net_worth_projection(
 
 @router.get("/forecast", response_model=ForecastResponse)
 def get_forecast(
-    current_user: CurrentUserOrMcpRead,
+    caller: Annotated[Caller, Depends(scoped_caller(SCOPE_READ))],
     db: Annotated[Session, Depends(get_db)],
     horizon: str = "payday",
 ) -> ForecastResponse:
@@ -178,7 +178,9 @@ def get_forecast(
     `budget_projection` (T-09-4) is added alongside; nothing else changes."""
     from app.services.budgets import budget_projection
 
-    forecast = analytics_service.get_forecast(db, current_user, horizon)
+    current_user = caller.user
+    # A Claude token (a grant) gets plan instalments without the plan's name.
+    forecast = analytics_service.get_forecast(db, current_user, horizon, for_claude=caller.grant_id is not None)
     try:
         projection, reason = budget_projection(db, current_user, forecast)
     except Exception as exc:  # BC8: the forecast still answers, unchanged

@@ -109,7 +109,7 @@ Monzo Flex).
 | `DELETE /api/v1/card-plans/{plan_id}` | `CurrentUser` |
 
 Terms allow-listed (`extra="forbid"`): name (1-100), balance up to
-10,000,000, instalment, monthly fee 0-100, APR 0-100 (optional),
+10,000,000, instalment, monthly fee £0-£1,000 a month, APR 0-100 (optional),
 instalments remaining 1-120, next instalment within a year of today.
 Instalment dates that have passed come off at read time
 (`services/card_plans.figures`). Owner D4 (2026-10-15): while the plan has
@@ -119,8 +119,22 @@ none yet) holds it in the card balance; any other is hidden until confirmed
 (`provider_confirmed` false, and the UI says "Not in net worth yet"). A plan
 whose card has gone (`card_account_id` SET NULL on disconnect) counts as
 standalone debt in `liabilities_total` and the projection. The instalment
-and fee reach the card's amount due, the forecast and safe-to-spend in
-T-12-5b.
+plus fee (`card_plans.monthly_total`) leaves the bank on the card's next pay
+day on or after each instalment date, or on the instalment date when the
+card has no pay day or has gone (`repayments.plan_instalment_events`, added
+in `scheduled_outflows` after the per-card choice, so a commitment tied to
+the card never drops it). It counts in the Cashflow forecast and
+safe-to-spend whatever the provider's status, and is never a commitment.
+Past instalments are on the card already (statement or unbilled) and are
+not added again (T-12-5b). Claude's `forecast` gets these events labelled
+"Card plan instalment", never the plan's name (sec S-7: plans reach Claude
+only as totals); the app shows the name.
+Home and Cashflow "Coming up" (`next_repayments`, from `repayment_events`)
+don't list instalments yet; T-12-7b shows them. When the first provider is
+verified (its card balance holds the plan), a `full_balance` repayment
+already pays the plan's remaining balance, so that card's repayment must then
+leave out the plan's principal, or the instalments count twice (today that
+can only overstate, the safe side).
 
 **Tables**: `card_plans` (encrypted `name`, `balance`, `instalment`, `fee`,
 `apr`; plaintext `card_account_id`, `instalments_remaining`, `next_date`;

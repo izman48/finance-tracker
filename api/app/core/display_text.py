@@ -25,3 +25,24 @@ def has_hidden_characters(text: str) -> bool:
 def without_hidden_characters(text: str) -> str:
     """For names stored before registration refused them."""
     return "".join(ch for ch in text if not _is_hidden(ch))
+
+
+def visible_text(text: str) -> str:
+    """A pydantic validator: text a person can see, nothing hidden (T-12-12).
+    Names the user types become labels Claude reads (a lender's repayment, a
+    holding's contribution, a card plan's instalment), so they follow the
+    same rule as commitment labels."""
+    if not text.strip() or has_hidden_characters(text):
+        raise ValueError("must be visible text without control or hidden characters")
+    return text
+
+
+def refuse_hidden(field: str, text: str) -> None:
+    """422 in FastAPI's validation shape if `text` isn't visible text: for a
+    route that checks a name only when it changes (sec-1 on #249)."""
+    from fastapi.exceptions import RequestValidationError
+
+    try:
+        visible_text(text)
+    except ValueError as exc:
+        raise RequestValidationError([{"type": "value_error", "loc": ("body", field), "msg": str(exc), "input": None}])

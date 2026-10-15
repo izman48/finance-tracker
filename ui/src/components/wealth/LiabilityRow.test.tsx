@@ -109,3 +109,14 @@ describe('a plan whose card has gone (T-12-7b, ux "Plans": card disconnected)', 
     expect(h).toMatch(/<button[^>]*aria-label="Remove Laptop plan"[^>]*>Remove<\/button>/)
   })
 })
+
+describe('LiabilityRow end-date warning (T-12-12)', () => {
+  it('a payoff well after the final payment entered says so, in words', () => {
+    const h = html(loan())
+    expect(text(h)).toContain('nilu works out the last payment as Aug 2031, after the final payment you entered (Jan 2031). Check the APR and payment.')
+    expect(h).toMatch(/class="[^"]*text-warn[^"]*"[^>]*>nilu works out/)
+  })
+  it('no warning when they agree', () => {
+    expect(text(html(loan({ payoff_date: '2031-01-01' })))).not.toContain('nilu works out')
+  })
+})

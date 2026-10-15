@@ -13,7 +13,9 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, StrictBool, model_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, StrictBool, ValidationInfo, field_validator, model_validator
+
+from app.core.display_text import visible_text
 
 from app.schemas import PLANNED_EVENT_MAX_AMOUNT, PlanningAmount, _refuse_float
 from app.services.analytics import common
@@ -21,6 +23,8 @@ from app.services.analytics import common
 LiabilityKindName = Literal["loan", "finance", "bnpl", "mortgage"]
 LiabilityCadenceName = Literal["monthly", "four_weekly", "fortnightly", "weekly"]
 Apr = Annotated[Decimal, Field(ge=0, le=100, decimal_places=2), BeforeValidator(_refuse_float)]
+# Visible text is checked on LiabilityCreate, skipping a lender the edit
+# sends back unchanged (sec-1 on #249: one stored before the check).
 Lender = Annotated[str, Field(min_length=1, max_length=100)]
 CommitmentChoice = Annotated[str, Field(min_length=1, max_length=36)]
 MORTGAGE_MAX_BALANCE = Decimal("10000000")
@@ -57,6 +61,15 @@ class LiabilityCreate(BaseModel):
     opted_out: StrictBool = False
     # A mortgage only (T-12-6b): one of the caller's property assets.
     property_asset_id: uuid.UUID | None = None
+
+    @field_validator("lender")
+    @classmethod
+    def _visible_lender(cls, value: str, info: ValidationInfo) -> str:
+        """Visible text (it becomes a label Claude reads, T-12-12), unless it
+        is the stored lender sent back unchanged by an edit."""
+        if info.context and value == info.context.get("stored_lender"):
+            return value
+        return visible_text(value)
 
     @model_validator(mode="after")
     def _check_terms(self) -> LiabilityCreate:

@@ -34,6 +34,9 @@ from app.schemas import (
     CommitmentFromTransaction,
     CommitmentResponse,
     CommitmentUpdate,
+    changed_amount_error,
+    changed_interval_days_error,
+    changed_interval_months_error,
     changed_label_error,
     ForecastResponse,
     NetWorthPoint,
@@ -366,11 +369,21 @@ def update_commitment(
     require_owned_account_ids(db, current_user, data)
 
     updates = data.model_dump(exclude_unset=True)
-    if "label" in updates and updates["label"] != rule.label:
-        problem = changed_label_error(updates["label"] or "")
-        if problem:
-            raise RequestValidationError([{"type": "value_error", "loc": ("body", "label"), "msg": problem,
-                                           "input": None}])
+    # The edit form sends label and amount back unchanged; only a change is
+    # held to the web bounds (bank labels, amounts stored before the cap).
+    for field, check in (("label", changed_label_error), ("amount", changed_amount_error),
+                         ("interval_days", changed_interval_days_error),
+                         ("interval_months", changed_interval_months_error)):
+        if field in updates and updates[field] != getattr(rule, field):
+            # Null clears an interval (the form sends it for other cadences);
+            # a label or amount can't be cleared.
+            if updates[field] is None:
+                problem = "can't be cleared" if field in ("label", "amount") else None
+            else:
+                problem = check(updates[field])
+            if problem:
+                raise RequestValidationError([{"type": "value_error", "loc": ("body", field), "msg": problem,
+                                               "input": None}])
     refuse_linked_edit(db, current_user.id, rule.id, updates)
     # match_merchant is a virtual field — translate it into the stored match_key.
     if "match_merchant" in updates:

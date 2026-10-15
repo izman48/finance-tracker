@@ -10,6 +10,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
+from app.core.display_text import refuse_hidden
 from app.core.database import get_db
 from app.core.ownership import owned_account, require_owned_account_ids
 from app.core.security import CurrentUser
@@ -85,6 +86,8 @@ def update_plan(plan_id: uuid.UUID, body: CardPlanUpdate, current_user: CurrentU
     changes = body.model_dump(exclude_unset=True)
     if any(changes.get(k, ...) is None for k in REQUIRED):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="That term can't be cleared.")
+    if "name" in changes and changes["name"].strip() != plan.name:
+        refuse_hidden("name", changes["name"])
     for field, value in changes.items():
         setattr(plan, field, value.strip() if field == "name" else value)
     db.commit()

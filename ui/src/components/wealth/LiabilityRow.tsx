@@ -1,6 +1,6 @@
 import type { Asset, CardPlan, Liability } from '../../services/api'
 import { gbp0 } from '../../lib/format'
-import { liabilityDetail, liabilityName, mortgageDetail, needsProperty } from '../../lib/liabilities'
+import { endDateWarning, liabilityDetail, liabilityName, mortgageDetail, needsProperty } from '../../lib/liabilities'
 
 /** One loan, finance or BNPL row in the balance sheet's "Loans and finance"
  *  group (ux T-10-0 B.1). Every figure is the API's, only formatted; the
@@ -16,6 +16,7 @@ export default function LiabilityRow({ liability, onOpen, properties = [], onCho
 }) {
   const mortgage = liability.kind === 'mortgage'
   const owed = Number(liability.current_balance)
+  const warning = endDateWarning(liability)
   const chip = liability.paid_off
     ? { className: 'chip-pos', text: 'Paid off', kind: 'paid' }
     : liability.balance_stale
@@ -31,6 +32,7 @@ export default function LiabilityRow({ liability, onOpen, properties = [], onCho
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-medium text-slate-100 truncate">{liabilityName(liability)}</span>
         <span className="block text-xs text-slate-400">{mortgage ? mortgageDetail(liability, properties) : liabilityDetail(liability)}</span>
+        {warning && <span className="block text-xs text-warn">{warning}</span>}
         {mortgage && liability.linked_commitment && <span className="chip-info mt-1 inline-block">Bill linked</span>}
         {/* Narrow widths: the chip gets its own line so the lender keeps its room (ux on #185). */}
         {chip && <span data-chip={chip.kind} className={`${chip.className} mt-1 inline-block sm:hidden`}>{chip.text}</span>}

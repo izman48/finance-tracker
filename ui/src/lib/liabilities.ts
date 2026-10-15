@@ -102,3 +102,18 @@ export function equityLine(a: Asset): { text: string; label: string; figure: str
     figure: equity,
   }
 }
+
+// More than this many days between the final payment entered and nilu's
+// payoff date gets a warning (T-12-12).
+const END_DATE_SLACK_DAYS = 31
+
+/** When nilu's schedule (the API's `payoff_date`) ends well after the final
+ *  payment the user entered, the APR or payment is usually wrong (T-10-7a
+ *  review, T-12-12). Text only; it changes no figure. */
+export function endDateWarning(l: Liability): string | null {
+  if (l.paid_off || l.opted_out || !l.end_date || !l.payoff_date) return null
+  const days = (Date.parse(`${l.payoff_date}T00:00:00Z`) - Date.parse(`${l.end_date}T00:00:00Z`)) / 86_400_000
+  if (days <= END_DATE_SLACK_DAYS) return null
+  return `nilu works out the last payment as ${monthYear(l.payoff_date)}, after the final payment you entered ` +
+    `(${monthYear(l.end_date)}). Check the APR and payment.`
+}

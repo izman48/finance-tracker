@@ -12,7 +12,9 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Annotated
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
+from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field, model_validator
+
+from app.core.display_text import visible_text
 
 from app.schemas import _refuse_float
 from app.services.analytics import common
@@ -23,7 +25,7 @@ Instalment = Annotated[Decimal, Field(gt=0, le=Decimal("10000000"), decimal_plac
 # Pounds a month (sec nit on #230).
 Fee = Annotated[Decimal, Field(ge=0, le=1000, decimal_places=2), BeforeValidator(_refuse_float)]
 Apr = Annotated[Decimal, Field(ge=0, le=100, decimal_places=2), BeforeValidator(_refuse_float)]
-Name = Annotated[str, Field(min_length=1, max_length=100)]
+Name = Annotated[str, Field(min_length=1, max_length=100), AfterValidator(visible_text)]
 Count = Annotated[int, Field(ge=1, le=120, strict=True)]
 # An instalment more than this far either side of today is refused as a typo.
 NEXT_DATE_WINDOW = timedelta(days=366)
@@ -60,7 +62,8 @@ class CardPlanUpdate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    name: Name | None = None
+    # Checked in the route, only when it changes (sec-1 on #249).
+    name: Annotated[str, Field(min_length=1, max_length=100)] | None = None
     balance: Balance | None = None
     instalment: Instalment | None = None
     fee: Fee | None = None

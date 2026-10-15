@@ -926,6 +926,9 @@ class ForecastEvent(BaseModel):
     # The commitment an income/expense event comes from (the UI names a
     # loan's linked bill by it); None for repayments and planned items.
     commitment_id: str | None = None
+    # A card repayment that is a projection (the spend since the statement,
+    # or the balance with none), not a real statement (T-12-7a).
+    projected: bool = False
 
 
 class ForecastPoint(BaseModel):

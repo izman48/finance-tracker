@@ -50,7 +50,7 @@ describe('sample investments on Wealth (D-1)', () => {
 })
 
 describe('the sample contribution is a bill (D-3)', () => {
-  const summary = () => get<{ committed_before_payday: number; safe_to_spend: number; available_cash: number }>('/analytics/summary')
+  const summary = () => get<{ committed_before_payday: number; safe_to_spend: number; available_cash: number; next_payday: string; next_repayments: { amount: number; due_date: string }[] }>('/analytics/summary')
 
   it('Commitments lists it by name, linked to the holding', () => {
     const rows = get<{ label: string; amount: number; linked_holding?: boolean; direction: string }[]>('/analytics/commitments')
@@ -62,9 +62,11 @@ describe('the sample contribution is a bill (D-3)', () => {
     const bills = get<{ label: string; amount: number; direction: string; next_date: string }[]>('/analytics/commitments')
     const contribution = bills.find((b) => b.label === 'Sample ISA contribution')!
     expect(contribution.next_date < get<{ next_payday: string }>('/analytics/summary').next_payday).toBe(true)
-    // The sample's committed bills (rent, phone, subscriptions, gym) plus the contribution.
+    // The sample's committed bills (rent, phone, subscriptions, gym), the
+    // contribution, and the card repayments due before payday (as the API counts them).
     const counted = ['Rent', 'Phone', 'Netflix', 'Spotify', 'Gym', contribution.label]
-    expect(s.committed_before_payday).toBeCloseTo(bills.filter((b) => counted.includes(b.label)).reduce((t, b) => t + b.amount, 0), 2)
+    const cards = s.next_repayments.filter((r) => r.due_date < s.next_payday).reduce((t, r) => t + r.amount, 0)
+    expect(s.committed_before_payday).toBeCloseTo(bills.filter((b) => counted.includes(b.label)).reduce((t, b) => t + b.amount, 0) + cards, 2)
     expect(s.safe_to_spend).toBeCloseTo(s.available_cash - s.committed_before_payday, 2)
   })
 

@@ -360,13 +360,26 @@ function spendingResponse(q: {
 const AVAILABLE_CASH = 2480.55 + 940.2 // spending accounts
 const SAVINGS_TOTAL = 12000
 const CREDIT_OWED = 640.3
+// The sample card is on statement_balance (T-12-7a): £550.30 billed on its
+// last statement, due in 8 days, and £90.00 spent since, paid on the next
+// pay day (the same day a month on; the sample's months are 30 days).
+const STATEMENT_DUE_IN = 8
+const SPENT_SINCE_DUE_IN = STATEMENT_DUE_IN + 30
+const SPENT_SINCE = 90
+const STATEMENT_OWED = Math.round((CREDIT_OWED - SPENT_SINCE) * 100) / 100
+const SAMPLE_REPAYMENTS = [
+  { due_in: STATEMENT_DUE_IN, amount: STATEMENT_OWED, projected: false, kind: 'statement' as const },
+  { due_in: SPENT_SINCE_DUE_IN, amount: SPENT_SINCE, projected: true, kind: 'spent_since' as const },
+]
 const ASSETS_TOTAL = ASSETS.reduce((s, a) => s + a.value, 0)
 const INVESTMENTS_TOTAL = ASSETS.filter(isInvestmentAsset).reduce((s, a) => s + a.value, 0)
 const NET_WORTH = AVAILABLE_CASH + SAVINGS_TOTAL + ASSETS_TOTAL - CREDIT_OWED - LIABILITIES_TOTAL
 
 function summaryResponse() {
-  // rent + phone + subs + gym, and the ISA contribution (a linked bill).
-  const committed = Math.round((1100 + 20 + 12.99 + 11.99 + 32 + CONTRIBUTION.amount) * 100) / 100
+  // rent + phone + subs + gym, the ISA contribution (a linked bill), and the
+  // card repayments due before payday, as the API counts them.
+  const cardBeforePayday = SAMPLE_REPAYMENTS.filter((r) => r.due_in < 24).reduce((t, r) => t + r.amount, 0)
+  const committed = Math.round((1100 + 20 + 12.99 + 11.99 + 32 + CONTRIBUTION.amount + cardBeforePayday) * 100) / 100
   return {
     available_cash: AVAILABLE_CASH,
     overdraft_cushion: 500,
@@ -382,18 +395,20 @@ function summaryResponse() {
     safe_to_spend: Math.round((AVAILABLE_CASH - committed) * 100) / 100,
     savable: 820,
     next_payday: isoDate(nowPlus(24)),
-    // A real statement on a full-balance card: not projected and no parts, as
-    // the API sends it (T-12-7a). Reads "Harbor Rewards bill" on Cashflow and Home.
-    next_repayments: [{ account_id: 'sa4', label: 'Harbor Rewards', amount: CREDIT_OWED, due_date: isoDate(nowPlus(8)), projected: false, parts: [] }],
+    // As the API sends them (T-12-7a): "Harbor Rewards bill" for the
+    // statement, "Harbor Rewards bill (projected)" for the spend since it.
+    next_repayments: SAMPLE_REPAYMENTS.map((r) => ({
+      account_id: 'sa4', label: 'Harbor Rewards', amount: r.amount, due_date: isoDate(nowPlus(r.due_in)),
+      projected: r.projected, parts: [{ kind: r.kind, amount: r.amount }],
+    })),
     accounts: ACCOUNTS.map((a) => ({
       id: a.id, display_name: a.display_name, provider_name: a.provider_name,
       account_type: a.account_type, role: a.role, current_balance: a.current_balance,
       credit_owed: a.role === 'credit' ? -a.current_balance : null,
       // T-10-14: the sample card's statement, the same bill as next_repayments.
-      ...(a.role === 'credit' ? { statement: { statement_balance: String(CREDIT_OWED), due_date: isoDate(nowPlus(8)), paid: false, missing: false } } : {}),
-      overdraft_limit: a.overdraft_limit, repayment_cadence: a.role === 'credit' ? 'end_of_month' : null,
+      overdraft_limit: a.overdraft_limit, repayment_cadence: a.role === 'credit' ? 'card_due_date' : null,
       repayment_day: null, repayment_interval_months: null, repayment_anchor_date: null,
-      repayment_strategy: a.role === 'credit' ? 'full_balance' : null,
+      repayment_strategy: a.role === 'credit' ? 'statement_balance' : null,
       repayment_fixed_amount: null, repayment_installments: null, pay_from_account_id: null,
       // The card's statement, as statementsResponse has it (T-10-14a).
       ...(a.role === 'credit' ? { statement: sampleStatement() } : {}),
@@ -416,12 +431,15 @@ function forecastTimeline(horizon = '30') {
     const dom = i % 30 // repeating monthly cycle
     const events: { label: string; amount: number; kind: string; projected?: boolean }[] = []
     if (i > 0 && dom === CONTRIBUTION.nextIn) { bal -= CONTRIBUTION.amount; events.push({ label: CONTRIBUTION.label, amount: -CONTRIBUTION.amount, kind: 'commitment' }) }
-    if (i > 0 && dom === 8) { bal -= CREDIT_OWED; events.push({ label: 'Harbor Rewards payment', amount: -CREDIT_OWED, kind: 'repayment', projected: false }) }
+    for (const r of SAMPLE_REPAYMENTS) {
+      if (i === r.due_in) { bal -= r.amount; events.push({ label: 'Harbor Rewards', amount: -r.amount, kind: 'repayment', projected: r.projected }) }
+    }
     if (i > 0 && dom === 15) { bal -= 1100; events.push({ label: 'Rent', amount: -1100, kind: 'commitment' }) }
     if (i > 0 && dom === 24) { bal += 3200; events.push({ label: 'Salary', amount: 3200, kind: 'income' }) }
     bal = Math.round(bal * 100) / 100
     const date = isoDate(nowPlus(i))
-    timeline.push({ date, balance: bal, events })
+    // Every event carries `projected`, as the API sends it (T-12-7a).
+    timeline.push({ date, balance: bal, events: events.map((e) => ({ projected: false, ...e })) })
     if (bal < min) { min = bal; minDate = date }
   }
   return {
@@ -829,20 +847,21 @@ function readParams(params: unknown): TxQuery & Record<string, any> {
 }
 
 /** The sample response for a GET endpoint, or {} for anything unmatched. */
-/** The sample card's statement. It reconciles with the summary: the whole
- *  £640.30 owed was billed, is due on the same day as next_repayments, and
- *  nothing has been spent since. Other accounts have no statement. */
-const SAMPLE_STATEMENT_DUE = () => isoDate(nowPlus(8))
+/** The sample card's statement. It reconciles with the summary: £550.30 of
+ *  the £640.30 owed was billed and is due on the day of the first repayment;
+ *  the £90.00 spent since is the projected second one (T-12-7a). Other
+ *  accounts have no statement. */
+const SAMPLE_STATEMENT_DUE = () => isoDate(nowPlus(STATEMENT_DUE_IN))
 
 /** The sample card's statement as the summary carries it. */
 function sampleStatement() {
-  return { statement_balance: CREDIT_OWED.toFixed(2), due_date: SAMPLE_STATEMENT_DUE(), paid: false, missing: false }
+  return { statement_balance: STATEMENT_OWED.toFixed(2), due_date: SAMPLE_STATEMENT_DUE(), paid: false, missing: false }
 }
 
 function statementsResponse(path: string) {
   const empty = { statements: [], current: null, missing_statement: false, conflict: false, next_payment: null }
   if (!path.includes('/accounts/sa4/')) return empty
-  const owed = CREDIT_OWED.toFixed(2)
+  const owed = STATEMENT_OWED.toFixed(2)
   const statement = {
     id: 'ss1', account_id: 'sa4', statement_balance: owed, statement_date: isoDate(nowMinus(22)),
     due_date: SAMPLE_STATEMENT_DUE(), minimum_due: '25.00', source: 'manual' as const,
@@ -852,7 +871,7 @@ function statementsResponse(path: string) {
     current: {
       statement_id: 'ss1', source: 'manual', statement_balance: owed, statement_date: statement.statement_date,
       due_date: statement.due_date, minimum_due: '25.00', payments_since_statement: '0.00',
-      amount_still_due: owed, unbilled: '0.00', paid: false,
+      amount_still_due: owed, unbilled: SPENT_SINCE.toFixed(2), paid: false,
     },
     missing_statement: false,
     conflict: false,

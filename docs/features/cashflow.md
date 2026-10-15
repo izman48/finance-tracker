@@ -28,7 +28,7 @@ compatibility shim over `services/analytics/`.
 
 **Rules worth knowing**: planned income never raises safe to spend; Claude's
 changes to income can't raise it until the user keeps them
-(`test_no_claude_raise.py`); budgets never change any money figure
+(`test_no_claude_raise.py`), and the forecast holds them the same way (T-12-9a); budgets never change any money figure
 (`test_budget_invariance.py`).
 
 **UI**: `/dashboard` (`DashboardPage`: safe-to-spend and savable tiles,
@@ -74,7 +74,7 @@ repayments and planned items).
 | 5 Ownership | n/a. |
 | 6 Scopes | `finance:read`. |
 | 7 Claude tools | `cashflow_summary`, `forecast`. |
-| 8 Audit | Summary and projection honour Claude holds; the forecast does not (gap). |
+| 8 Audit | Summary, forecast and projection all honour Claude holds (`counted_commitments`, `held_removed_planned`; T-12-9a, `test_forecast_claude_holds.py`). |
 | 9 Bank sync | Computed on read from synced data. |
 | 10 Home | Cashflow card (cash, safe to spend, payday, 30-day sparkline, upcoming). Owned by Cashflow. |
 | 11 UI routes | `/dashboard`. |

@@ -555,7 +555,7 @@ def _first_payday(incomes, from_date: date) -> date | None:
     return min(dates) if dates else None
 
 
-def committed_window_end(db: Session, user, today: date) -> date:
+def committed_window_end(db: Session, user, today: date, start: date | None = None) -> date:
     """Where safe-to-spend's committed window ends: next payday, or 30 days.
 
     While Claude has changed an income and the user hasn't kept the change,
@@ -563,12 +563,16 @@ def committed_window_end(db: Session, user, today: date) -> date:
     Claude (T-08-21, sec): moving the salary closer, changing its cadence,
     confirming a nearer income or dismissing the payday one must never cut
     bills out of the window and so raise safe-to-spend.
+
+    `start` is the first day a payday may fall on (default today); the
+    forecast passes tomorrow, since its window opens after today.
     """
     from app.services.claude_keep import pre_claude_payday_incomes
 
+    start = start or today
     fallback = today + timedelta(days=30)
-    now = next_payday(db, user, today) or fallback
-    before = _first_payday(pre_claude_payday_incomes(db, user), today) or fallback
+    now = next_payday(db, user, start) or fallback
+    before = _first_payday(pre_claude_payday_incomes(db, user), start) or fallback
     return max(now, before)
 
 

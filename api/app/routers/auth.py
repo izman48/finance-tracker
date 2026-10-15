@@ -297,7 +297,7 @@ def reset_password(
 
 
 @router.post("/delete-account")
-def delete_account(
+async def delete_account(
     body: DeleteAccountRequest,
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
@@ -314,6 +314,7 @@ def delete_account(
         )
 
     logger.info(f"Deleting account and all data for user {current_user.id}")
+    await _revoke_bank_tokens(db, current_user.id)
     # Bulk-delete bank connections first (DB cascades remove accounts and
     # transactions) so the ORM cascade never loads encrypted rows — deletion
     # must work even without a session DEK.
@@ -323,3 +324,17 @@ def delete_account(
     db.delete(current_user)
     db.commit()
     return {"message": "Account and all associated data deleted."}
+
+
+async def _revoke_bank_tokens(db: Session, user_id) -> None:
+    """Ask TrueLayer to revoke every connection's access and refresh token
+    (sec T-12-10a). Best-effort: a token that can't be read (no session key)
+    or revoked never blocks the deletion, and no token value is logged."""
+    for connection_id, in db.query(BankConnection.id).filter(BankConnection.user_id == user_id).all():
+        try:
+            connection = db.get(BankConnection, connection_id)
+            tokens = (connection.access_token, connection.refresh_token)
+        except Exception as exc:  # unreadable without the session key
+            logger.warning(f"Could not read a bank connection's tokens to revoke them: {type(exc).__name__}")
+            continue
+        await truelayer_service.revoke_connection(*tokens)

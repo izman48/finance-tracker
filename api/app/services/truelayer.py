@@ -327,6 +327,16 @@ class TrueLayerService:
         except Exception as e:
             logger.warning(f"Token revocation failed (continuing): {type(e).__name__}")
 
+    async def revoke_connection(self, access_token: str | None, refresh_token: str | None) -> None:
+        """Revoke both of a connection's tokens (sec T-12-10a): the refresh
+        token outlives the access token, so revoking only the access token
+        would leave a way back to the user's bank data. Best-effort, each
+        with the client's timeout; a failure is logged (never the token) and
+        never raised."""
+        for token in (access_token, refresh_token):
+            if token:
+                await self.revoke_token(token)
+
     async def get_accounts(self, access_token: str) -> list[dict[str, Any]]:
         """
         Fetch all accounts from TrueLayer.

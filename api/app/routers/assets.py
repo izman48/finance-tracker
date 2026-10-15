@@ -36,6 +36,10 @@ router = APIRouter(prefix="/assets", tags=["assets"])
 # month, so the count is bounded at create (ADR-002 section 6). A
 # check-then-act bound: nothing downstream relies on it.
 HOLDINGS_PER_USER_MAX = 100
+# The history graph walks every value of every holding (sec on #223), so the
+# values per holding are bounded where they are added. An overwrite of a
+# date that has a value is always allowed.
+VALUATIONS_PER_ASSET_MAX = 1000
 
 
 def _own_asset(db: Session, user_id, asset_id: uuid.UUID) -> Asset:
@@ -252,6 +256,11 @@ def add_valuation(
     )
     if existing:
         existing.value = body.value
+    elif len(asset.valuations) >= VALUATIONS_PER_ASSET_MAX:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"This holding has {VALUATIONS_PER_ASSET_MAX} values already. Delete an old one to add another.",
+        )
     else:
         db.add(AssetValuation(asset_id=asset.id, value=body.value, valued_at=valued_at))
     db.commit()

@@ -52,7 +52,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from app.services import analytics_service
-from app.services.analytics import card_links
+from app.services.analytics import card_links, card_payments
 from app.services.claude_keep import (
     PENDING, applied_dismissals, claude_rows, commitment_keep, held_values, keep_kind, pending_ids, record_user_edit,
 )
@@ -428,12 +428,14 @@ def list_planned_items(
     )
     markers = claude_markers(db, current_user.id, "planned_event", [i.id for i in items])
     states = planned_states(db, current_user, items, _today())
+    overlapping = {i for w, ids in card_payments.overlap_windows(db, current_user, _today()) if w.overlaps for i in ids}
     return [
         PlannedItemResponse.model_validate(i).model_copy(update={
             "changed_by_claude": ClaudeMarker(**markers[i.id]) if i.id in markers else None,
             "matched_transaction_id": states[i.id].matched_transaction_id if i.id in states else None,
             "late": states[i.id].late if i.id in states else False,
             "overdue": states[i.id].overdue if i.id in states else False,
+            "card_payment_overlap": i.id in overlapping,
         })
         for i in items
     ]

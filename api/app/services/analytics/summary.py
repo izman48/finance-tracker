@@ -26,7 +26,7 @@ from .common import _d, _load, _today, resolve_roles
 from app.services.holdings import listing as holdings_listing
 
 from .net_worth import assets_total, liabilities_total, total_owed
-from .planned import planned_events
+from .planned import planned_expense_occurrences
 from .planned_matching import planned_states
 from app.services.claude_keep import claude_rows, counted_commitments, held_back, held_removed_planned
 from .repayments import repayment_events, scheduled_outflows
@@ -169,7 +169,7 @@ def _money_out(db: Session, user, expense_rules: list, planned: list, states: di
     item flagged as a card payment counts once with the projected card
     repayments: in each pay window, the larger of the two (T-12-4a)."""
     occurrences, repayments = scheduled_outflows(db, user, expense_rules, start, end)
-    due = _planned_occurrences(planned, states, start, end)
+    due = planned_expense_occurrences(planned, states, start, end)
     flagged = [o for o in due if o[0].is_card_payment]
     other = sum((a for item, _, a in due if not item.is_card_payment), Decimal(0))
     kept_card, kept_repayments, _ = card_payments.resolve(
@@ -181,21 +181,6 @@ def _money_out(db: Session, user, expense_rules: list, planned: list, states: di
         + other
         + sum((a for _, _, a in kept_card), Decimal(0))
     )
-
-
-def _planned_occurrences(planned: list, states: dict, start, end) -> list[tuple]:
-    """(item, date, amount > 0) for each planned expense due in [start, end],
-    (a one-off already paid is left out; one overdue and unpaid is still due)."""
-    out = []
-    for item in planned:
-        if item.direction == "income":
-            continue
-        state = states.get(item.id)
-        if state is None:  # recurring / payment plan: by schedule
-            out.extend((item, d, -a) for d, a in planned_events(item, start, end) if a < 0)
-        elif state.counted and max(item.start_date, start) <= end:
-            out.append((item, max(item.start_date, start), _d(item.amount)))
-    return out
 
 
 def _accounts(db: Session, user, accounts, roles, settings, today) -> list[dict]:

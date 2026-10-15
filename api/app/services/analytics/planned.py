@@ -50,3 +50,18 @@ def planned_events(item: PlannedItem, start: date, end: date) -> list[tuple]:
         d = _step(d, item.cadence or "monthly", item.interval_days, item.interval_months)
         guard += 1
     return out
+
+
+def planned_expense_occurrences(planned: list, states: dict, start, end) -> list[tuple]:
+    """(item, date, amount > 0) for each planned expense due in [start, end],
+    (a one-off already paid is left out; one overdue and unpaid is still due)."""
+    out = []
+    for item in planned:
+        if item.direction == "income":
+            continue
+        state = states.get(item.id)
+        if state is None:  # recurring / payment plan: by schedule
+            out.extend((item, d, -a) for d, a in planned_events(item, start, end) if a < 0)
+        elif state.counted and max(item.start_date, start) <= end:
+            out.append((item, max(item.start_date, start), _d(item.amount)))
+    return out

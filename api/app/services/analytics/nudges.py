@@ -9,6 +9,7 @@ as-of date. None of them says "you should…" or names a product to move to.
 """
 from __future__ import annotations
 
+from datetime import timedelta
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
@@ -126,7 +127,50 @@ def get_nudges(db: Session, user) -> list[dict]:
             "as_of": None,
         })
 
+    nudges.extend(_card_payment_overlap(db, user))
     return sorted(nudges, key=lambda n: n["rank"])
+
+
+def _money(value: Decimal) -> str:
+    return f"£{value:,.2f}"
+
+
+def _overlap_anchor(window, today) -> str:
+    """A fixed point for the overlap nudge's id, so a dismissal lasts: a later
+    window starts on a payday; the first starts today (it moves daily), so it
+    ends the day before payday; with no payday it runs to the horizon, which
+    moves too, so the month (eng-b on #236)."""
+    from .card_payments import OVERLAP_HORIZON_DAYS
+    if window.start != today:
+        return window.start.isoformat()
+    if window.end < today + timedelta(days=OVERLAP_HORIZON_DAYS):
+        return window.end.isoformat()
+    return today.strftime("%Y-%m")
+
+
+def _card_payment_overlap(db: Session, user) -> list[dict]:
+    """The first pay window where the user's planned card payments and the
+    projected card bills overlap (T-12-4b, ux O-2/O-3): the aggregate figures
+    and which one nilu counts. Facts only; dismissed in the browser."""
+    from .card_payments import overlap_windows
+    from .common import _today
+    today = _today()
+    for window, _ in overlap_windows(db, user, today):
+        if not window.overlaps:
+            continue
+        larger = max(window.planned, window.projected)
+        return [{
+            "id": f"card_payment_overlap_{_overlap_anchor(window, today)}",
+            "rank": 0,  # a number counted twice matters most
+            "body": (f"Your planned card payments ({_money(window.planned)}) overlap your projected card "
+                     f"bills ({_money(window.projected)}). nilu counts the larger, {_money(larger)}, once."),
+            "detail": (f"Between {window.start:%-d %b} and {window.end:%-d %b}. Planned items you marked as a card "
+                       "payment and the card repayments nilu projects pay the same cards, so only the larger "
+                       "total counts in safe to spend and the forecast."),
+            "source": None,
+            "as_of": None,
+        }]
+    return []
 
 
 def _duplicate_commitment_groups(db: Session, user) -> list[list[CommitmentRule]]:

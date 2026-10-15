@@ -76,22 +76,34 @@ class DeleteAccountRequest(BaseModel):
 # --- Asset Schemas ---
 
 
+# Bounds on holding inputs (sec T-11-4): the projection engine must stay
+# finite and fast at the extremes, so the API refuses anything outside them.
+MAX_HOLDING_AMOUNT = Decimal("10000000")
+GrowthPct = Annotated[Decimal, Field(ge=-100, le=50)]
+HoldingValue = Annotated[Decimal, Field(ge=-MAX_HOLDING_AMOUNT, le=MAX_HOLDING_AMOUNT)]
+Contribution = Annotated[Decimal, Field(ge=0, le=MAX_HOLDING_AMOUNT)]
+MAX_TARGET = Decimal("100000000")
+# A query flag that takes only "true" or "false" (sec T-11-4: FastAPI's
+# bool would also take yes/no/on/off/1/0).
+StrictBoolQuery = Literal["true", "false"]
+
+
 class AssetValuationCreate(BaseModel):
     """Record an asset's value as of a date (defaults to today)."""
 
-    value: Decimal
+    value: HoldingValue
     valued_at: date | None = None
 
 
 class AssetCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     asset_type: str = Field(default="other", pattern="^(isa|savings|investment|pension|property|crypto|other|mortgage|loan|other_liability)$")
-    value: Decimal
+    value: HoldingValue
     valued_at: date | None = None
     # Projection assumption (%/yr, may be negative). Null → projection default.
-    assumed_growth_pct: Decimal | None = Field(default=None, ge=-50, le=50)
+    assumed_growth_pct: GrowthPct | None = None
     # Planned monthly saving into this asset (paydown when it's a liability).
-    monthly_contribution: Decimal | None = Field(default=None, ge=0)
+    monthly_contribution: Contribution | None = None
 
 
 class AssetUpdate(BaseModel):
@@ -99,8 +111,8 @@ class AssetUpdate(BaseModel):
     asset_type: str | None = Field(
         default=None, pattern="^(isa|savings|investment|pension|property|crypto|other|mortgage|loan|other_liability)$"
     )
-    assumed_growth_pct: Decimal | None = Field(default=None, ge=-50, le=50)
-    monthly_contribution: Decimal | None = Field(default=None, ge=0)
+    assumed_growth_pct: GrowthPct | None = None
+    monthly_contribution: Contribution | None = None
 
 
 class AssetValuationResponse(BaseModel):

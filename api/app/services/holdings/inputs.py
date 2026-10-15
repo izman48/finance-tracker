@@ -36,6 +36,13 @@ def holding_inputs(db: Session, user, today: date, default_growth_pct: Decimal) 
     return asset_inputs(db, user, default_growth_pct) + _liability_inputs(db, user, today)
 
 
+def without_investments(holdings: list[HoldingInput]) -> list[HoldingInput]:
+    """The "Include investments" choice off: drops the investment kinds
+    (registry `is_investment`, owner D1) and nothing else. Debt is never an
+    investment (the registry's validator refuses it)."""
+    return [h for h in holdings if not h.is_investment]
+
+
 def asset_inputs(db: Session, user, default_growth_pct: Decimal) -> list[HoldingInput]:
     """The `assets` rows only, for callers that need no liabilities."""
     inputs = []

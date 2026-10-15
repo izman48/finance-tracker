@@ -29,7 +29,7 @@ from app.models import (
     CommitmentRule,
     PlannedItem,
 )
-from app.services.holdings.inputs import holding_inputs
+from app.services.holdings.inputs import holding_inputs, without_investments
 from app.services.holdings.projection import exact_total_at, monthly_rate, project_holdings
 
 from app.services.budgets import cycle_budgets
@@ -182,6 +182,7 @@ def net_worth_projection(
     subtract_spending: bool = True,
     monthly_spending: Decimal | None = None,
     spending_source: str | None = None,
+    include_investments: bool = True,
 ) -> dict:
     """Project the whole balance sheet forward, month by month.
 
@@ -195,7 +196,7 @@ def net_worth_projection(
     today = _today()
     # Same reconstruction as the Wealth chart, so the projection extends the
     # line it's drawn on rather than a subtly different figure.
-    now_point = net_worth_history(db, user, months=1)[-1]
+    now_point = net_worth_history(db, user, months=1, include_investments=include_investments)[-1]
     bank_now = Decimal(str(now_point["bank"]))
     current = Decimal(str(now_point["net_worth"]))
     liabilities_now = Decimal(str(now_point["liabilities"]))
@@ -209,6 +210,8 @@ def net_worth_projection(
     # The contribution's cash side is already in measured spending or bills,
     # so adding it to the asset moves money from "consumption" to "wealth".
     holdings = holding_inputs(db, user, today, annual_growth_pct)
+    if not include_investments:
+        holdings = without_investments(holdings)
     engine = project_holdings(holdings, today, MAX_MONTHS)
     asset_series = [s for s in engine.per_holding if s.source == "assets"]
     liability_series = [s for s in engine.per_holding if s.source == "liabilities"]

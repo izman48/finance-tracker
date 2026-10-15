@@ -21,6 +21,9 @@ from app.models import (
     RepaymentStrategy,
 )
 from app.schemas import (
+    MAX_HOLDING_AMOUNT,
+    MAX_TARGET,
+    StrictBoolQuery,
     REPAYMENT_FIELDS,
     AccountSettingUpdate,
     AssetDecomposition,
@@ -80,12 +83,16 @@ def get_net_worth_history(
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
     months: int = 12,
+    include_investments: StrictBoolQuery = "true",
 ) -> list[NetWorthPoint]:
-    """Net worth at month-ends (bank balances reconstructed + manual assets)."""
+    """Net worth at month-ends (bank balances reconstructed + manual assets).
+    include_investments=false leaves out the investment kinds only."""
     months = max(1, min(months, 60))
     return [
         NetWorthPoint(**point)
-        for point in analytics_service.net_worth_history(db, current_user, months)
+        for point in analytics_service.net_worth_history(
+            db, current_user, months, include_investments=include_investments == "true",
+        )
     ]
 
 
@@ -127,13 +134,14 @@ def get_nudges(
 def get_net_worth_projection(
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
-    target_amount: Decimal | None = None,
-    monthly_contribution: Decimal | None = None,
+    target_amount: Annotated[Decimal | None, Query(ge=-MAX_TARGET, le=MAX_TARGET)] = None,
+    monthly_contribution: Annotated[Decimal | None, Query(ge=-MAX_HOLDING_AMOUNT, le=MAX_HOLDING_AMOUNT)] = None,
     # The holding engine refuses a rate outside -100..50 (sec T-11-4).
     annual_growth_pct: Annotated[Decimal, Query(ge=-100, le=50)] = Decimal("5"),
     subtract_spending: bool = True,
-    monthly_spending: Decimal | None = None,
+    monthly_spending: Annotated[Decimal | None, Query(le=MAX_HOLDING_AMOUNT)] = None,
     spending_source: Literal["budgets", "average", "none"] | None = None,
+    include_investments: StrictBoolQuery = "true",
 ) -> ProjectionResponse:
     """Project net worth forward from stated assumptions (compound growth +
     monthly contributions). Omit monthly_contribution to derive it from the
@@ -152,6 +160,7 @@ def get_net_worth_projection(
             subtract_spending=subtract_spending,
             monthly_spending=monthly_spending,
             spending_source=spending_source,
+            include_investments=include_investments == "true",
         )
     )
 

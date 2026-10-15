@@ -66,7 +66,11 @@ reads as the account type's default, so a card stays credit; an unknown
 strategy pays the full balance; an unknown cadence pays at each month-end
 (under `statement_balance`, the card due date). The summary's accounts carry
 `instalment_card` and `repayment_fix_needed` (a standard card still on
-`scheduled`; nothing is changed for the user).
+`scheduled`; nothing is changed for the user). A credit account also carries
+`statement` (T-10-14a): `statement_balance`, `due_date`, `paid`, `missing`
+(due date passed, no newer statement) from `statements.current_positions`, the
+position the statements route uses; null when none is entered, absent on
+other roles (`CashflowAccount` drops the key).
 
 **UI**: `AccountSettingsModal` (opened from Wealth; its Statement block is `components/card/StatementBlock.tsx` + `StatementView.tsx`, with `StatementForm.tsx` for add/edit and `lib/statements.ts` for the rules and copy: the edit form sends every field, delete and "use this statement" each confirm first, naming the figure that changes; `lib/accountSettings.ts`
 sends repayment fields only for a credit card and lists the repayment options: statement balance

@@ -3,7 +3,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, EmailStr, Field, StrictBool, field_validator, model_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, EmailStr, Field, StrictBool, field_validator, model_serializer, model_validator
 
 from app.core.display_text import has_hidden_characters
 from app.models.account import AccountType
@@ -652,6 +652,15 @@ class NextRepayment(BaseModel):
     due_date: date
 
 
+class SummaryStatement(BaseModel):
+    """A card's current statement in the summary (T-10-14a). No ids."""
+    statement_balance: Decimal
+    due_date: date
+    paid: bool
+    # Due date passed and no newer statement entered.
+    missing: bool
+
+
 class CashflowAccount(BaseModel):
     id: str
     display_name: str
@@ -675,6 +684,16 @@ class CashflowAccount(BaseModel):
     # A standard card on the `scheduled` strategy (allowed before T-10-4a):
     # the card settings show a "fix this" notice. Nothing changes by itself.
     repayment_fix_needed: bool = False
+    # Credit accounts only: the current statement, or None when none is
+    # entered. The key is left out for every other role (T-10-14a).
+    statement: SummaryStatement | None = None
+
+    @model_serializer(mode="wrap")
+    def _statement_on_cards_only(self, handler):
+        data = handler(self)
+        if self.role != "credit":
+            data.pop("statement", None)
+        return data
 
 
 class CashflowSummary(BaseModel):
@@ -684,6 +703,8 @@ class CashflowSummary(BaseModel):
     savings_total: Decimal = Decimal(0)
     assets_total: Decimal = Decimal(0)
     liabilities_total: Decimal = Decimal(0)
+    # Cards owed + liabilities_total, from net_worth.total_owed (T-10-14a).
+    total_owed: Decimal = Decimal(0)
     net_worth: Decimal
     committed_before_payday: Decimal
     safe_to_spend: Decimal

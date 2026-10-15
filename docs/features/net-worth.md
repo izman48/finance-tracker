@@ -33,7 +33,8 @@ and then dropped by migration; `REDESIGN_PLAN.md` still describes it.
 
 **Net worth and liabilities (T-10-7b)**: every surface takes liabilities
 from one function, `net_worth.liabilities_total`: the summary
-(`liabilities_total`, `net_worth`; Claude reads it through
+(`liabilities_total`, `net_worth`, and `total_owed` = cards owed +
+liabilities from `net_worth.total_owed`, T-10-14a; Claude reads it through
 `cashflow_summary`), and the series behind position, history and projection
 (`liabilities` on each point). In the history a liability counts at today's
 balance from the earlier of its start date and its as-of date, so adding a

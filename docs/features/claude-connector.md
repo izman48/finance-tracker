@@ -66,6 +66,14 @@ only). `update_commitment` and `dismiss_commitment` get 409 on a commitment
 that carries a loan's repayment (T-10-8), so Claude can't dismiss it to
 raise safe-to-spend.
 
+`cashflow_summary` also carries `total_owed` (cards owed + `liabilities_total`,
+one aggregate, T-10-14a) and, on each credit account, `statement`:
+`statement_balance`, `due_date`, `paid`, `missing` (null when none is
+entered; no statement id or source; absent on other roles). sec accepted
+these under `finance:read` (2026-10-15, option A);
+`tests/integration/test_summary_statement_total_owed.py` pins the exact key
+set Claude receives, top level and per account.
+
 **UI**: `/oauth/authorize` (`OAuthConsentPage`), `oauth/ConsentScopes`,
 `lib/oauthConsent.ts`; landing-page `AiAssistantSection` and `lib/mcp.ts`.
 

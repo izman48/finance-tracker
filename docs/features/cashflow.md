@@ -11,7 +11,7 @@ or zero breaches, late income and the budget projection.
 
 | Route | Auth | Notes |
 |---|---|---|
-| `GET /api/v1/analytics/summary` | `CurrentUserOrMcpRead` | Also returns the totals Claude's unkept changes are holding back. |
+| `GET /api/v1/analytics/summary` | `CurrentUserOrMcpRead` | Also returns the totals Claude's unkept changes are holding back, `total_owed` (cards + liabilities) and each card's current `statement` (T-10-14a, see accounts.md). |
 | `GET /api/v1/analytics/forecast` | `CurrentUserOrMcpRead` | `horizon` = `payday` (default), `month` or N days (max 730). Adds `late_income`, `late_planned`, `budget_projection`. |
 
 **Tables**: none of its own. Reads `accounts`, `account_settings`,

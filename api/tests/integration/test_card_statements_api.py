@@ -241,13 +241,23 @@ def test_deleting_the_last_statement_puts_the_card_back_on_its_current_balance(a
 
 def test_adding_a_statement_moves_no_figure(alice):
     """Statements are opt-in: until a strategy uses them (T-10-3) the summary
-    and forecast are exactly what they were."""
-    summary = alice.client.get(f"{API}/analytics/summary", headers=alice.headers).json()
+    and forecast are exactly what they were. The summary's only change is the
+    card's own `statement` field (T-10-14a)."""
+    def summary_without_statements():
+        body = alice.client.get(f"{API}/analytics/summary", headers=alice.headers).json()
+        statements = {a["id"]: a.pop("statement", "absent") for a in body["accounts"]}
+        return body, statements
+
+    summary, before = summary_without_statements()
     forecast = alice.client.get(f"{API}/analytics/forecast", headers=alice.headers).json()
 
     alice.add()
 
-    assert alice.client.get(f"{API}/analytics/summary", headers=alice.headers).json() == summary
+    after_summary, after = summary_without_statements()
+    assert after_summary == summary
+    assert before[str(alice.card_id)] is None and after[str(alice.card_id)]["statement_balance"] == "5000.00"
+    assert {k: v for k, v in after.items() if k != str(alice.card_id)} == {
+        k: v for k, v in before.items() if k != str(alice.card_id)}
     assert alice.client.get(f"{API}/analytics/forecast", headers=alice.headers).json() == forecast
 
 

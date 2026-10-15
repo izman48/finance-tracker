@@ -159,3 +159,34 @@ def test_an_unchanged_bank_label_is_never_refused_on_edit(web):
     res = client.patch(f"{API}/analytics/commitments/{rule.id}", json={"label": bank_label, "amount": "40.00"})
     assert res.status_code == 200, res.text
     assert client.patch(f"{API}/analytics/commitments/{rule.id}", json={"label": bank_label + "!"}).status_code == 422
+
+
+def test_an_unchanged_amount_above_the_cap_still_saves_on_edit(web):
+    """sec-1 on #245: a commitment stored above £1,000,000 before the cap
+    existed must still save from the edit form (which sends the amount back)
+    when the amount isn't changed; a changed amount is held to the cap."""
+    from decimal import Decimal
+    from app.models import CommitmentRule, User
+    client, db, _ = web
+    user = db.query(User).first()
+    rule = CommitmentRule(user_id=user.id, direction="expense", label="Big", amount=Decimal("1500000.00"),
+                          cadence="monthly", next_date=TODAY + timedelta(days=5), source="manual", status="confirmed")
+    db.add(rule)
+    db.commit()
+    res = client.patch(f"{API}/analytics/commitments/{rule.id}", json={"amount": 1500000, "label": "Big one"})
+    assert res.status_code == 200, res.text
+    assert client.patch(f"{API}/analytics/commitments/{rule.id}", json={"amount": "1500000.01"}).status_code == 422
+    assert client.patch(f"{API}/analytics/commitments/{rule.id}", json={"amount": "999.999"}).status_code == 422
+
+
+def test_unchanged_intervals_outside_the_bounds_still_save(web):
+    """eng-b on #245: intervals come back unchanged from the edit form too."""
+    from app.models import CommitmentRule, User
+    client, db, _ = web
+    user = db.query(User).first()
+    rule = CommitmentRule(user_id=user.id, direction="expense", label="Rare", amount=50, cadence="custom_days",
+                          interval_days=400, next_date=TODAY + timedelta(days=5), source="detected", status="confirmed")
+    db.add(rule)
+    db.commit()
+    assert client.patch(f"{API}/analytics/commitments/{rule.id}", json={"interval_days": 400, "amount": "60.00"}).status_code == 200
+    assert client.patch(f"{API}/analytics/commitments/{rule.id}", json={"interval_days": 401}).status_code == 422

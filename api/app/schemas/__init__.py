@@ -612,6 +612,23 @@ def changed_label_error(value: str) -> str | None:
     return None
 
 
+def changed_amount_error(value: Decimal) -> str | None:
+    """Why a new amount isn't allowed (WebAmount's rule), or None."""
+    if not Decimal(0) < value <= WEB_MAX_AMOUNT:
+        return "must be above 0 and at most 1,000,000"
+    if value != value.quantize(Decimal("0.01")):
+        return "must have at most 2 decimal places"
+    return None
+
+
+def changed_interval_days_error(value: int) -> str | None:
+    return None if 1 <= value <= 366 else "must be from 1 to 366"
+
+
+def changed_interval_months_error(value: int) -> str | None:
+    return None if 1 <= value <= 24 else "must be from 1 to 24"
+
+
 class TransactionUpdate(BaseModel):
     """Schema for updating transaction fields."""
 
@@ -953,10 +970,15 @@ class CommitmentUpdate(BaseModel):
     # label is bank text (it can be long or hold a tab), so only a *changed*
     # label is held to `WebLabel` (`changed_label_error`, in the route).
     label: str | None = Field(default=None, max_length=500)
-    amount: WebAmount | None = None
+    # Likewise the amount: one stored before the cap existed is sent back
+    # unchanged, so only a *changed* amount is held to `WebAmount`
+    # (`changed_amount_error`, in the route; sec-1 on #245).
+    amount: Annotated[Decimal, Field(gt=0)] | None = None
     cadence: WebCadence | None = None
-    interval_days: IntervalDays | None = None
-    interval_months: IntervalMonths | None = None
+    # Sent back unchanged too (detected intervals predate the bounds), so
+    # the bounds apply only to a change (`changed_interval_*_error`).
+    interval_days: Annotated[int, Field(ge=1)] | None = None
+    interval_months: Annotated[int, Field(ge=1)] | None = None
     next_date: date | None = None
     account_id: uuid.UUID | None = None
     # See CommitmentCreate.match_merchant. Empty string clears the match key.

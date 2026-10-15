@@ -124,6 +124,20 @@ class AssetValuationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class LinkedBill(BaseModel):
+    """The bill carrying a holding's contribution, with its terms (the form
+    and the row show them; the holding's own figure is cleared when linked)."""
+
+    id: uuid.UUID
+    label: str
+    amount: Decimal
+    next_date: date
+    pay_from_account_id: uuid.UUID | None = None
+    # True when nilu created the bill (opting out deletes it); false when it
+    # was the user's own bill (opting out keeps it).
+    created: bool = False
+
+
 class AssetResponse(BaseModel):
     id: uuid.UUID
     name: str
@@ -131,6 +145,11 @@ class AssetResponse(BaseModel):
     assumed_growth_pct: Decimal | None = None
     monthly_contribution: Decimal | None = None
     valuations: list[AssetValuationResponse] = []
+    # The bill that carries its contribution (T-11-3c), when linked.
+    linked_commitment: LinkedBill | None = None
+    # The holding engine's value today (the same as net worth): the latest
+    # value plus linked contributions paid since. Null before a first value.
+    value_today: Decimal | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

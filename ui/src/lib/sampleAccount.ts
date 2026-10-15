@@ -11,6 +11,7 @@
  */
 
 import { SAMPLE_BUDGETS_MONTHLY, sampleBudgetHistory, sampleBudgetList, type BudgetLedgerTx } from './sampleBudgets'
+import { sampleInvestmentGraph } from './sampleInvestments'
 
 // --- shape helpers --------------------------------------------------------- #
 
@@ -60,11 +61,21 @@ const ACCOUNTS: SampleAccount[] = [
 ]
 const ROLE: Record<string, Role> = Object.fromEntries(ACCOUNTS.map((a) => [a.id, a.role]))
 
+// Investments (T-11-8, ux T-11-2 "Demo mode"): each with its own growth %;
+// the ISA's £400 a month is a linked bill, so it is a commitment in Cashflow
+// and safe to spend, and the holding takes it (never also as its own figure).
 const ASSETS = [
-  // monthly: planned contribution (paydown on the loan) — demoes the
-  // per-asset contribution leg of the unified projection.
-  { id: 'sas1', name: 'Meridian S&S ISA', asset_type: 'isa', value: 18500, monthly: 400 },
-  { id: 'sas2', name: 'Sterling Pension', asset_type: 'pension', value: 24000, monthly: 0 },
+  { id: 'sas1', name: 'Sample Stocks & Shares ISA', asset_type: 'isa', value: 18500, growth: 7, monthly: 400, linked: true },
+  { id: 'sas2', name: 'Sample Pension', asset_type: 'pension', value: 24000, growth: 5, monthly: 0, linked: false },
+  { id: 'sas3', name: 'Sample Crypto', asset_type: 'crypto', value: 1200, growth: 0, monthly: 0, linked: false },
+]
+const INVESTMENT_TYPES = new Set(['isa', 'investment', 'pension', 'crypto'])
+const isInvestmentAsset = (a: (typeof ASSETS)[number]) => INVESTMENT_TYPES.has(a.asset_type)
+const CONTRIBUTION = { id: 'sc-isa-contribution', label: 'Sample Stocks & Shares ISA contribution', amount: 400, nextIn: 5, account: 'sa1' }
+/** Entered values: about 10% lower six months ago, then the value today. */
+const assetValuations = (a: (typeof ASSETS)[number]) => [
+  { id: `${a.id}-v0`, date: isoDate(nowMinus(180)), value: Math.round(a.value * (a.value < 0 ? 1.15 : 0.9)) },
+  { id: `${a.id}-v1`, date: isoDate(nowMinus(40)), value: a.value },
 ]
 
 // Loans and finance (T-10-10): entered terms plus the API's derived figures,
@@ -347,17 +358,20 @@ function spendingResponse(q: {
 const AVAILABLE_CASH = 2480.55 + 940.2 // spending accounts
 const SAVINGS_TOTAL = 12000
 const CREDIT_OWED = 640.3
-const ASSETS_TOTAL = ASSETS.reduce((s, a) => s + a.value, 0) // ISA + pension
+const ASSETS_TOTAL = ASSETS.reduce((s, a) => s + a.value, 0)
+const INVESTMENTS_TOTAL = ASSETS.filter(isInvestmentAsset).reduce((s, a) => s + a.value, 0)
 const NET_WORTH = AVAILABLE_CASH + SAVINGS_TOTAL + ASSETS_TOTAL - CREDIT_OWED - LIABILITIES_TOTAL
 
 function summaryResponse() {
-  const committed = 1100 + 20 + 12.99 + 11.99 + 32 // rent + phone + subs + gym
+  // rent + phone + subs + gym, and the ISA contribution (a linked bill).
+  const committed = Math.round((1100 + 20 + 12.99 + 11.99 + 32 + CONTRIBUTION.amount) * 100) / 100
   return {
     available_cash: AVAILABLE_CASH,
     overdraft_cushion: 500,
     credit_owed: CREDIT_OWED,
     savings_total: SAVINGS_TOTAL,
     assets_total: ASSETS_TOTAL,
+    investments_total: INVESTMENTS_TOTAL.toFixed(2),
     liabilities_total: LIABILITIES_TOTAL,
     // Cards plus loans, as the API sums it (T-10-14a).
     total_owed: (CREDIT_OWED + LIABILITIES_TOTAL).toFixed(2),
@@ -397,6 +411,7 @@ function forecastResponse(horizon = '30') {
   for (let i = 0; i <= days; i++) {
     const dom = i % 30 // repeating monthly cycle
     const events: { label: string; amount: number; kind: string }[] = []
+    if (i > 0 && dom === CONTRIBUTION.nextIn) { bal -= CONTRIBUTION.amount; events.push({ label: CONTRIBUTION.label, amount: -CONTRIBUTION.amount, kind: 'commitment' }) }
     if (i > 0 && dom === 8) { bal -= CREDIT_OWED; events.push({ label: 'Harbor Rewards payment', amount: -CREDIT_OWED, kind: 'repayment' }) }
     if (i > 0 && dom === 15) { bal -= 1100; events.push({ label: 'Rent', amount: -1100, kind: 'commitment' }) }
     if (i > 0 && dom === 24) { bal += 3200; events.push({ label: 'Salary', amount: 3200, kind: 'income' }) }
@@ -448,19 +463,30 @@ function commitmentsResponse() {
     mk('Phone', 20, 'expense', 12),
     mk('Netflix', 12.99, 'expense', 20),
     mk('Spotify', 11.99, 'expense', 18),
+    // The ISA's contribution: a linked bill, edited through the holding.
+    { ...mk(CONTRIBUTION.label, CONTRIBUTION.amount, 'expense', CONTRIBUTION.nextIn), id: CONTRIBUTION.id,
+      source: 'manual', account_id: CONTRIBUTION.account, linked_holding: true },
   ]
 }
 
-function netWorthHistory(months: number) {
+function netWorthHistory(months: number, includeInvestments = true) {
   const out = []
   const now = new Date()
+  const r2 = (n: number) => Math.round(n * 100) / 100
   for (let i = months; i >= 0; i--) {
     const d = i === 0 ? now : new Date(now.getFullYear(), now.getMonth() - i + 1, 0)
-    const nw = Math.round((NET_WORTH - i * 520 - (i % 2) * 140) * 100) / 100
-    const assets = Math.round((ASSETS_TOTAL - i * 300) * 100) / 100
+    const nw = r2(NET_WORTH - i * 520 - (i % 2) * 140)
+    const assets = r2(ASSETS_TOTAL - i * 300)
+    const bank = r2(nw - assets + LIABILITIES_TOTAL)
+    // Every sample asset is an investment; the groups add up to net worth
+    // (cash + investments + property - debt), as the API's (T-11-6a).
+    const investments = assets
+    const shownAssets = includeInvestments ? assets : r2(assets - investments)
     out.push({
-      date: isoDate(d), bank: String(Math.round((nw - assets + LIABILITIES_TOTAL) * 100) / 100),
-      assets: String(assets), liabilities: String(LIABILITIES_TOTAL), net_worth: String(nw),
+      date: isoDate(d), bank: String(bank), assets: String(shownAssets), liabilities: String(LIABILITIES_TOTAL),
+      net_worth: String(r2(bank + shownAssets - LIABILITIES_TOTAL)),
+      cash: String(r2(bank + CREDIT_OWED)), investments: String(investments), property: '0.00',
+      debt: String(r2(CREDIT_OWED + LIABILITIES_TOTAL)),
     })
   }
   return out
@@ -538,7 +564,8 @@ function projectionResponse(q: Record<string, any>) {
   // backend: income commitments − bills − average everyday spending.
   const round2 = (n: number) => Math.round(n * 100) / 100
   const INCOME_MONTHLY = 3200 + 480 // salary + freelance
-  const BILLS_MONTHLY = 1100 + 32 + 20 + 12.99 + 11.99
+  // The ISA contribution is a bill here (counted once), and the holding takes it.
+  const BILLS_MONTHLY = 1100 + 32 + 20 + 12.99 + 11.99 + CONTRIBUTION.amount
   const AVG_SPENDING = round2((980 + 1120 + 1040 + 1210 + 1005 + 1180) / 6)
   const derived = q.monthly_contribution == null
   // subtract_spending=false: "all my forecasted cashflow lands in my wealth" —
@@ -586,27 +613,31 @@ function projectionResponse(q: Record<string, any>) {
   // into investments at the growth rate, each asset at its own assumed rate
   // (liabilities flat by default).
   const BANK = AVAILABLE_CASH + SAVINGS_TOTAL - CREDIT_OWED
-  const components = ASSETS.map((a) => ({
+  // Each holding at its own rate with the engine's arithmetic (T-11-4);
+  // include_investments=false leaves the investments out (T-11-4c).
+  const includeInvestments = String(q.include_investments ?? 'true') !== 'false'
+  const components = ASSETS.filter((a) => includeInvestments || !isInvestmentAsset(a)).map((a) => ({
     name: a.name,
     value: a.value,
-    growth_pct: a.value < 0 ? 0 : Number(q.annual_growth_pct) || 0,
-    rate: a.value < 0 ? 0 : r,
+    growth_pct: a.growth,
+    rate: Math.pow(1 + a.growth / 100, 1 / 12) - 1,
     contribution: a.monthly,
     isLiability: a.value < 0,
   }))
+  const netWorthNow = includeInvestments ? NET_WORTH : NET_WORTH - INVESTMENTS_TOTAL
   const assetsAt0 = components.reduce((s, c) => s + c.value, 0)
   // Liabilities kept flat in the sample projection (as the API does for an
   // unlinked one), as their own component.
   const owed = String(round(LIABILITIES_TOTAL))
   const timeline: { date: string; value: string; cash: string; invested: string; assets: string; liabilities: string }[] = [
-    { date: addM(0), value: String(round(NET_WORTH)), cash: String(round(BANK)), invested: '0.00', assets: String(round(assetsAt0)), liabilities: owed },
+    { date: addM(0), value: String(round(netWorthNow)), cash: String(round(BANK)), invested: '0.00', assets: String(round(assetsAt0)), liabilities: owed },
   ]
   // Surplus waterfall (mirrors backend): positive months invest; negative
   // months drain cash first, then investments; shortfall never compounds.
   let cash = BANK
   let invested = 0
   // Already there today — mirror the backend's day-0 check.
-  let target_date: string | null = target != null && NET_WORTH >= target ? addM(0) : null
+  let target_date: string | null = target != null && netWorthNow >= target ? addM(0) : null
   let monthsWanted = target_date ? 6 : 120
   for (let m = 1; m <= 600; m++) {
     invested *= 1 + r
@@ -645,7 +676,7 @@ function projectionResponse(q: Record<string, any>) {
     else if (target == null || target_date) break
   }
   return {
-    current_net_worth: String(round(NET_WORTH)),
+    current_net_worth: String(round(netWorthNow)),
     target_amount: target != null ? String(target) : null,
     target_date,
     monthly_contribution: String(round(monthly)),
@@ -679,15 +710,28 @@ function liabilitiesResponse() {
 function assetsResponse() {
   return ASSETS.map((a) => ({
     id: a.id, name: a.name, asset_type: a.asset_type,
-    assumed_growth_pct: null,
-    monthly_contribution: a.monthly ? String(a.monthly) : null,
-    valuations: [
-      // Assets grow over time; liabilities (negative) get paid down, so the
-      // older figure is further from zero in both cases.
-      { id: `${a.id}-v0`, value: String(Math.round(a.value * (a.value < 0 ? 1.15 : 0.9))), valued_at: isoDate(nowMinus(180)) },
-      { id: `${a.id}-v1`, value: String(a.value), valued_at: isoDate(nowMinus(40)) },
-    ],
+    assumed_growth_pct: String(a.growth),
+    // Linked: the bill carries the contribution, never the asset as well.
+    monthly_contribution: a.monthly && !a.linked ? String(a.monthly) : null,
+    linked_commitment: a.linked
+      ? { id: CONTRIBUTION.id, label: CONTRIBUTION.label, amount: CONTRIBUTION.amount.toFixed(2), next_date: isoDate(nowPlus(CONTRIBUTION.nextIn)), pay_from_account_id: CONTRIBUTION.account }
+      : null,
+    valuations: assetValuations(a).map((v) => ({ id: v.id, value: String(v.value), valued_at: v.date })),
   }))
+}
+
+function holdingsProjectionResponse(q: Record<string, any>) {
+  const months = Math.max(1, Math.min(600, Number(q.months) || 120))
+  const holdings = ASSETS.filter(isInvestmentAsset).map((a) => ({
+    id: a.id, name: a.name, asset_type: a.asset_type, value: a.value, growth: a.growth, monthly: a.monthly,
+    valuations: assetValuations(a).map(({ date, value }) => ({ date, value })),
+  }))
+  const monthDate = (m: number) => {
+    const d = new Date()
+    d.setMonth(d.getMonth() + m)
+    return isoDate(d)
+  }
+  return sampleInvestmentGraph(holdings, months, q.holding_id ? String(q.holding_id) : null, monthDate, isoDate(new Date()))
 }
 
 function statusResponse() {
@@ -786,10 +830,11 @@ export function sampleResponse(url: string, params: unknown): unknown {
   if (is('/analytics/nudges')) return nudgesResponse()
   if (path.includes('/analytics/net-worth-decomposition')) return decompositionResponse(Number(p.months) || 12)
   if (path.includes('/analytics/net-worth-projection')) return projectionResponse(p as Record<string, any>)
-  if (path.includes('/analytics/net-worth-history')) return netWorthHistory(Number(p.months) || 12)
+  if (path.includes('/analytics/net-worth-history')) return netWorthHistory(Number(p.months) || 12, String(p.include_investments ?? 'true') !== 'false')
   if (path.includes('/analytics/net-worth-position')) return positionResponse()
   if (is('/statements')) return statementsResponse(path)
   if (is('/assets')) return assetsResponse()
+  if (is('/holdings/projection')) return holdingsProjectionResponse(p as Record<string, any>)
   if (is('/liabilities')) return liabilitiesResponse()
   if (is('/budgets/history')) return sampleBudgetHistory(BUDGET_LEDGER, PAYDAY_AGO, Number(p.cycles) || 6)
   if (is('/budgets')) return sampleBudgetList(BUDGET_LEDGER, PAYDAY_AGO, p.include === 'categories')
@@ -818,7 +863,6 @@ export const UNSAMPLED_BY_DESIGN: Record<string, string> = {
  *  deleting its line here (the coverage test then insists it stays served). */
 export const KNOWN_DEMO_GAPS: Record<string, string> = {
   '/banking/sync-status': 'Budget freshness line has no connections in demo mode.',
-  '/holdings/projection': 'Investment graph (T-11-5) has no sample investments yet; T-11-8 serves it.',
   '/analytics/accounts/:param/repayments': 'Account settings shows no repayment schedule in demo mode.',
   '/rules/shared/:param': 'Previewing a shared rule pack finds nothing in demo mode.',
 }

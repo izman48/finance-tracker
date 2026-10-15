@@ -7,7 +7,7 @@ An item soft-deleted under this release is inactive, so after a downgrade
 it still counts nowhere (rollback: downgrade first, then revert).
 
 Revision ID: e6b8d0f2a4c7
-Revises: e5f7a9b1c3d5
+Revises: f8c0e2a4b6d9
 Create Date: 2026-10-15
 """
 from typing import Sequence, Union
@@ -16,7 +16,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "e6b8d0f2a4c7"
-down_revision: Union[str, None] = "e5f7a9b1c3d5"
+down_revision: Union[str, None] = "f8c0e2a4b6d9"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

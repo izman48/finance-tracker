@@ -64,7 +64,7 @@ Wealth projection is unchanged: a flagged item still counts there.
 | 5 Ownership | Yes (`account_id` on both POSTs). |
 | 6 Scopes | Read `finance:read`; Claude writes `finance:planning.write`. |
 | 7 Claude tools | listed above. |
-| 8 Audit | Yes, target `planned_event`. The web DELETE hard-deletes even Claude's items, which breaks their undo (gap). |
+| 8 Audit | Yes, target `planned_event`. The web DELETE is a soft delete (T-12-9b), so Claude's changes keep their history; an undo on a deleted item is 409. |
 | 9 Bank sync | Matching runs on read. |
 | 10 Home | Upcoming items on the Cashflow card. Owned by Cashflow. |
 | 11 UI routes | `/commitments`. |

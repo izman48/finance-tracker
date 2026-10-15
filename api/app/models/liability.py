@@ -70,6 +70,14 @@ class Liability(Base):
         nullable=True,
     )
 
+    # A mortgage's property (T-12-6b): the user's own `property` asset, used
+    # only to show its equity (display only, never in a total). Deleting the
+    # asset clears it.
+    property_asset_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("assets.id", ondelete="SET NULL", name="fk_liabilities_property_asset_id_assets"),
+        nullable=True, index=True,
+    )
+
     # True when the liability created its commitment (rule 1), so opting out
     # deletes it; a bill the user already had (rule 2) is only unlinked.
     commitment_created: Mapped[bool] = mapped_column(

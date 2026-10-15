@@ -141,6 +141,7 @@ def create_liability(body: LiabilityCreateRequest, current_user: CurrentUser, db
             detail=f"You can track up to {LIABILITIES_PER_USER_MAX} loans. Delete one to add another.",
         )
     replaced = _replaceable_asset(db, current_user.id, body.replaces_asset_id) if body.replaces_asset_id else None
+    _check_property(db, current_user.id, body.property_asset_id)
     _check_schedule_clears(body)
     liability = Liability(user_id=current_user.id, **body.model_dump(exclude={"replaces_asset_id", "commitment_choice"}))
     db.add(liability)
@@ -169,6 +170,19 @@ def _replaceable_asset(db: Session, user_id: uuid.UUID, asset_id: uuid.UUID) -> 
             detail="Only a loan or other debt on your balance sheet can be replaced.",
         )
     return asset
+
+
+def _check_property(db: Session, user_id: uuid.UUID, asset_id: uuid.UUID | None) -> None:
+    """A mortgage's property is the caller's own `property` asset: another
+    user's or an unknown id is a 404, any other asset type a 422."""
+    if asset_id is None:
+        return
+    asset_type = db.query(Asset.asset_type).filter(Asset.id == asset_id, Asset.user_id == user_id).scalar()
+    if asset_type is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+    if asset_type != "property":
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="Choose a property for this mortgage.")
 
 
 @router.get("/{liability_id}", response_model=LiabilityResponse)
@@ -206,6 +220,8 @@ def update_liability(
         terms = LiabilityCreate.model_validate(merged)
     except ValidationError as exc:
         raise RequestValidationError(exc.errors())
+    if "property_asset_id" in updates:
+        _check_property(db, current_user.id, terms.property_asset_id)
     _check_schedule_clears(terms)
     was_linked = liability.linked_commitment_id is not None
     for field, value in terms.model_dump().items():

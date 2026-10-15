@@ -35,6 +35,14 @@ list (T-10-10) build on it.
   follows your mortgage…", and the commitments list sets `linked_mortgage`.
   `replaces_asset_id` also takes a legacy `mortgage` asset. Claude sees it
   only in `liabilities_total`, never in `list_holdings`.
+- **House equity (T-12-6b, ux B7):** a mortgage may name one of the
+  caller's `property` assets (`property_asset_id`; another user's or an
+  unknown id is a 404, any other asset type a 422, and only a mortgage takes
+  one). `GET /api/v1/assets` then gives that property `mortgage_owed` (its
+  mortgages' balance today, as net worth counts it, summed) and `equity` =
+  value today − that, which can be negative. Display only: no total reads
+  it, so net worth and Total owed never move (equality test). Deleting the
+  property clears the link and keeps the mortgage.
 - **Linked repayment (T-10-8):** a liability with a payment carries its
   repayment as one commitment, linked by the stored `linked_commitment_id`
   (FK, `ON DELETE SET NULL`, unique; set only by the server). Rules: a new
@@ -140,7 +148,8 @@ can only overstate, the safe side).
 `apr`; plaintext `card_account_id`, `instalments_remaining`, `next_date`;
 migration `e5f7a9b1c3d5`, downgrade drops it).
 `liabilities` (encrypted `lender`, `balance`, `apr`, `payment`;
-plaintext `kind`, `cadence`, dates, `opted_out`, `linked_commitment_id`);
+plaintext `kind`, `cadence`, dates, `opted_out`, `linked_commitment_id`,
+`property_asset_id` (migration `d7e9f1a3b5c7`, FK to assets, ON DELETE SET NULL));
 `commitment_rules.ends_on` (migration `f0a2b4c6d8e1`).
 
 **Services**: `services/liabilities.py` (`amortise`, `period_rate`,
@@ -172,7 +181,7 @@ the API's message with a link to Wealth.
 **Tests**: `api/tests/unit/test_amortisation.py` (hand-checked schedule for
 the synthetic £9,000 / £200 a month / 11% loan),
 `api/tests/integration/test_liabilities_api.py`,
-`test_liability_commitment_link.py` (rules 1-6), `test_liability_overpayment.py`, `test_mortgage.py`, `test_reset_purge.py`,
+`test_liability_commitment_link.py` (rules 1-6), `test_liability_overpayment.py`, `test_mortgage.py`, `test_house_equity.py`, `test_reset_purge.py`,
 `test_oauth.py` (Claude tokens refused).
 
 ## Touchpoints

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { homeUpcomingLabel, loanPaymentLabel, owedRow } from './homeOwed'
+import { homeUpcomingLabel, investmentsRow, loanPaymentLabel, owedRow } from './homeOwed'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { buildUpcoming } from './upcoming'
 import UpcomingLabel from '../components/UpcomingLabel'
@@ -74,5 +74,13 @@ describe('loanPaymentLabel (owner P2, one rule shared with Cashflow)', () => {
   it('says only "payment" when the lender already contains "loan", in any case', () => {
     expect(loanPaymentLabel('Personal loan')).toBe('Personal loan payment')
     expect(loanPaymentLabel('LOANCO')).toBe('LOANCO payment')
+  })
+})
+
+describe('Home Investments row (ux T-11-2 L-3, L-4)', () => {
+  it("shows the API's investments_total when above 0, and nothing otherwise", () => {
+    expect(investmentsRow({ investments_total: '28000.00' })).toEqual({ label: 'Investments', amount: 28000 })
+    expect(investmentsRow({ investments_total: '0.00' })).toBeNull()
+    expect(investmentsRow({})).toBeNull()
   })
 })

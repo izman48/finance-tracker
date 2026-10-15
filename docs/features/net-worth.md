@@ -104,6 +104,16 @@ money owed), as the balance sheet's Loans and finance). `net_worth = cash + prop
 debt`, plus `investments` unless `include_investments=false`, when the
 figure is still returned for the "Not included" row. Groups come from the
 kind registry; tested in `test_net_worth_groups.py`.
+UI (T-11-6b, ux T-11-2): the "Over time" card draws Net worth alone by
+default; under it, `components/wealth/NetWorthKey.tsx` lists Cash,
+Investments, Property & other and Debt (a group at 0 is left out; Debt shows
+whenever anything is owed) with their figures, each a switch for its line
+(`aria-pressed`, announced), plus "Include investments in net worth", which
+reloads history and the projection with `include_investments=false` and
+renames the headline. Line choices and the tick box are kept in this browser
+(`wealth.lines`, `wealth.includeInvestments`; `lib/netWorthLines.ts`); hiding
+a line never changes a figure. The target result is one sentence. Home's
+Wealth card shows `investments_total` as "Investments" when above 0.
 
 **Projection spending (T-10-15b)**: `spending_source` picks the monthly
 spending the projection subtracts: the total of active, unpaused budget

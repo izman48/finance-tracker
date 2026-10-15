@@ -148,6 +148,11 @@ const netWorthHistory = Array.from({ length: 12 }, (_, i) => {
     bank: String(6000 + i * 220),
     assets: String(2000 + i * 180),
     net_worth: String(8000 + i * 400),
+    // Graph groups (T-11-6): cash + investments + property − debt = net worth.
+    cash: String(7000 + i * 220),
+    investments: String(1500 + i * 180),
+    property: '500',
+    debt: '1000',
   }
 })
 
@@ -482,6 +487,25 @@ for (const [vpName, viewport] of viewports) {
     await page.evaluate(() => { localStorage.removeItem('wealth.target'); localStorage.removeItem('wealth.spendingSource') })
     await page.unroute('**/api/v1/analytics/net-worth-projection*')
     await page.unroute('**/api/v1/budgets')
+    // T-11-6b (ux N-3, "Lines on"): key rows switch lines, each drawn line is
+    // named at its right end, and the choice survives a reload.
+    await page.evaluate(() => localStorage.removeItem('wealth.lines'))
+    await page.reload({ waitUntil: 'networkidle' })
+    for (const name of [/^Cash, /, /^Debt, /]) await page.getByRole('button', { name }).click()
+    await page.reload({ waitUntil: 'networkidle' })
+    // Recharts draws lines left to right and adds labels when that ends.
+    await page.waitForTimeout(2000)
+    const cash = page.getByRole('button', { name: /^Cash, / })
+    if ((await cash.getAttribute('aria-pressed')) !== 'true') errors.push(`[${vpName}] Cash line choice did not persist`)
+    for (const label of ['Cash', 'Debt', 'Net worth']) {
+      if (!(await page.locator('svg text', { hasText: new RegExp(`^${label}$`) }).count())) {
+        errors.push(`[${vpName}] no end label for the ${label} line`)
+      }
+    }
+    await cash.scrollIntoViewIfNeeded()
+    await page.screenshot({ path: `${OUT}/networth-lines-${vpName}.png`, fullPage: true })
+    console.log(`shot networth-lines-${vpName}`)
+    await page.evaluate(() => localStorage.removeItem('wealth.lines'))
   }
   await ctx.close()
 }

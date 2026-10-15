@@ -206,6 +206,12 @@ export interface NetWorthPoint {
   // Owed on liabilities (loans, finance, BNPL); net_worth = bank + assets − liabilities.
   liabilities?: string
   net_worth: string
+  // The graph groups (T-11-6): net_worth = cash + property − debt, plus
+  // investments unless include_investments=false (then still given, "Not included").
+  cash?: string
+  investments?: string
+  property?: string
+  debt?: string
 }
 
 export interface NetWorthChange {
@@ -384,8 +390,10 @@ export const assetsAPI = {
     api.post(`/assets/${id}/flows`, data),
   decomposition: (months = 12) =>
     api.get<AssetDecomposition>('/analytics/net-worth-decomposition', { params: { months } }),
-  netWorthHistory: (months = 12) =>
-    api.get<NetWorthPoint[]>(`/analytics/net-worth-history?months=${months}`),
+  netWorthHistory: (months = 12, includeInvestments = true) =>
+    api.get<NetWorthPoint[]>('/analytics/net-worth-history', {
+      params: { months, ...(includeInvestments ? {} : { include_investments: 'false' }) },
+    }),
   // Today's net worth and how far it has moved over 1m/3m/6m/1y/all-time.
   netWorthPosition: () => api.get<NetWorthPosition>('/analytics/net-worth-position'),
   // A projection from stated assumptions — an estimate, not advice.
@@ -396,6 +404,7 @@ export const assetsAPI = {
     subtract_spending?: boolean
     monthly_spending?: number | string
     spending_source?: 'budgets' | 'average' | 'none'
+    include_investments?: 'false'
   }) => api.get<Projection>('/analytics/net-worth-projection', { params }),
 }
 

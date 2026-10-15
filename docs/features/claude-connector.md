@@ -70,6 +70,8 @@ raise safe-to-spend.
 `commitments` tool already returns; null on other events), so the UI can
 name a loan's linked bill without matching labels. The "{lender} loan
 payment" wording is built in the browser and never reaches Claude.
+`test_forecast_event_commitment_id.py` pins the exact event keys Claude
+receives (`label`, `amount`, `kind`, `commitment_id`) for every kind.
 
 `cashflow_summary` also carries `total_owed` (cards owed + `liabilities_total`,
 one aggregate, T-10-14a) and, on each credit account, `statement`:

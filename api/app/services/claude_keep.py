@@ -199,20 +199,29 @@ def commitment_keep(rule: CommitmentRule, rows: list[AuditEntry],
 def held_back(rule: CommitmentRule, rows: list[AuditEntry], value) -> object | None:
     """The version of a commitment to count while Claude's changes to it are
     pending, judged by `value(version)` (the money it moves in some window).
-    An income counts the lower of now and before-Claude; an expense the safe
-    side of each part on its own (`_expense_held`). None if that is "not a
-    confirmed commitment" (it counts nothing)."""
+    An income counts the lower of now and before-Claude, and on a tie the
+    version whose pay lands later (before-Claude if the dates match too): the
+    same money, but pay never shows up early, so a dip in the forecast can't
+    be hidden whichever way Claude moved it (T-12-9d, eng-b on #238). An
+    expense counts the safe side of each part on its own (`_expense_held`).
+    None if that is "not a confirmed commitment" (it counts nothing)."""
     before = before_claude(rule, rows)
     if rule.direction != CommitmentDirection.INCOME.value:
         return _expense_held(rule, before, value)
     confirmed = CommitmentStatus.CONFIRMED.value
     now_worth = value(rule) if rule.status == confirmed else Decimal(0)
     before_worth = value(before) if before.status == confirmed else Decimal(0)
-    if now_worth <= before_worth:
+    tie_goes_to_now = before.status != confirmed or _lands_later(rule, before)
+    if now_worth < before_worth or (now_worth == before_worth and tie_goes_to_now):
         return rule if rule.status == confirmed else None
     if before.status != confirmed:
         return None
     return _version(rule, before)
+
+
+def _lands_later(rule, before) -> bool:
+    """Claude's version of an income pays later than before-Claude did."""
+    return rule.next_date is not None and before.next_date is not None and rule.next_date > before.next_date
 
 
 TIMING_FIELDS = ("next_date", "cadence", "interval_days", "interval_months")

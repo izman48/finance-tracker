@@ -15,6 +15,7 @@ from sqlalchemy import text
 from app.core import user_crypto
 from app.models import AccountSetting, CardStatement, Transaction, User
 from tests.clock import TODAY
+from tests.ciphertext import assert_ciphertext_of
 from tests.integration.test_transactions_endpoint import _account, _dek_from_token
 
 API = "/api/v1"
@@ -119,7 +120,9 @@ def test_statement_money_is_encrypted_at_rest(alice, db_session):
     alice.add({**STATEMENT, "minimum_due": "150.00"})
 
     raw = db_session.execute(text("SELECT statement_balance, minimum_due FROM card_statements")).one()
-    assert "5000" not in raw[0] and "150" not in raw[1]
+    dek = _dek_from_token(alice.token)
+    assert_ciphertext_of(raw[0], dek, "5000")
+    assert_ciphertext_of(raw[1], dek, "150")
 
 
 def test_unbilled_spend_is_current_minus_outstanding_statement(alice):

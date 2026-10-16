@@ -1,5 +1,6 @@
 import { type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
+import { DELETED_PLANNED_NOTE, UNENCRYPTED_FIELDS } from '../copy/privacy'
 
 const contactEmail = import.meta.env.VITE_BETA_CONTACT_EMAIL
 
@@ -40,12 +41,16 @@ export function PrivacyPage() {
       </section>
       <section>
         <h2 className="font-display font-semibold text-slate-100 text-lg mb-1">How it is stored — we can’t read it</h2>
-        <p>Your financial data — transaction amounts, descriptions and merchants, account names and balances, and your bank connection tokens — is encrypted in our database with a key that is yours. That key is unlocked only by your password or your one-time recovery code, and we store neither. So we cannot decrypt your financial data at rest: our database, and any backup of it, is unreadable without you. Your password itself is never stored, only a salted bcrypt hash of it.</p>
-        <p className="mt-3">Two honest limits, so this isn’t overstated. While you are signed in, the app necessarily holds your key in memory to show you your own dashboard — that is the one window in which your data is readable. And a few non-financial fields stay unencrypted so the app can work at all: your email address, and transaction dates, categories and account types.</p>
+        <p>Your financial data — transaction amounts, descriptions and merchants, account names and balances, and your bank connection tokens — is encrypted in our database with a key that is yours. That key is unlocked only by your password, your one-time recovery code, or a Claude connection you approve while it is active, and we store none of them in a usable form. So we cannot decrypt your financial data at rest: our database, and any backup of it, is unreadable without you. Your password itself is never stored, only a salted bcrypt hash of it.</p>
+        <p className="mt-3">Two honest limits, so this isn’t overstated. While you are signed in, the app necessarily holds your key in memory to show you your own dashboard — that is when your data is readable, and also while a Claude connection you approved is in use. Revoking the connection ends that. And some fields stay unencrypted so the app can sort, schedule and sign you in. These are:</p>
+        <ul className="mt-2 list-disc pl-5 space-y-1">
+          {UNENCRYPTED_FIELDS.map((phrase) => <li key={phrase}>{phrase}</li>)}
+        </ul>
+        <p className="mt-3">{DELETED_PLANNED_NOTE}</p>
       </section>
       <section>
         <h2 className="font-display font-semibold text-slate-100 text-lg mb-1">Why and who receives it</h2>
-        <p>We use this information only to run nilu., secure it, and send account emails such as password resets. TrueLayer and the email provider are used as service providers where necessary. We do not sell data or use advertising/tracking scripts in the dashboard.</p>
+        <p>We use this information only to run nilu., secure it, and send account emails such as password resets. TrueLayer and the email provider are used as service providers where necessary. Once you connect Claude (Anthropic), it receives the data you ask it about. We do not sell data or use advertising/tracking scripts in the dashboard.</p>
         <p>{PSU_IP_NOTICE}</p>
       </section>
       <section>

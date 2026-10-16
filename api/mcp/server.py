@@ -252,7 +252,7 @@ def create_server(settings: Settings, api_transport: httpx.AsyncBaseTransport | 
         description: str = "",
         apply: bool = True,
     ) -> dict:
-        """Create a NEW rule pack with all its rules in one go, then backfill history. This is the only tool here that writes.
+        """Create a NEW rule pack with all its rules in one go, then backfill history. It writes (needs `finance:rules.write` remotely).
 
         Each entry in `rules` is {"pattern", "category", "match_type"?, "match_field"?, "counts_as"?}: match_type is exact|contains|regex (default contains), match_field is any|merchant|description (default any), counts_as is spending|transfer|card_payment and reclassifies the transaction as noise so it leaves the spending figures.
 

@@ -219,6 +219,21 @@ def test_a_new_match_type_is_checked_against_the_stored_pattern(w):
     assert w.listed(rule_id)["match_type"] == "contains"
 
 
+@pytest.mark.parametrize("dry_run", [True, False])
+@pytest.mark.parametrize("field,value", [
+    ("pattern", None), ("category", None), ("match_type", None), ("match_field", None), ("enabled", None),
+    ("pattern", "   "), ("category", "   "),
+])
+def test_a_null_or_blank_required_field_is_refused(w, field, value, dry_run):
+    """Only counts_as can be cleared; anything else null or blank is a 422, not a 500."""
+    rule_id = w.rule(pattern="TESCO", category="Groceries")
+    before = w.listed(rule_id)
+    r = w.update(rule_id, dry_run=dry_run, **{field: value})
+    assert r.status_code == 422, r.text
+    assert w.listed(rule_id) == before
+    assert w.count(AuditEntry) == 0
+
+
 @pytest.mark.parametrize("field,value", [
     ("source", "learned"), ("user_id", "00000000-0000-0000-0000-000000000000"),
     ("pack_id", "00000000-0000-0000-0000-000000000000"),

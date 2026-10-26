@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from typing import Annotated, Literal
+from typing import Annotated, ClassVar, Literal
 
 from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, EmailStr, Field, StrictBool, field_validator, model_serializer, model_validator
 
@@ -1251,8 +1251,10 @@ class ClaudeRuleUpdateRequest(PlanningWriteRequest):
     """POST /planning/rules/{id}/update: Claude's edit to an existing rule.
 
     Only the rule's matching fields; a field left out is unchanged. counts_as
-    is clearable: an explicit null removes the reclassification. The owner,
-    pack and source can't be sent (extra="forbid" on the base).
+    is clearable: an explicit null removes the reclassification. Every other
+    field is required on the rule, so null is refused (422), and pattern and
+    category are stripped before their length checks, so a blank one is too.
+    The owner, pack and source can't be sent (extra="forbid" on the base).
     """
 
     pattern: str | None = Field(default=None, min_length=1, max_length=200)
@@ -1261,6 +1263,20 @@ class ClaudeRuleUpdateRequest(PlanningWriteRequest):
     category: str | None = Field(default=None, min_length=1, max_length=100)
     counts_as: str | None = Field(default=None, pattern="^(spending|transfer|card_payment)$")
     enabled: StrictBool | None = None
+
+    REQUIRED_ON_RULE: ClassVar[frozenset[str]] = frozenset({"pattern", "match_type", "match_field", "category", "enabled"})
+
+    @field_validator("pattern", "category", mode="before")
+    @classmethod
+    def _strip(cls, v):
+        return v.strip() if isinstance(v, str) else v
+
+    @model_validator(mode="after")
+    def _no_nulls_but_counts_as(self):
+        nulled = sorted(f for f in self.model_fields_set & self.REQUIRED_ON_RULE if getattr(self, f) is None)
+        if nulled:
+            raise ValueError(f"These can't be cleared: {', '.join(nulled)}")
+        return self
 
 
 class AuditChange(BaseModel):

@@ -35,10 +35,6 @@ def update_rule(rule_id: uuid.UUID, body: ClaudeRuleUpdateRequest, caller: Rules
     or the stored one), so no edit can store a pattern the engine can't run.
     Another user's rule, or an unknown id: 404."""
     sent = {f: getattr(body, f) for f in _EDITABLE if f in body.model_fields_set}
-    if "category" in sent:
-        sent["category"] = sent["category"].strip()
-    if "pattern" in sent:
-        sent["pattern"] = sent["pattern"].strip()
 
     def apply(db: Session, rule: CategoryRule) -> CategoryRule:
         for field, value in sent.items():

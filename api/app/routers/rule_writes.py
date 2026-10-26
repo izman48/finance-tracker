@@ -32,7 +32,9 @@ _EDITABLE = TARGETS["rule"].names
 # (about 1.3 MB of JSON at most). Never raise it without sec. The web Rules
 # page keeps no undo record and is not capped.
 RECATEGORISE_CAP = 5000
-# Fixed text: never echoes the pattern or category.
+# Fixed text: never echoes the pattern or category. The MCP update_rule
+# tool text (api/mcp/server.py, a separate image) names the cap too: keep
+# the two in step.
 OVER_CAP = f"This change would recategorise more than {RECATEGORISE_CAP:,} transactions. Make it on the Rules page."
 
 

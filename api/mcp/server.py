@@ -269,6 +269,8 @@ def create_server(settings: Settings, api_transport: httpx.AsyncBaseTransport | 
             {"name": name, "description": description or None, "rules": rules, "apply": apply},
         )
 
+    # The 5,000 below is RECATEGORISE_CAP in api/app/routers/rule_writes.py:
+    # keep the two in step.
     @mcp.tool(annotations=write_tool(destructive=True))
     async def update_rule(
         rule_id: str,

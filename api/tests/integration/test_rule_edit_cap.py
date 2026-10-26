@@ -61,6 +61,26 @@ def test_an_apply_over_the_cap_is_refused_and_keeps_nothing(client, db_session):
     assert w.count(AuditEntry) == 1
 
 
+def test_an_apply_over_the_cap_sends_no_transaction_updates(client, db_session):
+    """sec on #261: the cap is checked before the recategorised rows are
+    flushed, so a refused apply holds no row locks against a sync."""
+    from sqlalchemy import event
+    w, rule_id = _world(client, db_session, RECATEGORISE_CAP + 1)
+    updates = []
+
+    def count(conn, cursor, statement, *args):
+        if statement.lstrip().upper().startswith("UPDATE TRANSACTIONS"):
+            updates.append(statement)
+    engine = w.db.get_bind()
+    event.listen(engine, "before_cursor_execute", count)
+    try:
+        r = w.update(rule_id, pattern="SHOP", dry_run=False)
+    finally:
+        event.remove(engine, "before_cursor_execute", count)
+    assert r.status_code == 409
+    assert updates == []
+
+
 def test_an_apply_at_the_cap_is_stored_and_undoable(client, db_session):
     w, rule_id = _world(client, db_session, RECATEGORISE_CAP)
     preview = w.update(rule_id, pattern="SHOP")
@@ -100,4 +120,5 @@ def test_a_full_record_is_under_2mb_once_encrypted(w):
     w.as_user(store)
     stored = w.db.execute(text("SELECT side_effects FROM audit_entries")).scalar_one()
     assert len(json.dumps(record)) > 1_000_000  # it is the full-size record
+    assert '"before"' not in stored and "b" * 100 not in stored  # ciphertext, not the JSON
     assert len(stored) < 2 * 1024 * 1024

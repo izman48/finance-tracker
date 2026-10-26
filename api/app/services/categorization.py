@@ -10,6 +10,7 @@ overwritten. When several rules match, precedence is deliberately boring:
 """
 import functools
 import logging
+from datetime import datetime, timezone
 
 import re2
 
@@ -154,13 +155,17 @@ def active_rules(db: Session, user_id) -> list[CategoryRule]:
     return runnable
 
 
+def winning_rule(rules: list[CategoryRule], tx: Transaction) -> CategoryRule | None:
+    """The rule that sets a transaction's category, or None. `rules` must be
+    pre-sorted by active_rules()."""
+    return next((rule for rule in rules if _rule_matches(rule, tx)), None)
+
+
 def categorize(rules: list[CategoryRule], tx: Transaction) -> str | None:
     """Best-matching category for a transaction, or None. `rules` must be
     pre-sorted by active_rules()."""
-    for rule in rules:
-        if _rule_matches(rule, tx):
-            return rule.category
-    return None
+    rule = winning_rule(rules, tx)
+    return rule.category if rule else None
 
 
 def counts_as_for(rules: list[CategoryRule], tx: Transaction) -> str | None:
@@ -214,7 +219,7 @@ def apply_rules_to_all(db: Session, user_id) -> int:
     transaction can still receive a rule's counts_as — the per-field locks
     inside apply_rules decide what may change.
     """
-    return apply_rules(db, user_id, _user_transactions(db, user_id))
+    return apply_rules(db, user_id, user_transactions(db, user_id))
 
 
 def recategorize_all(db: Session, user_id) -> list[dict]:
@@ -222,7 +227,7 @@ def recategorize_all(db: Session, user_id) -> list[dict]:
     "after"} category record per transaction it changed (counts_as is
     recomputed from the rules on every run, so it needs no record). An undo
     hands these to `restore_categories` (sec on #256). Does not commit."""
-    transactions = _user_transactions(db, user_id)
+    transactions = user_transactions(db, user_id)
     before = {tx.id: (tx.category, tx.counts_as_override) for tx in transactions}
     apply_rules(db, user_id, transactions)
     return [
@@ -231,18 +236,57 @@ def recategorize_all(db: Session, user_id) -> list[dict]:
     ]
 
 
-def restore_categories(db: Session, user_id, changed: list[dict]) -> None:
-    """Put back the categories recorded by `recategorize_all`. Only where the
-    transaction still has the category that run set and isn't locked: a
-    category set by hand, or changed since, is left alone. Does not commit."""
+def set_by_rule_since(rules: list[CategoryRule], transactions: list[Transaction], rule: CategoryRule,
+                      since: datetime, recorded_ids: set[str]) -> list[Transaction]:
+    """The transactions `rule` categorised after `since` (its edit), found by
+    re-matching rather than a stored link (sec on T-16-2). Call it while the
+    rule is still as edited. A transaction counts only when all hold: it was
+    inserted after the edit (row `created_at`, never `transaction_date`), it
+    isn't in the edit's undo record, it isn't locked, it still has the rule's
+    category, and this rule wins it (`rules` pre-sorted by active_rules(); a
+    higher-precedence rule with the same category excludes it)."""
+    return [
+        tx for tx in transactions
+        if _inserted_after(tx, since)
+        and str(tx.id) not in recorded_ids
+        and not tx.category_locked
+        and tx.category == rule.category
+        and getattr(winning_rule(rules, tx), "id", None) == rule.id
+    ]
+
+
+def _inserted_after(tx: Transaction, since: datetime) -> bool:
+    if tx.created_at is None:
+        return False
+    return _as_utc(tx.created_at) > _as_utc(since)
+
+
+def _as_utc(moment: datetime) -> datetime:
+    """SQLite hands back naive datetimes; the columns are stored as UTC."""
+    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+
+
+def restore_categories(db: Session, user_id, transactions: list[Transaction], changed: list[dict],
+                       set_since: list[Transaction]) -> None:
+    """Undo a rule edit's effect on history, after the rule itself is
+    restored. The categories recorded by `recategorize_all` go back where the
+    transaction still has the category that run set and isn't locked (a
+    category set by hand, or changed since, is left alone). The ones
+    `set_by_rule_since` found are cleared. Then the rules run again, so a
+    cleared one gets the category the restored rules give, or stays None
+    (Uncategorised: spending overstated, never hidden). Does not commit."""
     records = {r["id"]: r for r in changed}
-    for tx in _user_transactions(db, user_id):
+    for tx in transactions:
         record = records.get(str(tx.id))
         if record and not tx.category_locked and tx.category == record["after"]:
             tx.category = record["before"]
+    for tx in set_since:
+        tx.category = None
+    apply_rules(db, user_id, transactions)
 
 
-def _user_transactions(db: Session, user_id) -> list[Transaction]:
+def user_transactions(db: Session, user_id) -> list[Transaction]:
+    """All of the user's transactions (scoped by account owner)."""
     return db.query(Transaction).join(Account).filter(Account.user_id == user_id).all()
 
 

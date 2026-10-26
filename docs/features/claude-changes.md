@@ -22,7 +22,8 @@ Claude's changes to commitments and removals of planned expenses are held
 - Routers using it: `routers/planning.py`, `routers/commitment_writes.py`,
   `routers/budget_writes.py`, `routers/rule_writes.py` (a `WriteRequest.side_effect`
   backfills history inside the write's transaction or dry-run savepoint; undo
-  restores the categories it changed, then re-runs the rules).
+  restores the categories it changed, clears the ones the edited rule set on
+  transactions synced since, then re-runs the rules).
 
 **Audit API** (`api/app/routers/audit.py`, web session only, must stay so):
 

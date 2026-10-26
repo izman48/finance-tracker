@@ -28,7 +28,7 @@ one existing rule (previewed, audited, undoable).
 | `DELETE /api/v1/rules/packs/{pack_id}/share` | `CurrentUser` |
 | `GET /api/v1/rules/shared/{share_code}` | `CurrentUser` (any user); `shared-lookup` limit per user (T-12-10b) |
 | `POST /api/v1/rules/import` | `CurrentUser` (re-encrypted under the importer's key); same lookup limit; every snapshot pattern re-validated, one bad one refuses the import (400) |
-| `POST /api/v1/planning/rules/{rule_id}/update` | `RulesEditor` (`finance:rules.edit`; `routers/rule_writes.py`): Claude's edit to one existing rule through the write framework (dry run by default, idempotency, audit row `target_kind: "rule"`, undo). Only `TARGETS["rule"]` fields change; switching off is `enabled: false`, never a delete. The pattern is validated under the match type it will run with. An applied edit re-runs the rules over history in the same transaction (`recategorize_all`), and a dry run does the same inside its savepoint, so `transactions_recategorized` is the real count in the preview too. The audit row records each changed transaction's category before and after (encrypted `side_effects`); undo puts back those still unlocked and still carrying the edit's category (`restore_categories`), then re-runs the rules |
+| `POST /api/v1/planning/rules/{rule_id}/update` | `RulesEditor` (`finance:rules.edit`; `routers/rule_writes.py`): Claude's edit to one existing rule through the write framework (dry run by default, idempotency, audit row `target_kind: "rule"`, undo). Only `TARGETS["rule"]` fields change; switching off is `enabled: false`, never a delete. The pattern is validated under the match type it will run with. An applied edit re-runs the rules over history in the same transaction (`recategorize_all`), and a dry run does the same inside its savepoint, so `transactions_recategorized` is the real count in the preview too. The audit row records each changed transaction's category before and after (encrypted `side_effects`); undo puts back those still unlocked and still carrying the edit's category, clears those the edited rule set on transactions synced since (`set_by_rule_since`), then re-runs the rules (`restore_categories`) |
 
 **Tables**: `rule_packs` (plaintext, including the share snapshot),
 `category_rules` (encrypted `pattern`).
@@ -60,7 +60,14 @@ it when a rule matches. So switching a rule off (by Claude or in the app)
 leaves past categories in place until another rule claims them, while an
 unlocked `counts_as` is recomputed and cleared. Undoing Claude's
 `update_rule` is the exception: it restores the categories that edit
-changed, except ones set by hand or changed since.
+changed, except ones set by hand or changed since. It also clears the
+category on transactions synced after the edit that the edited rule set
+(T-16-2), then the rules run again; one no restored rule matches is left
+Uncategorised (a transfer shows as spending: overstated, never hidden).
+There is no stored link from a transaction to the rule that set it: undo
+re-matches (`set_by_rule_since`), counting a transaction only if it was
+inserted after the edit (row `created_at`), isn't in the edit's record,
+isn't locked, still has the rule's category, and the edited rule wins it.
 
 **Tests**: `api/tests/integration/test_rules_bulk.py`, `test_rule_writes_api.py`,
 `test_rules_impact.py`, `test_user_encryption.py`, `test_oauth.py`;

@@ -436,6 +436,15 @@ def undo_write(db: Session, user, audit_id: uuid.UUID) -> AuditEntry:
     restore = [{"field": "active", "before": True, "after": False}] if entry.created_target else [
         {"field": c["field"], "before": c["after"], "after": c["before"]} for c in changes
     ]
+    if entry.target_kind == "rule":
+        # Found while the stored rule is still the edited one (T-16-2).
+        from app.services import categorization
+        recorded = json.loads(entry.side_effects or "[]")
+        transactions = categorization.user_transactions(db, user.id)
+        set_since = categorization.set_by_rule_since(
+            categorization.active_rules(db, user.id), transactions, target, entry.created_at,
+            {r["id"] for r in recorded},
+        )
     for c in restore:
         parse = spec.fields[c["field"]]
         setattr(target, c["field"], None if c["after"] is None else parse(c["after"]))
@@ -449,12 +458,11 @@ def undo_write(db: Session, user, audit_id: uuid.UUID) -> AuditEntry:
         record_change(db, target)
     if entry.target_kind == "rule":
         # The rule is back as it was; so is the history it categorises: the
-        # categories the edit's backfill set go back first (rules never clear
-        # a category), then the rules run again (sec B1 on #256).
-        from app.services.categorization import apply_rules_to_all, restore_categories
+        # categories the edit's backfill set go back, and the ones it set on
+        # transactions synced since are cleared (rules never clear a
+        # category), then the rules run again (sec B1 on #256, T-16-2).
         db.flush()
-        restore_categories(db, user.id, json.loads(entry.side_effects or "[]"))
-        apply_rules_to_all(db, user.id)
+        categorization.restore_categories(db, user.id, transactions, recorded, set_since)
     db.add(AuditEntry(
         user_id=user.id, kind=AUDIT_KIND_UNDO, tool=entry.tool, target_kind=entry.target_kind,
         target_id=entry.target_id, target_label=getattr(target, spec.label_field),

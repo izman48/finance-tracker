@@ -1,5 +1,6 @@
 """Unit tests for the categorization rule engine."""
 import uuid
+from datetime import datetime, timedelta, timezone
 
 from app.models import CategoryRule, Transaction
 from app.services.categorization import (
@@ -7,6 +8,7 @@ from app.services.categorization import (
     _precedence,
     _rule_matches,
     categorize,
+    set_by_rule_since,
     validate_pattern,
 )
 
@@ -96,3 +98,61 @@ class TestPrecedence:
     def test_no_match_returns_none(self):
         rules = sorted([make_rule("spotify")], key=_precedence)
         assert categorize(rules, make_tx(merchant="Netflix")) is None
+
+
+class TestSetByRuleSince:
+    """T-16-2: which transactions an edited rule categorised after its edit
+    (sec's five conditions; re-matched at undo time, no stored link)."""
+
+    EDIT_AT = datetime(2026, 7, 15, 12, 0, tzinfo=timezone.utc)
+
+    def synced(self, merchant, category, *, at=None, locked=False):
+        tx = make_tx(merchant=merchant)
+        tx.category, tx.category_locked = category, locked
+        tx.created_at = at or self.EDIT_AT + timedelta(hours=1)
+        return tx
+
+    def found(self, rules, rule, txs, recorded=()):
+        rules = sorted(rules, key=_precedence)
+        return set_by_rule_since(rules, txs, rule, self.EDIT_AT, {str(t.id) for t in recorded})
+
+    def test_a_later_transaction_the_rule_wins_is_found(self):
+        rule = make_rule("amazon", category="Shopping")
+        tx = self.synced("AMAZON", "Shopping")
+        assert self.found([rule], rule, [tx]) == [tx]
+
+    def test_inserted_at_or_before_the_edit_is_not(self):
+        rule = make_rule("amazon", category="Shopping")
+        txs = [self.synced("AMAZON", "Shopping", at=self.EDIT_AT),
+               self.synced("AMAZON", "Shopping", at=self.EDIT_AT - timedelta(days=3))]
+        assert self.found([rule], rule, txs) == []
+
+    def test_a_naive_timestamp_is_read_as_utc(self):
+        """SQLite returns naive datetimes; Postgres aware ones."""
+        rule = make_rule("amazon", category="Shopping")
+        tx = self.synced("AMAZON", "Shopping", at=(self.EDIT_AT + timedelta(seconds=1)).replace(tzinfo=None))
+        assert self.found([rule], rule, [tx]) == [tx]
+
+    def test_one_in_the_undo_record_is_not(self):
+        rule = make_rule("amazon", category="Shopping")
+        tx = self.synced("AMAZON", "Shopping")
+        assert self.found([rule], rule, [tx], recorded=[tx]) == []
+
+    def test_a_locked_one_is_not(self):
+        rule = make_rule("amazon", category="Shopping")
+        assert self.found([rule], rule, [self.synced("AMAZON", "Shopping", locked=True)]) == []
+
+    def test_one_in_another_category_is_not(self):
+        rule = make_rule("amazon", category="Shopping")
+        assert self.found([rule], rule, [self.synced("AMAZON", "Gifts")]) == []
+
+    def test_a_higher_precedence_rule_with_the_same_category_excludes_it(self):
+        """sec: the rule matching is not enough; it must win."""
+        rule = make_rule("amazon", match_type="regex", category="Shopping")
+        better = make_rule("AMAZON", match_type="exact", category="Shopping")
+        assert self.found([rule, better], rule, [self.synced("AMAZON", "Shopping")]) == []
+
+    def test_a_rule_that_is_not_active_wins_nothing(self):
+        """An edit that switched the rule off: it isn't in the active rules."""
+        rule = make_rule("amazon", category="Shopping")
+        assert self.found([], rule, [self.synced("AMAZON", "Shopping")]) == []

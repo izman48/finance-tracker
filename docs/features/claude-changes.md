@@ -23,7 +23,9 @@ Claude's changes to commitments and removals of planned expenses are held
   `routers/budget_writes.py`, `routers/rule_writes.py` (a `WriteRequest.side_effect`
   backfills history inside the write's transaction or dry-run savepoint; undo
   restores the categories it changed, clears the ones the edited rule set on
-  transactions synced since, then re-runs the rules).
+  transactions synced since, then re-runs the rules). A target's
+  `together` fields (a rule's pattern and match type) are recorded as a
+  pair: changing one records the other as context, which undo also checks.
 
 **Audit API** (`api/app/routers/audit.py`, web session only, must stay so):
 

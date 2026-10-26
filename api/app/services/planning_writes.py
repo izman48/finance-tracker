@@ -58,6 +58,10 @@ class TargetSpec:
     # What a write may change and the diff shows, each with the parser that
     # turns its audited (JSON) form back into a column value for undo.
     fields: dict[str, Callable[[Any], Any]]
+    # Fields that only mean something together: a write that changes one
+    # records the others as context (before == after), so undo checks them
+    # and the trail shows them side by side.
+    together: tuple[str, ...] = ()
 
     @property
     def names(self) -> tuple[str, ...]:
@@ -84,9 +88,11 @@ TARGETS: dict[str, TargetSpec] = {
     "budget": TargetSpec(Budget, "category", {"limit_pounds": Decimal, "paused": bool, "active": bool}),
     # Claude's rule edits (finance:rules.edit): the matching fields only, never
     # the owner, pack or source. Switching off is `enabled`, so undo works.
+    # A pattern runs under its match type, so an edit to either is checked on
+    # undo against both (T-16-1).
     "rule": TargetSpec(CategoryRule, "pattern", {
         "pattern": str, "match_type": str, "match_field": str, "category": str, "counts_as": str, "enabled": bool,
-    }),
+    }, together=("pattern", "match_type")),
 }
 
 
@@ -280,9 +286,11 @@ def _change(db: Session, caller: Caller, spec: TargetSpec, req: WriteRequest):
         }
         if moved:
             raise DisallowedChange(f"{req.tool} changed columns outside its allow-list: {sorted(moved)}")
+    changed = {f for f in spec.names if before[f] != after[f]}
+    context = set(req.context_fields) | (set(spec.together) if changed & set(spec.together) else set())
     changes = [
         {"field": f, "before": before[f], "after": after[f]}
-        for f in spec.names if before[f] != after[f] or f in req.context_fields
+        for f in spec.names if f in changed or f in context
     ]
     return target, getattr(target, spec.label_field), changes
 
@@ -437,10 +445,11 @@ def undo_write(db: Session, user, audit_id: uuid.UUID) -> AuditEntry:
         {"field": c["field"], "before": c["after"], "after": c["before"]} for c in changes
     ]
     if entry.target_kind == "rule":
+        _refuse_unrunnable_rule(current, restore)
         # Found while the stored rule is still the edited one (T-16-2). The
-        # cut-off compares two clocks: the audit row's time is the API's,
-        # a transaction's `created_at` the database's `now()` (its sync
-        # transaction's start). Same host in our deploy; a database on
+        # cut-off compares two clocks: the audit row's time is the app's,
+        # a transaction's `created_at` the database's `now()` (the start of
+        # its sync transaction). Same host in our deploy; a database on
         # another host adds its clock skew to the residual window.
         from app.services import categorization
         recorded = json.loads(entry.side_effects or "[]")
@@ -481,6 +490,22 @@ def undo_write(db: Session, user, audit_id: uuid.UUID) -> AuditEntry:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Can't undo: it has changed since.") from None
     db.refresh(entry)
     return entry
+
+
+def _refuse_unrunnable_rule(current: dict, restore: list[dict]) -> None:
+    """409 when a rule undo that puts back the pattern or match type would
+    leave a rule that can't run: its pattern invalid under its match type.
+    Audit rows written before T-16-1 hold only the field the edit changed,
+    so the other may have changed since unchecked (sec guard). An undo of
+    other fields leaves the matching as it is, so it isn't checked (sec on
+    #259). Raised before anything is restored."""
+    from app.services.categorization import validate_pattern
+    restored = {**current, **{c["field"]: c["after"] for c in restore}}
+    if not {"pattern", "match_type"} & {c["field"] for c in restore}:
+        return
+    if validate_pattern(restored["pattern"], restored["match_type"]) is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                            detail="Can't undo: the rule it would restore can't run.")
 
 
 def claude_markers(db: Session, user_id: uuid.UUID, target_kind: str, target_ids) -> dict:

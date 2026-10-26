@@ -374,6 +374,129 @@ def test_undo_leaves_a_category_that_changed_since(w):
     assert w.categories()["NETFLIX"] == "Streaming"
 
 
+# --- pattern and match_type go together (T-16-1) --------------------------------------------
+# A pattern means nothing without the match type it runs under, so an edit to
+# either records the other as context (before == after): undo then refuses if
+# either changed since, and the Changes page shows the pair.
+
+def _web_edit(w, rule_id, **body):
+    r = w.client.patch(f"{API}/rules/{rule_id}", json=body, headers=_bearer(w.web))
+    assert r.status_code == 200, r.text
+
+
+def test_a_pattern_edit_records_the_match_type_as_context(w):
+    rule_id = w.rule(pattern="TESCO", category="Groceries")
+    for dry_run in (True, False):
+        changes = w.update(rule_id, pattern="TESCO PFS", dry_run=dry_run).json()["changes"]
+        assert {"field": "match_type", "before": "contains", "after": "contains"} in changes
+        assert {"field": "pattern", "before": "TESCO", "after": "TESCO PFS"} in changes
+
+
+def test_a_match_type_edit_records_the_pattern_as_context(w):
+    rule_id = w.rule(pattern="TESCO", category="Groceries")
+    changes = w.update(rule_id, match_type="regex", dry_run=False).json()["changes"]
+    assert {"field": "pattern", "before": "TESCO", "after": "TESCO"} in changes
+
+
+def test_an_edit_to_neither_records_no_context(w):
+    rule_id = w.rule(pattern="TESCO", category="Groceries")
+    changes = w.update(rule_id, pattern="TESCO", category="Shopping", dry_run=False).json()["changes"]
+    assert changes == [{"field": "category", "before": "Groceries", "after": "Shopping"}]
+
+
+def test_re_sending_the_same_pattern_is_still_unchanged(w):
+    """sec: the context lines alone are not a change, so no audit row."""
+    rule_id = w.rule(pattern="TESCO", category="Groceries")
+    r = w.update(rule_id, pattern="TESCO", match_type="contains", dry_run=False)
+    assert r.status_code == 200, r.text
+    assert r.json()["unchanged"] is True
+    assert w.count(AuditEntry) == 0
+
+
+def test_undo_of_a_pattern_edit_refuses_when_the_match_type_changed_since(w):
+    rule_id = w.rule(pattern="TESCO", category="Groceries")
+    audit_id = w.update(rule_id, pattern="TESCO PFS", dry_run=False).json()["audit_id"]
+    _web_edit(w, rule_id, match_type="regex")
+    r = w.undo(audit_id)
+    assert r.status_code == 409
+    assert "changed since" in r.json()["detail"]
+    rule = w.listed(rule_id)
+    assert (rule["pattern"], rule["match_type"]) == ("TESCO PFS", "regex")
+
+
+def test_undo_of_a_match_type_edit_refuses_when_the_pattern_changed_since(w):
+    rule_id = w.rule(pattern="TESCO", category="Groceries")
+    audit_id = w.update(rule_id, match_type="exact", dry_run=False).json()["audit_id"]
+    _web_edit(w, rule_id, pattern="TESCO PFS 3402")
+    r = w.undo(audit_id)
+    assert r.status_code == 409
+    assert "changed since" in r.json()["detail"]
+    rule = w.listed(rule_id)
+    assert (rule["pattern"], rule["match_type"]) == ("TESCO PFS 3402", "exact")
+
+
+@pytest.mark.parametrize("edit", [
+    {"pattern": "TESCO PFS"}, {"match_type": "regex"}, {"pattern": "^TESCO", "match_type": "regex"},
+])
+def test_undo_with_no_change_since_restores_a_rule_that_can_run(w, edit):
+    from app.services.categorization import validate_pattern
+    rule_id = w.rule(pattern="TESCO", category="Groceries")
+    audit_id = w.update(rule_id, dry_run=False, **edit).json()["audit_id"]
+    assert w.undo(audit_id).status_code == 200
+    rule = w.listed(rule_id)
+    assert (rule["pattern"], rule["match_type"]) == ("TESCO", "contains")
+    assert validate_pattern(rule["pattern"], rule["match_type"]) is None
+
+
+def _strip_context(w, audit_id):
+    """An audit row as written before T-16-1: changed fields only."""
+    import json
+
+    def strip():
+        entry = w.db.get(AuditEntry, uuid.UUID(audit_id))
+        entry.changes = json.dumps([c for c in json.loads(entry.changes) if c["before"] != c["after"]])
+        w.db.commit()
+    w.as_user(strip)
+
+
+def test_undo_refuses_a_restore_the_engine_could_not_run(w):
+    """sec guard, for audit rows without context: the restored pattern must
+    validate under the restored match type, or nothing is restored."""
+    rule_id = w.rule(pattern="(a)\\1", category="Groceries", match_type="contains")
+    applied = w.update(rule_id, pattern="TESCO", dry_run=False).json()
+    assert applied["transactions_recategorized"] == 2
+    _strip_context(w, applied["audit_id"])
+    _web_edit(w, rule_id, match_type="regex")  # "TESCO" is a fine regex; "(a)\1" isn't
+    before = w.categories()
+    undos_before = w.count(AuditEntry)
+
+    r = w.undo(applied["audit_id"])
+    assert r.status_code == 409
+    assert r.json()["detail"] == "Can't undo: the rule it would restore can't run."
+    rule = w.listed(rule_id)
+    assert (rule["pattern"], rule["match_type"]) == ("TESCO", "regex")
+    assert w.categories() == before
+    assert w.count(AuditEntry) == undos_before
+    w.db.expire_all()
+    assert w.as_user(lambda: w.db.get(AuditEntry, uuid.UUID(applied["audit_id"])).undone_at) is None
+
+
+def test_a_category_undo_on_a_rule_that_cannot_run_still_undoes(w):
+    """sec on #259: the guard checks only undos that restore the pattern or
+    match type; a category edit on a stored rule RE2 can't run (written
+    before #248) undoes as before."""
+    rule_id = w.rule(pattern="(a)\\1", category="Groceries", match_type="contains")
+
+    def make_unrunnable():
+        w.db.get(CategoryRule, uuid.UUID(rule_id)).match_type = "regex"
+        w.db.commit()
+    w.as_user(make_unrunnable)
+    audit_id = w.update(rule_id, category="Shopping", dry_run=False).json()["audit_id"]
+    r = w.undo(audit_id)
+    assert r.status_code == 200, r.text
+    assert w.listed(rule_id)["category"] == "Groceries"
+
+
 # --- transactions synced after the edit (T-16-2) --------------------------------------------
 # The undo record holds only what the edit's backfill changed. A transaction
 # synced later that the edited rule categorised is found at undo time by

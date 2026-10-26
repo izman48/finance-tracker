@@ -43,11 +43,16 @@ export interface AuditPage {
   next_cursor: string | null
 }
 
-/** One line under the title; `before` is absent for adds and removes. */
+/**
+ * One line under the title; `before` is absent for adds and removes, and for
+ * a field shown only as context (`unchanged`, e.g. a rule's match type next
+ * to its edited pattern).
+ */
 export interface ChangeLine {
   label: string
   before?: string
   after: string
+  unchanged?: true
 }
 
 const quoted = (s: string) => `“${s}”`
@@ -180,11 +185,20 @@ function ruleValue(field: string, value: AuditValue): string {
   return RULE_VALUE_LABEL[field]?.[String(value)] ?? String(value)
 }
 
-/** A rule row's lines: each matching field that changed, in plain words. */
+/**
+ * A rule row's lines: each matching field that changed, in plain words. The
+ * API records pattern and match type together (T-16-1), so the one an edit
+ * left alone is shown as unchanged, never as "Contains → Contains".
+ */
 function ruleLines(item: AuditItem): ChangeLine[] {
   return item.changes
     .filter((c) => c.field in RULE_FIELD_LABEL)
-    .map((c) => ({ label: RULE_FIELD_LABEL[c.field], before: ruleValue(c.field, c.before), after: ruleValue(c.field, c.after) }))
+    .map((c) => {
+      const label = RULE_FIELD_LABEL[c.field]
+      const after = ruleValue(c.field, c.after)
+      if (c.before === c.after) return { label, after, unchanged: true }
+      return { label, before: ruleValue(c.field, c.before), after }
+    })
 }
 
 /** The lines under a row's title (1.4). Fields without a plain-words name are left out. */

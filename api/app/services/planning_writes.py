@@ -445,7 +445,7 @@ def undo_write(db: Session, user, audit_id: uuid.UUID) -> AuditEntry:
         {"field": c["field"], "before": c["after"], "after": c["before"]} for c in changes
     ]
     if entry.target_kind == "rule":
-        _refuse_unrunnable_rule({**current, **{c["field"]: c["after"] for c in restore}})
+        _refuse_unrunnable_rule(current, restore)
     for c in restore:
         parse = spec.fields[c["field"]]
         setattr(target, c["field"], None if c["after"] is None else parse(c["after"]))
@@ -481,14 +481,20 @@ def undo_write(db: Session, user, audit_id: uuid.UUID) -> AuditEntry:
     return entry
 
 
-def _refuse_unrunnable_rule(restored: dict) -> None:
-    """409 when the rule undo would leave can't run: its pattern invalid
-    under its match type. Audit rows written before T-16-1 hold only the
-    field the edit changed, so the other may have changed since unchecked
-    (sec guard). Raised before anything is restored."""
+def _refuse_unrunnable_rule(current: dict, restore: list[dict]) -> None:
+    """409 when a rule undo that puts back the pattern or match type would
+    leave a rule that can't run: its pattern invalid under its match type.
+    Audit rows written before T-16-1 hold only the field the edit changed,
+    so the other may have changed since unchecked (sec guard). An undo of
+    other fields leaves the matching as it is, so it isn't checked (sec on
+    #259). Raised before anything is restored."""
     from app.services.categorization import validate_pattern
+    restored = {**current, **{c["field"]: c["after"] for c in restore}}
+    if not {"pattern", "match_type"} & {c["field"] for c in restore}:
+        return
     if validate_pattern(restored["pattern"], restored["match_type"]) is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Can't undo: it has changed since.")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                            detail="Can't undo: the rule it would restore can't run.")
 
 
 def claude_markers(db: Session, user_id: uuid.UUID, target_kind: str, target_ids) -> dict:

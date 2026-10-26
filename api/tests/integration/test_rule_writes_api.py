@@ -472,10 +472,26 @@ def test_undo_refuses_a_restore_the_engine_could_not_run(w):
 
     r = w.undo(applied["audit_id"])
     assert r.status_code == 409
-    assert "changed since" in r.json()["detail"]
+    assert r.json()["detail"] == "Can't undo: the rule it would restore can't run."
     rule = w.listed(rule_id)
     assert (rule["pattern"], rule["match_type"]) == ("TESCO", "regex")
     assert w.categories() == before
     assert w.count(AuditEntry) == undos_before
     w.db.expire_all()
     assert w.as_user(lambda: w.db.get(AuditEntry, uuid.UUID(applied["audit_id"])).undone_at) is None
+
+
+def test_a_category_undo_on_a_rule_that_cannot_run_still_undoes(w):
+    """sec on #259: the guard checks only undos that restore the pattern or
+    match type; a category edit on a stored rule RE2 can't run (written
+    before #248) undoes as before."""
+    rule_id = w.rule(pattern="(a)\\1", category="Groceries", match_type="contains")
+
+    def make_unrunnable():
+        w.db.get(CategoryRule, uuid.UUID(rule_id)).match_type = "regex"
+        w.db.commit()
+    w.as_user(make_unrunnable)
+    audit_id = w.update(rule_id, category="Shopping", dry_run=False).json()["audit_id"]
+    r = w.undo(audit_id)
+    assert r.status_code == 200, r.text
+    assert w.listed(rule_id)["category"] == "Groceries"

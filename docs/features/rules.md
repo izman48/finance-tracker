@@ -68,6 +68,12 @@ There is no stored link from a transaction to the rule that set it: undo
 re-matches (`set_by_rule_since`), counting a transaction only if it was
 inserted after the edit (row `created_at`), isn't in the edit's record,
 isn't locked, still has the rule's category, and the edited rule wins it.
+Residual window (fails toward the old behaviour: the row keeps the edited
+category): sync commits each account's new rows first and runs the rules
+afterwards, and a row's `created_at` is the start of its account's database
+transaction. A row whose account transaction started before the edit's audit
+time, wasn't yet visible to the edit's backfill, and then got the edited
+rule once the edit committed, is missed by the cut-off.
 
 **Tests**: `api/tests/integration/test_rules_bulk.py`, `test_rule_writes_api.py`,
 `test_rules_impact.py`, `test_user_encryption.py`, `test_oauth.py`;

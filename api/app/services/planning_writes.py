@@ -437,7 +437,11 @@ def undo_write(db: Session, user, audit_id: uuid.UUID) -> AuditEntry:
         {"field": c["field"], "before": c["after"], "after": c["before"]} for c in changes
     ]
     if entry.target_kind == "rule":
-        # Found while the stored rule is still the edited one (T-16-2).
+        # Found while the stored rule is still the edited one (T-16-2). The
+        # cut-off compares two clocks: the audit row's time is the API's,
+        # a transaction's `created_at` the database's `now()` (its sync
+        # transaction's start). Same host in our deploy; a database on
+        # another host adds its clock skew to the residual window.
         from app.services import categorization
         recorded = json.loads(entry.side_effects or "[]")
         transactions = categorization.user_transactions(db, user.id)

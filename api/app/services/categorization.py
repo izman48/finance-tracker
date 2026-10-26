@@ -251,7 +251,7 @@ def set_by_rule_since(rules: list[CategoryRule], transactions: list[Transaction]
         and str(tx.id) not in recorded_ids
         and not tx.category_locked
         and tx.category == rule.category
-        and getattr(winning_rule(rules, tx), "id", None) == rule.id
+        and winning_rule(rules, tx) is rule
     ]
 
 

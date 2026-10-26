@@ -226,7 +226,7 @@ quick overflow check, navigate a page and compare `document.documentElement
 - **Remote MCP / OAuth** (`services/oauth.py`, `core/oauth_tokens.py`): the API
   is the OAuth 2.1 server for the MCP server at `/mcp`. MCP tokens are `typ:
   mcp_access`, audience-bound, scoped (`finance:read`, `finance:rules.write`,
-  `finance:planning.write`, `finance:sync`, `finance:budgets.write`), and checked against their grant
+  `finance:planning.write`, `finance:sync`, `finance:budgets.write`, `finance:rules.edit`), and checked against their grant
   on every use. `finance:sync` (`CurrentUserOrMcpSync`) opens only
   `POST /banking/sync`: rate limited per user (`SYNC_COOLDOWN_SECONDS`, one at a
   time), per-connection status only, never error text.
@@ -238,7 +238,8 @@ quick overflow check, navigate a page and compare `document.documentElement
   per-user write and dry-run rate limits. `dry_run` must be a JSON body field
   (even on a DELETE): a request without a body counts against the write budget.
   Budget writes (`routers/budget_writes.py`) take `BudgetsWriter` instead
-  (`finance:budgets.write`, the same per-user limits); `set_budgets` uses
+  (`finance:budgets.write`, the same per-user limits); rule edits
+  (`routers/rule_writes.py`) take `RulesEditor` (`finance:rules.edit`); `set_budgets` uses
   `run_batch` (one transaction, one audit row per budget, a shared batch id).
   Such routes call `services/planning_writes.run_write` (dry_run in a
   savepoint, DB idempotency, encrypted append-only `audit_entries` row); add a

@@ -22,8 +22,9 @@ also runs over stdio with the user's password.
 
 **Scopes** (`core/oauth_tokens.py`): `finance:read` (always),
 `finance:rules.write`, `finance:planning.write`, `finance:sync`,
-`finance:budgets.write`. The consent page ticks rules by default; planning,
-sync and budgets are opt-in. A refresh never widens scopes.
+`finance:budgets.write`, `finance:rules.edit`. The consent page ticks rules
+by default; planning, sync, budgets and editing existing rules are opt-in. A
+refresh never widens scopes.
 
 **Tables**: `oauth_clients`, `oauth_authorization_codes`, `oauth_grants`
 (DEK wrapped under the code, then under each refresh token).
@@ -47,6 +48,7 @@ sync and budgets are opt-in. A refresh never widens scopes.
 | `rule_impact` | read | `GET /api/v1/rules/impact` |
 | `preview_rule` | read | `POST /api/v1/rules/preview` |
 | `create_rule_pack` | write (rules) | `POST /api/v1/rules/packs/bulk` |
+| `update_rule` | write (rules.edit) | `POST /api/v1/planning/rules/{rule_id}/update` |
 | `list_planned_events` | read | `GET /api/v1/planning/planned-events` |
 | `add_planned_event` | write (planning) | `POST /api/v1/planning/planned-events` |
 | `remove_planned_event` | write (planning) | `POST /api/v1/planning/planned-events/{item_id}/remove` |

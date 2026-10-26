@@ -10,16 +10,19 @@ Claude's changes to commitments and removals of planned expenses are held
 
 **Write framework**:
 
-- `core/planning_write.py`: `PlanningWriter` (`finance:planning.write`) and
-  `BudgetsWriter` (`finance:budgets.write`) return a `Caller` (user plus
+- `core/planning_write.py`: `PlanningWriter` (`finance:planning.write`),
+  `BudgetsWriter` (`finance:budgets.write`) and `RulesEditor`
+  (`finance:rules.edit`) return a `Caller` (user plus
   verified `grant_id`, `client_id`) and apply per-user limits (30 writes and
   120 dry runs per hour, in process). `dry_run` must be a JSON body field.
 - `services/planning_writes.py`: `TARGETS` (`planned_event`, `commitment`,
-  `budget`, each with allow-listed fields), `run_write` (dry run in a
+  `budget`, `rule`, each with allow-listed fields), `run_write` (dry run in a
   savepoint; apply claims the idempotency key, writes, records an audit row), and a retry of an applied write with the same key and request replays the stored result, even where a route checks its target first (`replay_if_applied`, T-12-9c; a different request under the key is a 409),
   `run_batch`, `undo_write`, `claude_markers`, `key_in_use`.
 - Routers using it: `routers/planning.py`, `routers/commitment_writes.py`,
-  `routers/budget_writes.py`.
+  `routers/budget_writes.py`, `routers/rule_writes.py` (a `WriteRequest.side_effect`
+  backfills history inside the write's transaction or dry-run savepoint; undo
+  restores the categories it changed, then re-runs the rules).
 
 **Audit API** (`api/app/routers/audit.py`, web session only, must stay so):
 
@@ -27,8 +30,9 @@ Claude's changes to commitments and removals of planned expenses are held
 - `POST /api/v1/audit/{audit_id}/undo`
 - `POST /api/v1/audit/{audit_id}/keep` (409 when there is nothing to keep)
 
-**Tables**: `audit_entries` (encrypted `target_label`, `changes`;
-`undone_at`, `kept_at`, `user_set_fields`), `write_idempotency` (24 h,
+**Tables**: `audit_entries` (encrypted `target_label`, `changes`,
+`side_effects`: other rows a write changed, for undo; today a rule edit's
+recategorised transactions; `undone_at`, `kept_at`, `user_set_fields`), `write_idempotency` (24 h,
 keyed request hash).
 
 **Services**: `services/claude_keep.py` (keep states, held-back totals,

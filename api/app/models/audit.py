@@ -38,6 +38,10 @@ class AuditEntry(Base):
     target_label: Mapped[str] = mapped_column(UserEncryptedString)
     # JSON list of {"field", "before", "after"}, encrypted as one value.
     changes: Mapped[str] = mapped_column(UserEncryptedString)
+    # Other rows the write changed, for undo: a rule edit's backfill as a JSON
+    # list of {"id", "before", "after"} transaction categories. Copies
+    # categories, so DEK-encrypted like them. None for writes without one.
+    side_effects: Mapped[str | None] = mapped_column(UserEncryptedString, nullable=True)
     # A write whose target didn't exist before (undo soft-deletes it).
     created_target: Mapped[bool] = mapped_column(default=False, server_default=false())
     grant_id: Mapped[uuid.UUID | None] = mapped_column(

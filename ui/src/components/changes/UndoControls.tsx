@@ -47,6 +47,7 @@ const OPEN_LINK: Record<string, { to: string; label: string }> = {
   planned_event: { to: '/dashboard', label: 'Open planned events' },
   commitment: { to: '/commitments', label: 'Open commitments' },
   budget: { to: '/insights?section=budgets', label: 'Open budgets' },
+  rule: { to: '/rules', label: 'Open rules' },
 }
 
 /** The inline message after a failed undo. It never carries the server's text. */

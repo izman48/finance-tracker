@@ -10,15 +10,20 @@ export const SYNC_DESCRIPTION =
 export const BUDGETS_DESCRIPTION =
   "Set, change, pause, resume or remove your budgets. It's asked to show you a preview before each change. Changes take effect at once, and every one is listed under Changes made by Claude, where you can undo it. Budgets never change your safe to spend."
 
+export const RULES_EDIT_DESCRIPTION =
+  "Edit or switch off your existing categorisation rules. It's asked to show you a preview before each change. An edited rule can recategorise past transactions, but never ones you set by hand. Every change is listed under Changes made by Claude, where you can undo it."
+
 type Props = {
   allowRules: boolean
   allowPlanning: boolean
   allowSync: boolean
   allowBudgets: boolean
+  allowRulesEdit: boolean
   onRulesChange: (allowed: boolean) => void
   onPlanningChange: (allowed: boolean) => void
   onSyncChange: (allowed: boolean) => void
   onBudgetsChange: (allowed: boolean) => void
+  onRulesEditChange: (allowed: boolean) => void
 }
 
 /** The permissions an MCP client asks for on the consent screen. Read is always granted. */
@@ -27,10 +32,12 @@ export default function ConsentScopes({
   allowPlanning,
   allowSync,
   allowBudgets,
+  allowRulesEdit,
   onRulesChange,
   onPlanningChange,
   onSyncChange,
   onBudgetsChange,
+  onRulesEditChange,
 }: Props) {
   return (
     <ul className="space-y-3">
@@ -112,6 +119,25 @@ export default function ConsentScopes({
               Set and manage your budgets
             </span>
             <span id="allow-budgets-desc" className="block text-xs text-slate-400">{BUDGETS_DESCRIPTION}</span>
+          </span>
+        </label>
+      </li>
+      <li>
+        <label htmlFor="allow-rules-edit" className="flex gap-3 cursor-pointer">
+          <input
+            id="allow-rules-edit"
+            type="checkbox"
+            checked={allowRulesEdit}
+            onChange={(e) => onRulesEditChange(e.target.checked)}
+            aria-labelledby="allow-rules-edit-title"
+            aria-describedby="allow-rules-edit-desc"
+            className="mt-1 shrink-0 accent-accent"
+          />
+          <span className="min-w-0">
+            <span id="allow-rules-edit-title" className="block text-sm text-slate-100">
+              Edit your existing rules
+            </span>
+            <span id="allow-rules-edit-desc" className="block text-xs text-slate-400">{RULES_EDIT_DESCRIPTION}</span>
           </span>
         </label>
       </li>

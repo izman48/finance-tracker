@@ -130,7 +130,9 @@ def test_authorization_server_metadata(client):
     assert m["response_types_supported"] == ["code"]
     assert set(m["grant_types_supported"]) == {"authorization_code", "refresh_token"}
     assert m["token_endpoint_auth_methods_supported"] == ["none"]
-    assert set(m["scopes_supported"]) == {READ, WRITE, "finance:planning.write", "finance:sync", "finance:budgets.write"}
+    assert set(m["scopes_supported"]) == {
+        READ, WRITE, "finance:planning.write", "finance:sync", "finance:budgets.write", "finance:rules.edit",
+    }
 
 
 def test_register_public_client(client):

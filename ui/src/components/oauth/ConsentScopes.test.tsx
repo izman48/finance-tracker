@@ -1,22 +1,30 @@
 import { describe, it, expect } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
-import ConsentScopes, { BUDGETS_DESCRIPTION, PLANNING_DESCRIPTION, RULES_DESCRIPTION, SYNC_DESCRIPTION } from './ConsentScopes'
+import ConsentScopes, {
+  BUDGETS_DESCRIPTION,
+  PLANNING_DESCRIPTION,
+  RULES_DESCRIPTION,
+  RULES_EDIT_DESCRIPTION,
+  SYNC_DESCRIPTION,
+} from './ConsentScopes'
 
 // docs/design/nilu-s08-claude-changes.md (HQ) section 5, K1, K3, K4, K9, K11.
 
 const noop = () => {}
 
-function render(allowRules = true, allowPlanning = false, allowSync = false, allowBudgets = false) {
+function render(allowRules = true, allowPlanning = false, allowSync = false, allowBudgets = false, allowRulesEdit = false) {
   return renderToStaticMarkup(
     <ConsentScopes
       allowRules={allowRules}
       allowPlanning={allowPlanning}
       allowSync={allowSync}
       allowBudgets={allowBudgets}
+      allowRulesEdit={allowRulesEdit}
       onRulesChange={noop}
       onPlanningChange={noop}
       onSyncChange={noop}
       onBudgetsChange={noop}
+      onRulesEditChange={noop}
     />,
   )
 }
@@ -123,5 +131,32 @@ describe('ConsentScopes', () => {
     const text = (id?: string) => (html.match(new RegExp(`id="${id}"[^>]*>([^<]*)<`))?.[1] ?? '').replace(/&#x27;/g, "'")
     expect(text(described)).toBe(BUDGETS_DESCRIPTION)
     expect(text(named)).toBe('Set and manage your budgets')
+  })
+
+  it('the edit-rules box exists, is unchecked and enabled by default, after the budgets box', () => {
+    const html = render()
+    const box = input(html, 'allow-rules-edit')
+    expect(box).not.toBe('')
+    expect(box).not.toMatch(/checked/)
+    expect(box).not.toMatch(/disabled/)
+    expect(html.indexOf('Edit your existing rules')).toBeGreaterThan(html.indexOf('Set and manage your budgets'))
+  })
+
+  it('reflects the ticked edit-rules state', () => {
+    expect(input(render(true, false, false, false, true), 'allow-rules-edit')).toMatch(/checked/)
+  })
+
+  it('the edit-rules copy is exact, linked by aria-describedby, and the name is its title', () => {
+    const html = render()
+    expect(RULES_EDIT_DESCRIPTION).toBe(
+      "Edit or switch off your existing categorisation rules. It's asked to show you a preview before each change. An edited rule can recategorise past transactions, but never ones you set by hand. Every change is listed under Changes made by Claude, where you can undo it.",
+    )
+    expect(html).toMatch(/<label[^>]*for="allow-rules-edit"[^>]*>/)
+    const box = input(html, 'allow-rules-edit')
+    const described = box.match(/aria-describedby="([^"]+)"/)?.[1]
+    const named = box.match(/aria-labelledby="([^"]+)"/)?.[1]
+    const text = (id?: string) => (html.match(new RegExp(`id="${id}"[^>]*>([^<]*)<`))?.[1] ?? '').replace(/&#x27;/g, "'")
+    expect(text(described)).toBe(RULES_EDIT_DESCRIPTION)
+    expect(text(named)).toBe('Edit your existing rules')
   })
 })

@@ -38,7 +38,13 @@ SCOPE_SYNC = "finance:sync"
 # grants were consented with copy naming planned events and commitments only
 # (sec). Existing grants don't gain it; refresh can't widen to it.
 SCOPE_BUDGETS_WRITE = "finance:budgets.write"
-SUPPORTED_SCOPES = (SCOPE_READ, SCOPE_RULES_WRITE, SCOPE_PLANNING_WRITE, SCOPE_SYNC, SCOPE_BUDGETS_WRITE)
+# Claude's edits to existing rules. Its own scope, not rules.write: that
+# scope's consent copy says Claude "can't edit or delete your existing
+# rules", so existing grants must not gain this; refresh can't widen to it.
+SCOPE_RULES_EDIT = "finance:rules.edit"
+SUPPORTED_SCOPES = (
+    SCOPE_READ, SCOPE_RULES_WRITE, SCOPE_PLANNING_WRITE, SCOPE_SYNC, SCOPE_BUDGETS_WRITE, SCOPE_RULES_EDIT,
+)
 
 MCP_ACCESS_TOKEN_TTL = timedelta(hours=1)
 

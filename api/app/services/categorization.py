@@ -214,13 +214,36 @@ def apply_rules_to_all(db: Session, user_id) -> int:
     transaction can still receive a rule's counts_as — the per-field locks
     inside apply_rules decide what may change.
     """
-    transactions = (
-        db.query(Transaction)
-        .join(Account)
-        .filter(Account.user_id == user_id)
-        .all()
-    )
-    return apply_rules(db, user_id, transactions)
+    return apply_rules(db, user_id, _user_transactions(db, user_id))
+
+
+def recategorize_all(db: Session, user_id) -> list[dict]:
+    """apply_rules_to_all, returning what it changed: one {"id", "before",
+    "after"} category record per transaction it changed (counts_as is
+    recomputed from the rules on every run, so it needs no record). An undo
+    hands these to `restore_categories` (sec on #256). Does not commit."""
+    transactions = _user_transactions(db, user_id)
+    before = {tx.id: (tx.category, tx.counts_as_override) for tx in transactions}
+    apply_rules(db, user_id, transactions)
+    return [
+        {"id": str(tx.id), "before": before[tx.id][0], "after": tx.category}
+        for tx in transactions if (tx.category, tx.counts_as_override) != before[tx.id]
+    ]
+
+
+def restore_categories(db: Session, user_id, changed: list[dict]) -> None:
+    """Put back the categories recorded by `recategorize_all`. Only where the
+    transaction still has the category that run set and isn't locked: a
+    category set by hand, or changed since, is left alone. Does not commit."""
+    records = {r["id"]: r for r in changed}
+    for tx in _user_transactions(db, user_id):
+        record = records.get(str(tx.id))
+        if record and not tx.category_locked and tx.category == record["after"]:
+            tx.category = record["before"]
+
+
+def _user_transactions(db: Session, user_id) -> list[Transaction]:
+    return db.query(Transaction).join(Account).filter(Account.user_id == user_id).all()
 
 
 def learn_and_apply(db: Session, user_id, transaction: Transaction) -> int:

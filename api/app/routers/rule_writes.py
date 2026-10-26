@@ -7,7 +7,9 @@ audit row (`target_kind: "rule"`), web-only undo. Only the matching fields
 in `TARGETS["rule"]` change. A rule is addressed by its id, never by its
 pattern (untrusted text). Switching a rule off is `enabled: false`, never a
 delete, so the change can be undone. An applied edit re-runs the rules over
-the user's history, as an undo does.
+the user's history in the same transaction (a dry run counts it in its
+savepoint), and the audit row records the categories it changed, so undo
+puts them back.
 """
 import uuid
 from typing import Annotated
@@ -20,11 +22,11 @@ from app.core.planning_write import RulesEditor
 from app.models import CategoryRule
 from app.schemas import ClaudeRuleUpdateRequest
 from app.services import categorization
-from app.services.planning_writes import WriteRequest, replay_if_applied, run_write
+from app.services.planning_writes import TARGETS, WriteRequest, replay_if_applied, run_write
 
 router = APIRouter(prefix="/planning/rules", tags=["planning"])
 
-_EDITABLE = ("pattern", "match_type", "match_field", "category", "counts_as", "enabled")
+_EDITABLE = TARGETS["rule"].names
 
 
 @router.post("/{rule_id}/update")
@@ -41,11 +43,13 @@ def update_rule(rule_id: uuid.UUID, body: ClaudeRuleUpdateRequest, caller: Rules
             setattr(rule, field, value)
         return rule
 
-    req = WriteRequest(tool="update_rule", target_kind="rule", target_id=rule_id, apply=apply)
+    def backfill(db: Session) -> list[dict]:
+        return categorization.recategorize_all(db, caller.user.id)
+
+    req = WriteRequest(tool="update_rule", target_kind="rule", target_id=rule_id, apply=apply, side_effect=backfill)
     replay = replay_if_applied(db, caller, req, body)
     if replay is not None:
-        # A retry of an edit that already applied: its backfill already ran.
-        return {**replay, "transactions_recategorized": 0}
+        return _with_recategorized(replay)
 
     rule = (
         db.query(CategoryRule)
@@ -59,9 +63,12 @@ def update_rule(rule_id: uuid.UUID, body: ClaudeRuleUpdateRequest, caller: Rules
         if error:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error)
 
-    result = run_write(db, caller, req, body)
-    recategorized = 0
-    if not result["dry_run"] and not result["unchanged"]:
-        recategorized = categorization.apply_rules_to_all(db, caller.user.id)
-        db.commit()
-    return {**result, "transactions_recategorized": recategorized}
+    return _with_recategorized(run_write(db, caller, req, body))
+
+
+def _with_recategorized(result: dict) -> dict:
+    """The framework's `side_effects` count, by its name here: how many
+    transactions the edit recategorises (a dry run's real count too)."""
+    result = dict(result)
+    count = result.pop("side_effects", 0)
+    return {**result, "transactions_recategorized": count}

@@ -100,6 +100,11 @@ class WriteRequest:
     # Allow-listed fields shown in the diff even when unchanged (before ==
     # after), so the trail says what a removal removed. Undo also checks them.
     context_fields: tuple[str, ...] = ()
+    # Other rows the change moves (a rule edit's backfill over history). Runs
+    # after `apply`, in the same transaction or dry-run savepoint, and returns
+    # JSON-safe records of what it changed: stored encrypted on the audit row
+    # for undo, and counted in the result's `side_effects`.
+    side_effect: Callable[[Session], list[dict]] | None = None
 
 
 def run_write(db: Session, caller: Caller, req: WriteRequest, body: PlanningWriteRequest) -> dict:
@@ -109,11 +114,12 @@ def run_write(db: Session, caller: Caller, req: WriteRequest, body: PlanningWrit
         savepoint = db.begin_nested()
         try:
             target, label, changes = _change(db, caller, spec, req)
+            effects = _side_effects(db, req, changes)
         finally:
             savepoint.rollback()
         if not _changes_anything(changes):
             return _unchanged(req, label, dry_run=True)
-        return _result(None, None, req.target_kind, label, changes, dry_run=True)
+        return _result(None, None, req.target_kind, label, changes, dry_run=True, side_effects=effects)
 
     request_hash = _request_hash(req, body)
     replay = _claim_key(db, caller, idempotency_key, request_hash)
@@ -126,9 +132,11 @@ def run_write(db: Session, caller: Caller, req: WriteRequest, body: PlanningWrit
             # call with it that does change something is treated as new.
             db.rollback()
             return _unchanged(req, label, dry_run=False)
+        effects = _side_effects(db, req, changes)
         entry = AuditEntry(
             user_id=caller.user.id, kind=AUDIT_KIND_WRITE, tool=req.tool, target_kind=req.target_kind,
             target_id=target.id, target_label=label, changes=json.dumps(changes),
+            side_effects=None if effects is None else json.dumps(effects),
             created_target=req.target_id is None, grant_id=caller.grant_id, client_id=caller.client_id,
             batch_id=req.batch_id,
         )
@@ -241,6 +249,16 @@ def _replay_batch(db: Session, entry: AuditEntry) -> dict:
     return _batch_result(entry.batch_id, [_entry_result(r) for r in rows], dry_run=False)
 
 
+def _side_effects(db: Session, req: WriteRequest, changes: list[dict]) -> list[dict] | None:
+    """Run the request's side effect (uncommitted) when the change changes
+    anything; None when it has none."""
+    if req.side_effect is None or not _changes_anything(changes):
+        return None
+    effects = req.side_effect(db)
+    db.flush()
+    return effects
+
+
 def _change(db: Session, caller: Caller, spec: TargetSpec, req: WriteRequest):
     """Apply the change (uncommitted); return (target, label, changes)."""
     target = None
@@ -344,8 +362,9 @@ def _plain(value):
 
 
 def _entry_result(entry: AuditEntry) -> dict:
+    effects = None if entry.side_effects is None else json.loads(entry.side_effects)
     return _result(entry.id, entry.target_id, entry.target_kind, entry.target_label,
-                   json.loads(entry.changes), dry_run=False)
+                   json.loads(entry.changes), dry_run=False, side_effects=effects)
 
 
 def _changes_anything(changes: list[dict]) -> bool:
@@ -360,8 +379,9 @@ def _unchanged(req: WriteRequest, label, *, dry_run: bool) -> dict:
     return _result(None, req.target_id, req.target_kind, label, [], dry_run=dry_run, unchanged=True)
 
 
-def _result(audit_id, target_id, target_kind, label, changes, *, dry_run: bool, unchanged: bool = False) -> dict:
-    return {
+def _result(audit_id, target_id, target_kind, label, changes, *, dry_run: bool, unchanged: bool = False,
+            side_effects: list[dict] | None = None) -> dict:
+    result = {
         "dry_run": dry_run,
         "unchanged": unchanged,
         "audit_id": str(audit_id) if audit_id else None,
@@ -370,6 +390,9 @@ def _result(audit_id, target_id, target_kind, label, changes, *, dry_run: bool, 
         "target_label": label,
         "changes": changes,
     }
+    if side_effects is not None:
+        result["side_effects"] = len(side_effects)
+    return result
 
 
 def undo_write(db: Session, user, audit_id: uuid.UUID) -> AuditEntry:
@@ -425,9 +448,12 @@ def undo_write(db: Session, user, audit_id: uuid.UUID) -> AuditEntry:
             ensure_baseline(db, target)
         record_change(db, target)
     if entry.target_kind == "rule":
-        # The rule is back as it was; so is the history it categorises.
-        from app.services.categorization import apply_rules_to_all
+        # The rule is back as it was; so is the history it categorises: the
+        # categories the edit's backfill set go back first (rules never clear
+        # a category), then the rules run again (sec B1 on #256).
+        from app.services.categorization import apply_rules_to_all, restore_categories
         db.flush()
+        restore_categories(db, user.id, json.loads(entry.side_effects or "[]"))
         apply_rules_to_all(db, user.id)
     db.add(AuditEntry(
         user_id=user.id, kind=AUDIT_KIND_UNDO, tool=entry.tool, target_kind=entry.target_kind,

@@ -88,6 +88,15 @@ class World:
             return {t.description: t.category for t in rows}
         return self.as_user(read)
 
+    def hand_set(self, description, category):
+        """The user re-categorises one transaction on the web (locks it)."""
+        tx_id = self.as_user(lambda: next(
+            t.id for t in self.db.query(Transaction).join(Account).filter(Account.user_id == self.user.id)
+            if t.description == description))
+        r = self.client.patch(f"{API}/banking/transactions/{tx_id}", json={"category": category},
+                              headers=_bearer(self.web))
+        assert r.status_code == 200, r.text
+
     def count(self, model):
         return self.db.execute(select(func.count()).select_from(model)).scalar()
 
@@ -199,7 +208,40 @@ def test_a_retry_with_the_same_key_replays(w):
     again = w.update(rule_id, category="Shopping", idempotency_key="same-key-123", dry_run=False)
     assert first.status_code == again.status_code == 200
     assert again.json()["audit_id"] == first.json()["audit_id"]
+    assert again.json()["transactions_recategorized"] == first.json()["transactions_recategorized"] == 2
     assert w.count(AuditEntry) == 1
+
+
+def test_the_preview_counts_what_apply_will_recategorise_and_changes_nothing(w):
+    """sec B2: the user confirms on this number, so it is the real one, never a placeholder 0."""
+    w.transactions([("AMAZON MKTPLACE", 20), ("NETFLIX", 11)])
+    rule_id = w.rule(pattern="TESCO", category="Groceries")
+    before = w.categories()
+    preview = w.update(rule_id, pattern=".*", match_type="regex", category="Everything")
+    assert preview.status_code == 200, preview.text
+    assert preview.json()["transactions_recategorized"] == 4
+    assert "side_effects" not in preview.json()
+    assert w.categories() == before
+    applied = w.update(rule_id, pattern=".*", match_type="regex", category="Everything", dry_run=False)
+    assert applied.json()["transactions_recategorized"] == 4
+
+
+def test_a_failed_backfill_leaves_no_edit_and_no_audit(w, monkeypatch):
+    """The edit, its audit row and its recategorisation are one transaction."""
+    from app.services import categorization
+    rule_id = w.rule(pattern="TESCO", category="Groceries")
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("backfill failed")
+    monkeypatch.setattr(categorization, "apply_rules", boom)
+    with pytest.raises(RuntimeError):
+        w.update(rule_id, category="Shopping", idempotency_key="fails-once-1", dry_run=False)
+    monkeypatch.undo()
+    assert w.listed(rule_id)["category"] == "Groceries"
+    assert w.count(AuditEntry) == 0
+    retry = w.update(rule_id, category="Shopping", idempotency_key="fails-once-1", dry_run=False)
+    assert retry.status_code == 200, retry.text
+    assert retry.json()["transactions_recategorized"] == 2
 
 
 # --- refusals -------------------------------------------------------------------------------
@@ -275,3 +317,58 @@ def test_undo_refuses_when_the_rule_changed_since(w):
     w.client.patch(f"{API}/rules/{rule_id}", json={"category": "Eating out"}, headers=_bearer(w.web))
     assert w.undo(audit_id).status_code == 409
     assert w.listed(rule_id)["category"] == "Eating out"
+
+
+def test_undo_of_a_match_all_edit_restores_every_category(w):
+    """sec B1: undo puts back what the edit's backfill changed, including categories no rule set."""
+    w.transactions([("AMAZON MKTPLACE", 20), ("NETFLIX", 11)])
+    rule_id = w.rule(pattern="TESCO", category="Groceries")
+    before = w.categories()
+    assert before["NETFLIX"] is None
+    audit_id = w.update(rule_id, pattern=".*", match_type="regex", category="Hacked", dry_run=False).json()["audit_id"]
+    assert set(w.categories().values()) == {"Hacked"}
+    assert w.undo(audit_id).status_code == 200
+    assert w.categories() == before
+    assert w.listed(rule_id)["pattern"] == "TESCO"
+
+
+def test_undo_of_a_switch_off_restores_history(w):
+    w.rule(pattern="TESCO", category="Groceries")
+    store = w.rule(pattern="TESCO STORE", category="Household")
+    assert w.categories()["TESCO STORE 6593"] == "Household"
+    r = w.update(store, enabled=False, dry_run=False)
+    assert r.json()["transactions_recategorized"] == 1
+    assert w.categories()["TESCO STORE 6593"] == "Groceries"
+    assert w.undo(r.json()["audit_id"]).status_code == 200
+    assert w.listed(store)["enabled"] is True
+    assert w.categories()["TESCO STORE 6593"] == "Household"
+
+
+def test_hand_set_categories_survive_the_edit_and_its_undo(w):
+    """The consent copy promises Claude never changes categories you set by hand."""
+    w.transactions([("AMAZON MKTPLACE", 20), ("NETFLIX", 11)])
+    rule_id = w.rule(pattern="TESCO", category="Groceries")
+    w.hand_set("NETFLIX", "Subscriptions")
+    audit_id = w.update(rule_id, pattern=".*", match_type="regex", category="Hacked", dry_run=False).json()["audit_id"]
+    assert w.categories()["NETFLIX"] == "Subscriptions"
+    w.hand_set("AMAZON MKTPLACE", "Gifts")  # after the edit: undo must not take it back
+    assert w.undo(audit_id).status_code == 200
+    after = w.categories()
+    assert (after["NETFLIX"], after["AMAZON MKTPLACE"]) == ("Subscriptions", "Gifts")
+    assert after["TESCO PFS 3402"] == "Groceries"
+
+
+def test_undo_leaves_a_category_that_changed_since(w):
+    """Unlocked but no longer what the edit set (another change since): not overwritten."""
+    w.transactions([("NETFLIX", 11)])
+    rule_id = w.rule(pattern="TESCO", category="Groceries")
+    audit_id = w.update(rule_id, pattern=".*", match_type="regex", category="Hacked", dry_run=False).json()["audit_id"]
+
+    def change_since():
+        tx = next(t for t in w.db.query(Transaction).join(Account).filter(Account.user_id == w.user.id)
+                  if t.description == "NETFLIX")
+        tx.category = "Streaming"
+        w.db.commit()
+    w.as_user(change_since)
+    assert w.undo(audit_id).status_code == 200
+    assert w.categories()["NETFLIX"] == "Streaming"

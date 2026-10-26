@@ -45,7 +45,7 @@ pytest-cov==4.1.0
 pytest-xdist==3.8.0
 
 # Development
-black==26.3.1
+black==26.10.1
 ruff==0.2.0
 mypy==1.8.0
 pip-audit==2.7.3  # dependency vulnerability scanning

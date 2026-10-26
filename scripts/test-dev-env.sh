@@ -32,18 +32,27 @@ mkdir -p "$STATE/dbs"
 cat > "$STUBS/uv" <<'STUB'
 #!/usr/bin/env bash
 echo "uv $*" >> "$CALLS"
+[ "$1 $2" = "pip install" ] && [ "${FAKE_UV_FAIL:-0}" = 1 ] && { echo "network error" >&2; exit 2; }
 if [ "$1" = venv ]; then
   dir="${@: -1}"
   mkdir -p "$dir/bin" && printf '#!/bin/sh\n' > "$dir/bin/python" && chmod +x "$dir/bin/python"
 fi
 exit 0
 STUB
+# tr stub: fails with no output when FAKE_TR_FAIL=1 (a failed password write).
+cat > "$STUBS/tr" <<'STUB'
+#!/usr/bin/env bash
+[ "${FAKE_TR_FAIL:-0}" = 1 ] && exit 1
+exec /usr/bin/tr "$@"
+STUB
 cat > "$STUBS/docker" <<'STUB'
 #!/usr/bin/env bash
 echo "docker $*" >> "$CALLS"
 case "$1" in
   inspect) [ -f "$STATE/container" ] || { echo; exit 1; }; cat "$STATE/container" ;;  # real docker prints a blank line when missing
-  run) echo true > "$STATE/container" ;;
+  run) echo true > "$STATE/container"
+       # another setup created it first: the name is taken
+       [ "${FAKE_RUN_CONFLICT:-0}" = 1 ] && { echo "Conflict. The container name is already in use" >&2; exit 125; } ;;
   start) echo true > "$STATE/container" ;;
   port) echo "${FAKE_PORT_BIND:-127.0.0.1:55436}" ;;
   exec)
@@ -92,6 +101,14 @@ check "the new venv is a different directory" '[ "$(readlink "$A/api/.venv")" !=
 run "$B" setup
 check "and the next run reuses the new one" '[ "$(count "uv venv")" = 2 ]'
 
+F="$TMP/wt/failing-build"; worktree "$F"; echo "pydantic==2.9.2" >> "$F/api/requirements.txt"
+if FAKE_UV_FAIL=1 run "$F" setup; then fail "a failed venv build fails setup"; else pass "a failed venv build fails setup"; fi
+check "a failed build is never marked ready or linked" \
+  '! ls "$NILU_DEV_HOME"/venvs/*/.ready 2>/dev/null | xargs -n1 dirname | grep -qv -e "^$(dirname "$(readlink "$A/api/.venv")")" && [ ! -e "$F/api/.venv" ] && [ "$(ls "$NILU_DEV_HOME"/venvs/*/.ready | wc -l | tr -d " ")" = 2 ]'
+check "and the lock is released" '! ls -d "$NILU_DEV_HOME"/venvs/*.lock 2>/dev/null'
+builds="$(count "uv venv")"; run "$F" setup
+check "the next run builds it again and succeeds" '[ "$(count "uv venv")" = $((builds + 1)) ] && [ -L "$F/api/.venv" ]'
+
 mkdir -p "$TMP/wt/own-venv/api/.venv"; worktree "$TMP/wt/own-venv"
 if run "$TMP/wt/own-venv" setup; then fail "a real api/.venv directory is refused"; else
   check "a real api/.venv directory is refused, not deleted" '[ -d "$TMP/wt/own-venv/api/.venv" ] && [ ! -L "$TMP/wt/own-venv/api/.venv" ]'
@@ -115,9 +132,13 @@ if FAKE_PORT_BIND="0.0.0.0:55436" run "$A" setup; then fail "a container publish
   pass "a container published beyond 127.0.0.1 is refused"
 fi
 
+rm -f "$STATE/container" "$A/.env.dev-db"
+FAKE_RUN_CONFLICT=1 run "$A" setup
+check "a setup that loses the race to create the container carries on" '[ -f "$A/.env.dev-db" ]'
+
 # --- one database per worktree ----------------------------------------------------
 dbs() { ls "$STATE/dbs"; }
-check "each worktree gets its own database (A and B; the refused one got none)" '[ "$(dbs | wc -l | tr -d " ")" = 2 ]'
+check "each worktree gets its own database (A, B and the rebuilt one; the refused one got none)" '[ "$(dbs | wc -l | tr -d " ")" = 3 ]'
 db_a="$(sed -n 's#^DATABASE_URL=.*/##p' "$A/.env.dev-db")"
 db_b="$(sed -n 's#^DATABASE_URL=.*/##p' "$B/.env.dev-db")"
 check "named from the worktree, and different" '[[ "$db_a" == wt_eng_a_t_1_* ]] && [[ "$db_b" == wt_eng_b_t_2_* ]]'
@@ -140,13 +161,28 @@ check "drop removes the worktree's database only" '[ ! -f "$STATE/dbs/$db_a" ] &
 check "drop removes the env file and the venv link, not the shared venv" \
   '[ ! -e "$A/.env.dev-db" ] && [ ! -L "$A/api/.venv" ] && [ -d "$(readlink "$B/api/.venv")" ]'
 rm -rf "$B"
+(cd "$W" && bash scripts/dev-env.sh drop "$B/") > "$TMP/out.log" 2>&1
+check "drop <path> works after the worktree is gone, trailing slash or not" '[ ! -f "$STATE/dbs/$db_b" ] && grep -q "dropped" "$TMP/out.log"'
 (cd "$W" && bash scripts/dev-env.sh drop "$B") > "$TMP/out.log" 2>&1
-check "drop <path> works after the worktree is gone" '[ ! -f "$STATE/dbs/$db_b" ]'
+check "a path with no database says so, not \"dropped\"" 'grep -q "no database for" "$TMP/out.log" && ! grep -q "dropped" "$TMP/out.log"'
+if (cd "$W" && bash scripts/dev-env.sh drop "wt/relative") > "$TMP/out.log" 2>&1; then fail "a relative path is refused"; else
+  pass "a relative path is refused"
+fi
 
 # --- no personal paths ---------------------------------------------------------
 check "the script names no user's home directory" '! grep -nE "/(Users|home)/" "$SCRIPT"'
 out="$(unset NILU_DEV_HOME XDG_CACHE_HOME; HOME="$TMP/home" bash "$SCRIPT" home)"
 check "the default location is generic (\$HOME/.cache/nilu-dev)" '[ "$out" = "$TMP/home/.cache/nilu-dev" ]'
+
+# --- a failed password write -----------------------------------------------------
+P="$TMP/wt/pw-fails"; worktree "$P"
+export NILU_DEV_HOME="$TMP/shared-pw"
+if FAKE_TR_FAIL=1 run "$P" setup; then fail "a failed password write fails setup"; else
+  pass "a failed password write fails setup"
+fi
+check "and leaves no password file for later runs to trust" '[ ! -e "$NILU_DEV_HOME/postgres.env" ] && ! ls "$NILU_DEV_HOME"/postgres.env.* 2>/dev/null'
+run "$P" setup
+check "the next run writes a full one" 'pw="$(sed -n "s/^POSTGRES_PASSWORD=//p" "$NILU_DEV_HOME/postgres.env")"; [ ${#pw} -ge 24 ]'
 
 if [ "$failures" -gt 0 ]; then echo "$failures failed" >&2; exit 1; fi
 echo "all passed"

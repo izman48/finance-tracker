@@ -38,7 +38,10 @@ sha() { if command -v sha256sum >/dev/null; then sha256sum; else shasum -a 256; 
 # --- venv ----------------------------------------------------------------------
 
 # The venv for this checkout's requirements: built under a lock (several
-# agents may set up at once) and marked ready only when complete.
+# agents may set up at once) and marked ready only when complete. It runs in
+# $(...), where `set -e` is off (bash 3.2 has no inherit_errexit) and an
+# EXIT trap doesn't fire, so every step that can fail releases the lock,
+# removes the partial venv and exits explicitly.
 shared_venv() {
   local key dir lock waited=0
   key="$( { echo "python3.12"; cat "$ROOT/api/requirements.txt"; } | sha 16)"
@@ -50,17 +53,22 @@ shared_venv() {
     [ "$waited" -ge 600 ] && die "waited 10 min for $lock; remove it if no setup is running"
     sleep 1; waited=$((waited + 1))
   done
-  trap 'rmdir "$lock" 2>/dev/null || true' EXIT
   if [ ! -f "$dir/.ready" ]; then
     echo "dev-env: building the shared venv (requirements changed or first run)" >&2
     rm -rf "$dir"
-    uv venv --quiet --python 3.12 "$dir" >&2
-    uv pip install --quiet --python "$dir/bin/python" -r "$ROOT/api/requirements.txt" >&2
-    touch "$dir/.ready"
+    uv venv --quiet --python 3.12 "$dir" >&2 || abandon_build "$dir" "$lock"
+    uv pip install --quiet --python "$dir/bin/python" -r "$ROOT/api/requirements.txt" >&2 \
+      || abandon_build "$dir" "$lock"
+    touch "$dir/.ready" || abandon_build "$dir" "$lock"
   fi
   rmdir "$lock"
-  trap - EXIT
   echo "$dir"
+}
+
+abandon_build() {
+  rm -rf "$1"
+  rmdir "$2"
+  exit 1
 }
 
 link_venv() {
@@ -73,11 +81,18 @@ link_venv() {
 
 # --- Postgres --------------------------------------------------------------------
 
-# A local-only password, generated once and kept outside the repo.
+# A local-only password, generated once and kept outside the repo. Written
+# to a temporary file and moved into place only when complete, so a failed
+# write leaves nothing a later run would trust. Runs in $(...): explicit exits.
 pg_env() {
   if [ ! -f "$PG_ENV" ]; then
-    (umask 077 && printf 'POSTGRES_USER=%s\nPOSTGRES_PASSWORD=%s\n' \
-      "$PG_USER" "$(LC_ALL=C tr -dc 'a-zA-Z0-9' < /dev/urandom | head -c 32)" > "$PG_ENV")
+    local password tmp="$PG_ENV.$$"
+    password="$(LC_ALL=C tr -dc 'a-zA-Z0-9' < /dev/urandom | head -c 32)"
+    if [ "${#password}" -ne 32 ]; then rm -f "$tmp"; exit 1; fi
+    if ! (umask 077 && printf 'POSTGRES_USER=%s\nPOSTGRES_PASSWORD=%s\n' "$PG_USER" "$password" > "$tmp" \
+          && mv "$tmp" "$PG_ENV"); then
+      rm -f "$tmp"; exit 1
+    fi
   fi
   sed -n 's/^POSTGRES_PASSWORD=//p' "$PG_ENV"
 }
@@ -87,9 +102,14 @@ start_postgres() {
   running="$(docker inspect -f '{{.State.Running}}' "$PG_CONTAINER" 2>/dev/null)" || running=missing
   case "$running" in
     missing)
+      # Two first-time setups may race to create it: if the name is taken
+      # by the time ours fails, the other one won, and the checks below
+      # still apply to it.
       docker run -d --name "$PG_CONTAINER" --restart unless-stopped --env-file "$PG_ENV" \
         -p "127.0.0.1:$PG_PORT:5432" -v nilu-dev-postgres-data:/var/lib/postgresql/data \
-        "$PG_IMAGE" >/dev/null ;;
+        "$PG_IMAGE" >/dev/null \
+        || docker inspect "$PG_CONTAINER" >/dev/null 2>&1 \
+        || die "could not start $PG_CONTAINER" ;;
     false) docker start "$PG_CONTAINER" >/dev/null ;;
   esac
   # Never reuse a container someone published beyond loopback.
@@ -125,9 +145,9 @@ create_db() {
 setup() {
   local started=$SECONDS venv password db
   mkdir -p "$SHARED"
-  venv="$(shared_venv)"
+  venv="$(shared_venv)" || die "building the shared venv failed; nothing was linked"
   link_venv "$venv"
-  password="$(pg_env)"
+  password="$(pg_env)" || die "could not write $PG_ENV"
   start_postgres
   db="$(db_name "$ROOT")"
   create_db "$db"
@@ -137,15 +157,23 @@ setup() {
   echo "  database: $db on 127.0.0.1:$PG_PORT (DATABASE_URL in .env.dev-db)"
 }
 
+# The database is named from the worktree's absolute path as setup saw it,
+# so <dir> must be that path (a trailing slash is ignored).
 drop() {
   local path="${1:-$ROOT}" db
+  while [ "${path%/}" != "$path" ] && [ "$path" != / ]; do path="${path%/}"; done
+  case "$path" in /*) ;; *) die "drop needs the worktree's absolute path" ;; esac
   db="$(db_name "$path")"
-  docker exec "$PG_CONTAINER" dropdb -U "$PG_USER" --if-exists "$db"
+  if [ "$(docker exec "$PG_CONTAINER" psql -U "$PG_USER" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$db'")" = 1 ]; then
+    docker exec "$PG_CONTAINER" dropdb -U "$PG_USER" "$db"
+    echo "dev-env: dropped $db"
+  else
+    echo "dev-env: no database for $path ($db)"
+  fi
   if [ "$path" = "$ROOT" ]; then
     rm -f "$ROOT/.env.dev-db"
-    [ -L "$ROOT/api/.venv" ] && rm "$ROOT/api/.venv"
+    if [ -L "$ROOT/api/.venv" ]; then rm "$ROOT/api/.venv"; fi
   fi
-  echo "dev-env: dropped $db"
 }
 
 case "${1:-setup}" in

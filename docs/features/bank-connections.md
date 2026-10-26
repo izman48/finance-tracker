@@ -39,7 +39,7 @@ refused).
 |---|---|
 | 1 Tables | `bank_connections`. |
 | 2 Purge | Yes (no TrueLayer revoke: tokens can't be decrypted). |
-| 3 Deletion | Explicitly deleted by delete-account; no TrueLayer revoke (gap). |
+| 3 Deletion | Explicitly deleted by delete-account, after each connection is ended at TrueLayer (`revoke_connection`, best-effort, capped at `REVOKE_TOTAL_SECONDS`; a connection whose tokens can't be decrypted is skipped, and deletion still completes). See [data-lifecycle.md](data-lifecycle.md). Not yet verified against the TrueLayer sandbox ([known-gaps](../known-gaps.md)). |
 | 4 Demo mode | `/banking/status` served. `/banking/connect` and reconnect are `UNSAMPLED_BY_DESIGN`. |
 | 5 Ownership | Connection ids are checked inline by `user_id`. |
 | 6 Scopes | Web only, and must stay so. |

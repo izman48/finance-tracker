@@ -200,3 +200,61 @@ def test_disconnecting_a_bank_deletes_its_connection_at_truelayer_too(client, db
     assert revokes.deleted == [SECRET_ACCESS]
     assert client.post(f"{API}/banking/disconnect", headers=_bearer(world[VICTIM])).status_code == 200
     assert sorted(revokes.deleted) == sorted([SECRET_ACCESS, "access"])
+
+
+# --- T-16-5: an unreadable token, and the order of revoke and delete ---------------------
+
+ALIEN_ACCESS, ALIEN_REFRESH = "fake-access-alien", "fake-refresh-alien"
+
+
+def _add_unreadable_connection(db_session, world):
+    """A victim's connection whose tokens are under another key, so the
+    victim's session can't decrypt them (as with a lost or rotated key)."""
+    victim = _user(db_session, VICTIM)
+    ctx = user_crypto.current_dek.set(_dek(world[BYSTANDER]))
+    try:
+        db_session.add(BankConnection(user_id=victim.id, provider_id="ob-alien", provider_name="Alien",
+                                      access_token=ALIEN_ACCESS, refresh_token=ALIEN_REFRESH))
+        db_session.commit()
+    finally:
+        user_crypto.current_dek.reset(ctx)
+    db_session.expunge_all()  # no decrypted copy left in the identity map
+
+
+def test_a_token_that_cannot_be_decrypted_is_skipped_and_the_account_still_deleted(
+        client, db_session, world, monkeypatch, caplog, fk_on):
+    _add_unreadable_connection(db_session, world)
+    revokes = Revokes()
+    _mock_truelayer(monkeypatch, revokes)
+    caplog.set_level(logging.DEBUG)
+    victim = _user(db_session, VICTIM).id
+    assert _owned(db_session, victim)["bank_connections"] == 3
+
+    res = _delete(client, world[VICTIM])
+    assert res.status_code == 200, res.text
+    assert res.json() == {"message": "Account and all associated data deleted."}
+    assert sorted(revokes.deleted) == sorted(["access", SECRET_ACCESS])  # the unreadable one is skipped
+    assert "could not read a bank connection's tokens" in caplog.text.lower()
+    for secret in (ALIEN_ACCESS, ALIEN_REFRESH, SECRET_ACCESS, SECRET_REFRESH):
+        assert secret not in caplog.text
+    db_session.expire_all()
+    assert {t: n for t, n in _owned(db_session, victim).items() if n} == {}
+
+
+def test_every_revoke_happens_before_the_connections_are_deleted(client, db_session, world, monkeypatch, fk_on):
+    victim = _user(db_session, VICTIM).id
+    rows_at_each_revoke = []
+
+    class Watching(Revokes):
+        async def handler(self, request: httpx.Request) -> httpx.Response:
+            rows_at_each_revoke.append(db_session.execute(
+                text("SELECT count(*) FROM bank_connections WHERE user_id = :u"), {"u": victim.hex}).scalar())
+            return await super().handler(request)
+    revokes = Watching()
+    _mock_truelayer(monkeypatch, revokes)
+
+    assert _delete(client, world[VICTIM]).status_code == 200
+    assert len(revokes.deleted) == 2
+    assert rows_at_each_revoke == [2, 2]
+    db_session.expire_all()
+    assert _owned(db_session, victim)["bank_connections"] == 0

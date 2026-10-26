@@ -495,3 +495,154 @@ def test_a_category_undo_on_a_rule_that_cannot_run_still_undoes(w):
     r = w.undo(audit_id)
     assert r.status_code == 200, r.text
     assert w.listed(rule_id)["category"] == "Groceries"
+
+
+# --- transactions synced after the edit (T-16-2) --------------------------------------------
+# The undo record holds only what the edit's backfill changed. A transaction
+# synced later that the edited rule categorised is found at undo time by
+# re-matching (sec): inserted after the audit row, not in its record, not
+# locked, still in the rule's category and won by this rule. It is cleared,
+# then the restored rules run; no match leaves it Uncategorised (None).
+
+def _sync(w, rows, user=None):
+    """New transactions arrive as bank sync stores them: inserted now, typed
+    by the provider, then run through the user's rules."""
+    from app.services import categorization
+    from app.services.categorization import category_from_provider
+    world = user or w
+
+    def make():
+        acc = world.db.query(Account).filter(Account.user_id == world.user.id).first()
+        new = []
+        for i, (desc, provider_type) in enumerate(rows):
+            tx = Transaction(
+                account_id=acc.id, external_id=f"sync-{i}-{uuid.uuid4().hex}", transaction_type="debit",
+                amount=Decimal("9.99"), currency="GBP", description=desc, merchant_name=desc,
+                transaction_date=datetime(2026, 7, 20, tzinfo=timezone.utc),
+                category=category_from_provider(provider_type, "debit"),
+                created_at=datetime.now(timezone.utc),
+            )
+            world.db.add(tx)
+            new.append(tx)
+        world.db.flush()
+        categorization.apply_rules(world.db, world.user.id, new)
+        world.db.commit()
+    world.as_user(make)
+
+
+def _broaden(w):
+    """Claude widens the TESCO rule to also catch AMAZON, as Shopping."""
+    rule_id = w.rule(pattern="TESCO", category="Groceries")
+    applied = w.update(rule_id, pattern="TESCO|AMAZON", match_type="regex", category="Shopping", dry_run=False)
+    assert applied.status_code == 200, applied.text
+    return rule_id, applied.json()["audit_id"]
+
+
+def test_undo_restores_transactions_synced_after_the_edit(w):
+    _rule_id, audit_id = _broaden(w)
+    _sync(w, [("AMAZON MKTPLACE", "PURCHASE"), ("TESCO EXPRESS", "PURCHASE")])
+    assert w.categories()["AMAZON MKTPLACE"] == "Shopping"
+    assert w.undo(audit_id).status_code == 200
+    after = w.categories()
+    assert after["AMAZON MKTPLACE"] is None  # no rule matches after undo
+    assert after["TESCO EXPRESS"] == "Groceries"  # the restored rule does
+
+
+def test_a_transfer_synced_after_the_edit_is_uncategorised_after_undo(w):
+    """sec: the provider type isn't stored, so "Transfers" can't be recomputed;
+    None overstates spending (fail safe) and is never the edited category."""
+    _rule_id, audit_id = _broaden(w)
+    _sync(w, [("AMAZON PAY TRANSFER", "TRANSFER")])
+    assert w.categories()["AMAZON PAY TRANSFER"] == "Shopping"
+    assert w.undo(audit_id).status_code == 200
+    assert w.categories()["AMAZON PAY TRANSFER"] is None
+
+
+def test_a_hand_set_transaction_synced_after_the_edit_is_left_alone(w):
+    _rule_id, audit_id = _broaden(w)
+    _sync(w, [("AMAZON MKTPLACE", "PURCHASE")])
+
+    def lock():
+        # Same category, now the user's. Set directly: the web PATCH also
+        # learns an exact rule, which would exclude it by precedence anyway.
+        tx = next(t for t in w.db.query(Transaction).join(Account).filter(Account.user_id == w.user.id)
+                  if t.description == "AMAZON MKTPLACE")
+        tx.category_locked = True
+        w.db.commit()
+    w.as_user(lock)
+    assert w.undo(audit_id).status_code == 200
+    assert w.categories()["AMAZON MKTPLACE"] == "Shopping"
+
+
+def test_a_transaction_recategorised_since_it_synced_is_left_alone(w):
+    _rule_id, audit_id = _broaden(w)
+    _sync(w, [("AMAZON MKTPLACE", "PURCHASE")])
+
+    def change_since():
+        tx = next(t for t in w.db.query(Transaction).join(Account).filter(Account.user_id == w.user.id)
+                  if t.description == "AMAZON MKTPLACE")
+        tx.category = "Gifts"
+        w.db.commit()
+    w.as_user(change_since)
+    assert w.undo(audit_id).status_code == 200
+    assert w.categories()["AMAZON MKTPLACE"] == "Gifts"
+
+
+def test_a_transaction_another_rule_now_wins_is_left_alone(w):
+    """A rule added after the sync claims it with another category."""
+    _rule_id, audit_id = _broaden(w)
+    _sync(w, [("AMAZON MKTPLACE", "PURCHASE")])
+    w.rule(pattern="AMAZON MKTPLACE", match_type="exact", category="Online")
+    assert w.categories()["AMAZON MKTPLACE"] == "Online"
+    assert w.undo(audit_id).status_code == 200
+    assert w.categories()["AMAZON MKTPLACE"] == "Online"
+
+
+def test_a_transaction_from_before_the_edit_is_not_re_matched(w):
+    """Already in the edited category before the edit, so the backfill didn't
+    record it; it wasn't synced after either, so undo leaves it."""
+    w.transactions([("AMAZON MKTPLACE", 20)])
+
+    def preset():
+        tx = next(t for t in w.db.query(Transaction).join(Account).filter(Account.user_id == w.user.id)
+                  if t.description == "AMAZON MKTPLACE")
+        tx.category = "Shopping"
+        w.db.commit()
+    w.as_user(preset)
+    _rule_id, audit_id = _broaden(w)
+    assert w.undo(audit_id).status_code == 200
+    assert w.categories()["AMAZON MKTPLACE"] == "Shopping"
+
+
+def test_another_users_transactions_synced_after_the_edit_are_untouched(client, db_session, w):
+    """sec: only the caller's transactions are loaded."""
+    other = World(client, db_session, email="claude-rules-other@example.com")
+    other.transactions([("TESCO PFS 1", 5)])
+    other.rule(pattern="TESCO|AMAZON", match_type="regex", category="Shopping")
+    _rule_id, audit_id = _broaden(w)
+    _sync(w, [("AMAZON MKTPLACE", "PURCHASE")], user=other)
+    assert other.categories()["AMAZON MKTPLACE"] == "Shopping"
+    assert w.undo(audit_id).status_code == 200
+    assert other.categories()["AMAZON MKTPLACE"] == "Shopping"
+
+
+def test_a_failed_undo_restores_nothing(w, monkeypatch):
+    """Undo is one transaction: a failure after the clearing leaves the rule,
+    every category and the audit row as they were."""
+    from app.services import categorization
+    rule_id, audit_id = _broaden(w)
+    _sync(w, [("AMAZON MKTPLACE", "PURCHASE")])
+    before = w.categories()
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("re-run failed")
+    monkeypatch.setattr(categorization, "apply_rules", boom)
+    with pytest.raises(RuntimeError):
+        w.undo(audit_id)
+    monkeypatch.undo()
+    w.db.rollback()
+    assert w.categories() == before
+    assert w.listed(rule_id)["pattern"] == "TESCO|AMAZON"
+    assert w.as_user(lambda: w.db.get(AuditEntry, uuid.UUID(audit_id)).undone_at) is None
+    assert w.undo(audit_id).status_code == 200
+    assert w.categories()["AMAZON MKTPLACE"] is None

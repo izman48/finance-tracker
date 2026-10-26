@@ -108,8 +108,25 @@ def test_without_the_edit_scope_nothing_is_called():
     (400, {"detail": "Invalid or unsupported regex: nilu matches with a linear-time engine, so back-references, "
                      "look-arounds and conditional groups aren't allowed"}, "back-references"),
     (409, {"detail": "This idempotency_key was already used for a different request."}, "already used"),
+    (409, {"detail": "This change would recategorise more than 5,000 transactions. Make it on the Rules page."},
+     "Make it on the Rules page"),
 ])
 def test_api_errors_become_short_messages(status, body, expected):
     api = FakeApi(status=status, body=body)
     result = _call(api, {"rule_id": RULE_ID, "idempotency_key": KEY, "category": "Transport"})
     assert result["isError"] is True and expected in _text(result)
+
+
+def test_the_tool_text_names_the_cap_and_the_rules_page():
+    """T-16-3: Claude can tell the user before asking for confirmation."""
+    import anyio
+
+    from config import Settings as S
+
+    async def description():
+        settings = S("stdio", "http://api.test/api/v1", email="e@example.com", password="pw")
+        server = create_server(settings, api_transport=httpx.MockTransport(lambda r: httpx.Response(500)))
+        return next(t.description for t in await server.list_tools() if t.name == "update_rule")
+    text = anyio.run(description)
+    assert "5,000" in text and "over_cap" in text
+    assert "Rules page" in text and "/rules" in text

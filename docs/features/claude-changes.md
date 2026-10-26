@@ -35,7 +35,7 @@ Claude's changes to commitments and removals of planned expenses are held
 
 **Tables**: `audit_entries` (encrypted `target_label`, `changes`,
 `side_effects`: other rows a write changed, for undo; today a rule edit's
-recategorised transactions; `undone_at`, `kept_at`, `user_set_fields`), `write_idempotency` (24 h,
+recategorised transactions, at most 5,000 per edit (T-16-3); `undone_at`, `kept_at`, `user_set_fields`), `write_idempotency` (24 h,
 keyed request hash).
 
 **Services**: `services/claude_keep.py` (keep states, held-back totals,

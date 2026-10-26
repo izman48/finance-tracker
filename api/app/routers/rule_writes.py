@@ -27,6 +27,13 @@ from app.services.planning_writes import TARGETS, WriteRequest, replay_if_applie
 router = APIRouter(prefix="/planning/rules", tags=["planning"])
 
 _EDITABLE = TARGETS["rule"].names
+# The most transactions one of Claude's edits may recategorise (T-16-3, sec):
+# each is a record in the encrypted undo record, so this bounds its size
+# (about 1.3 MB of JSON at most). Never raise it without sec. The web Rules
+# page keeps no undo record and is not capped.
+RECATEGORISE_CAP = 5000
+# Fixed text: never echoes the pattern or category.
+OVER_CAP = "This change would recategorise more than 5,000 transactions. Make it on the Rules page."
 
 
 @router.post("/{rule_id}/update")
@@ -44,7 +51,12 @@ def update_rule(rule_id: uuid.UUID, body: ClaudeRuleUpdateRequest, caller: Rules
         return rule
 
     def backfill(db: Session) -> list[dict]:
-        return categorization.recategorize_all(db, caller.user.id)
+        changed = categorization.recategorize_all(db, caller.user.id)
+        if len(changed) > RECATEGORISE_CAP and not body.dry_run:
+            # Raised inside run_write's transaction, so nothing is kept: not
+            # the rule, the categories, the audit row or the idempotency key.
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=OVER_CAP)
+        return changed
 
     req = WriteRequest(tool="update_rule", target_kind="rule", target_id=rule_id, apply=apply, side_effect=backfill)
     replay = replay_if_applied(db, caller, req, body)
@@ -68,7 +80,8 @@ def update_rule(rule_id: uuid.UUID, body: ClaudeRuleUpdateRequest, caller: Rules
 
 def _with_recategorized(result: dict) -> dict:
     """The framework's `side_effects` count, by its name here: how many
-    transactions the edit recategorises (a dry run's real count too)."""
+    transactions the edit recategorises (a dry run's real count too), and
+    whether that is over the cap, so a preview can say apply will be refused."""
     result = dict(result)
     count = result.pop("side_effects", 0)
-    return {**result, "transactions_recategorized": count}
+    return {**result, "transactions_recategorized": count, "over_cap": count > RECATEGORISE_CAP}

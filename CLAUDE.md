@@ -90,6 +90,22 @@ Test ids must be the same in every worker: no `uuid4()` or set iteration in
 `parametrize` arguments. conftest lowers bcrypt/Argon2id cost for speed;
 `tests/unit/test_kdf_cost.py` pins the production parameters.
 
+**Warm local setup** (for many checkouts or git worktrees; local only, CI
+and production never run it):
+```bash
+scripts/dev-env.sh                  # ~1 s once warm: links api/.venv, starts Postgres, writes .env.dev-db
+cd api && .venv/bin/pytest tests -n auto        # the suite, no image build
+set -a; . ../.env.dev-db; set +a                # DATABASE_URL for alembic / uvicorn
+scripts/dev-env.sh drop             # before removing the worktree (or: drop <its path>)
+```
+One Python 3.12 venv per hash of `api/requirements.txt` is shared by every
+checkout (rebuilt once when the file changes), and one Postgres container
+(`nilu-dev-postgres`, `127.0.0.1:55436` only, generated local password) gives
+each checkout its own database for migration checks (`alembic upgrade head`,
+`downgrade -1`, `upgrade head`) and the dev API. The test suite itself stays
+on SQLite. Shared state lives in `$NILU_DEV_HOME` (default
+`~/.cache/nilu-dev`). `scripts/test-dev-env.sh` tests the script with stubs.
+
 **MCP server tests** (own image, no db):
 ```bash
 docker compose --profile test run --rm --build mcp-test

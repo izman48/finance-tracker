@@ -19,4 +19,7 @@ describe('demo reads that used to be gaps', () => {
     expect(p.rule_count).toBeGreaterThan(0)
     expect(p.already_owned).toBe(false)
   })
+  it("Claude's changes: none in demo, so the Changes page shows its empty state (T-16-1)", () => {
+    expect(get('/audit')).toEqual({ items: [], next_cursor: null })
+  })
 })

@@ -51,6 +51,7 @@ export default function ChangeRow({ item, accountNames, action, notice, highligh
                       </>
                     )}
                     {line.after}
+                    {line.unchanged && <span className="text-slate-400"> (unchanged)</span>}
                   </dd>
                 </div>
               ))}

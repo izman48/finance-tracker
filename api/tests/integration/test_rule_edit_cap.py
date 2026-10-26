@@ -100,4 +100,5 @@ def test_a_full_record_is_under_2mb_once_encrypted(w):
     w.as_user(store)
     stored = w.db.execute(text("SELECT side_effects FROM audit_entries")).scalar_one()
     assert len(json.dumps(record)) > 1_000_000  # it is the full-size record
+    assert '"before"' not in stored and "b" * 100 not in stored  # ciphertext, not the JSON
     assert len(stored) < 2 * 1024 * 1024

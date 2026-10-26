@@ -33,7 +33,7 @@ _EDITABLE = TARGETS["rule"].names
 # page keeps no undo record and is not capped.
 RECATEGORISE_CAP = 5000
 # Fixed text: never echoes the pattern or category.
-OVER_CAP = "This change would recategorise more than 5,000 transactions. Make it on the Rules page."
+OVER_CAP = f"This change would recategorise more than {RECATEGORISE_CAP:,} transactions. Make it on the Rules page."
 
 
 @router.post("/{rule_id}/update")

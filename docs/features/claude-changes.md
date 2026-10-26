@@ -20,8 +20,9 @@ Claude's changes to commitments and removals of planned expenses are held
   savepoint; apply claims the idempotency key, writes, records an audit row), and a retry of an applied write with the same key and request replays the stored result, even where a route checks its target first (`replay_if_applied`, T-12-9c; a different request under the key is a 409),
   `run_batch`, `undo_write`, `claude_markers`, `key_in_use`.
 - Routers using it: `routers/planning.py`, `routers/commitment_writes.py`,
-  `routers/budget_writes.py`, `routers/rule_writes.py` (undoing a rule edit
-  re-runs the rules over the user's history).
+  `routers/budget_writes.py`, `routers/rule_writes.py` (a `WriteRequest.side_effect`
+  backfills history inside the write's transaction or dry-run savepoint; undo
+  restores the categories it changed, then re-runs the rules).
 
 **Audit API** (`api/app/routers/audit.py`, web session only, must stay so):
 
@@ -29,8 +30,9 @@ Claude's changes to commitments and removals of planned expenses are held
 - `POST /api/v1/audit/{audit_id}/undo`
 - `POST /api/v1/audit/{audit_id}/keep` (409 when there is nothing to keep)
 
-**Tables**: `audit_entries` (encrypted `target_label`, `changes`;
-`undone_at`, `kept_at`, `user_set_fields`), `write_idempotency` (24 h,
+**Tables**: `audit_entries` (encrypted `target_label`, `changes`,
+`side_effects`: other rows a write changed, for undo; today a rule edit's
+recategorised transactions; `undone_at`, `kept_at`, `user_set_fields`), `write_idempotency` (24 h,
 keyed request hash).
 
 **Services**: `services/claude_keep.py` (keep states, held-back totals,

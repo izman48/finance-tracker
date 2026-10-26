@@ -48,6 +48,7 @@ refresh never widens scopes.
 | `rule_impact` | read | `GET /api/v1/rules/impact` |
 | `preview_rule` | read | `POST /api/v1/rules/preview` |
 | `create_rule_pack` | write (rules) | `POST /api/v1/rules/packs/bulk` |
+| `update_rule` | write (rules.edit) | `POST /api/v1/planning/rules/{rule_id}/update` |
 | `list_planned_events` | read | `GET /api/v1/planning/planned-events` |
 | `add_planned_event` | write (planning) | `POST /api/v1/planning/planned-events` |
 | `remove_planned_event` | write (planning) | `POST /api/v1/planning/planned-events/{item_id}/remove` |

@@ -284,7 +284,7 @@ def create_server(settings: Settings, api_transport: httpx.AsyncBaseTransport | 
     ) -> dict:
         """Edit one of the user's existing categorisation rules (an `id` from the rules tool), or switch it off with enabled=false. Only the fields you pass change. match_type is exact|contains|regex, match_field is any|merchant|description, counts_as is spending|transfer|card_payment; clear_counts_as=true removes the rule's counts_as. A new pattern is checked with the match type it will run under. Preview a new pattern with preview_rule first.
 
-        After an applied edit, every rule is re-run over the user's history and `transactions_recategorized` says how many changed. A rule never clears a category it set before: switching a rule off leaves past categories as they are until another rule matches them. Categories the user set by hand are never changed.
+        An edit re-runs every rule over the user's history; `transactions_recategorized` says how many transactions it changes, in the preview as well as when applied. Tell the user that number before they confirm. Switching a rule off leaves the categories it set until another rule matches them. Categories the user set by hand are never changed. Undo in the app puts the rule and the categories this edit changed back.
 
         With dry_run=true (the default) nothing is saved: you get the change as a preview. Show that preview to the user and get their explicit confirmation before calling again with dry_run=false. `idempotency_key` is 8-64 characters of letters, digits, - or _, new for each change you intend. Every saved change is listed in the app under "Changes made by Claude", where the user can undo it.
 
@@ -509,7 +509,7 @@ async def _write(api: ApiClient, path: str, payload: dict, not_found: str = _PLA
 
 def _write_error(response: httpx.Response, not_found: str = _PLANNED_NOT_FOUND) -> str:
     """A short message for a failed write. Only our API's own fixed messages
-    (404/409) and field errors are passed on; never a URL or a traceback."""
+    (400/404/409) and field errors are passed on; never a URL or a traceback."""
     code = response.status_code
     if code == 404:
         return not_found

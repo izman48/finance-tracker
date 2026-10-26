@@ -36,7 +36,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.oauth_tokens import Caller
-from app.models import AuditEntry, Budget, CommitmentRule, PlannedItem, WriteIdempotency
+from app.models import AuditEntry, Budget, CategoryRule, CommitmentRule, PlannedItem, WriteIdempotency
 from app.models.audit import AUDIT_KIND_UNDO, AUDIT_KIND_WRITE
 from app.schemas import PlanningWriteRequest
 from app.services.linked_commitments import refuse_linked_edit
@@ -82,6 +82,11 @@ TARGETS: dict[str, TargetSpec] = {
     }),
     # Claude's budget writes (T-09-5): the limit, pause and remove only (sec).
     "budget": TargetSpec(Budget, "category", {"limit_pounds": Decimal, "paused": bool, "active": bool}),
+    # Claude's rule edits (finance:rules.edit): the matching fields only, never
+    # the owner, pack or source. Switching off is `enabled`, so undo works.
+    "rule": TargetSpec(CategoryRule, "pattern", {
+        "pattern": str, "match_type": str, "match_field": str, "category": str, "counts_as": str, "enabled": bool,
+    }),
 }
 
 
@@ -419,6 +424,11 @@ def undo_write(db: Session, user, audit_id: uuid.UUID) -> AuditEntry:
         if not entry.created_target:
             ensure_baseline(db, target)
         record_change(db, target)
+    if entry.target_kind == "rule":
+        # The rule is back as it was; so is the history it categorises.
+        from app.services.categorization import apply_rules_to_all
+        db.flush()
+        apply_rules_to_all(db, user.id)
     db.add(AuditEntry(
         user_id=user.id, kind=AUDIT_KIND_UNDO, tool=entry.tool, target_kind=entry.target_kind,
         target_id=entry.target_id, target_label=getattr(target, spec.label_field),

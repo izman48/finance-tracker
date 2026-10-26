@@ -3,15 +3,23 @@ export const SCOPE_RULES_WRITE = 'finance:rules.write'
 export const SCOPE_PLANNING_WRITE = 'finance:planning.write'
 export const SCOPE_SYNC = 'finance:sync'
 export const SCOPE_BUDGETS_WRITE = 'finance:budgets.write'
+export const SCOPE_RULES_EDIT = 'finance:rules.edit'
 
 /** The scopes to grant for the boxes ticked on the consent screen. Read is always granted. */
-export function consentScopes(ticked: { rules: boolean; planning: boolean; sync: boolean; budgets: boolean }): string[] {
+export function consentScopes(ticked: {
+  rules: boolean
+  planning: boolean
+  sync: boolean
+  budgets: boolean
+  rulesEdit: boolean
+}): string[] {
   return [
     SCOPE_READ,
     ...(ticked.rules ? [SCOPE_RULES_WRITE] : []),
     ...(ticked.planning ? [SCOPE_PLANNING_WRITE] : []),
     ...(ticked.sync ? [SCOPE_SYNC] : []),
     ...(ticked.budgets ? [SCOPE_BUDGETS_WRITE] : []),
+    ...(ticked.rulesEdit ? [SCOPE_RULES_EDIT] : []),
   ]
 }
 

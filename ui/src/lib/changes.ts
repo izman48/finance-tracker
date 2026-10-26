@@ -27,7 +27,7 @@ export interface AuditItem {
   batch_id: string | null
   client_name: string | null
   connection_created_at: string | null
-  target_kind: 'planned_event' | 'commitment' | string
+  target_kind: 'planned_event' | 'commitment' | 'budget' | 'rule' | string
   target_id: string
   target_label: string
   changes: AuditChange[]
@@ -65,6 +65,9 @@ const isIncome = (item: AuditItem) => changeOf(item, 'direction')?.after === 'in
 const isBudgetCreate = (item: AuditItem) =>
   item.tool === 'set_budgets' && changeOf(item, 'limit_pounds')?.before === null
 
+/** update_rule switched the rule off (enabled true -> false), rather than editing it. */
+const isSwitchOff = (item: AuditItem) => changeOf(item, 'enabled')?.after === false
+
 export function changeTitle(item: AuditItem): string {
   const name = quoted(item.target_label)
   switch (item.tool) {
@@ -84,6 +87,8 @@ export function changeTitle(item: AuditItem): string {
       return `Resumed the budget ${name}`
     case 'remove_budget':
       return `Removed the budget ${name}`
+    case 'update_rule':
+      return isSwitchOff(item) ? `Switched off the rule ${name}` : `Changed the rule ${name}`
     default:
       return `Changed ${name}`
   }
@@ -154,11 +159,40 @@ function budgetLines(item: AuditItem): ChangeLine[] {
   return lines
 }
 
+const RULE_FIELD_LABEL: Record<string, string> = {
+  pattern: 'Matches',
+  match_type: 'How it matches',
+  match_field: 'Looks at',
+  category: 'Category',
+  counts_as: 'Counts as',
+  enabled: 'Status',
+}
+
+const RULE_VALUE_LABEL: Record<string, Record<string, string>> = {
+  match_type: { exact: 'Exact text', contains: 'Contains', regex: 'Pattern (regex)' },
+  match_field: { any: 'Merchant or description', merchant: 'Merchant', description: 'Description' },
+  counts_as: { spending: 'Spending', transfer: 'Transfer', card_payment: 'Card repayment' },
+}
+
+function ruleValue(field: string, value: AuditValue): string {
+  if (field === 'enabled') return value === false ? 'Off' : 'On'
+  if (field === 'counts_as' && value === null) return 'Automatic'
+  return RULE_VALUE_LABEL[field]?.[String(value)] ?? String(value)
+}
+
+/** A rule row's lines: each matching field that changed, in plain words. */
+function ruleLines(item: AuditItem): ChangeLine[] {
+  return item.changes
+    .filter((c) => c.field in RULE_FIELD_LABEL)
+    .map((c) => ({ label: RULE_FIELD_LABEL[c.field], before: ruleValue(c.field, c.before), after: ruleValue(c.field, c.after) }))
+}
+
 /** The lines under a row's title (1.4). Fields without a plain-words name are left out. */
 export function changeLines(item: AuditItem, accountNames: Record<string, string>): ChangeLine[] {
   const fmt = (field: string, v: AuditValue) => formatValue(field, v, accountNames, item.tool)
 
   if (item.target_kind === 'budget') return budgetLines(item)
+  if (item.target_kind === 'rule') return ruleLines(item)
 
   if (item.tool === 'add_planned_event' || item.tool === 'remove_planned_event') {
     // Adds and removes have no before/after: one value per line (a remove's
@@ -234,6 +268,8 @@ export function undoToast(item: AuditItem): string {
       return `Paused the budget ${name} again.`
     case 'remove_budget':
       return `Put the budget ${name} back.`
+    case 'update_rule':
+      return isSwitchOff(item) ? `Switched the rule ${name} back on.` : `Put the rule ${name} back to how it was.`
     default:
       return `Put ${name} back to how it was.`
   }

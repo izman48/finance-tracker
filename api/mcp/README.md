@@ -43,6 +43,7 @@ It runs two ways:
 | `rule_impact` | per rule, `matched` vs `effective` (+ amounts), `shadowed`/`dead` flags, and `gaps` — uncategorized merchants ranked by value |
 | `preview_rule(pattern, match_type, match_field)` | dry-run a candidate rule: how many transactions it would match, with samples |
 | `create_rule_pack(name, rules, description, apply)` | **writes** (`finance:rules.write`): create a new pack with all its rules, then backfill; additive only |
+| `update_rule(rule_id, idempotency_key, pattern, match_type, match_field, category, counts_as, clear_counts_as, enabled, dry_run=true)` | **writes** (`finance:rules.edit`): edit or switch off one existing rule; only the fields passed change; audited and undoable; re-runs the rules over history |
 | `update_commitment(commitment_id, idempotency_key, ..., dry_run=true)` | **writes** (`finance:planning.write`): fix a commitment's name, amount, cadence, next date or card; only allow-listed fields, never the direction; held until kept |
 | `dismiss_commitment(commitment_id, idempotency_key, dry_run=true)` | **writes** (`finance:planning.write`): dismiss a wrong or duplicate commitment; still counts until kept |
 | `list_budgets` | this pay cycle's budgets: limit, spent, pace, status, and the cycle summary |
@@ -140,7 +141,7 @@ after every deploy.
 | `MCP_HOST` / `MCP_PORT` | bind address, default `0.0.0.0:8001` |
 
 Scopes: `finance:read` for every tool; `create_rule_pack` also needs
-`finance:rules.write`; `add_planned_event`, `remove_planned_event`,
+`finance:rules.write`; `update_rule` needs `finance:rules.edit`; `add_planned_event`, `remove_planned_event`,
 `update_commitment` and `dismiss_commitment` need `finance:planning.write`;
 `set_budgets`, `pause_budget`, `resume_budget` and `remove_budget` need
 `finance:budgets.write`. Each write scope is a separate box on the consent

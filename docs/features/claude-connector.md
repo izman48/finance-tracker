@@ -22,8 +22,9 @@ also runs over stdio with the user's password.
 
 **Scopes** (`core/oauth_tokens.py`): `finance:read` (always),
 `finance:rules.write`, `finance:planning.write`, `finance:sync`,
-`finance:budgets.write`. The consent page ticks rules by default; planning,
-sync and budgets are opt-in. A refresh never widens scopes.
+`finance:budgets.write`, `finance:rules.edit`. The consent page ticks rules
+by default; planning, sync, budgets and editing existing rules are opt-in. A
+refresh never widens scopes.
 
 **Tables**: `oauth_clients`, `oauth_authorization_codes`, `oauth_grants`
 (DEK wrapped under the code, then under each refresh token).

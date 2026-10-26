@@ -17,6 +17,7 @@ SCOPE_RULES_WRITE = "finance:rules.write"
 SCOPE_PLANNING_WRITE = "finance:planning.write"
 SCOPE_SYNC = "finance:sync"
 SCOPE_BUDGETS_WRITE = "finance:budgets.write"
+SCOPE_RULES_EDIT = "finance:rules.edit"
 
 log = logging.getLogger(__name__)
 

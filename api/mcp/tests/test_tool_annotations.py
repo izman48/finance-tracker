@@ -98,7 +98,7 @@ READ_ONLY_TOOLS = {
 }
 WRITE_TOOLS = {
     "create_rule_pack", "add_planned_event", "remove_planned_event", "update_commitment", "dismiss_commitment",
-    "refresh_banks", "set_budgets", "pause_budget", "resume_budget", "remove_budget",
+    "refresh_banks", "set_budgets", "pause_budget", "resume_budget", "remove_budget", "update_rule",
 }
 
 

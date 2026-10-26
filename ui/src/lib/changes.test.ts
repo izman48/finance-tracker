@@ -226,3 +226,42 @@ describe('budget rows (T-09-10)', () => {
     expect(undoToast(removed)).toBe('Put the budget “Eating out” back.')
   })
 })
+
+// Rule edits by Claude (finance:rules.edit).
+const ruleItem = (changes: { field: string; before: unknown; after: unknown }[]) =>
+  item({ tool: 'update_rule', target_kind: 'rule', target_label: 'TESCO PFS', changes: changes as never })
+const recategorised = ruleItem([
+  { field: 'pattern', before: 'TESCO', after: 'TESCO PFS' },
+  { field: 'category', before: 'Groceries', after: 'Transport' },
+])
+const reworked = ruleItem([
+  { field: 'match_type', before: 'contains', after: 'exact' },
+  { field: 'match_field', before: 'any', after: 'description' },
+  { field: 'counts_as', before: null, after: 'transfer' },
+])
+const switchedOff = ruleItem([{ field: 'enabled', before: true, after: false }])
+
+describe('rule rows', () => {
+  it('titles: changed, switched off', () => {
+    expect(changeTitle(recategorised)).toBe('Changed the rule “TESCO PFS”')
+    expect(changeTitle(switchedOff)).toBe('Switched off the rule “TESCO PFS”')
+  })
+
+  it('lines: every matching field in plain words, before → after', () => {
+    expect(changeLines(recategorised, {})).toEqual([
+      { label: 'Matches', before: 'TESCO', after: 'TESCO PFS' },
+      { label: 'Category', before: 'Groceries', after: 'Transport' },
+    ])
+    expect(changeLines(reworked, {})).toEqual([
+      { label: 'How it matches', before: 'Contains', after: 'Exact text' },
+      { label: 'Looks at', before: 'Merchant or description', after: 'Description' },
+      { label: 'Counts as', before: 'Automatic', after: 'Transfer' },
+    ])
+    expect(changeLines(switchedOff, {})).toEqual([{ label: 'Status', before: 'On', after: 'Off' }])
+  })
+
+  it('undo toasts say what undoing did', () => {
+    expect(undoToast(recategorised)).toBe('Put the rule “TESCO PFS” back to how it was.')
+    expect(undoToast(switchedOff)).toBe('Switched the rule “TESCO PFS” back on.')
+  })
+})

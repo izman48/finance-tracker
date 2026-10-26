@@ -1247,6 +1247,22 @@ class PlanningWriteRequest(BaseModel):
     idempotency_key: str = Field(pattern=r"^[A-Za-z0-9_-]{8,64}$")
 
 
+class ClaudeRuleUpdateRequest(PlanningWriteRequest):
+    """POST /planning/rules/{id}/update: Claude's edit to an existing rule.
+
+    Only the rule's matching fields; a field left out is unchanged. counts_as
+    is clearable: an explicit null removes the reclassification. The owner,
+    pack and source can't be sent (extra="forbid" on the base).
+    """
+
+    pattern: str | None = Field(default=None, min_length=1, max_length=200)
+    match_type: str | None = Field(default=None, pattern="^(exact|contains|regex)$")
+    match_field: str | None = Field(default=None, pattern="^(any|merchant|description)$")
+    category: str | None = Field(default=None, min_length=1, max_length=100)
+    counts_as: str | None = Field(default=None, pattern="^(spending|transfer|card_payment)$")
+    enabled: StrictBool | None = None
+
+
 class AuditChange(BaseModel):
     field: str
     before: str | bool | int | None

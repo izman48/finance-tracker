@@ -19,7 +19,7 @@ from typing import Annotated
 
 from fastapi import Depends, Request
 
-from app.core.oauth_tokens import SCOPE_BUDGETS_WRITE, SCOPE_PLANNING_WRITE, Caller, scoped_caller
+from app.core.oauth_tokens import SCOPE_BUDGETS_WRITE, SCOPE_PLANNING_WRITE, SCOPE_RULES_EDIT, Caller, scoped_caller
 from app.core.rate_limit import user_rate_limiter
 
 WRITE_LIMIT = 30
@@ -71,5 +71,15 @@ def budgets_writer(
     return _limited(caller, dry_run)
 
 
+def rules_editor(
+    caller: Annotated[Caller, Depends(scoped_caller(SCOPE_RULES_EDIT))],
+    dry_run: Annotated[bool, Depends(_is_dry_run)],
+) -> Caller:
+    """Claude's edits to existing rules: their own scope (finance:rules.edit),
+    the same per-user write and dry-run limits as every other write."""
+    return _limited(caller, dry_run)
+
+
 PlanningWriter = Annotated[Caller, Depends(planning_writer)]
 BudgetsWriter = Annotated[Caller, Depends(budgets_writer)]
+RulesEditor = Annotated[Caller, Depends(rules_editor)]

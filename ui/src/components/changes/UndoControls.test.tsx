@@ -83,6 +83,12 @@ describe('UndoNotice', () => {
     expect(text(h)).toContain('Open budgets')
   })
 
+  it('a rule that changed since links to Rules', () => {
+    const h = html(<UndoNotice item={item({ target_kind: 'rule', tool: 'update_rule' })} failure="changed" />)
+    expect(h).toContain('href="/rules"')
+    expect(text(h)).toContain('Open rules')
+  })
+
   it('ux: the Open link is a 44px target on mobile', () => {
     expect(html(<UndoNotice item={item()} failure="changed" />)).toMatch(/<a[^>]*class="[^"]*min-h-\[44px\]/)
   })

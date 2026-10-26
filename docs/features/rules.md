@@ -62,6 +62,15 @@ unlocked `counts_as` is recomputed and cleared. Undoing Claude's
 `update_rule` is the exception: it restores the categories that edit
 changed, except ones set by hand or changed since.
 
+Pattern and match type go together (T-16-1): an edit to either records the
+other as context (`TargetSpec.together`), so undo returns 409 "changed
+since" if either changed afterwards, and the Changes page shows both, the
+untouched one marked "(unchanged)". An undo that puts back the pattern or
+match type also returns 409 ("Can't undo: the rule it would restore can't
+run."), restoring nothing, when the restored pattern would not validate
+under the restored match type; this covers audit rows written before the
+context existed. Undos of other fields aren't checked.
+
 **Tests**: `api/tests/integration/test_rules_bulk.py`, `test_rule_writes_api.py`,
 `test_rules_impact.py`, `test_user_encryption.py`, `test_oauth.py`;
 `api/tests/unit/test_rule_engine.py`, `test_provider_category.py`,

@@ -41,6 +41,19 @@ describe('ChangeList', () => {
     expect(html).toContain('<span class="sr-only"> changed to </span>')
   })
 
+  it('T-16-1: a rule line that did not change says unchanged, with no arrow or "changed to"', () => {
+    const rule = item({
+      tool: 'update_rule', target_kind: 'rule', target_label: 'TESCO',
+      changes: [
+        { field: 'pattern', before: 'TESCO', after: 'TESCO PFS' },
+        { field: 'match_type', before: 'contains', after: 'contains' },
+      ] as never,
+    })
+    const html = render([rule])
+    const lines = [...html.matchAll(/<dd[^>]*>(.*?)<\/dd>/g)].map((m) => text(m[1]))
+    expect(lines).toEqual(['TESCO →  changed to TESCO PFS', 'Contains (unchanged)'])
+  })
+
   it('C5: expected income says it is not counted', () => {
     const t = text(render([addEvent('income')]))
     expect(t).toContain('Counted in safe to spend')

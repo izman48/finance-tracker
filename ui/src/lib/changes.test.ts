@@ -260,6 +260,25 @@ describe('rule rows', () => {
     expect(changeLines(switchedOff, {})).toEqual([{ label: 'Status', before: 'On', after: 'Off' }])
   })
 
+  it('T-16-1: pattern and match type show together; the unchanged one is marked, never "X → X"', () => {
+    const repatterned = ruleItem([
+      { field: 'pattern', before: 'TESCO', after: 'TESCO PFS' },
+      { field: 'match_type', before: 'contains', after: 'contains' },
+    ])
+    expect(changeLines(repatterned, {})).toEqual([
+      { label: 'Matches', before: 'TESCO', after: 'TESCO PFS' },
+      { label: 'How it matches', after: 'Contains', unchanged: true },
+    ])
+    const retyped = ruleItem([
+      { field: 'pattern', before: 'TESCO', after: 'TESCO' },
+      { field: 'match_type', before: 'contains', after: 'regex' },
+    ])
+    expect(changeLines(retyped, {})).toEqual([
+      { label: 'Matches', after: 'TESCO', unchanged: true },
+      { label: 'How it matches', before: 'Contains', after: 'Pattern (regex)' },
+    ])
+  })
+
   it('undo toasts say what undoing did', () => {
     expect(undoToast(recategorised)).toBe('Put the rule “TESCO PFS” back to how it was.')
     expect(undoToast(switchedOff)).toBe('Switched the rule “TESCO PFS” back on.')

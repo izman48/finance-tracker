@@ -17,6 +17,13 @@ an internal transfer leg, not a card repayment, not a purchase moved to a
 payment plan, and not already a confirmed commitment's payment. Each
 transaction settles at most one item (one-to-one), soonest item first.
 
+A Claude change to a bill can't free its payment (T-20-1a): while the change
+is unkept, a payment is the bill's if the bill as it is now *or* as it was
+before Claude matches it (`held_match_bills`), so fewer items settle and
+safe-to-spend can't rise. `planned_states` is that held view, used by every
+figure and list; `held_and_current_states` also gives the current view, so
+the summary can report what the hold keeps back.
+
 What an unsettled item means is fail safe (see `planned_states`): an expense
 stays due, even long after its date, until it is paid or removed (past
 OVERDUE_AFTER_DAYS it is also flagged `overdue`); an income is expected only
@@ -40,7 +47,10 @@ from sqlalchemy.orm import Session
 
 from app.models import Account, PlannedItem, PlannedKind, Transaction
 
-from .commitments import commitment_matcher
+from app.services.claude_keep import held_match_bills
+from app.services.linked_commitments import linked_commitment_ids
+
+from .commitments import CommitmentMatcher, build_commitment_matcher, commitment_matcher
 from .common import _d, _load, resolve_roles
 
 MATCH_DAYS = 7
@@ -84,9 +94,27 @@ def tolerance(amount: Decimal) -> Decimal:
 
 
 def planned_states(db: Session, user, items: list[PlannedItem], today: date) -> dict[uuid.UUID, PlannedState]:
-    """{one-off item id: state}. Recurring and plan items aren't matched."""
+    """{one-off item id: state}, with Claude's unkept bill changes held.
+    Recurring and plan items aren't matched."""
+    return held_and_current_states(db, user, items, today)[0]
+
+
+def held_and_current_states(db: Session, user, items: list[PlannedItem], today: date) -> tuple[dict, dict]:
+    """(held, current): the item states with Claude's unkept bill changes
+    held, and as the bills are now. The same transactions are read once."""
     one_offs = [i for i in items if i.kind == PlannedKind.ONE_OFF.value]
-    matches = _match(db, user, one_offs, today) if one_offs else {}
+    if not one_offs:
+        return {}, {}
+    candidates = _candidates(db, user, one_offs, today)
+    current = commitment_matcher(db, user)
+    held = build_commitment_matcher(held_match_bills(db, user.id), linked_commitment_ids(db, user.id))
+    return (
+        _states(one_offs, _match(one_offs, candidates, (current, held)), today),
+        _states(one_offs, _match(one_offs, candidates, (current,)), today),
+    )
+
+
+def _states(one_offs: list[PlannedItem], matches: dict, today: date) -> dict[uuid.UUID, PlannedState]:
     states = {}
     for item in one_offs:
         matched = matches.get(item.id)
@@ -101,7 +129,9 @@ def planned_states(db: Session, user, items: list[PlannedItem], today: date) -> 
     return states
 
 
-def _match(db: Session, user, items: list[PlannedItem], today: date) -> dict[uuid.UUID, uuid.UUID]:
+def _candidates(db: Session, user, items: list[PlannedItem], today: date) -> list[Transaction]:
+    """Real-money transactions in the items' scan window, before the
+    commitment exclusion (which depends on the view)."""
     oldest = max(min(i.start_date for i in items), today - timedelta(days=SCAN_LIMIT_DAYS))
     start = oldest - timedelta(days=MATCH_DAYS + 2)  # +2: transfer pairing
     txns = (
@@ -113,7 +143,14 @@ def _match(db: Session, user, items: list[PlannedItem], today: date) -> dict[uui
         )
         .all()
     )
-    eligible = _real_money(db, user, txns)
+    return _real_money(db, user, txns)
+
+
+def _match(items: list[PlannedItem], candidates: list[Transaction],
+           commitments: tuple[CommitmentMatcher, ...]) -> dict[uuid.UUID, uuid.UUID]:
+    """{item id: transaction id}, leaving out any payment one of the
+    `commitments` matchers takes for a commitment's."""
+    eligible = [tx for tx in candidates if not any(m.matches(tx) for m in commitments)]
     used: set = set()
     out: dict = {}
     for item in sorted(items, key=lambda i: (i.start_date, str(i.id))):
@@ -149,15 +186,11 @@ def _words(text: str) -> set[str]:
 def _real_money(db: Session, user, txns: list[Transaction]) -> list[Transaction]:
     """Transactions that can settle a planned item: the same exclusions the
     spending figures use, so moving money between your own accounts or paying
-    a card never 'pays' a planned bill."""
+    a card never 'pays' a planned bill. Commitment payments are left out
+    later, by `_match`."""
     from .spending import classify_noise, financed_transaction_ids
 
     accounts, settings = _load(db, user)
     noise = classify_noise(txns, resolve_roles(accounts, settings))
     financed = financed_transaction_ids(db, user)
-    commitments = commitment_matcher(db, user)
-    return [
-        tx for tx in txns
-        if tx.id not in noise and tx.id not in financed
-        and not commitments.matches(tx)
-    ]
+    return [tx for tx in txns if tx.id not in noise and tx.id not in financed]

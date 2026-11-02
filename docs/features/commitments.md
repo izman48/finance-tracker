@@ -31,7 +31,8 @@ no amount, and rules linked to a holding or loan, match on the key alone (an
 overpayment into the holding is not spending). Every consumer uses it: the
 transactions list and search (`is_commitment`, `exclude_commitments`), the
 Spending lenses, drill-down, trend and money-out composition, budget spend,
-and planned-event matching. A one-off outside the tolerance counts as
+and planned-event matching (which also uses the before-Claude version of a
+bill while a Claude change to it is unkept; see planned-events.md, T-20-1a). A one-off outside the tolerance counts as
 spending; so does a bill that grows past it until its amount is updated. A card-tied
 "DD to card" rule is amount-checked too, so with commitments excluded and card
 payments shown, a month far off its amount counts in money out (the safe side).

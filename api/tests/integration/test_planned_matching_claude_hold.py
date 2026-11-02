@@ -199,6 +199,32 @@ def test_undoing_a_claude_change_is_the_same_as_no_change(client, db_session, re
     assert w.figures() == (BASELINE, Decimal(0))
 
 
+def test_undoing_a_relabel_of_a_detected_bill_restores_its_label_key_and_source(client, db_session):
+    """Claude's rename stored the old label's key and made it manual; undo
+    puts all three back, so the bill matches as it did before."""
+    w = World(client, db_session)
+
+    def detected():
+        rule = w.db.get(CommitmentRule, w.bill)
+        rule.source = "detected"
+        w.db.commit()
+    w.as_user(detected)
+    audit_id = w.claude_update(w.bill, label="Fitness")
+    assert w.client.post(f"{API}/audit/{audit_id}/undo", headers=_bearer(w.web)).status_code == 200
+    rule = w.as_user(lambda: w.db.get(CommitmentRule, w.bill))
+    w.as_user(lambda: w.db.refresh(rule))
+    assert (rule.label, rule.match_key, rule.source) == ("Gym", None, "detected")
+    assert w.figures() == (BASELINE, Decimal(0))
+
+
+def test_undo_after_a_hand_rename_is_refused_and_the_hold_is_already_over(client, db_session):
+    w = World(client, db_session, relabel=True)
+    audit_id = w.claude_update(w.bill, label="Fitness")
+    w.hand_edit(label="Fitness club")
+    assert w.client.post(f"{API}/audit/{audit_id}/undo", headers=_bearer(w.web)).status_code == 409
+    assert w.figures() == NO_HOLD
+
+
 def test_a_newer_kept_relabel_ends_an_older_pending_one(client, db_session):
     """The newer write is keepable because it also cuts the amount a little
     (still in the payment's range); keeping it settles its label too."""

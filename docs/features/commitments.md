@@ -32,7 +32,10 @@ overpayment into the holding is not spending). Every consumer uses it: the
 transactions list and search (`is_commitment`, `exclude_commitments`), the
 Spending lenses, drill-down, trend and money-out composition, budget spend,
 and planned-event matching. A one-off outside the tolerance counts as
-spending; so does a bill that grows past it until its amount is updated.
+spending; so does a bill that grows past it until its amount is updated. A card-tied
+"DD to card" rule is amount-checked too, so with commitments excluded and card
+payments shown, a month far off its amount counts in money out (the safe side).
+If any rule on a key matches on the key alone, every payment on that key does.
 
 ## Linked repayments (T-10-8)
 

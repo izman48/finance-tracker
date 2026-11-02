@@ -87,3 +87,10 @@ def test_a_label_derived_key_still_matches_with_the_amount_check():
 def test_no_commitments_matches_nothing():
     assert not NO_COMMITMENTS.matches(_tx("9.99"))
     assert not build_commitment_matcher([], linked_ids=set()).matches(_tx("9.99"))
+
+
+def test_a_key_only_rule_wins_over_an_amount_rule_on_the_same_key():
+    """Fails safe towards the linked or amount-less rule: any payment on its key stays excluded."""
+    linked, priced = _rule("500.00"), _rule("9.99")
+    assert build_commitment_matcher([linked, priced], linked_ids={linked.id}).matches(_tx("5000.00"))
+    assert build_commitment_matcher([_rule("0"), priced], linked_ids=set()).matches(_tx("5000.00"))

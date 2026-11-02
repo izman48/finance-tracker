@@ -267,6 +267,64 @@ Content-only changes (files under `mysite/`) are live immediately; no reload.
 `./deploy/test-caddy.sh` (run in CI) checks the Caddyfile against the real Caddy
 image, with and without the example site, and checks the preflight.
 
+## Shared apps network (optional)
+
+Another app on the same server, in its own compose project, can be served
+through this Caddy without joining any of this stack's networks: Caddy joins
+one extra external Docker network shared only with that app, at a pinned
+address, and the app's site file in the sites folder proxies to it by its
+alias on that network. Neither this stack's `api`, `mcp` nor `db` joins it,
+so the other app can't reach them, and Caddy stays off this stack's `default`
+network (where `db` lives).
+
+Three settings in `.env.production`, all or none:
+
+| Setting | Meaning |
+|---|---|
+| `APPS_EDGE_NETWORK` | the network's name, e.g. `apps_edge` |
+| `APPS_EDGE_SUBNET` | its IPv4 subnet, `/16` to `/28`, free on this host |
+| `APPS_EDGE_CADDY_IP` | Caddy's address on it, in the subnet's lower half |
+
+**Unset (the default), nothing changes.** `deploy/compose-prod.sh` runs the
+plain `docker compose -f docker-compose.prod.yml --env-file .env.production`,
+and `deploy/preflight-apps-edge.sh` prints nothing and creates nothing
+(`deploy/test-apps-edge.sh` proves the compose config is byte-identical).
+
+**Set,** every deploy runs `deploy/preflight-apps-edge.sh` before `up`. It
+creates the network if missing (bridge, gateway on the first address, Docker's
+own allocations limited to the upper half) and refuses, with the deploy
+stopped and the running Caddy still serving:
+- a subnet overlapping any Docker network or host route (a clash would stop
+  the new Caddy starting and take the app down);
+- a Caddy address outside the subnet, on its network, gateway or broadcast
+  address, or in the upper half;
+- an existing network of that name with another subnet, or one that belongs
+  to a compose project;
+- Caddy's address already held by another container.
+
+Then `deploy/compose-prod.sh up` adds `deploy/compose.apps-edge.yml`, which
+puts Caddy on the network. Anything that recreates Caddy must go through
+`./deploy/compose-prod.sh`; a plain `docker compose ... up` drops Caddy off the
+shared network until the next deploy. (`exec`, `logs`, `ps` and `restart` are
+fine either way.) One network per extra app: a second app gets its own
+network, in its own change.
+
+**Switching on (two steps).** Merging this feature with the settings unset
+deploys nothing new. Later, in a window you pick:
+1. On the server, check a free range: `docker network inspect $(docker network ls -q) --format '{{.Name}} {{range .IPAM.Config}}{{.Subnet}}{{end}}'` and `ip -4 route`.
+2. Add the three settings to `.env.production`.
+3. Run a normal deploy. Caddy is recreated once (a few seconds of downtime,
+   as in any deploy that changes it). Check `docker inspect <caddy container>`
+   lists both networks and the app answers.
+
+**Rollback:** remove the three settings and deploy again. Caddy is recreated
+on its edge network only; the shared network stays (harmless) until you
+`docker network rm` it, after the other app stops using it.
+
+**Residual risk:** the other app's site file is loaded by this Caddy, so the
+sites-folder rules above apply to it (trusted like config, validated by
+`preflight-sites.sh` on every deploy).
+
 ## Moving to a new server
 
 Nothing in this repo is tied to a specific machine — the domain, secrets, and

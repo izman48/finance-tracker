@@ -366,16 +366,18 @@ preflight './sites' && fail "preflight accepted a SITES_DIR inside the repo fold
 # preflight-sites.sh, then any other ./deploy/*.sh steps, then compose up, all
 # in one && chain (a `;` anywhere between them would let up run regardless).
 gates_up() {
-  grep -qE '\./deploy/preflight-sites\.sh &&[[:space:]]*(\./deploy/[a-z-]+\.sh &&[[:space:]]*)*docker compose [^&;]* up '
+  grep -qE '\./deploy/preflight-sites\.sh &&[[:space:]]*(\./deploy/[a-z-]+\.sh &&[[:space:]]*)*(docker compose [^&;]*|\./deploy/compose-prod\.sh) up '
 }
 deploy_cmd="$(tr -d '\n\\' < "$REPO_ROOT/deploy/deploy.sh")"
 echo "$deploy_cmd" | gates_up \
   && pass "deploy.sh validates sites before compose up" || fail "deploy.sh does not gate compose up on preflight-sites.sh"
-echo "$deploy_cmd" | grep -qE '\./deploy/pre-migration-dump\.sh &&[[:space:]]*(\./deploy/[a-z-]+\.sh &&[[:space:]]*)*docker compose [^&;]* up ' \
+echo "$deploy_cmd" | grep -qE '\./deploy/pre-migration-dump\.sh &&[[:space:]]*(\./deploy/[a-z-]+\.sh &&[[:space:]]*)*(docker compose [^&;]*|\./deploy/compose-prod\.sh) up ' \
   && pass "deploy.sh dumps before a migrating compose up" || fail "deploy.sh does not gate compose up on pre-migration-dump.sh"
 # Self-test: the gate check must reject a chain broken by `;`.
 echo './deploy/preflight-sites.sh && ./deploy/pre-migration-dump.sh ; docker compose -f x up -d' | gates_up \
   && fail "gate check accepted a ';' before compose up" || pass "gate check rejects a ';' before compose up"
+echo './deploy/preflight-sites.sh && ./deploy/preflight-apps-edge.sh ; ./deploy/compose-prod.sh up -d' | gates_up \
+  && fail "gate check accepted a ';' before compose-prod.sh up" || pass "gate check rejects a ';' before compose-prod.sh up"
 echo './deploy/preflight-sites.sh ; docker compose -f x up -d' | gates_up \
   && fail "gate check accepted preflight ';' up" || pass "gate check rejects preflight ';' up"
 

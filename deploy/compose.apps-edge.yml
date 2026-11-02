@@ -1,0 +1,24 @@
+# Optional: puts Caddy on one extra, external Docker network shared with
+# another app's compose project, at a pinned address, so Caddy can proxy a
+# site file in the sites folder to it (DEPLOY.md "Shared apps network").
+# Only deploy/compose-prod.sh adds this file, and only when APPS_EDGE_NETWORK
+# is set; deploy/preflight-apps-edge.sh creates and checks the network first.
+# With the settings unset the production stack is exactly
+# docker-compose.prod.yml. Only Caddy joins: api, mcp and db never do.
+
+# Read back by deploy/apps-edge-env.sh (compose resolves .env.production).
+x-apps-edge:
+  network: ${APPS_EDGE_NETWORK:-}
+  subnet: ${APPS_EDGE_SUBNET:-}
+  caddy_ip: ${APPS_EDGE_CADDY_IP:-}
+
+services:
+  caddy:
+    networks:
+      apps_edge:
+        ipv4_address: ${APPS_EDGE_CADDY_IP:-}
+
+networks:
+  apps_edge:
+    external: true
+    name: ${APPS_EDGE_NETWORK:-}

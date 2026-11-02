@@ -40,6 +40,11 @@ rsync -az --delete \
 # preflight-sites.sh: creates the extra sites folder (else Docker creates it
 # root-owned) and validates it, so a broken site file fails the deploy while
 # the running Caddy keeps serving, instead of stopping the new one starting.
+# preflight-apps-edge.sh and compose-prod.sh: the optional shared apps
+# network (DEPLOY.md "Shared apps network"). With its settings unset they do
+# nothing new and `up` is the plain prod compose up; with them set the network
+# is checked (refusing a clashing subnet) and created before Caddy is touched,
+# and Caddy joins it.
 # pre-migration-dump.sh: when the new code has a migration the database hasn't
 # run, dumps the database first and stops the deploy if the dump is empty
 # (DEPLOY.md "Rollback"). It also stops a deploy whose code can't read the
@@ -50,8 +55,9 @@ rsync -az --delete \
 ssh "$HOST" "cd $REMOTE_DIR && \
   test -f .env.production || { echo 'ERROR: create .env.production on the server first (see .env.production.example)'; exit 1; } && \
   ./deploy/preflight-sites.sh && \
+  ./deploy/preflight-apps-edge.sh && \
   ./deploy/pre-migration-dump.sh && \
-  docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build --remove-orphans && \
+  ./deploy/compose-prod.sh up -d --build --remove-orphans && \
   ./deploy/smoke.sh"
 
 echo "Deployed. Check status with:"

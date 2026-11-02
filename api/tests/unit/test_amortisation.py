@@ -23,10 +23,12 @@ from decimal import Decimal
 
 import pytest
 
+from app.models import Liability
 from app.services.liabilities import (
     MAX_SCHEDULE_YEARS,
     PaymentTooLow,
     amortise,
+    derived_figures,
     first_payment_after,
     next_payment_on,
     period_rate,
@@ -147,3 +149,14 @@ def test_first_payment_after_the_as_of_date(start, cadence, as_of, expected):
 ])
 def test_next_payment_is_on_or_after_today_and_after_the_as_of_date(as_of, today, expected):
     assert next_payment_on(date(2025, 3, 1), "monthly", as_of, today) == expected
+
+
+@pytest.mark.xfail(strict=True, reason="B-22: amortise steps from first payment, not loan start")
+def test_a_month_end_loan_stays_on_its_start_dates_cycle():
+    # Started on the 31st; the first payment after the as-of date falls in
+    # November (30th), and every later one must go back to the 31st.
+    loan = Liability(kind="loan", start_date=date(2025, 10, 31), cadence="monthly",
+                     balance=Decimal("9000.00"), balance_as_of=date(2026, 11, 21),
+                     apr=Decimal("11.00"), payment=Decimal("200.00"), opted_out=False)
+    figures = derived_figures(loan, date(2026, 12, 31), linked=True)
+    assert figures["next_payment_date"] == date(2026, 12, 31)

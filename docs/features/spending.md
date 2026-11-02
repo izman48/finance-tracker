@@ -5,7 +5,9 @@ Where money went, by category and merchant, under two lenses: `money_out`
 transfers, commitments and other) and `purchases`. Periods: since payday,
 this month, last 30 days, custom. Drill into the transactions behind any
 figure, and see a monthly trend over 1 to 24 months. Budgets live on this
-tab too ([budgets.md](budgets.md)).
+tab too ([budgets.md](budgets.md)). While a Claude change to a bill is
+unkept, a payment counts as the bill's (not spending) only if both the
+current and the before-Claude bill take it (T-20-1b, see commitments.md).
 
 ## Code
 

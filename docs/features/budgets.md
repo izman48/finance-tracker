@@ -38,7 +38,8 @@ set, pause, resume and remove budgets.
 
 **Services**: `services/budgets.py` (cycles, cap, `budget_list`,
 `budget_projection`, `budget_nudges`, `suggest`), `services/budget_spend.py`
-(the one counting rule, `classify_purchase`: excludes commitments,
+(the one counting rule, `classify_purchase`: excludes commitments, both
+before- and after-Claude versions while a Claude bill change is unkept,
 transfers, card payoffs, financed purchases), `services/budget_history.py`,
 `api/app/schemas/budgets.py`.
 

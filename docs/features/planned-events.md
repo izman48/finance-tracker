@@ -11,7 +11,7 @@ counting until the user keeps the change.
 **Claude's bill changes don't settle items (T-20-1a)**: a bill's payment
 never settles a planned item. While a Claude change to a bill (raise, cut,
 dismissal, rename) is unkept, a payment is the bill's if the bill as it is
-now *or* as it was before Claude matches it (`claude_keep.held_match_bills`,
+now *or* as it was before Claude matches it (`claude_keep.held_match_rules`,
 fields `MATCH_FIELDS`), so a Claude write can't free a payment and raise
 safe to spend. This held view feeds every figure and list (safe to spend,
 savable, forecast, card-payment overlap, the web planned list,

@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Account, AccountRole, PlannedItem, Transaction
 
-from .commitments import NO_COMMITMENTS, CommitmentMatcher, commitment_matcher, last_payday
+from .commitments import NO_COMMITMENTS, BothViews, CommitmentMatcher, commitment_matcher, last_payday
 from .common import (
     _add_months,
     _d,
@@ -271,7 +271,7 @@ def _money_out_amount(tx, roles, transfers, exclude_commitments, hide_transfers,
     return _d(tx.amount)
 
 
-def classify_purchase(tx, transfers, roles, financed, commitments: CommitmentMatcher) -> str | None:
+def classify_purchase(tx, transfers, roles, financed, commitments: CommitmentMatcher | BothViews) -> str | None:
     """What a transaction is under the purchases lens: "credit" (a card
     purchase) or "cash" (paid from a spending account) if it counts;
     "card_payoff", "transfer", "financed" or "commitment" if it's a spending-

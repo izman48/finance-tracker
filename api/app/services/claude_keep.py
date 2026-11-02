@@ -383,21 +383,19 @@ def before_claude(rule: CommitmentRule, rows: list[AuditEntry], applied: frozens
     return view
 
 
-def held_match_bills(db: Session, user_id: uuid.UUID) -> list[SimpleNamespace]:
-    """The bills as they matched payments before Claude's pending changes
-    (T-20-1a): every expense commitment that was confirmed then, with its
+def held_match_rules(db: Session, user_id: uuid.UUID) -> list[SimpleNamespace]:
+    """The commitments as they matched payments before Claude's pending
+    changes to bills (T-20-1a): every one confirmed then, a bill with its
     amount, label and key from before Claude. Planned matching treats a
-    payment as a bill's if this view *or* the current one matches it, so a
-    Claude raise, dismissal or rename can't free a payment to settle a
-    planned expense (and raise safe-to-spend) before the user agrees.
-    Incomes are left out: a payment freed there settles planned income,
-    which only lowers the figures."""
-    rules = (
-        db.query(CommitmentRule)
-        .filter(CommitmentRule.user_id == user_id, CommitmentRule.direction == CommitmentDirection.EXPENSE.value)
-        .all()
-    )
-    claude = claude_rows(db, user_id, [r.id for r in rules])
+    payment as a commitment's if this view *or* the current one matches it,
+    so a Claude raise, dismissal or rename can't free a payment to settle a
+    planned expense (and raise safe-to-spend) before the user agrees;
+    Spending and budgets need *both* (T-20-1b). Incomes are as they are
+    now in both: a payment freed there settles planned income, which only
+    lowers the figures."""
+    rules = db.query(CommitmentRule).filter(CommitmentRule.user_id == user_id).all()
+    bills = [r.id for r in rules if r.direction == CommitmentDirection.EXPENSE.value]
+    claude = claude_rows(db, user_id, bills)
     out = []
     for r in rules:
         view = before_claude(r, claude[r.id], fields_of=MATCH_FIELDS) if r.id in claude else r

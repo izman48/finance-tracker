@@ -19,7 +19,7 @@ transaction settles at most one item (one-to-one), soonest item first.
 
 A Claude change to a bill can't free its payment (T-20-1a): while the change
 is unkept, a payment is the bill's if the bill as it is now *or* as it was
-before Claude matches it (`held_match_bills`), so fewer items settle and
+before Claude matches it (`held_match_rules`), so fewer items settle and
 safe-to-spend can't rise. `planned_states` is that held view, used by every
 figure and list. What it holds back is not yet in the pending-keep total:
 that ships with the "Keep this change" for raises and renames (T-20-1b),
@@ -48,10 +48,10 @@ from sqlalchemy.orm import Session
 
 from app.models import Account, PlannedItem, PlannedKind, Transaction
 
-from app.services.claude_keep import held_match_bills
+from app.services.claude_keep import held_match_rules
 from app.services.linked_commitments import linked_commitment_ids
 
-from .commitments import CommitmentMatcher, build_commitment_matcher, commitment_matcher
+from .commitments import CommitmentMatcher, build_commitment_matcher, current_commitment_matcher
 from .common import _d, _load, resolve_roles
 
 MATCH_DAYS = 7
@@ -100,8 +100,8 @@ def planned_states(db: Session, user, items: list[PlannedItem], today: date) -> 
     one_offs = [i for i in items if i.kind == PlannedKind.ONE_OFF.value]
     if not one_offs:
         return {}
-    current = commitment_matcher(db, user)
-    held = build_commitment_matcher(held_match_bills(db, user.id), linked_commitment_ids(db, user.id))
+    current = current_commitment_matcher(db, user)
+    held = build_commitment_matcher(held_match_rules(db, user.id), linked_commitment_ids(db, user.id))
     return _states(one_offs, _match(one_offs, _candidates(db, user, one_offs, today), (current, held)), today)
 
 

@@ -189,8 +189,31 @@ def build_commitment_matcher(rules, linked_ids: set) -> CommitmentMatcher:
     return CommitmentMatcher({k: tuple(v) for k, v in amounts.items()}, frozenset(key_only))
 
 
-def commitment_matcher(db: Session, user) -> CommitmentMatcher:
-    """The matcher for this user's confirmed commitments, built once per request."""
+@dataclass(frozen=True)
+class BothViews:
+    """A payment is a commitment's only if the bills as they are now *and*
+    as they were before Claude's unkept changes both take it (T-20-1b,
+    owner decision 2): Spending and budgets never hide spending on Claude's
+    word alone. Without a Claude change the two views are the same."""
+    current: CommitmentMatcher
+    held: CommitmentMatcher
+
+    def matches(self, tx: Transaction) -> bool:
+        return self.current.matches(tx) and self.held.matches(tx)
+
+
+def commitment_matcher(db: Session, user) -> BothViews:
+    """The Spending view of which payments are commitments', built once per
+    request: used by the transactions list and search, every Spending lens
+    and the budgets. Planned matching uses the union instead (T-20-1a)."""
+    from app.services.claude_keep import held_match_rules
+
+    held = build_commitment_matcher(held_match_rules(db, user.id), linked_commitment_ids(db, user.id))
+    return BothViews(current_commitment_matcher(db, user), held)
+
+
+def current_commitment_matcher(db: Session, user) -> CommitmentMatcher:
+    """The matcher for this user's confirmed commitments as they are now."""
     rules = (
         db.query(CommitmentRule)
         .filter(

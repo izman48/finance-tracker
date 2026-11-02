@@ -38,6 +38,20 @@ spending; so does a bill that grows past it until its amount is updated. A card-
 payments shown, a month far off its amount counts in money out (the safe side).
 If any rule on a key matches on the key alone, every payment on that key does.
 
+**While a Claude change to a bill is unkept (T-20-1b, owner decision 2).**
+`commitment_matcher` is the Spending view: a payment is the bill's only if
+the bill as it is now *and* as it was before Claude both take it
+(`BothViews`, before-Claude version from `claude_keep.held_match_rules`).
+So a Claude cut (GBP 50 to GBP 10 would take GBP 5-15 purchases) or a
+Claude confirm of a suggestion can't hide spending from Spending or
+budgets, and a raise, dismissal or rename shows the payment as spending at
+once. A Claude confirm has no Keep (KP20), so its payments stay spending
+until the user undoes it or confirms it by hand (backlog B-26). Planned
+matching uses the union instead (`current_commitment_matcher` or the
+before-Claude version), so the same payment can be spending here and still
+the bill's there: each view is on its own safe side. Incomes are as they are
+now in both.
+
 ## Linked repayments (T-10-8)
 
 A commitment that carries a liability's repayment (`Liability.linked_commitment_id`)
@@ -101,7 +115,7 @@ helpers), `cadence.py`, `card_links.py`, `late_income.py`,
 **MCP**: `commitments`, `update_commitment`, `dismiss_commitment`.
 
 **Tests**: `api/tests/unit/test_commitment_dedupe.py`,
-`test_paypal_match_key.py`, `test_paypal_commitments.py`, `test_commitment_matcher.py`,
+`test_paypal_match_key.py`, `test_paypal_commitments.py`, `test_commitment_matcher.py`, `test_spending_claude_hold.py`,
 `api/tests/integration/test_linked_commitment_guards.py`, `test_contribution_guards.py`,
 `test_commitment_links.py`, `test_commitment_links_migration.py`, `test_card_link.py`,
 `test_analytics_service.py`; `api/tests/integration/test_commitment_writes_api.py`,

@@ -27,7 +27,7 @@ from app.services.holdings import listing as holdings_listing
 
 from .net_worth import assets_total, liabilities_total, total_owed
 from .planned import planned_expense_occurrences
-from .planned_matching import held_and_current_states
+from .planned_matching import planned_states
 from app.services.claude_keep import claude_rows, counted_commitments, held_back, held_removed_planned
 from .repayments import repayment_events, scheduled_outflows
 from .statements import current_positions
@@ -89,15 +89,16 @@ def get_summary(db: Session, user) -> dict:
     )
     # A planned expense Claude removed still counts until kept (T-08-21b).
     planned = active_planned + held_removed_planned(db, user.id)
-    # Held: a payment Claude's unkept bill change would free settles nothing
-    # (T-20-1a). As-is: the bills as they are now, for the pending total.
-    states, states_as_is = held_and_current_states(db, user, planned, today)
+    # A payment Claude's unkept bill change would free settles nothing
+    # (T-20-1a). Both figures below use these held states, so what that
+    # holds back is not in the pending-keep total until raises and renames
+    # can be kept (T-20-1b; sec on #267).
+    states = planned_states(db, user, planned, today)
     # Cut at payday like the forecast, so a bill due on payday is its own
     # window (eng-b on #234).
     window_paydays = payday_dates(db, user, today, window_end)
     committed = _money_out(db, user, expense_to_payday, planned, states, today, window_end, window_paydays)
-    committed_as_is = _money_out(db, user, expense_now, active_planned, states_as_is, today, window_end,
-                                 window_paydays)
+    committed_as_is = _money_out(db, user, expense_now, active_planned, states, today, window_end, window_paydays)
     safe_pending_keep = max(Decimal(0), committed - committed_as_is)
 
     safe_to_spend = max(Decimal(0), available_cash - committed)

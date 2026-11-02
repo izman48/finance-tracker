@@ -12,7 +12,7 @@ planned matching if the current *or* the before-Claude version matches it
 (the union: fewer items settle). The hold ends when the change is kept,
 undone, or the user sets that field by hand. Incomes are unchanged. In
 T-20-1a a raise or relabel can't be kept yet (T-20-1b), so no keep state
-changes here.
+changes here, and nothing is reported as pending for a raise or rename.
 """
 import uuid
 from datetime import timedelta
@@ -31,7 +31,10 @@ from tests.clock import TODAY  # one day for the whole run (T-08-27)
 API = "/api/v1"
 BASELINE = Decimal("450.00")  # GBP 500 in the bank less the unsettled GBP 50 planned item
 FREED = Decimal("500.00")  # the payment settled the item
-HELD = (BASELINE, Decimal("50.00"))  # safe-to-spend unchanged; the difference is reported
+# Safe-to-spend unchanged. The difference is not in the pending-keep total
+# yet: Home would call it a change "removed or reduced" waiting for a keep
+# the user can't take (sec on #267). It is reported from T-20-1b.
+HELD = (BASELINE, Decimal(0))
 NO_HOLD = (FREED, Decimal(0))
 
 
@@ -113,7 +116,8 @@ def test_secs_probe_a_claude_raise_settles_nothing(client, db_session):
     w = World(client, db_session)
     savable = Decimal(w.summary()["savable"])
     w.claude_update(w.bill, amount="200.00")
-    assert w.figures() == HELD
+    # Safe-to-spend stays GBP 450; nothing pending, as a raise has no keep yet (sec on #267).
+    assert w.figures() == (Decimal("450.00"), Decimal(0))
     assert w.settled() == (None, None)
     # The raise itself still lowers savable at once (GBP 150 more out).
     assert Decimal(w.summary()["savable"]) == savable - Decimal("150.00")

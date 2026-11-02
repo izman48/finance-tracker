@@ -21,8 +21,9 @@ A Claude change to a bill can't free its payment (T-20-1a): while the change
 is unkept, a payment is the bill's if the bill as it is now *or* as it was
 before Claude matches it (`held_match_bills`), so fewer items settle and
 safe-to-spend can't rise. `planned_states` is that held view, used by every
-figure and list; `held_and_current_states` also gives the current view, so
-the summary can report what the hold keeps back.
+figure and list. What it holds back is not yet in the pending-keep total:
+that ships with the "Keep this change" for raises and renames (T-20-1b),
+so the app never says a change is waiting for a keep it can't take.
 
 What an unsettled item means is fail safe (see `planned_states`): an expense
 stays due, even long after its date, until it is paid or removed (past
@@ -96,22 +97,12 @@ def tolerance(amount: Decimal) -> Decimal:
 def planned_states(db: Session, user, items: list[PlannedItem], today: date) -> dict[uuid.UUID, PlannedState]:
     """{one-off item id: state}, with Claude's unkept bill changes held.
     Recurring and plan items aren't matched."""
-    return held_and_current_states(db, user, items, today)[0]
-
-
-def held_and_current_states(db: Session, user, items: list[PlannedItem], today: date) -> tuple[dict, dict]:
-    """(held, current): the item states with Claude's unkept bill changes
-    held, and as the bills are now. The same transactions are read once."""
     one_offs = [i for i in items if i.kind == PlannedKind.ONE_OFF.value]
     if not one_offs:
-        return {}, {}
-    candidates = _candidates(db, user, one_offs, today)
+        return {}
     current = commitment_matcher(db, user)
     held = build_commitment_matcher(held_match_bills(db, user.id), linked_commitment_ids(db, user.id))
-    return (
-        _states(one_offs, _match(one_offs, candidates, (current, held)), today),
-        _states(one_offs, _match(one_offs, candidates, (current,)), today),
-    )
+    return _states(one_offs, _match(one_offs, _candidates(db, user, one_offs, today), (current, held)), today)
 
 
 def _states(one_offs: list[PlannedItem], matches: dict, today: date) -> dict[uuid.UUID, PlannedState]:

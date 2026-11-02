@@ -15,8 +15,9 @@ now *or* as it was before Claude matches it (`claude_keep.held_match_bills`,
 fields `MATCH_FIELDS`), so a Claude write can't free a payment and raise
 safe to spend. This held view feeds every figure and list (safe to spend,
 savable, forecast, card-payment overlap, the web planned list,
-`list_planned_events`); the summary also matches against the bills as they
-are now, and the difference is in `safe_to_spend_pending_keep_total`. The
+`list_planned_events`). What it holds back is not in
+`safe_to_spend_pending_keep_total` until raises and renames can be kept
+(T-20-1b), so Home never calls it a change waiting for a keep. The
 hold ends on keep, undo, or a hand edit of that field (a web rename or
 "matches merchant" edit sets both label and key). Incomes use the current
 view only: settling planned income only lowers the figures.

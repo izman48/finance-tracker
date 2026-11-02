@@ -21,6 +21,19 @@ detected rules from their label, and `rule_match_keys` (stored key, that key
 re-normalised, a PayPal reference stored before T-10-9 healed, label key) is what dedupes detection and matches payments, so
 a rule keyed under old rules is never suggested again.
 
+## Which payments are a commitment's (T-19-1)
+
+A merchant can bill one-off purchases under its subscription's descriptor,
+so the key alone is not enough. `commitment_matcher` (built once per request
+from confirmed rules) matches a transaction when its key matches and its
+amount is within max(25%, GBP 5) of some commitment with that key. Rules with
+no amount, and rules linked to a holding or loan, match on the key alone (an
+overpayment into the holding is not spending). Every consumer uses it: the
+transactions list and search (`is_commitment`, `exclude_commitments`), the
+Spending lenses, drill-down, trend and money-out composition, budget spend,
+and planned-event matching. A one-off outside the tolerance counts as
+spending; so does a bill that grows past it until its amount is updated.
+
 ## Linked repayments (T-10-8)
 
 A commitment that carries a liability's repayment (`Liability.linked_commitment_id`)
@@ -84,14 +97,14 @@ helpers), `cadence.py`, `card_links.py`, `late_income.py`,
 **MCP**: `commitments`, `update_commitment`, `dismiss_commitment`.
 
 **Tests**: `api/tests/unit/test_commitment_dedupe.py`,
-`test_paypal_match_key.py`, `test_paypal_commitments.py`,
+`test_paypal_match_key.py`, `test_paypal_commitments.py`, `test_commitment_matcher.py`,
 `api/tests/integration/test_linked_commitment_guards.py`, `test_contribution_guards.py`,
 `test_commitment_links.py`, `test_commitment_links_migration.py`, `test_card_link.py`,
 `test_analytics_service.py`; `api/tests/integration/test_commitment_writes_api.py`,
 `test_keep_commitment_api.py`, `test_card_link_api.py`,
 `test_claude_payday_dismissal.py`, `test_claude_payday_window.py`,
 `test_claude_income_timing.py`, `test_rename_null_match_key.py`,
-`test_web_relabel_keeps_match_key.py`; `api/mcp/tests/test_commitment_tools.py`;
+`test_web_relabel_keeps_match_key.py`, `test_commitment_amount_match.py`; `api/mcp/tests/test_commitment_tools.py`;
 UI `KeepControls.test.tsx`, `ClaudeMarker.test.tsx`, `keep.test.ts`.
 
 ## Touchpoints

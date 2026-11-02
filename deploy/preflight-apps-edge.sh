@@ -8,9 +8,13 @@
 #   - a subnet that overlaps any Docker network or a host route,
 #   - a Caddy address outside the subnet, or on its network, gateway or
 #     broadcast address, or in the range Docker hands out to other containers,
-#   - an existing network of that name with another subnet, or one that
-#     belongs to a compose project (such as this stack's own networks),
-#   - Caddy's address already held by another container.
+#   - an existing network of that name that this preflight didn't create:
+#     no marker label (Docker's own bridge, a hand-made or compose-owned
+#     network), not a bridge, not internal, or another subnet,
+#   - Caddy's address already held by another container,
+#   - a host without `ip`, where the host-route check can't run.
+# The network it creates is internal: no gateway out, so the other app has no
+# internet through it, and Caddy's default route (ACME, egress) stays on edge.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -18,30 +22,38 @@ cd "$(dirname "$0")/.."
 apps_edge_resolve
 [ -n "$APPS_EDGE_NETWORK" ] || exit 0
 
-# One line per Docker network: name, compose project, then subnet/gateway/range
-# triples. The built-in networks always exist, so the id list is never empty.
+refuse() { echo "preflight-apps-edge: $1" >&2; exit 1; }
+# Before any docker command sees it: a leading - would be read as a flag.
+[[ "$APPS_EDGE_NETWORK" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$ ]] \
+  || refuse "APPS_EDGE_NETWORK '$APPS_EDGE_NETWORK' is not a valid network name"
+command -v ip >/dev/null 2>&1 \
+  || refuse "the ip command is missing, so the subnet can't be checked against host routes; install iproute2"
+# Marks the network as made by this preflight; nothing else is ever accepted.
+MARKER_KEY=apps-edge.managed-by MARKER_VALUE=preflight-apps-edge
+
+# One line per Docker network: name, compose project, marker label, driver,
+# internal, then subnet/gateway/range triples. The built-in networks always
+# exist, so the id list is never empty.
 networks="$(docker network ls -q | xargs docker network inspect --format \
-  '{{.Name}}|{{index .Labels "com.docker.compose.project"}}|{{range .IPAM.Config}}{{.Subnet}},{{.Gateway}},{{.IPRange}} {{end}}')"
+  '{{.Name}}|{{index .Labels "com.docker.compose.project"}}|{{index .Labels "'"$MARKER_KEY"'"}}|{{.Driver}}|{{.Internal}}|{{range .IPAM.Config}}{{.Subnet}},{{.Gateway}},{{.IPRange}} {{end}}')"
 # Holders of each address on the network, if it exists: "<ip> <container id>".
 holders=""
 if docker network inspect "$APPS_EDGE_NETWORK" >/dev/null 2>&1; then
   holders="$(docker network inspect "$APPS_EDGE_NETWORK" --format \
     '{{range $id, $c := .Containers}}{{$c.IPv4Address}} {{$id}}{{"\n"}}{{end}}')"
 fi
-routes=""
-command -v ip >/dev/null 2>&1 && routes="$(ip -4 route show | awk '$1 != "default" { print $1 }')"
+routes="$(ip -4 route show | awk '$1 != "default" { print $1 }')"
 
-plan="$(NETWORK="$APPS_EDGE_NETWORK" SUBNET="$APPS_EDGE_SUBNET" CADDY_IP="$APPS_EDGE_CADDY_IP" \
+plan="$(MARKER="$MARKER_KEY=$MARKER_VALUE" NETWORK="$APPS_EDGE_NETWORK" SUBNET="$APPS_EDGE_SUBNET" CADDY_IP="$APPS_EDGE_CADDY_IP" \
   NETWORKS="$networks" HOLDERS="$holders" ROUTES="$routes" python3 -c '
-import ipaddress, os, re, sys
+import ipaddress, os, sys
 
 def refuse(msg):
     print("preflight-apps-edge: " + msg, file=sys.stderr)
     sys.exit(1)
 
 name, subnet_s, ip_s = os.environ["NETWORK"], os.environ["SUBNET"], os.environ["CADDY_IP"]
-if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,62}", name):
-    refuse(f"APPS_EDGE_NETWORK {name!r} is not a valid network name")
+marker = os.environ["MARKER"]
 try:
     subnet = ipaddress.IPv4Network(subnet_s, strict=True)
 except ValueError:
@@ -55,7 +67,7 @@ except ValueError:
 
 existing, others = None, []
 for line in os.environ["NETWORKS"].splitlines():
-    net_name, project, configs = line.split("|", 2)
+    net_name, project, label, driver, internal, configs = line.split("|", 5)
     pools = []
     for triple in configs.split():
         sub, gw, rng = triple.split(",")
@@ -64,7 +76,7 @@ for line in os.environ["NETWORKS"].splitlines():
         except ValueError:
             continue
     if net_name == name:
-        existing = (project, pools)
+        existing = (project, label, driver, internal, pools)
     else:
         others.extend((net_name, p[0]) for p in pools)
 
@@ -84,9 +96,16 @@ for route in os.environ["ROUTES"].split():
 # from the upper half only, so the lower half is free for pinned addresses.
 gateway, dyn_range = subnet.network_address + 1, list(subnet.subnets(prefixlen_diff=1))[1]
 if existing is not None:
-    project, pools = existing
+    project, label, driver, internal, pools = existing
     if project:
         refuse(f"network {name} belongs to compose project {project}; use a network of its own")
+    if label != marker.split("=", 1)[1]:
+        refuse(f"network {name} exists but was not created by this preflight (no {marker} label); "
+               "pick another name, or remove it so the preflight can create it")
+    if driver != "bridge":
+        refuse(f"network {name} uses the {driver} driver, not bridge")
+    if internal != "true":
+        refuse(f"network {name} is not internal; remove it so the preflight can recreate it")
     if [str(p[0]) for p in pools] != [str(subnet)]:
         refuse(f"network {name} exists with subnet(s) {[str(p[0]) for p in pools]}, not {subnet}")
     gateway = ipaddress.IPv4Address(pools[0][1]) if pools[0][1] else None
@@ -99,8 +118,18 @@ if ip == gateway:
 if dyn_range is not None and ip in dyn_range:
     refuse(f"APPS_EDGE_CADDY_IP {ip} is in the dynamic range {dyn_range}; pick one below it")
 for line in os.environ["HOLDERS"].splitlines():
-    held, container = line.split()
-    if held and ipaddress.ip_interface(held).ip == ip:
+    fields = line.split()
+    if not fields:
+        continue
+    if len(fields) != 2:
+        refuse(f"container {fields[-1]} on network {name} has no IPv4 address; "
+               "can not tell whether it holds the Caddy address")
+    held, container = fields
+    try:
+        held_ip = ipaddress.ip_interface(held).ip
+    except ValueError:
+        refuse(f"container {container} on network {name} has an unreadable address {held!r}")
+    if held_ip == ip:
         print(f"held {container}")
 
 print("exists" if existing is not None else f"create {gateway} {dyn_range}")
@@ -122,8 +151,9 @@ case "$action" in
   exists) echo "preflight-apps-edge ok: $APPS_EDGE_NETWORK" ;;
   create\ *)
     read -r _ gateway ip_range <<<"$action"
-    docker network create --driver bridge --subnet "$APPS_EDGE_SUBNET" \
-      --gateway "$gateway" --ip-range "$ip_range" "$APPS_EDGE_NETWORK" >/dev/null
-    echo "preflight-apps-edge ok: created $APPS_EDGE_NETWORK ($APPS_EDGE_SUBNET)" ;;
+    docker network create --driver bridge --internal --label "$MARKER_KEY=$MARKER_VALUE" \
+      --subnet "$APPS_EDGE_SUBNET" --gateway "$gateway" --ip-range "$ip_range" \
+      "$APPS_EDGE_NETWORK" >/dev/null
+    echo "preflight-apps-edge ok: created $APPS_EDGE_NETWORK ($APPS_EDGE_SUBNET, internal)" ;;
   *) echo "preflight-apps-edge: unexpected plan '$action'" >&2; exit 1 ;;
 esac

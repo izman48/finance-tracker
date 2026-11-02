@@ -30,11 +30,11 @@ class World(ParityWorld):
     under the same descriptor, plus a GBP 50 planned item the payment could
     settle and a salary credit."""
 
-    def __init__(self, client, db, status="confirmed"):
+    def __init__(self, client, db, status="confirmed", match_key=None):
         super().__init__(client, db, "spendhold@example.com")
-        self.as_user(lambda: self._seed(status))
+        self.as_user(lambda: self._seed(status, match_key))
 
-    def _seed(self, status):
+    def _seed(self, status, match_key):
         db, uid = self.db, self.user.id
         current = _account(db, uid, name="Main", balance="500")
         _tx(db, current, "50.00", DAY, merchant="GYM", category="Fitness")
@@ -42,7 +42,8 @@ class World(ParityWorld):
         _tx(db, current, "2000.00", DAY, ttype="credit", merchant="SALARY")
         rules = [
             CommitmentRule(user_id=uid, direction="expense", label="Gym", amount=Decimal("50.00"),
-                           cadence="monthly", next_date=TODAY + timedelta(days=20), source="manual", status=status),
+                           cadence="monthly", next_date=TODAY + timedelta(days=20), source="manual", status=status,
+                           match_key=match_key),
             CommitmentRule(user_id=uid, direction="income", label="Salary", amount=Decimal("2000.00"),
                            cadence="monthly", next_date=TODAY + timedelta(days=10), source="manual",
                            status="confirmed"),
@@ -58,6 +59,19 @@ class World(ParityWorld):
         res = self.client.post(f"/api/v1/planning/commitments/{cid}/dismiss", headers=_bearer(self.mcp),
                                json={"dry_run": False, "idempotency_key": f"spendhold-dismiss-{self.n:04d}"})
         assert res.status_code == 200, res.text
+
+    def hand_edit(self, **fields):
+        res = self.client.patch(f"/api/v1/analytics/commitments/{self.bill}", json=fields, headers=_bearer(self.web))
+        assert res.status_code == 200, res.text
+
+    def add_purchase(self, amount, merchant):
+        from app.models import Account
+
+        def make():
+            accounts = self.db.query(Account).filter(Account.user_id == self.user.id).all()
+            acc = next(a for a in accounts if a.display_name == "Main")
+            _tx(self.db, acc, amount, DAY, merchant=merchant, category="Groceries")
+        self.as_user(make)
 
     def tags(self, **params) -> dict:
         res = self.client.get("/api/v1/banking/transactions", params=params, headers=_bearer(self.web))
@@ -165,8 +179,31 @@ def test_a_bill_claude_confirmed_is_not_the_payments_until_the_user_says_so(clie
     w = World(client, db_session, status="suggested")
     w.claude_update(w.bill, status="confirmed")
     assert _spending_view(w)["budget"] == Decimal("62.00")
-    w.client.patch(f"/api/v1/analytics/commitments/{w.bill}", json={"status": "confirmed"}, headers=_bearer(w.web))
+    w.hand_edit(status="confirmed")
     assert _spending_view(w)["budget"] == Decimal("12.00")
+
+
+def test_a_claude_rename_onto_another_merchant_hides_none_of_its_purchases(client, db_session):
+    """Widening: renaming the bill "Tesco" adds the key `tesco` (its old key
+    stays), so as it is now it would take a GBP 45 TESCO shop. The bill as it
+    was before Claude never matched TESCO, so the shop stays spending."""
+    w = World(client, db_session)
+    w.add_purchase("45.00", "TESCO")
+    w.claude_update(w.bill, label="Tesco")
+    assert w.tags()[Decimal("45.00")] is False
+    assert w.svc(budget_spend, start=START, end=TODAY).by_category["Groceries"] == Decimal("45.00")
+
+
+def test_a_claude_rename_that_drops_the_key_shows_the_payment_as_spending(client, db_session):
+    """Narrowing: the bill's stored key is an old merchant's and its GYM
+    payments match by its label. Renamed, it no longer takes them, so the
+    payment is spending at once, while planned matching still holds it."""
+    w = World(client, db_session, match_key="expense:oldgym co")
+    assert w.tags()[Decimal("50.00")] is True
+    w.claude_update(w.bill, label="Fitness")
+    assert w.tags()[Decimal("50.00")] is False
+    assert w.budget() == Decimal("62.00")
+    assert not w.planned_settled()
 
 
 def test_undoing_a_raise_is_the_same_as_no_change(client, db_session):
@@ -179,7 +216,7 @@ def test_undoing_a_raise_is_the_same_as_no_change(client, db_session):
 def test_a_hand_set_amount_ends_the_intersection(client, db_session):
     w = World(client, db_session)
     w.claude_update(w.bill, amount="10.00")
-    w.client.patch(f"/api/v1/analytics/commitments/{w.bill}", json={"amount": "10.00"}, headers=_bearer(w.web))
+    w.hand_edit(amount="10.00")
     assert _spending_view(w)["budget"] == Decimal("50.00")  # the drink is the bill's, by the user's choice
 
 

@@ -5,6 +5,7 @@ import re
 import statistics
 import uuid as _uuid
 from collections import Counter, defaultdict
+from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -136,12 +137,60 @@ def transaction_match_key(tx: Transaction) -> str:
     return _match_key(direction, (tx.merchant_name or tx.description or "Unknown").strip())
 
 
-def commitment_match_keys(db: Session, user) -> set[str]:
-    """Match keys of confirmed commitments, for flagging/excluding their transactions.
+AMOUNT_TOLERANCE_SHARE = Decimal("0.25")
+AMOUNT_TOLERANCE_FLOOR = Decimal("5")
 
-    Detected commitments carry the match_key they were grouped under; manual ones
-    fall back to their label, which catches commitments added from a transaction.
+
+def amount_matches(tx_amount: Decimal, commitment_amount: Decimal) -> bool:
+    """Within max(25%, GBP 5) of the commitment's amount (owner, 2026-11-02):
+    wide enough for price rises, narrow enough that a one-off purchase under
+    the same descriptor is not taken for the subscription."""
+    expected = abs(commitment_amount)
+    allowed = max(expected * AMOUNT_TOLERANCE_SHARE, AMOUNT_TOLERANCE_FLOOR)
+    return abs(abs(tx_amount) - expected) <= allowed
+
+
+@dataclass(frozen=True)
+class CommitmentMatcher:
+    """Which transactions are a confirmed commitment's payments (T-19-1): the
+    key must match and the amount be near some commitment with that key.
+
+    `key_only` holds the keys of rules matched on their key alone: rules
+    with no amount, and rules linked to a holding or loan, whose extra
+    payments (an overpayment, a lump sum) move money into the holding and
+    are not spending either.
     """
+    amounts: dict[str, tuple[Decimal, ...]]
+    key_only: frozenset[str]
+
+    def matches(self, tx: Transaction) -> bool:
+        key = transaction_match_key(tx)
+        if key in self.key_only:
+            return True
+        return any(amount_matches(_d(tx.amount), a) for a in self.amounts.get(key, ()))
+
+
+NO_COMMITMENTS = CommitmentMatcher({}, frozenset())
+
+
+def build_commitment_matcher(rules, linked_ids: set) -> CommitmentMatcher:
+    """Detected rules carry the key they were grouped under; manual ones also
+    answer to their label, which catches commitments added from a transaction."""
+    amounts: dict[str, list[Decimal]] = defaultdict(list)
+    key_only: set[str] = set()
+    for rule in rules:
+        keys = rule_match_keys(rule)
+        amount = _d(rule.amount)
+        if rule.id in linked_ids or amount == 0:
+            key_only |= keys
+        else:
+            for key in keys:
+                amounts[key].append(amount)
+    return CommitmentMatcher({k: tuple(v) for k, v in amounts.items()}, frozenset(key_only))
+
+
+def commitment_matcher(db: Session, user) -> CommitmentMatcher:
+    """The matcher for this user's confirmed commitments, built once per request."""
     rules = (
         db.query(CommitmentRule)
         .filter(
@@ -150,10 +199,7 @@ def commitment_match_keys(db: Session, user) -> set[str]:
         )
         .all()
     )
-    keys: set[str] = set()
-    for r in rules:
-        keys |= rule_match_keys(r)
-    return keys
+    return build_commitment_matcher(rules, linked_commitment_ids(db, user.id))
 
 
 def detect_recurring(db: Session, user) -> list[dict]:

@@ -15,7 +15,8 @@ from .cadence import (  # noqa: F401
 from .commitments import (  # noqa: F401
     _match_key,
     commitment_from_transaction,
-    commitment_match_keys,
+    NO_COMMITMENTS,
+    commitment_matcher,
     convert_transaction_to_plan,
     detect_recurring,
     last_payday,
@@ -71,7 +72,8 @@ __all__ = [
     # commitments
     "_match_key",
     "commitment_from_transaction",
-    "commitment_match_keys",
+    "NO_COMMITMENTS",
+    "commitment_matcher",
     "convert_transaction_to_plan",
     "detect_recurring",
     "last_payday",

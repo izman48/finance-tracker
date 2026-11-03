@@ -89,6 +89,10 @@ def get_summary(db: Session, user) -> dict:
     )
     # A planned expense Claude removed still counts until kept (T-08-21b).
     planned = active_planned + held_removed_planned(db, user.id)
+    # A payment Claude's unkept bill change would free settles nothing
+    # (T-20-1a). Both figures below use these held states, so what that
+    # holds back is not in the pending-keep total until raises and renames
+    # can be kept (T-20-1b; sec on #267).
     states = planned_states(db, user, planned, today)
     # Cut at payday like the forecast, so a bill due on payday is its own
     # window (eng-b on #234).

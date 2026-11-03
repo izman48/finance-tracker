@@ -15,6 +15,7 @@ import pytest
 from app.core import user_crypto
 from app.models import AuditEntry, CommitmentRule, Transaction, User
 from app.services import analytics_service as svc
+from app.services.analytics.commitments import current_commitment_matcher
 from tests.integration.test_oauth import READ, _bearer, _connect, _web_login
 from tests.integration.test_transactions_endpoint import _account, _dek_from_token
 from tests.clock import TODAY
@@ -257,7 +258,12 @@ def test_a_relabelled_detected_commitment_keeps_its_key_and_is_not_re_suggested(
     assert _rules(world) == [("Streaming", "confirmed")]  # the merchant isn't suggested again
     with world.as_user():
         user = world.db.get(User, world.user.id)
-        assert key in svc.commitment_match_keys(world.db, user)  # its payments still match it
+        # Its payments still match its key. The current view, not Spending's:
+        # Spending keeps them as spending while Claude's confirm is unkept
+        # (T-20-1b, lead option A; test_spending_claude_hold).
+        matcher = current_commitment_matcher(world.db, user)
+        payments = world.db.query(Transaction).all()
+        assert payments and all(matcher.matches(t) for t in payments)
 
 
 def test_a_dismissed_commitment_is_not_re_added_by_sync(world):

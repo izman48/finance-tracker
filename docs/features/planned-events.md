@@ -8,6 +8,20 @@ into an instalment plan and drops the lump from spending. Claude can add
 one-offs and soft-remove the ones it created; a removed expense keeps
 counting until the user keeps the change.
 
+**Claude's bill changes don't settle items (T-20-1a)**: a bill's payment
+never settles a planned item. While a Claude change to a bill (raise, cut,
+dismissal, rename) is unkept, a payment is the bill's if the bill as it is
+now *or* as it was before Claude matches it (`claude_keep.held_match_rules`,
+fields `MATCH_FIELDS`), so a Claude write can't free a payment and raise
+safe to spend. This held view feeds every figure and list (safe to spend,
+savable, forecast, card-payment overlap, the web planned list,
+`list_planned_events`). What it holds back is not in
+`safe_to_spend_pending_keep_total` until raises and renames can be kept
+(T-20-1b), so Home never calls it a change waiting for a keep. The
+hold ends on keep, undo, or a hand edit of that field (a web rename or
+"matches merchant" edit sets both label and key). Incomes use the current
+view only: settling planned income only lowers the figures.
+
 **Card payments (T-12-4a, owner 2026-10-15, card-agnostic)**: a planned
 item can be marked `is_card_payment` (a plain flag on create or PATCH; no
 card is chosen and nothing is matched by name). In each pay window (cut at
@@ -58,7 +72,7 @@ non-budget nudges.
 **MCP**: `list_planned_events`, `add_planned_event`, `remove_planned_event`.
 
 **Tests**: `api/tests/integration/test_planned_events_api.py`,
-`test_planned_matching.py`, `test_planned_removal_hold.py`,
+`test_planned_matching.py`, `test_planned_matching_claude_hold.py`, `test_planned_removal_hold.py`,
 `test_planning_writes.py`, `test_planning_write_auth.py`;
 `api/mcp/tests/test_planned_events_tools.py`; UI `PlannedItems.test.tsx`.
 

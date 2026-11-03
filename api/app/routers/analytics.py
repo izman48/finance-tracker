@@ -390,6 +390,10 @@ def update_commitment(
                 raise RequestValidationError([{"type": "value_error", "loc": ("body", field), "msg": problem,
                                                "input": None}])
     refuse_linked_edit(db, current_user.id, rule.id, updates)
+    # A rename or a "matches merchant" edit sets by hand which payments are
+    # this bill's, so neither Claude's label nor its key holds them any more
+    # (T-20-1a, sec): both fields are the user's.
+    match_set_by_hand = {"label", "match_key"} if {"label", "match_merchant"} & updates.keys() else set()
     # match_merchant is a virtual field — translate it into the stored match_key.
     if "match_merchant" in updates:
         merchant = updates.pop("match_merchant")
@@ -417,7 +421,7 @@ def update_commitment(
         setattr(rule, field, value)
     # The fields set here are now the user's, not Claude's (T-08-20). This
     # is not keeping Claude's other changes (owner, Q-D4).
-    record_user_edit(db, current_user.id, rule.id, updates.keys())
+    record_user_edit(db, current_user.id, rule.id, updates.keys() | match_set_by_hand)
     db.commit()
     db.refresh(rule)
     return rule

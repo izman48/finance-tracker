@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Account, AccountRole, PlannedItem, Transaction
 
-from .commitments import commitment_match_keys, last_payday, transaction_match_key
+from .commitments import NO_COMMITMENTS, BothViews, CommitmentMatcher, commitment_matcher, last_payday
 from .common import (
     _add_months,
     _d,
@@ -146,7 +146,7 @@ def get_spending(
     roles = resolve_roles(accounts, settings)
     today = _today()
     start, end = _spending_range(db, user, period, frm, to, today)
-    commitment_keys = commitment_match_keys(db, user)
+    commitments = commitment_matcher(db, user)
     financed = financed_transaction_ids(db, user)
 
     txns_all = (
@@ -168,10 +168,10 @@ def get_spending(
     by_merchant: dict[str, Decimal] = defaultdict(Decimal)
 
     if lens == "purchases":
-        keys = commitment_keys if exclude_commitments else set()
+        excluded = commitments if exclude_commitments else NO_COMMITMENTS
         charged_to_credit = Decimal(0)
         paid_from_cash = Decimal(0)
-        for tx, tx_kind in _iter_spending(txns, transfers, roles, financed, keys):
+        for tx, tx_kind in _iter_spending(txns, transfers, roles, financed, excluded):
             if kind_scope and tx_kind != kind_scope:
                 continue
             amount = _d(tx.amount)
@@ -188,7 +188,7 @@ def get_spending(
         comp = {"card_repayments": Decimal(0), "transfers": Decimal(0), "commitments": Decimal(0), "other": Decimal(0)}
         total = Decimal(0)
         for tx in txns:
-            for amount in [_money_out_amount(tx, roles, transfers, exclude_commitments, hide_transfers, hide_card_payments, commitment_keys)]:
+            for amount in [_money_out_amount(tx, roles, transfers, exclude_commitments, hide_transfers, hide_card_payments, commitments)]:
                 if amount is None:
                     continue
                 total += amount
@@ -205,7 +205,7 @@ def get_spending(
                     comp["card_repayments"] += amount
                 elif tx.id in transfers:
                     comp["transfers"] += amount
-                elif transaction_match_key(tx) in commitment_keys:
+                elif commitments.matches(tx):
                     comp["commitments"] += amount
                 else:
                     comp["other"] += amount
@@ -252,7 +252,7 @@ def _is_card_repayment(tx, roles) -> bool:
     return is_card_payment_descriptor(tx)
 
 
-def _money_out_amount(tx, roles, transfers, exclude_commitments, hide_transfers, hide_card_payments, commitment_keys):
+def _money_out_amount(tx, roles, transfers, exclude_commitments, hide_transfers, hide_card_payments, commitments):
     """The signed amount this transaction contributes to 'money out of my bank',
     or None if it doesn't count (not a spending-account debit, or opted out).
 
@@ -266,12 +266,12 @@ def _money_out_amount(tx, roles, transfers, exclude_commitments, hide_transfers,
         return None
     if hide_card_payments and _is_card_repayment(tx, roles):
         return None
-    if exclude_commitments and transaction_match_key(tx) in commitment_keys:
+    if exclude_commitments and commitments.matches(tx):
         return None
     return _d(tx.amount)
 
 
-def classify_purchase(tx, transfers, roles, financed, commitment_keys) -> str | None:
+def classify_purchase(tx, transfers, roles, financed, commitments: CommitmentMatcher | BothViews) -> str | None:
     """What a transaction is under the purchases lens: "credit" (a card
     purchase) or "cash" (paid from a spending account) if it counts;
     "card_payoff", "transfer", "financed" or "commitment" if it's a spending-
@@ -291,16 +291,16 @@ def classify_purchase(tx, transfers, roles, financed, commitment_keys) -> str | 
         return "transfer"
     if tx.id in financed:
         return "financed"  # moved to a payment plan: counted via its instalments
-    if commitment_keys and transaction_match_key(tx) in commitment_keys:
+    if commitments.matches(tx):
         return "commitment"
     return "credit" if role == AccountRole.CREDIT else "cash"
 
 
-def _iter_spending(txns, transfers, roles, financed, commitment_keys):
+def _iter_spending(txns, transfers, roles, financed, commitments):
     """Yield (tx, kind) for each transaction that counts as real spending,
     kind "credit" or "cash" (see classify_purchase)."""
     for tx in txns:
-        kind = classify_purchase(tx, transfers, roles, financed, commitment_keys)
+        kind = classify_purchase(tx, transfers, roles, financed, commitments)
         if kind in ("credit", "cash"):
             yield tx, kind
 
@@ -318,7 +318,7 @@ def spending_transactions(
     acc_names = {a.id: a.display_name for a in accounts}
     today = _today()
     start, end = _spending_range(db, user, period, frm, to, today)
-    commitment_keys = commitment_match_keys(db, user) if exclude_commitments else set()
+    commitments = commitment_matcher(db, user) if exclude_commitments else NO_COMMITMENTS
     financed = financed_transaction_ids(db, user)
 
     txns = (
@@ -334,7 +334,7 @@ def spending_transactions(
     transfers = _effective_transfers(txns)
 
     out: list[dict] = []
-    for tx, k in _iter_spending(txns, transfers, roles, financed, commitment_keys):
+    for tx, k in _iter_spending(txns, transfers, roles, financed, commitments):
         if kind and k != kind:
             continue
         cat = tx.category or "Uncategorized"
@@ -372,7 +372,7 @@ def get_spending_trend(
     months = max(1, min(months, 24))
     accounts, settings = _load(db, user)
     roles = resolve_roles(accounts, settings)
-    commitment_keys = commitment_match_keys(db, user) if exclude_commitments else set()
+    commitments = commitment_matcher(db, user) if exclude_commitments else NO_COMMITMENTS
     financed = financed_transaction_ids(db, user)
     today = _today()
     first_of_this_month = date(today.year, today.month, 1)
@@ -399,7 +399,7 @@ def get_spending_trend(
 
     # Same iterator as the purchases lens, so the trend can never apply a
     # different set of exclusions.
-    for tx, kind in _iter_spending(txns, transfers, roles, financed, commitment_keys):
+    for tx, kind in _iter_spending(txns, transfers, roles, financed, commitments):
         amount = _d(tx.amount)
         b = buckets.setdefault(_month_key(tx.transaction_date.date()), {"total": Decimal(0), "credit": Decimal(0), "cash": Decimal(0)})
         b["total"] += amount

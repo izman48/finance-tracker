@@ -310,6 +310,13 @@ deploy stopped and the running Caddy still serving:
   network without an IPv4 address);
 - a host without the `ip` command (the host-route check can't run).
 
+The decision is made by `deploy/apps_edge_plan.py` from `docker network
+inspect` JSON, not a `--format` template: Docker 29 prints unset addresses in
+templates as `invalid Prefix`, which broke the first version. CI's Docker may
+not match the server's, so `deploy/test_apps_edge_plan.py` pins the Docker
+24/27/29 JSON shapes; after a server Docker upgrade, check
+`docker network inspect` still parses (see that file) before enabling this.
+
 **The network is internal: no outbound internet through it.** Docker drops
 anything a container sends through it to outside the subnet. The other app
 needs no egress (it keeps its data locally and sends no third-party pings or

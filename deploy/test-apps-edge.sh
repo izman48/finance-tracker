@@ -12,6 +12,8 @@
 #     its gateway or dynamic range), a partial setting, and an existing network
 #     that doesn't match, or one the preflight didn't create (no marker label,
 #     not an internal bridge network, e.g. Docker's own `bridge`).
+#   - It parses `docker network inspect` as Docker 24, 27 and 29 print it
+#     (deploy/test_apps_edge_plan.py; Docker 29 broke the old --format parse).
 #   - The network it creates is internal (no gateway out), and a container on
 #     it plus an ordinary network keeps its default route on the ordinary one.
 # Usage: ./deploy/test-apps-edge.sh   (needs Docker; CI runs it in test.yml)
@@ -32,6 +34,13 @@ trap cleanup EXIT
 failures=0
 pass() { echo "ok   - $1"; }
 fail() { echo "FAIL - $1" >&2; failures=$((failures + 1)); }
+
+# Parsing `docker network inspect` as Docker 24, 27 and 29 print it (no Docker needed).
+if python3 "$REPO_ROOT/deploy/test_apps_edge_plan.py" > "$TMP/unit" 2>&1; then
+  pass "apps_edge_plan.py unit tests (Docker 24/27/29 inspect output)"
+else
+  fail "apps_edge_plan.py unit tests: $(cat "$TMP/unit")"
+fi
 
 # A copy of what deploy.sh ships, with a fake .env.production, like the server.
 SERVER="$TMP/finance-tracker"
@@ -58,12 +67,21 @@ fi
 REAL_DOCKER="$(command -v docker)"
 preflight() { (cd "$SERVER" && PATH="$BIN:$PATH" ./deploy/preflight-apps-edge.sh) > "$TMP/out" 2>&1; }
 # A docker that logs every call and, with FAKE_NO_IPV4=1, reports a container
-# without an IPv4 address on the network; anything else goes to the real one.
+# without an IPv4 address on network FAKE_NO_IPV4_NET; anything else goes to the real one.
 SPY="$TMP/spy" && mkdir -p "$SPY" && cp "$BIN"/* "$SPY"/ 2>/dev/null || true
 cat > "$SPY/docker" <<SPY
 #!/usr/bin/env bash
 echo "\$*" >> "$TMP/docker-calls"
-if [ "\${FAKE_NO_IPV4:-}" = 1 ] && [[ "\$*" == *IPv4Address* ]]; then echo " 0123456789ab"; exit 0; fi
+if [ "\${FAKE_NO_IPV4:-}" = 1 ] && [ "\$1 \$2" = "network inspect" ] && [[ "\$*" != *--format* ]]; then
+  "$REAL_DOCKER" "\$@" | python3 -c '
+import json, sys
+nets = json.load(sys.stdin)
+for n in nets:
+    if n["Name"] == sys.argv[1]:
+        n["Containers"] = {"0123456789ab": {"Name": "x", "IPv4Address": "", "IPv6Address": ""}}
+json.dump(nets, sys.stdout)' "\$FAKE_NO_IPV4_NET"
+  exit "\${PIPESTATUS[0]}"
+fi
 exec "$REAL_DOCKER" "\$@"
 SPY
 chmod +x "$SPY/docker"
@@ -228,9 +246,10 @@ fi
 docker rm -f "$app" "$edgy" >/dev/null
 
 # A container on the network without an IPv4 address: a clear refusal, not a traceback.
-FAKE_NO_IPV4=1 spy_preflight && fail "accepted a holder without an IPv4 address" \
-  || { grep -q Traceback "$TMP/out" && fail "traceback on a holder without IPv4: $(cat "$TMP/out")" \
-       || pass "a holder without an IPv4 address gives a clean refusal"; }
+FAKE_NO_IPV4=1 FAKE_NO_IPV4_NET="$NET" spy_preflight && fail "accepted a holder without an IPv4 address" \
+  || { grep -q "no IPv4 address" "$TMP/out" && ! grep -q Traceback "$TMP/out" \
+       && pass "a holder without an IPv4 address gives a clean refusal" \
+       || fail "holder without IPv4: $(cat "$TMP/out")"; }
 
 # Something else already holds Caddy's address on the network: recreating Caddy
 # would fail and leave the site down, so refuse before `up`.

@@ -4,7 +4,10 @@ Every write Claude makes goes through one safe path: dry run by default,
 idempotent, rate limited, recorded in an encrypted append-only audit trail,
 and shown on the "Changes made by Claude" page where the user can undo it.
 Claude's changes to commitments and removals of planned expenses are held
-(they don't affect safe to spend) until the user keeps them.
+(they don't affect safe to spend) until the user keeps them. A bill Claude
+raised or renamed has no keep yet (T-20-1b), but its before-Claude version
+still decides which payments are the bill's for planned matching until the
+change is undone or the user edits that field (T-20-1a).
 
 ## Code
 
@@ -49,7 +52,8 @@ commitments), `lib/changes.ts`, `lib/keep.ts`.
 **Tests**: `api/tests/integration/test_planning_writes.py`,
 `test_planning_write_auth.py`, `test_audit_api.py` (route set is exactly
 list, undo, keep), `test_keep_commitment_api.py`,
-`test_planned_removal_hold.py`, `test_no_claude_raise.py`; UI tests next to
+`test_planned_removal_hold.py`, `test_no_claude_raise.py`,
+`test_planned_matching_claude_hold.py`; UI tests next to
 each `changes/` component, `changes.test.ts`, `keep.test.ts`.
 
 ## Touchpoints

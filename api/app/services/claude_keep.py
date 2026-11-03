@@ -49,6 +49,10 @@ MONEY_FIELDS = ("amount", "cadence", "interval_days", "interval_months", "next_d
 # The card link decides whether a bill and its card's repayment count once or
 # both (T-08-8), so a link Claude sets is held like a cut (sec on T-08-21b).
 HELD_FIELDS = MONEY_FIELDS + ("card_account_id", "card_link_source")
+# The fields that decide which payments are a bill's (T-20-1a). A separate
+# set, not HELD_FIELDS: `_version` already passes the label (a duplicate
+# keyword) and card ties must keep reading the current label (sec).
+MATCH_FIELDS = ("amount", "status", "label", "match_key")
 PENDING, KEPT = "pending", "kept"
 INCOME_KIND, EXPENSE_CUT_KIND = "income", "expense_cut"
 
@@ -138,8 +142,9 @@ def _settled(row: AuditEntry, applied: frozenset) -> bool:
     return row.kept_at is not None or row.id in applied
 
 
-def _live_fields(rows: list[AuditEntry], applied: frozenset = frozenset()) -> dict[uuid.UUID, set[str]]:
-    """{row id: the money fields of that Claude write still in effect}.
+def _live_fields(rows: list[AuditEntry], applied: frozenset = frozenset(),
+                 fields_of: tuple[str, ...] = HELD_FIELDS) -> dict[uuid.UUID, set[str]]:
+    """{row id: the `fields_of` fields of that Claude write still in effect}.
 
     Walking newest first, a field stops being Claude's once the user set it
     by hand afterwards, or a newer Claude change to it was kept (the user
@@ -149,7 +154,7 @@ def _live_fields(rows: list[AuditEntry], applied: frozenset = frozenset()) -> di
     settled: set[str] = set()
     out = {}
     for row in reversed(rows):
-        fields = {c["field"] for c in json.loads(row.changes) if c["field"] in HELD_FIELDS}
+        fields = {c["field"] for c in json.loads(row.changes) if c["field"] in fields_of}
         user_set = set(row.user_set_fields or [])
         out[row.id] = fields - user_set - settled
         settled |= user_set
@@ -362,12 +367,13 @@ def _applied_dismissals(rules: list[CommitmentRule], claude: dict) -> frozenset:
     return frozenset(row_id for rid, ids in dismissals.items() if rid not in held for row_id in ids)
 
 
-def before_claude(rule: CommitmentRule, rows: list[AuditEntry], applied: frozenset = frozenset()) -> SimpleNamespace:
-    """The commitment's money fields as they were before Claude's pending
-    (not kept) writes, walking newest first and reverting each field that is
-    still Claude's (`_live_fields`)."""
-    live = _live_fields(rows, applied)
-    view = SimpleNamespace(**{f: getattr(rule, f) for f in HELD_FIELDS})
+def before_claude(rule: CommitmentRule, rows: list[AuditEntry], applied: frozenset = frozenset(),
+                  fields_of: tuple[str, ...] = HELD_FIELDS) -> SimpleNamespace:
+    """The commitment's `fields_of` fields as they were before Claude's
+    pending (not kept) writes, walking newest first and reverting each field
+    that is still Claude's (`_live_fields`)."""
+    live = _live_fields(rows, applied, fields_of)
+    view = SimpleNamespace(**{f: getattr(rule, f) for f in fields_of})
     for entry in reversed(rows):
         if _settled(entry, applied):
             continue
@@ -375,6 +381,29 @@ def before_claude(rule: CommitmentRule, rows: list[AuditEntry], applied: frozens
             if c["field"] in live[entry.id]:
                 setattr(view, c["field"], _value(c["field"], c["before"]))
     return view
+
+
+def held_match_bills(db: Session, user_id: uuid.UUID) -> list[SimpleNamespace]:
+    """The bills as they matched payments before Claude's pending changes
+    (T-20-1a): every expense commitment that was confirmed then, with its
+    amount, label and key from before Claude. Planned matching treats a
+    payment as a bill's if this view *or* the current one matches it, so a
+    Claude raise, dismissal or rename can't free a payment to settle a
+    planned expense (and raise safe-to-spend) before the user agrees.
+    Incomes are left out: a payment freed there settles planned income,
+    which only lowers the figures."""
+    rules = (
+        db.query(CommitmentRule)
+        .filter(CommitmentRule.user_id == user_id, CommitmentRule.direction == CommitmentDirection.EXPENSE.value)
+        .all()
+    )
+    claude = claude_rows(db, user_id, [r.id for r in rules])
+    out = []
+    for r in rules:
+        view = before_claude(r, claude[r.id], fields_of=MATCH_FIELDS) if r.id in claude else r
+        if view.status == CommitmentStatus.CONFIRMED.value:
+            out.append(SimpleNamespace(id=r.id, direction=r.direction, **{f: getattr(view, f) for f in MATCH_FIELDS}))
+    return out
 
 
 def planned_removal_states(db: Session, user_id: uuid.UUID,
@@ -423,7 +452,7 @@ def record_user_edit(db: Session, user_id: uuid.UUID, commitment_id: uuid.UUID, 
     """A web edit set these fields by hand: from now on they are the user's,
     not Claude's, on every pending Claude change to this commitment. Not
     keeping (Q-D4): the other fields stay pending. Caller commits."""
-    touched = set(fields) & set(HELD_FIELDS)
+    touched = set(fields) & (set(HELD_FIELDS) | set(MATCH_FIELDS))
     if not touched:
         return
     rows = (

@@ -16,7 +16,11 @@
 - `docker-compose.prod.yml`: `db`, `api` (2 workers, forwarded-allow-ips
   pinned to Caddy), `mcp`, `caddy` (built from `deploy/ui.Dockerfile`, serves
   the UI, proxies `/api/*`, `/mcp` and the OAuth well-known endpoints, plus
-  extra static sites from `docs/extra-sites/`-style folders).
+  extra static sites from `docs/extra-sites/`-style folders). Optionally,
+  `deploy/compose.apps-edge.yml` puts Caddy (only) on one extra external
+  network shared with another app, when the `APPS_EDGE_*` settings are set;
+  `deploy/compose-prod.sh` adds it and `deploy/preflight-apps-edge.sh`
+  checks and creates the network (DEPLOY.md "Shared apps network").
 - Settings: `api/app/core/config.py`, `.env.example`,
   `.env.production.example`.
 
@@ -27,8 +31,8 @@
   lint, build, production UI image, and the `workflows` job (workflow checks,
   audit gate, **feature-docs check**). `required` is the one status to watch.
 - `.github/workflows/deploy.yml`: push to `main` runs `test.yml`, then
-  `deploy/deploy.sh` over SSH (dirty-tree refusal, pre-migration dump,
-  smoke test).
+  `deploy/deploy.sh` over SSH (dirty-tree refusal, sites and apps-network
+  preflights, pre-migration dump, smoke test).
 - `.github/workflows/audit.yml`: weekly npm and pip audits with a dated
   ignore list.
 - `.github/scripts/check_feature_docs.py`: keeps `docs/features/` in step

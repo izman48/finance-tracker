@@ -98,6 +98,17 @@ up_at="$(grep -bo 'up -d --build' <<<"$remote_cmd" | head -1 | cut -d: -f1)"
 [ -n "$dump_at" ] && [ -n "$up_at" ] && [ "$dump_at" -lt "$up_at" ] \
   && pass "server runs the pre-migration dump before up -d" \
   || fail "pre-migration dump not run before up -d: $remote_cmd"
+# The shared apps network (DEPLOY.md "Shared apps network"): checked and
+# created before up, and up goes through compose-prod.sh, which adds Caddy's
+# extra network only when it is configured. A plain compose up would drop it.
+edge_at="$(grep -bo 'preflight-apps-edge.sh &&' <<<"$remote_cmd" | head -1 | cut -d: -f1 || true)"
+[ -n "$edge_at" ] && [ -n "$up_at" ] && [ "$edge_at" -lt "$up_at" ] \
+  && pass "server checks the shared apps network before up -d" \
+  || fail "preflight-apps-edge.sh not run before up -d: $remote_cmd"
+grep -q './deploy/compose-prod.sh up -d --build --remove-orphans' <<<"$remote_cmd" \
+  && pass "up goes through compose-prod.sh" || fail "up does not use compose-prod.sh: $remote_cmd"
+grep -q 'docker compose [^&]* up ' <<<"$remote_cmd" \
+  && fail "a plain docker compose up is still in the deploy" || pass "no plain docker compose up"
 
 # --- pre-migration-dump.sh -----------------------------------------------------
 
@@ -144,6 +155,31 @@ else
   pass "unreadable revision (e.g. revert without downgrade): exits non-zero"
 fi
 grep -q "Rollback" "$TMP/out" && pass "unreadable revision: points at the rollback docs" || fail "no rollback pointer: $(cat "$TMP/out")"
+
+# --- compose-prod.sh, settings unset ---------------------------------------------
+# The stub docker answers `config` with an empty x-apps-edge block, as real
+# compose does when the APPS_EDGE_* settings are unset.
+cat > "$STUBS/docker" <<'EOF2'
+#!/usr/bin/env bash
+echo "docker $*" >> "$CALLS"
+case " $* " in
+  *" config --format json "*) printf '{"name":"finance-tracker","x-apps-edge":{"network":"","subnet":"","caddy_ip":""}}' ;;
+esac
+exit 0
+EOF2
+: > "$CALLS"
+(cd "$server" && ./deploy/compose-prod.sh up -d --build --remove-orphans) > "$TMP/out" 2>&1 \
+  && pass "compose-prod.sh (unset) exits 0" || fail "compose-prod.sh (unset) failed: $(cat "$TMP/out")"
+[ "$(grep -v ' config --format json' "$CALLS")" = \
+  "docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build --remove-orphans" ] \
+  && pass "compose-prod.sh (unset) runs exactly the old compose up" \
+  || fail "compose-prod.sh (unset) ran: $(cat "$CALLS")"
+: > "$CALLS"
+(cd "$server" && ./deploy/preflight-apps-edge.sh) > "$TMP/out" 2>&1 \
+  && pass "preflight-apps-edge.sh (unset) exits 0" || fail "preflight-apps-edge.sh (unset) failed"
+[ "$(grep -vc ' config --format json' "$CALLS")" = 0 ] && [ ! -s "$TMP/out" ] \
+  && pass "preflight-apps-edge.sh (unset) only reads the config and prints nothing" \
+  || fail "preflight-apps-edge.sh (unset) did more: $(cat "$CALLS" "$TMP/out")"
 
 # --- backup.sh shares the dump -------------------------------------------------
 grep -q 'deploy/pg-dump.sh' "$REPO_ROOT/deploy/backup.sh" \

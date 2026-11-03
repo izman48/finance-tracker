@@ -33,7 +33,7 @@ All in Docker via `docker-compose.prod.yml`; UI and API share one origin so no C
 From your machine:
 
 ```bash
-./deploy/deploy.sh <ssh-host>   # rsyncs the repo and runs docker compose up -d --build
+./deploy/deploy.sh <ssh-host>   # rsyncs the repo, runs the preflights, then ./deploy/compose-prod.sh up -d --build
 ```
 
 `<ssh-host>` is an `~/.ssh/config` alias or `user@ip`; you can set `DEPLOY_HOST`
@@ -48,8 +48,11 @@ so a merge is a production deploy. What it does:
 2. Syncs that commit to `~/finance-tracker` (`rsync --delete`; `.env.production`
    on the server is kept).
 3. On the server, runs `deploy/preflight-sites.sh`, then
+   `deploy/preflight-apps-edge.sh` (see Shared apps network), then
    `deploy/pre-migration-dump.sh` (see Rollback), then
-   `docker compose up -d --build`, then `deploy/smoke.sh`.
+   `./deploy/compose-prod.sh up -d --build --remove-orphans`, then
+   `deploy/smoke.sh`. For a manual deploy use `./deploy/compose-prod.sh up`,
+   not a plain `docker compose up`.
 
 The api container runs `alembic upgrade head` every time it starts, so a
 release that contains a migration applies it on deploy.
@@ -266,6 +269,88 @@ To add or update a site:
 Content-only changes (files under `mysite/`) are live immediately; no reload.
 `./deploy/test-caddy.sh` (run in CI) checks the Caddyfile against the real Caddy
 image, with and without the example site, and checks the preflight.
+
+## Shared apps network (optional)
+
+Another app on the same server, in its own compose project, can be served
+through this Caddy without joining any of this stack's networks: Caddy joins
+one extra external Docker network shared only with that app, at a pinned
+address, and the app's site file in the sites folder proxies to it by its
+alias on that network. Neither this stack's `api`, `mcp` nor `db` joins it,
+so the other app can't reach them, and Caddy stays off this stack's `default`
+network (where `db` lives).
+
+Three settings in `.env.production`, all or none:
+
+| Setting | Meaning |
+|---|---|
+| `APPS_EDGE_NETWORK` | the network's name, e.g. `apps_edge` |
+| `APPS_EDGE_SUBNET` | its IPv4 subnet, `/16` to `/28`, free on this host |
+| `APPS_EDGE_CADDY_IP` | Caddy's address on it, in the subnet's lower half |
+
+**Unset (the default), nothing changes.** `deploy/compose-prod.sh` runs the
+plain `docker compose -f docker-compose.prod.yml --env-file .env.production`,
+and `deploy/preflight-apps-edge.sh` prints nothing and creates nothing
+(`deploy/test-apps-edge.sh` proves the compose config is byte-identical).
+
+**Set,** every deploy runs `deploy/preflight-apps-edge.sh` before `up`. It
+creates the network if missing (an internal bridge with the label
+`apps-edge.managed-by=preflight-apps-edge`, gateway on the first address,
+Docker's own allocations limited to the upper half) and refuses, with the
+deploy stopped and the running Caddy still serving:
+- a subnet overlapping any Docker network or host route (a clash would stop
+  the new Caddy starting and take the app down);
+- a Caddy address outside the subnet, on its network, gateway or broadcast
+  address, or in the upper half;
+- an existing network of that name that the preflight didn't create: no
+  marker label (Docker's own `bridge`, a hand-made network, a compose
+  project's network), not a bridge, not internal, or another subnet. Don't
+  create the network by hand; let the preflight do it;
+- Caddy's address already held by another container (or a container on the
+  network without an IPv4 address);
+- a host without the `ip` command (the host-route check can't run).
+
+**The network is internal: no outbound internet through it.** Docker drops
+anything a container sends through it to outside the subnet. The other app
+needs no egress (it keeps its data locally and sends no third-party pings or
+alerts), and this way a compromised app can't exfiltrate data or reach
+anything else through this network; it can only talk to Caddy and its
+neighbours on it. Caddy is unaffected: it is also on this stack's `edge`
+network, which keeps its default route, so ACME and any other egress go out
+there (`deploy/test-apps-edge.sh` checks both). If a future app needs egress,
+it adds its own non-internal network in its own compose project; never make
+this one non-internal. Changing it later means removing and recreating the
+network, which recreates Caddy.
+
+Then `deploy/compose-prod.sh up` adds `deploy/compose.apps-edge.yml`, which
+puts Caddy on the network. Anything that recreates Caddy must go through
+`./deploy/compose-prod.sh`; a plain `docker compose ... up` drops Caddy off the
+shared network until the next deploy. (`exec`, `logs`, `ps` and `restart` are
+fine either way.) One network per extra app: a second app gets its own
+network, in its own change.
+
+**Switching on (two steps).** Merging this feature with the settings unset
+deploys nothing new. Later, in a window you pick:
+1. On the server, check a free range: `docker network inspect $(docker network ls -q) --format '{{.Name}} {{range .IPAM.Config}}{{.Subnet}}{{end}}'` and `ip -4 route`,
+   and that no network of the chosen name exists yet (the preflight refuses
+   one it didn't create).
+2. Add the three settings to `.env.production`.
+3. Run a normal deploy. The preflight creates the network, the equivalent of
+   `docker network create --driver bridge --internal --label apps-edge.managed-by=preflight-apps-edge --subnet <subnet> --gateway <first address> --ip-range <upper half> <name>`.
+   Caddy is recreated once (a few seconds of downtime, as in any deploy that
+   changes it). Check `docker network inspect <name> --format '{{.Driver}} {{.Internal}}'`
+   prints `bridge true`, `docker inspect <caddy container>` lists both
+   networks, and the site still renews certificates (`logs caddy`).
+4. The other app's compose joins the network as `external: true` with the
+   same name, and its site file in the sites folder proxies to its alias.
+
+**Rollback:** remove the three settings and deploy again. Caddy is recreated
+on its edge network only; the shared network stays (harmless) until you
+`docker network rm` it, after the other app stops using it.
+
+**Residual risk:** the other app's site file is loaded by this Caddy, so the
+sites-folder rules above apply to it (trusted like config, validated by
+`preflight-sites.sh` on every deploy).
 
 ## Moving to a new server
 

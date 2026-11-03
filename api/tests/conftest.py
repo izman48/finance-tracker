@@ -59,6 +59,21 @@ engine = create_engine(
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
+@pytest.fixture
+def today_is(monkeypatch):
+    """Move the run's pinned day to another one for this test (T-20-4).
+
+    `today_is(day)` re-points the app's `_today` wherever it is bound, and
+    returns the day, so the test builds its own dates from that same value.
+    """
+    def pin(day):
+        for module in list(_sys.modules.values()):
+            if getattr(module, "__name__", "").startswith("app.") and callable(getattr(module, "_today", None)):
+                monkeypatch.setattr(module, "_today", lambda: day)
+        return day
+    return pin
+
+
 @pytest.fixture(autouse=True)
 def _test_dek():
     """Give direct-DB test code a session DEK for user-encrypted columns.

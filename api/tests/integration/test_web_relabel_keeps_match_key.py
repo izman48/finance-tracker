@@ -9,7 +9,7 @@ PATCH now marks a relabelled detected rule `manual`, whose key is left alone.
 """
 import pytest
 
-from app.models import CommitmentRule, User
+from app.models import CommitmentRule, Transaction, User
 from app.services import analytics_service as svc
 from tests.integration.test_commitment_writes_api import API, World, _bearer, _monthly_debits, _rules, _sync
 
@@ -43,7 +43,9 @@ def test_renaming_in_the_app_keeps_the_key_and_is_not_re_suggested(world):
     assert _rules(world) == [("Streaming", "confirmed")]  # the merchant isn't suggested again
     with world.as_user():
         user = world.db.get(User, world.user.id)
-        assert key in svc.commitment_match_keys(world.db, user)  # its payments still match it
+        matcher = svc.commitment_matcher(world.db, user)
+        payments = world.db.query(Transaction).all()
+        assert payments and all(matcher.matches(t) for t in payments)  # its payments still match it
 
 
 def test_other_edits_leave_a_detected_commitment_detected(world):

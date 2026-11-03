@@ -159,6 +159,18 @@ def test_a_payment_already_settling_a_commitment_is_not_reused(client, db_sessio
     assert w.listed()[str(item)]["matched_transaction_id"] is None
 
 
+def test_a_one_off_under_a_commitments_descriptor_settles_a_planned_purchase(client, db_session):
+    """Only payments near the commitment's amount are its payments (T-19-1)."""
+    w = World(client, db_session)
+    w.as_user(lambda: (db_session.add(CommitmentRule(
+        user_id=w.user.id, direction="expense", label="Gym Co", amount=Decimal("40"), cadence="monthly",
+        next_date=TODAY + timedelta(days=30), source="manual", status="confirmed",
+        match_key="expense:gym co")), db_session.commit()))
+    item = w.planned("600.00", TODAY, name="Gym Co annual kit")
+    tx = w.tx("600.00", TODAY, merchant="Gym Co")
+    assert w.listed()[str(item)]["matched_transaction_id"] == str(tx)
+
+
 def test_one_payment_matches_one_planned_event(client, db_session):
     w = World(client, db_session)
     a = w.planned("50.00", TODAY + timedelta(days=1), name="A")

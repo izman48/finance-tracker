@@ -32,6 +32,7 @@ export default function OAuthConsentPage() {
   const [allowSync, setAllowSync] = useState(false)
   const [allowBudgets, setAllowBudgets] = useState(false)
   const [allowRulesEdit, setAllowRulesEdit] = useState(false)
+  const [allowRepayments, setAllowRepayments] = useState(false)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -57,6 +58,7 @@ export default function OAuthConsentPage() {
         sync: allowSync,
         budgets: allowBudgets,
         rulesEdit: allowRulesEdit,
+        repayments: allowRepayments,
       })
       const res = await oauthApi.decide(params, approve, scopes)
       window.location.assign(res.data.redirect_to)
@@ -102,11 +104,13 @@ export default function OAuthConsentPage() {
           allowSync={allowSync}
           allowBudgets={allowBudgets}
           allowRulesEdit={allowRulesEdit}
+          allowRepayments={allowRepayments}
           onRulesChange={setAllowRules}
           onPlanningChange={setAllowPlanning}
           onSyncChange={setAllowSync}
           onBudgetsChange={setAllowBudgets}
           onRulesEditChange={setAllowRulesEdit}
+          onRepaymentsChange={setAllowRepayments}
         />
 
         <p className="text-xs text-slate-500">

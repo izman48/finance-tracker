@@ -61,11 +61,20 @@ as when the caps have no room.
 
 ## Routes
 
-None yet.
+Claude's writes (`api/app/routers/repayment_writes.py`, all
+`RepaymentsWriter`, dry run by default, idempotency key, audited):
+
+| Route | Notes |
+|---|---|
+| `POST /api/v1/planning/repayments/{mark_id}/unmark` | Soft-deletes one active mark Claude made (`created_via == "mcp"`). Any other id, another user's included, is 404 "Not found". Takes `lock_user_marks` first. A retry of an applied unmark replays. |
 
 ## Scopes
 
-None yet.
+`finance:repayments.write` (T-03-2 T1): its own unticked consent box, "Mark
+payments as paid back", whose copy names the power. No other write scope
+implies it and existing grants never gain it, so the owner reconnects
+Claude once. Web sessions may call the routes too. Rate limits are shared
+with every write (30 writes, 120 dry runs an hour).
 
 ## Audit
 
@@ -126,7 +135,7 @@ None yet.
 | 3 Deletion | Cascade from `users`, and from either transaction. |
 | 4 Demo mode | Nothing shown yet. |
 | 5 Ownership | No account ids. Reads join transactions to the user's accounts. |
-| 6 Scopes | None yet. |
+| 6 Scopes | Claude's writes `finance:repayments.write` (own consent box). |
 | 7 Claude tools | None yet. |
 | 8 Audit | Yes, target `repayment_mark` (above). |
 | 9 Bank sync | A sync never changes marks. A transaction removed with its connection removes its marks. |

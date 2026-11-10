@@ -201,6 +201,12 @@ def test_budgets_show_the_net_spend(w):
     body = w.get().json()
     [budget] = body["budgets"]
     assert Decimal(budget["spent"]) == Decimal("90.00") and budget["status"] != "over"
+    paid = body["not_counted"]
+    assert Decimal(paid["paid_back"]) == Decimal("110.00")
+    assert [(m["label"], Decimal(m["amount"]), m["against"]) for m in paid["paid_back_marks"]] == [
+        ("Sam £60, Pizza Express", Decimal("60.00"), "Pizza Express"),
+        ("Jo £50, Pizza Express", Decimal("50.00"), "Pizza Express"),
+    ]
     assert Decimal(body["summary_this_cycle"]["left"]) == Decimal("60.00")
 
 
@@ -215,6 +221,9 @@ def test_a_category_nets_to_zero_at_most_and_the_excess_is_never_income(w):
     assert (spend.paid_back, spend.paid_back_excess) == (Decimal("40.00"), {"Eating out": Decimal("40.00")})
     body = w.get().json()
     assert Decimal(body["budgets"][0]["spent"]) == 0
+    assert Decimal(body["not_counted"]["paid_back"]) == Decimal("40.00")
+    assert [(e["category"], Decimal(e["amount"])) for e in body["not_counted"]["paid_back_excess"]] == [
+        ("Eating out", Decimal("40.00"))]
     assert Decimal(body["total_spent"]) == Decimal("12.00")  # not £12 - £40
 
 

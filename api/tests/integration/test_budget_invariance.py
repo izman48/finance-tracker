@@ -138,6 +138,7 @@ def _paid_back(w, client, token):
         w.db.commit()
     w.as_user(mark)
     body = client.get(f"{API}/budgets", headers=_bearer(token)).json()
+    assert Decimal(body["not_counted"]["paid_back"]) == Decimal("55.00")  # the marks did net
     assert Decimal(body["budgets"][0]["spent"]) == Decimal("50.00")  # Pret £20 + £45, less Sam's £15
 
 

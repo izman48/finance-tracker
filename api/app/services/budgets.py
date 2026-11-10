@@ -34,6 +34,8 @@ from app.schemas.budgets import (
     FirstOver,
     CycleFigure,
     NotCounted,
+    PaidBackExcess,
+    PaidBackMark,
 )
 from app.services.analytics.commitments import held_next_payday, held_payday_dates, last_payday
 from app.services.analytics.common import _today
@@ -255,8 +257,17 @@ def budget_list(db: Session, user, markers: dict | None = None,
                           days_left=inputs.days_left, fallback=cycle.fallback),
         summary=summary,
         budgets=rows, other_spending=other, total_spent=sum(spend.by_category.values(), Decimal(0)),
-        not_counted=NotCounted(**spend.excluded), summary_this_cycle=this_cycle,
+        not_counted=_not_counted(spend), summary_this_cycle=this_cycle,
         budgetable_categories=sorted(budgetable_categories(db, user, _today())) if include_categories else None,
+    )
+
+
+def _not_counted(spend: BudgetSpend) -> NotCounted:
+    return NotCounted(
+        **spend.excluded, paid_back=spend.paid_back,
+        paid_back_marks=[PaidBackMark(label=m.label, amount=m.amount, against=m.against, category=m.category)
+                         for m in spend.paid_back_marks],
+        paid_back_excess=[PaidBackExcess(category=c, amount=a) for c, a in sorted(spend.paid_back_excess.items())],
     )
 
 

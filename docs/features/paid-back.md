@@ -67,6 +67,10 @@ Budgets (T-03-4 P2, `services/budget_spend.py`; PRD ACs 1, 2, 4 to 7, 29, 30):
 - A mark on a category nets that category in the cycle its credit arrived
   (UTC day, as the transaction window), never below £0. Unbudgeted and
   paused categories net under "Other spending".
+- `GET /api/v1/budgets` `not_counted` gains `paid_back` (every mark netted this
+  cycle, excess included), `paid_back_marks` (label, amount, `against`: the
+  spend's name or the category) and `paid_back_excess` (by category: shown,
+  never income).
 - Tracking, pace, `left`, nudges, snapshots, suggest and the dotted line
   inherit the net. `budgetable_categories` and `commitment_covered` read
   `gross_by_category`, so a mark never changes which categories may have a

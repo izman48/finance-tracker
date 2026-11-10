@@ -24,6 +24,7 @@ from sqlalchemy import func, select
 
 from app.core import user_crypto
 from app.models import Asset, AssetValuation, CommitmentRule, Liability, User
+from app.services.analytics.common import _add_months
 from tests.clock import TODAY
 from tests.integration.test_oauth import READ, _bearer, _connect, _web_login
 from tests.integration.test_transactions_endpoint import _account, _dek_from_token
@@ -126,7 +127,9 @@ def test_net_worth_subtracts_liability_balance(world):
 def test_adding_a_loan_that_started_earlier_shifts_the_whole_history_without_a_step(world):
     before_history = world.get("/analytics/net-worth-history?months=2")
     before_changes = world.get("/analytics/net-worth-position")["changes"]
-    world.add_liability(start_date=(TODAY - timedelta(days=400)).isoformat())
+    # Over a year earlier, on the as-of date's day of the month, so no payment
+    # falls between the as-of date and today: today's balance is the £9,000.
+    world.add_liability(start_date=_add_months(AS_OF, -13).isoformat())
 
     after_history = world.get("/analytics/net-worth-history?months=2")
     for old, new in zip(before_history, after_history):

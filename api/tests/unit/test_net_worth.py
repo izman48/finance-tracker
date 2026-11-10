@@ -2,11 +2,13 @@
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
+import pytest
+
 from app.models import Account, Asset, AssetFlow, AssetValuation, Transaction, User
 from app.models import CommitmentRule
 from app.models.commitment_rule import CommitmentStatus
 from app.services import analytics_service as svc
-from tests.clock import TODAY
+from tests.clock import CALENDAR_EDGE_DAYS, TODAY, earlier_this_month
 
 
 def _user(db):
@@ -440,12 +442,14 @@ class TestNetWorthProjection:
 
 
 class TestNetWorthHistory:
-    def test_bank_balance_reconstruction(self, db_session):
+    @pytest.mark.parametrize("day", CALENDAR_EDGE_DAYS, ids=str)
+    def test_bank_balance_reconstruction(self, db_session, today_is, day):
+        today = today_is(day)
         user = _user(db_session)
         acc = _account(db_session, user, 1000)
         # Recent activity: spent 100, received 200 (both inside this month).
-        _tx(db_session, acc, 100, TODAY - timedelta(days=1), ttype="debit")
-        _tx(db_session, acc, 200, TODAY - timedelta(days=2), ttype="credit")
+        _tx(db_session, acc, 100, earlier_this_month(today, 1), ttype="debit")
+        _tx(db_session, acc, 200, earlier_this_month(today, 2), ttype="credit")
 
         history = svc.net_worth_history(db_session, user, months=1)
         today_point = history[-1]
@@ -455,12 +459,14 @@ class TestNetWorthHistory:
         # Before both transactions: 1000 - (200 - 100) = 900
         assert month_end["net_worth"] == Decimal("900")
 
-    def test_credit_account_subtracts_owed(self, db_session):
+    @pytest.mark.parametrize("day", CALENDAR_EDGE_DAYS, ids=str)
+    def test_credit_account_subtracts_owed(self, db_session, today_is, day):
+        today = today_is(day)
         user = _user(db_session)
         _account(db_session, user, 1000, name="Cur")
         card = _account(db_session, user, 250, atype="CREDIT_CARD", name="Card")
-        # Spent 50 on the card yesterday: owed before = 200.
-        _tx(db_session, card, 50, TODAY - timedelta(days=1), ttype="debit")
+        # Spent 50 on the card this month: owed at last month-end = 200.
+        _tx(db_session, card, 50, earlier_this_month(today, 1), ttype="debit")
 
         history = svc.net_worth_history(db_session, user, months=1)
         assert history[-1]["net_worth"] == Decimal("750")  # 1000 - 250

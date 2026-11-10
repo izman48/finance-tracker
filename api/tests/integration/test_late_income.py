@@ -26,6 +26,10 @@ from tests.clock import TODAY  # one day for the whole run (T-08-27)
 
 API = "/api/v1"
 KEY = "income:income a"
+# A day whose "10 days ago" is not a 29th to 31st. sync_suggestions rolls a
+# monthly next_date forward, and a 31st clamps to the 30th of a shorter
+# month, so the expected date worked back from it lands a day early (T-03-0).
+MID_MONTH = date(2026, 11, 15)
 
 
 class World:
@@ -82,9 +86,10 @@ class World:
         return self.as_user(lambda: svc.derived_contribution(self.db, self.user))
 
 
-def test_missed_income_is_flagged_late_on_the_commitment_and_in_the_forecast(client, db_session):
+def test_missed_income_is_flagged_late_on_the_commitment_and_in_the_forecast(client, db_session, today_is):
+    today = today_is(MID_MONTH)
     w = World(client, db_session)
-    expected = TODAY - timedelta(days=10)
+    expected = today - timedelta(days=10)
     w.income(expected)
     row = w.commitments()["Income A"]
     assert row["late"] is True and row["expected_date"] == expected.isoformat()
@@ -110,13 +115,14 @@ def test_late_income_adds_nothing_anywhere(client, db_session):
     assert late.projection_basis() == never.projection_basis()
 
 
-def test_a_sync_rolling_next_date_forward_does_not_hide_it(client, db_session):
+def test_a_sync_rolling_next_date_forward_does_not_hide_it(client, db_session, today_is):
+    today = today_is(MID_MONTH)
     w = World(client, db_session)
-    expected = TODAY - timedelta(days=10)
+    expected = today - timedelta(days=10)
     w.income(expected)
     w.commitments()  # runs sync_suggestions, which advances a past next_date
     rule = w.as_user(lambda: db_session.query(CommitmentRule).one())
-    assert rule.next_date > TODAY  # the trap: next_date is in the future now
+    assert rule.next_date > today  # the trap: next_date is in the future now
     assert w.commitments()["Income A"]["late"] is True
     assert w.forecast()["late_income"][0]["expected_date"] == expected.isoformat()
 

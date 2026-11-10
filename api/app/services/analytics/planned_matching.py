@@ -149,15 +149,19 @@ def _words(text: str) -> set[str]:
 def _real_money(db: Session, user, txns: list[Transaction]) -> list[Transaction]:
     """Transactions that can settle a planned item: the same exclusions the
     spending figures use, so moving money between your own accounts or paying
-    a card never 'pays' a planned bill."""
+    a card never 'pays' a planned bill. A credit marked as paid back is a
+    repayment, so it never settles a planned income (T-03-3)."""
+    from app.services.repayment_marks import marked_credit_ids
+
     from .spending import classify_noise, financed_transaction_ids
 
     accounts, settings = _load(db, user)
     noise = classify_noise(txns, resolve_roles(accounts, settings))
     financed = financed_transaction_ids(db, user)
     commitment_keys = commitment_match_keys(db, user)
+    paid_back = marked_credit_ids(db, user.id)
     return [
         tx for tx in txns
-        if tx.id not in noise and tx.id not in financed
+        if tx.id not in noise and tx.id not in financed and tx.id not in paid_back
         and transaction_match_key(tx) not in commitment_keys
     ]

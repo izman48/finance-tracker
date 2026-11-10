@@ -37,6 +37,28 @@ amount and a spend never netted past its own (`applied_amount` vs
 FOR UPDATE) serialises writes; take it before any mark row (undo does). Other users' transactions are never read; a
 mark naming one applies nothing.
 
+## Income guards (eng-a)
+
+A marked credit is never income (PRD decision 3): recurring-income
+detection (`analytics/commitments.detect_recurring`), planned-income
+settling (`analytics/planned_matching`) and late-income clearing
+(`analytics/late_income`) all skip credits with an active mark
+(`repayment_marks.marked_credit_ids`). An unmarked credit behaves as before.
+So a confirmed income paid only by a marked credit shows as late, and a
+suggested income from that payer can fade. Money figures don't move.
+
+`services/repayment_guards.py`, for the write routes and candidates:
+
+- `income_locked_credit_ids`: credits that settle a planned income item
+  (`planned_income`) or pay a confirmed income's latest payment, late or
+  still inside its grace days (`late_income`). Marking them is refused.
+- `income_commitment_payers`: credits whose payer (`late_income._payer`)
+  has a suggested or confirmed income commitment. Marking them needs
+  `accept_warnings`.
+
+Undoing an unmark is refused (409) when the credit is now locked, as well
+as when the caps have no room.
+
 ## Routes
 
 None yet.

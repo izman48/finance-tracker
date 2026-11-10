@@ -455,7 +455,7 @@ def undo_write(db: Session, user, audit_id: uuid.UUID) -> AuditEntry:
         {"field": c["field"], "before": c["after"], "after": c["before"]} for c in changes
     ]
     if entry.target_kind == "repayment_mark":
-        _refuse_overfull_mark(db, user.id, target, restore)
+        _refuse_unrestorable_mark(db, user, target, restore)
     if entry.target_kind == "rule":
         _refuse_unrunnable_rule(current, restore)
         # Found while the stored rule is still the edited one (T-16-2). The
@@ -504,14 +504,19 @@ def undo_write(db: Session, user, audit_id: uuid.UUID) -> AuditEntry:
     return entry
 
 
-def _refuse_overfull_mark(db: Session, user_id: uuid.UUID, mark: RepaymentMark, restore: list[dict]) -> None:
-    """409 when undoing an unmark would put back a mark its credit or spend
-    no longer has room for: marked again since (T-03-2 T6). The mark is
-    still inactive here, so the room left excludes it. The caller holds
+def _refuse_unrestorable_mark(db: Session, user, mark: RepaymentMark, restore: list[dict]) -> None:
+    """409 when undoing an unmark would put back a mark that a new one could
+    not be: its credit or spend has no room left (T-03-2 T6), or the credit
+    now counts as income (PRD decision 3, eng-b on #272). The mark is still
+    inactive here, so neither check sees it. The caller holds
     `lock_user_marks`."""
     if not any(c["field"] == "active" and c["after"] is True for c in restore):
         return
-    if not fits(db, user_id, mark.credit_transaction_id, mark.spend_transaction_id, Decimal(mark.amount)):
+    from app.services.analytics.common import _today
+    from app.services.repayment_guards import income_locked_credit_ids
+
+    if (not fits(db, user.id, mark.credit_transaction_id, mark.spend_transaction_id, Decimal(mark.amount))
+            or mark.credit_transaction_id in income_locked_credit_ids(db, user, _today())):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Can't undo: it has changed since.")
 
 

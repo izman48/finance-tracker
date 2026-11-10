@@ -168,6 +168,8 @@ def detect_recurring(db: Session, user) -> list[dict]:
     accounts, settings = _load(db, user)
     roles = resolve_roles(accounts, settings)
     transfers = detect_internal_transfers(txns)
+    from app.services.repayment_marks import marked_credit_ids
+    paid_back = marked_credit_ids(db, user.id)
 
     groups: dict[tuple[str, str], list[Transaction]] = defaultdict(list)
     for tx in txns:
@@ -187,6 +189,9 @@ def detect_recurring(db: Session, user) -> list[dict]:
         # standing order into savings is still a real monthly outflow, and the
         # forecast overstates your balance if it doesn't know about it.
         if tx.transaction_type == "credit" and tx.id in transfers:
+            continue
+        # A credit marked as paid back is a repayment, never income (T-03-3).
+        if tx.transaction_type == "credit" and tx.id in paid_back:
             continue
         direction = (
             CommitmentDirection.INCOME.value

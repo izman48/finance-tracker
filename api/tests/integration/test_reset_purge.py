@@ -37,6 +37,7 @@ from app.models import (
     OAuthClient,
     OAuthGrant,
     PlannedItem,
+    RepaymentMark,
     RepaymentScheduleItem,
     RulePack,
     Transaction,
@@ -65,7 +66,7 @@ ENCRYPTED_TYPES = (UserEncryptedString, UserEncryptedDecimal, UserEncryptedToken
 KNOWN_ENCRYPTED_TABLES = {
     "account_settings", "accounts", "asset_flows", "asset_valuations", "assets", "audit_entries",
     "bank_connections", "budget_changes", "budget_cycle_snapshots", "budgets", "card_statements", "category_rules",
-    "card_plans", "commitment_rules", "liabilities", "planned_items",
+    "card_plans", "commitment_rules", "liabilities", "planned_items", "repayment_marks",
     "repayment_schedule_items", "transactions",
 }
 
@@ -162,6 +163,10 @@ def _seed_everything(db, user_id, dek) -> None:
                 amount=Decimal("600"), account_id=account.id, source_transaction_id=tx.id,
             ),
             WriteIdempotency(user_id=user_id, key="k-1", request_hash="h", audit_id=audit.id),
+            # On the seed's one transaction, so every table keeps one row per
+            # user; it must go before the transactions it references.
+            RepaymentMark(user_id=user_id, credit_transaction_id=tx.id, category="Eating out",
+                          amount=Decimal("5.00"), label="Sam, coffee", created_via="mcp"),
             Liability(
                 user_id=user_id, kind="loan", lender="Example Bank", balance=Decimal("9000"),
                 balance_as_of=date(2026, 10, 1), apr=Decimal("11"), payment=Decimal("200"),

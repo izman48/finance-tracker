@@ -29,7 +29,8 @@ The rules every table has to follow. Read this before adding a table.
 `purge_data_under_lost_key` (`api/app/services/key_loss_purge.py`), in one
 transaction:
 
-1. By `user_id`: `write_idempotency`, `budget_nudges`,
+1. By `user_id`: `repayment_marks` (before the transactions it references),
+   `write_idempotency`, `budget_nudges`,
    `budget_cycle_snapshots`, `budget_changes`, `budgets`, `audit_entries`,
    `category_rules`, `rule_packs`, `liabilities`, `commitment_rules`, `planned_items`,
    `repayment_schedule_items`, `card_statements`, `account_settings`.

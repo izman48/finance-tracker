@@ -30,10 +30,11 @@ Services, UI and Demo (eng-b). No figure reads marks yet.
 **Read service** (`api/app/services/repayment_marks.py`). Amounts are
 encrypted, so caps are applied in Python. `active_marks`: the user's active
 marks, oldest first, each clamped so a credit is never marked past its
-amount and a spend never netted past its own (`applied` vs `recorded`).
+amount and a spend never netted past its own (`applied_amount` vs
+`recorded`). `extra=` nets unsaved proposed marks after them, for previews.
 `remaining`: what is left unmarked on each of the user's transactions.
 `fits`: a proposed mark against both caps. `lock_user_marks` (the user row,
-FOR UPDATE) serialises writes. Other users' transactions are never read; a
+FOR UPDATE) serialises writes; take it before any mark row (undo does). Other users' transactions are never read; a
 mark naming one applies nothing.
 
 ## Routes

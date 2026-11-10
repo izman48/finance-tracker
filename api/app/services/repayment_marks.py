@@ -11,7 +11,7 @@ transaction applies nothing.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
@@ -23,13 +23,14 @@ from app.models import Account, RepaymentMark, Transaction, User
 
 @dataclass(frozen=True)
 class AppliedMark:
-    id: uuid.UUID
+    id: uuid.UUID | None  # None: a proposed mark (`extra`), not saved
     credit_id: uuid.UUID
     spend_id: uuid.UUID | None  # None: a category mark
     category: str | None
     recorded: Decimal  # the amount saved on the mark
-    applied: Decimal   # what it nets after the caps
+    applied_amount: Decimal  # what it nets after the caps
     credit_at: datetime  # when the credit arrived: a category mark nets in that cycle
+    created_at: datetime | None  # when it was marked; None for a proposed mark
     label: str
     created_via: str
 
@@ -40,9 +41,13 @@ def lock_user_marks(db: Session, user_id: uuid.UUID) -> None:
     db.query(User.id).filter(User.id == user_id).with_for_update().one()
 
 
-def active_marks(db: Session, user_id: uuid.UUID) -> list[AppliedMark]:
-    """The user's active marks, oldest first, each with its clamped amount."""
-    marks = _active_rows(db, user_id)
+def active_marks(db: Session, user_id: uuid.UUID, extra: Sequence[RepaymentMark] = ()) -> list[AppliedMark]:
+    """The user's active marks, oldest first, each with its clamped amount.
+
+    `extra`: unsaved marks a preview proposes (T-03-2 T7), netted after the
+    saved ones as the newest, in the order given. They are never added to
+    the session."""
+    marks = _active_rows(db, user_id) + list(extra)
     txns = _own_transactions(db, user_id, _referenced_ids(marks))
     left = {tx_id: _amount(tx) for tx_id, tx in txns.items()}
     applied = []
@@ -53,8 +58,9 @@ def active_marks(db: Session, user_id: uuid.UUID) -> list[AppliedMark]:
             continue
         applied.append(AppliedMark(
             id=mark.id, credit_id=mark.credit_transaction_id, spend_id=mark.spend_transaction_id,
-            category=mark.category, recorded=Decimal(mark.amount), applied=amount,
-            credit_at=credit.transaction_date, label=mark.label, created_via=mark.created_via,
+            category=mark.category, recorded=Decimal(mark.amount), applied_amount=amount,
+            credit_at=credit.transaction_date, created_at=mark.created_at, label=mark.label,
+            created_via=mark.created_via,
         ))
     return applied
 

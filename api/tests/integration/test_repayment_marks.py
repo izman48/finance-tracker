@@ -67,6 +67,14 @@ class Ledger:
     def active(self):
         return self.as_user(lambda: repayment_marks.active_marks(self.db, self.user_id))
 
+    def mark_id(self, *args, **kwargs):
+        mark = self.mark(*args, **kwargs)
+        return self.as_user(lambda: mark.id)
+
+    def applied(self):
+        """{mark id: amount it nets}, so a test can't pass with the order reversed."""
+        return {m.id: m.applied_amount for m in self.active()}
+
     def remaining(self, *txs):
         return self.as_user(lambda: repayment_marks.remaining(self.db, self.user_id, [t.id for t in txs]))
 
@@ -175,33 +183,50 @@ def test_active_marks_are_the_users_own_and_active_only(ledger, db_session):
 
     [mark] = ledger.active()
     assert (mark.credit_id, mark.spend_id, mark.category) == (sam.id, dinner.id, None)
-    assert mark.recorded == mark.applied == Decimal("60.00")
+    assert mark.recorded == mark.applied_amount == Decimal("60.00")
+    assert mark.created_at is not None
     assert mark.label == "Sam £60, Pizza Express" and mark.created_via == "mcp"
     assert mark.credit_at.date() == sam.transaction_date.date()
 
 
 def test_marks_on_one_credit_are_clamped_to_the_credit_oldest_first(ledger):
     starter, dinner, sam = ledger.spend("80.00"), ledger.spend("200.00"), ledger.credit("100.00")
-    ledger.mark(sam, "60.00", spend=starter)
-    ledger.mark(sam, "60.00", spend=dinner)  # only £40 of the credit is left
+    first = ledger.mark_id(sam, "60.00", spend=starter)
+    second = ledger.mark_id(sam, "60.00", spend=dinner)  # only £40 of the credit is left
 
-    assert [m.applied for m in ledger.active()] == [Decimal("60.00"), Decimal("40.00")]
+    assert ledger.applied() == {first: Decimal("60.00"), second: Decimal("40.00")}
 
 
 def test_marks_on_one_spend_are_clamped_to_the_spend_oldest_first(ledger):
     dinner, sam, jo = ledger.spend("60.00"), ledger.credit("40.00"), ledger.credit("40.00")
-    ledger.mark(sam, "40.00", spend=dinner)
-    ledger.mark(jo, "40.00", spend=dinner)  # only £20 of the spend is left
+    first = ledger.mark_id(sam, "40.00", spend=dinner)
+    second = ledger.mark_id(jo, "40.00", spend=dinner)  # only £20 of the spend is left
 
-    assert [m.applied for m in ledger.active()] == [Decimal("40.00"), Decimal("20.00")]
+    assert ledger.applied() == {first: Decimal("40.00"), second: Decimal("20.00")}
 
 
 def test_category_marks_are_capped_by_the_credit_only(ledger):
     sam = ledger.credit("50.00")
-    ledger.mark(sam, "30.00", category="Eating out")
-    ledger.mark(sam, "30.00", category="Groceries")
+    first = ledger.mark_id(sam, "30.00", category="Eating out")
+    second = ledger.mark_id(sam, "30.00", category="Groceries")
 
-    assert [m.applied for m in ledger.active()] == [Decimal("30.00"), Decimal("20.00")]
+    assert ledger.applied() == {first: Decimal("30.00"), second: Decimal("20.00")}
+
+
+def test_extra_marks_preview_as_the_newest_and_are_not_saved(ledger, db_session):
+    """T-03-2 T7: a preview nets proposed marks after the saved ones."""
+    dinner, sam = ledger.spend("200.00"), ledger.credit("100.00")
+    saved = ledger.mark_id(sam, "70.00", category="Eating out")
+    dinner_id, sam_id = ledger.as_user(lambda: (dinner.id, sam.id))
+    proposed = RepaymentMark(user_id=ledger.user_id, credit_transaction_id=sam_id, spend_transaction_id=dinner_id,
+                             amount=Decimal("60.00"), label="Sam, dinner", created_via="mcp")
+
+    marks = ledger.as_user(lambda: repayment_marks.active_marks(db_session, ledger.user_id, extra=[proposed]))
+
+    assert [(m.id, m.spend_id, m.applied_amount) for m in marks] == [
+        (saved, None, Decimal("70.00")), (None, dinner_id, Decimal("30.00")),
+    ]
+    assert db_session.execute(text("SELECT count(*) FROM repayment_marks")).scalar() == 1
 
 
 def test_remaining_is_what_is_left_unmarked_on_each_transaction(ledger):
@@ -330,3 +355,22 @@ def test_undo_of_an_unmark_is_refused_when_the_spend_was_marked_again_since(clie
 
     assert c.undo(removed["audit_id"]).status_code == 409
     assert c.get(RepaymentMark, mark_id).active is False
+
+
+def test_undo_takes_the_user_lock_before_the_mark_lock(client, db_session, monkeypatch):
+    """Mark writes lock the user row, then the mark. Undo must use the same
+    order, or a write and an undo of the same mark can deadlock (eng-b on #272)."""
+    from app.services import planning_writes
+
+    c = Claude(client, db_session)
+    added = c.add_mark(c.ledger.credit("60.00"), "60.00", spend=c.ledger.spend("200.00"))
+    removed = c.unmark(uuid.UUID(added["target_id"]))
+    order = []
+    real_lock, real_load = planning_writes.lock_user_marks, planning_writes._load_target
+    monkeypatch.setattr(planning_writes, "lock_user_marks",
+                        lambda *a: (order.append("user"), real_lock(*a))[1])
+    monkeypatch.setattr(planning_writes, "_load_target",
+                        lambda *a, **k: (order.append("mark"), real_load(*a, **k))[1])
+
+    assert c.undo(removed["audit_id"]).status_code == 200
+    assert order[:2] == ["user", "mark"]

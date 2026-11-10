@@ -434,6 +434,10 @@ def undo_write(db: Session, user, audit_id: uuid.UUID) -> AuditEntry:
     if entry.created_target and "active" not in spec.fields:
         # Nothing to soft-delete it with; refuse rather than hard-delete.
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Can't undo this kind of change.")
+    if entry.target_kind == "repayment_mark":
+        # Mark writes lock the user row, then the mark: same order here, so
+        # a write and an undo of one mark can't deadlock (eng-b on #272).
+        lock_user_marks(db, user.id)
     target = _load_target(db, spec, entry.target_id, user.id, lock=True)
     if target is None or getattr(target, "deleted_at", None) is not None:
         # Gone, or deleted by the user on the web (T-12-9b): an undo never
@@ -503,10 +507,10 @@ def undo_write(db: Session, user, audit_id: uuid.UUID) -> AuditEntry:
 def _refuse_overfull_mark(db: Session, user_id: uuid.UUID, mark: RepaymentMark, restore: list[dict]) -> None:
     """409 when undoing an unmark would put back a mark its credit or spend
     no longer has room for: marked again since (T-03-2 T6). The mark is
-    still inactive here, so the room left excludes it."""
+    still inactive here, so the room left excludes it. The caller holds
+    `lock_user_marks`."""
     if not any(c["field"] == "active" and c["after"] is True for c in restore):
         return
-    lock_user_marks(db, user_id)
     if not fits(db, user_id, mark.credit_transaction_id, mark.spend_transaction_id, Decimal(mark.amount)):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Can't undo: it has changed since.")
 

@@ -52,6 +52,7 @@ PLAINTEXT: dict[str, dict[str, tuple[str, ...]]] = {
         "oauth_clients": ("created_at",),
         "oauth_grants": ("created_at", "last_used_at", "expires_at", "revoked_at"),
         "planned_items": ("start_date", "end_date", "deleted_at", "created_at", "updated_at"),
+        "repayment_marks": ("created_at", "updated_at"),
         "repayment_schedule_items": ("due_date", "created_at", "updated_at"),
         "rule_packs": ("created_at", "updated_at"),
         "transactions": ("transaction_date", "created_at"),
@@ -62,6 +63,7 @@ PLAINTEXT: dict[str, dict[str, tuple[str, ...]]] = {
     "categories": {
         "budgets": ("category",),
         "category_rules": ("category",),
+        "repayment_marks": ("category",),
         "rule_packs": ("name", "description", "share_code", "share_snapshot", "imported_from"),
         "transactions": ("category", "subcategory"),
     },
@@ -82,6 +84,7 @@ PLAINTEXT: dict[str, dict[str, tuple[str, ...]]] = {
         "oauth_authorization_codes": ("session_version",),
         "oauth_grants": ("session_version",),
         "planned_items": ("direction", "kind", "cadence", "active", "is_card_payment", "created_via"),
+        "repayment_marks": ("active", "created_via"),
         "rule_packs": ("enabled",),
         "transactions": ("transaction_type", "category_locked", "counts_as_override", "counts_as_locked", "is_recurring"),
         "users": ("session_version",),

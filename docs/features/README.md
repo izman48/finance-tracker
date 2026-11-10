@@ -32,6 +32,7 @@ this before changing a feature; update it in the same PR as the change.
 | Holdings and their projection | [holdings.md](holdings.md) | Wealth (T-11-5) | no (T-11-7) | gap until T-11-8 |
 | Liabilities (loans, finance, BNPL) | [liabilities.md](liabilities.md) | Wealth tab (T-10-10) | no | no UI reads yet |
 | Budgets | [budgets.md](budgets.md) | Spending > Budgets, Home, Cashflow forecast | `list_budgets`, `set_budgets`, `pause_budget`, `resume_budget`, `remove_budget` | served |
+| Paid back (repayment marks) | [paid-back.md](paid-back.md) | not yet (built on `feat/paid-back`) | not yet | not yet |
 | Claude's changes (audit, undo, keep) | [claude-changes.md](claude-changes.md) | user menu > Changes made by Claude | every write tool | served (empty) |
 | Claude connector (MCP server, OAuth) | [claude-connector.md](claude-connector.md) | `/oauth/authorize`, landing page | all tools | by design not sampled |
 | Demo mode ("Anonymize numbers") | [demo-mode.md](demo-mode.md) | user menu | no | it is the feature |

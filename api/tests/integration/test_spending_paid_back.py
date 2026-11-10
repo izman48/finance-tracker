@@ -129,6 +129,21 @@ def test_a_later_repayment_nets_the_spend_in_its_own_range(w):
     assert w.purchases(*NOV)["by_category"] == []
 
 
+def test_a_marked_spend_set_to_a_transfer_nets_nothing_until_set_back(w):
+    """AC-29 (Spending): the spend leaves the lens, so its marks net nothing."""
+    dinner = w.dinner_example("spend")
+
+    def counts_as(value):
+        dinner.counts_as_override = value
+        w.db.commit()
+    w.as_user(lambda: counts_as("transfer"))
+    assert w.purchases()["by_category"] == [] and w.drill() == []
+    assert w.trend()["2026-10"]["total"] == 0
+    w.as_user(lambda: counts_as(None))
+    assert _categories(w.purchases()) == {"Eating out": Decimal("90.00")}
+    assert w.trend()["2026-10"]["total"] == Decimal("90.00")
+
+
 def test_the_money_out_lens_never_reads_marks(w):
     w.purchase("200.00", card=False)
     before = w.as_user(lambda: svc.get_spending(w.db, w.user, "custom", *OCT))

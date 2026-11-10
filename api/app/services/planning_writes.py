@@ -36,10 +36,11 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.oauth_tokens import Caller
-from app.models import AuditEntry, Budget, CategoryRule, CommitmentRule, PlannedItem, WriteIdempotency
+from app.models import AuditEntry, Budget, CategoryRule, CommitmentRule, PlannedItem, RepaymentMark, WriteIdempotency
 from app.models.audit import AUDIT_KIND_UNDO, AUDIT_KIND_WRITE
 from app.schemas import PlanningWriteRequest
 from app.services.linked_commitments import refuse_linked_edit
+from app.services.repayment_marks import fits, lock_user_marks
 
 IDEMPOTENCY_TTL = timedelta(hours=24)
 # Maintained by the database, not by a write.
@@ -93,6 +94,11 @@ TARGETS: dict[str, TargetSpec] = {
     "rule": TargetSpec(CategoryRule, "pattern", {
         "pattern": str, "match_type": str, "match_field": str, "category": str, "counts_as": str, "enabled": bool,
     }, together=("pattern", "match_type")),
+    # Claude's paid-back marks (T-03-3): unmarking is `active`, so undo works.
+    # The spend id is in the diff for undo; the Changes page never shows it.
+    "repayment_mark": TargetSpec(RepaymentMark, "label", {
+        "amount": Decimal, "spend_transaction_id": uuid.UUID, "category": str, "active": bool,
+    }),
 }
 
 
@@ -444,6 +450,8 @@ def undo_write(db: Session, user, audit_id: uuid.UUID) -> AuditEntry:
     restore = [{"field": "active", "before": True, "after": False}] if entry.created_target else [
         {"field": c["field"], "before": c["after"], "after": c["before"]} for c in changes
     ]
+    if entry.target_kind == "repayment_mark":
+        _refuse_overfull_mark(db, user.id, target, restore)
     if entry.target_kind == "rule":
         _refuse_unrunnable_rule(current, restore)
         # Found while the stored rule is still the edited one (T-16-2). The
@@ -490,6 +498,17 @@ def undo_write(db: Session, user, audit_id: uuid.UUID) -> AuditEntry:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Can't undo: it has changed since.") from None
     db.refresh(entry)
     return entry
+
+
+def _refuse_overfull_mark(db: Session, user_id: uuid.UUID, mark: RepaymentMark, restore: list[dict]) -> None:
+    """409 when undoing an unmark would put back a mark its credit or spend
+    no longer has room for: marked again since (T-03-2 T6). The mark is
+    still inactive here, so the room left excludes it."""
+    if not any(c["field"] == "active" and c["after"] is True for c in restore):
+        return
+    lock_user_marks(db, user_id)
+    if not fits(db, user_id, mark.credit_transaction_id, mark.spend_transaction_id, Decimal(mark.amount)):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Can't undo: it has changed since.")
 
 
 def _refuse_unrunnable_rule(current: dict, restore: list[dict]) -> None:

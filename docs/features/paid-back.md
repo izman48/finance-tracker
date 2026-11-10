@@ -10,7 +10,7 @@ PRD (hybrid, Claude first) and its T-03-2 feasibility section.
 
 Built in stages on `feat/paid-back`. Sections are owned per engineer
 (T-03-2 T15): Tables, Routes, Scopes, Audit and MCP (eng-a); Figures,
-Services, UI and Demo (eng-b). Nothing reads marks yet.
+Services, UI and Demo (eng-b). No figure reads marks yet.
 
 ## Tables
 
@@ -27,6 +27,15 @@ Services, UI and Demo (eng-b). Nothing reads marks yet.
   (partial unique indexes). `user_id`, the credit and the spend all
   cascade: a bank disconnect or account deletion takes the marks with it.
 
+**Read service** (`api/app/services/repayment_marks.py`). Amounts are
+encrypted, so caps are applied in Python. `active_marks`: the user's active
+marks, oldest first, each clamped so a credit is never marked past its
+amount and a spend never netted past its own (`applied` vs `recorded`).
+`remaining`: what is left unmarked on each of the user's transactions.
+`fits`: a proposed mark against both caps. `lock_user_marks` (the user row,
+FOR UPDATE) serialises writes. Other users' transactions are never read; a
+mark naming one applies nothing.
+
 ## Routes
 
 None yet.
@@ -37,7 +46,11 @@ None yet.
 
 ## Audit
 
-None yet.
+Target `repayment_mark` in `services/planning_writes.TARGETS`, label
+`label`, allow-listed fields `amount`, `spend_transaction_id`, `category`,
+`active`. Undoing a mark soft-deletes it; a second undo is a no-op. Undoing
+an unmark re-activates the mark only if its credit and spend still have room
+(T-03-2 T6), else 409 "Can't undo: it has changed since."
 
 ## MCP
 
@@ -72,12 +85,12 @@ None yet.
 | 2 Purge | Yes, first in `_OWNED_BY_USER`, before transactions (seeded in the reset test). |
 | 3 Deletion | Cascade from `users`, and from either transaction. |
 | 4 Demo mode | Nothing shown yet. |
-| 5 Ownership | No account ids. |
+| 5 Ownership | No account ids. Reads join transactions to the user's accounts. |
 | 6 Scopes | None yet. |
 | 7 Claude tools | None yet. |
-| 8 Audit | None yet. |
+| 8 Audit | Yes, target `repayment_mark` (above). |
 | 9 Bank sync | A sync never changes marks. A transaction removed with its connection removes its marks. |
 | 10 Home | n/a. |
 | 11 UI routes | None. |
 | 12 Tests | listed above. |
-| 13 Docs | This file, `data-lifecycle.md` (purge order). |
+| 13 Docs | This file, `data-lifecycle.md` (purge order), `claude-changes.md` (targets). |

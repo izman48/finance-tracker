@@ -1,9 +1,13 @@
-"""Repayment marks: the table (T-03-3 P1; PRD T-03-1 "Model", T-03-2 T10).
+"""Repayment marks: the table, the read service and the audit target
+(T-03-3 P1a/P1b; PRD T-03-1 "Model", T-03-2 decisions T2, T6, T10).
 
 A mark says "this much of an incoming payment paid back a spend, or a
 category". Its amount and label are encrypted; ids, category, `active` and
-`created_via` are plain. Nothing user-visible reads marks yet.
+`created_via` are plain. Reads clamp marks, oldest first, so a credit or a
+spend is never netted past its own amount, whatever the rows say. Undoing
+an unmark re-checks that room (T6). Nothing user-visible reads marks yet.
 """
+import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -13,7 +17,10 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core import user_crypto
 from app.models import RepaymentMark, Transaction, User
+from app.services import repayment_marks
 from app.services.key_loss_purge import purge_data_under_lost_key
+from app.services.planning_writes import WriteRequest
+from tests.integration.test_audit_api import World, _raw_audit_count
 from tests.integration.test_transactions_endpoint import _account, _tx
 
 DINNER_DAY = date(2026, 10, 2)
@@ -56,6 +63,12 @@ class Ledger:
             self.db.commit()
             return row
         return self.as_user(make)
+
+    def active(self):
+        return self.as_user(lambda: repayment_marks.active_marks(self.db, self.user_id))
+
+    def remaining(self, *txs):
+        return self.as_user(lambda: repayment_marks.remaining(self.db, self.user_id, [t.id for t in txs]))
 
 
 @pytest.fixture
@@ -140,3 +153,180 @@ def test_the_key_loss_purge_deletes_marks_before_their_transactions(ledger, db_s
     db_session.commit()
     assert db_session.execute(text("SELECT count(*) FROM repayment_marks")).scalar() == 0
     assert db_session.execute(text("SELECT count(*) FROM transactions")).scalar() == 0
+
+
+# --- reading marks -----------------------------------------------------------------
+
+
+def test_a_user_with_no_marks_reads_none(ledger):
+    ledger.spend("200.00")
+    assert ledger.active() == []
+
+
+def test_active_marks_are_the_users_own_and_active_only(ledger, db_session):
+    dinner, sam, jo = ledger.spend("200.00"), ledger.credit("60.00"), ledger.credit("50.00")
+    ledger.mark(sam, "60.00", spend=dinner, label="Sam £60, Pizza Express")
+    ledger.mark(jo, "50.00", spend=dinner, active=False)
+    other = User(email="other@example.com", hashed_password="x")
+    db_session.add(other)
+    db_session.commit()
+    other_ledger = Ledger(db_session, other.id, user_crypto.generate_dek())
+    other_ledger.mark(other_ledger.credit("10.00"), "10.00", category="Eating out")
+
+    [mark] = ledger.active()
+    assert (mark.credit_id, mark.spend_id, mark.category) == (sam.id, dinner.id, None)
+    assert mark.recorded == mark.applied == Decimal("60.00")
+    assert mark.label == "Sam £60, Pizza Express" and mark.created_via == "mcp"
+    assert mark.credit_at.date() == sam.transaction_date.date()
+
+
+def test_marks_on_one_credit_are_clamped_to_the_credit_oldest_first(ledger):
+    starter, dinner, sam = ledger.spend("80.00"), ledger.spend("200.00"), ledger.credit("100.00")
+    ledger.mark(sam, "60.00", spend=starter)
+    ledger.mark(sam, "60.00", spend=dinner)  # only £40 of the credit is left
+
+    assert [m.applied for m in ledger.active()] == [Decimal("60.00"), Decimal("40.00")]
+
+
+def test_marks_on_one_spend_are_clamped_to_the_spend_oldest_first(ledger):
+    dinner, sam, jo = ledger.spend("60.00"), ledger.credit("40.00"), ledger.credit("40.00")
+    ledger.mark(sam, "40.00", spend=dinner)
+    ledger.mark(jo, "40.00", spend=dinner)  # only £20 of the spend is left
+
+    assert [m.applied for m in ledger.active()] == [Decimal("40.00"), Decimal("20.00")]
+
+
+def test_category_marks_are_capped_by_the_credit_only(ledger):
+    sam = ledger.credit("50.00")
+    ledger.mark(sam, "30.00", category="Eating out")
+    ledger.mark(sam, "30.00", category="Groceries")
+
+    assert [m.applied for m in ledger.active()] == [Decimal("30.00"), Decimal("20.00")]
+
+
+def test_remaining_is_what_is_left_unmarked_on_each_transaction(ledger):
+    dinner, sam, jo, untouched = ledger.spend("200.00"), ledger.credit("60.00"), ledger.credit("50.00"), ledger.spend("9.99")
+    ledger.mark(sam, "60.00", spend=dinner)
+    ledger.mark(jo, "20.00", category="Eating out")
+
+    left = ledger.remaining(dinner, sam, jo, untouched)
+    assert left == {dinner.id: Decimal("140.00"), sam.id: Decimal("0.00"), jo.id: Decimal("30.00"),
+                    untouched.id: Decimal("9.99")}
+
+
+def test_remaining_never_names_another_users_transaction(ledger, db_session):
+    other = User(email="other@example.com", hashed_password="x")
+    db_session.add(other)
+    db_session.commit()
+    theirs = Ledger(db_session, other.id, user_crypto.generate_dek())
+    their_spend_id = theirs.as_user(lambda: theirs.spend("200.00").id)
+    assert ledger.as_user(lambda: repayment_marks.remaining(db_session, ledger.user_id, [their_spend_id])) == {}
+
+
+def test_fits_checks_both_caps(ledger):
+    dinner, sam, jo = ledger.spend("100.00"), ledger.credit("60.00"), ledger.credit("70.00")
+    ledger.mark(sam, "60.00", spend=dinner)
+    check = lambda credit, amount, spend=None: ledger.as_user(  # noqa: E731
+        lambda: repayment_marks.fits(ledger.db, ledger.user_id, credit.id, spend.id if spend else None,
+                                     Decimal(amount)))
+
+    assert check(jo, "40.00", dinner) is True
+    assert check(jo, "40.01", dinner) is False  # over the spend's £40 left
+    assert check(jo, "70.00") is True           # a category mark: the credit's cap only
+    assert check(jo, "70.01") is False
+    assert check(sam, "0.01") is False          # the credit is fully marked
+
+
+# --- the audit target: Claude marks, unmarks and undo ---------------------------------
+
+
+class Claude(World):
+    """A user with an MCP connection who writes marks as Claude would."""
+
+    def __init__(self, client, db):
+        super().__init__(client, db)
+        self.ledger = Ledger(db, self.user.id, self.dek)
+
+    def add_mark(self, credit, amount, spend=None, category=None) -> dict:
+        def apply(db, _):
+            mark = RepaymentMark(
+                user_id=self.user.id, credit_transaction_id=credit.id,
+                spend_transaction_id=spend.id if spend else None, category=category,
+                amount=Decimal(amount), label="Sam £60, Pizza Express", created_via="mcp",
+            )
+            db.add(mark)
+            return mark
+        return self.write(WriteRequest("mark_paid_back", "repayment_mark", None, apply))
+
+    def unmark(self, mark_id) -> dict:
+        def apply(db, mark):
+            mark.active = False
+            return mark
+        return self.write(WriteRequest("unmark_paid_back", "repayment_mark", mark_id, apply))
+
+
+def test_a_claude_mark_is_audited_with_its_allow_listed_fields(client, db_session):
+    c = Claude(client, db_session)
+    dinner, sam = c.ledger.spend("200.00"), c.ledger.credit("60.00")
+    dinner_id = c.ledger.as_user(lambda: dinner.id)
+
+    result = c.add_mark(sam, "60.00", spend=dinner)
+
+    assert result["target_kind"] == "repayment_mark" and result["target_label"] == "Sam £60, Pizza Express"
+    assert {ch["field"]: ch["after"] for ch in result["changes"]} == {
+        "amount": "60.00", "spend_transaction_id": str(dinner_id), "active": True,
+    }  # a create diffs only the fields it sets
+    raw = " ".join(str(v) for row in db_session.execute(text("SELECT * FROM audit_entries")) for v in row)
+    assert "Pizza" not in raw and "60.00" not in raw
+
+
+def test_undo_of_a_mark_soft_deletes_it_and_a_second_undo_is_a_no_op(client, db_session):
+    c = Claude(client, db_session)
+    added = c.add_mark(c.ledger.credit("60.00"), "60.00", spend=c.ledger.spend("200.00"))
+    mark_id = uuid.UUID(added["target_id"])
+
+    first = c.undo(added["audit_id"])
+    assert first.status_code == 200, first.text
+    assert c.get(RepaymentMark, mark_id).active is False
+    assert c.ledger.active() == []
+
+    again = c.undo(added["audit_id"])
+    assert again.status_code == 200 and again.json()["undone_at"] == first.json()["undone_at"]
+    assert _raw_audit_count(db_session) == 2
+
+
+def test_an_unmark_soft_deletes_and_its_undo_restores_the_mark(client, db_session):
+    c = Claude(client, db_session)
+    added = c.add_mark(c.ledger.credit("60.00"), "60.00", spend=c.ledger.spend("200.00"))
+    mark_id = uuid.UUID(added["target_id"])
+
+    removed = c.unmark(mark_id)
+    assert c.get(RepaymentMark, mark_id).active is False
+    assert c.ledger.active() == []
+
+    assert c.undo(removed["audit_id"]).status_code == 200
+    assert [m.id for m in c.ledger.active()] == [mark_id]
+
+
+def test_undo_of_an_unmark_is_refused_when_the_credit_was_marked_again_since(client, db_session):
+    c = Claude(client, db_session)
+    dinner, drinks, sam = c.ledger.spend("200.00"), c.ledger.spend("80.00"), c.ledger.credit("60.00")
+    mark_id = uuid.UUID(c.add_mark(sam, "60.00", spend=dinner)["target_id"])
+    removed = c.unmark(mark_id)
+    c.add_mark(sam, "60.00", spend=drinks)  # the credit is fully marked again
+
+    res = c.undo(removed["audit_id"])
+
+    assert res.status_code == 409 and "changed since" in res.json()["detail"]
+    assert c.get(RepaymentMark, mark_id).active is False
+
+
+def test_undo_of_an_unmark_is_refused_when_the_spend_was_marked_again_since(client, db_session):
+    c = Claude(client, db_session)
+    dinner, sam, jo = c.ledger.spend("60.00"), c.ledger.credit("60.00"), c.ledger.credit("60.00")
+    mark_id = uuid.UUID(c.add_mark(sam, "60.00", spend=dinner)["target_id"])
+    removed = c.unmark(mark_id)
+    c.add_mark(jo, "60.00", spend=dinner)  # the spend is fully paid back by Jo now
+
+    assert c.undo(removed["audit_id"]).status_code == 409
+    assert c.get(RepaymentMark, mark_id).active is False

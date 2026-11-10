@@ -8,7 +8,7 @@ are DEK-encrypted; ids, category, `active` and `created_via` are plain, as
 Claude's changes keep their history and undo works.
 
 Caps can't be checked in SQL (the amounts are encrypted): writes check them
-in Python under a user lock, and reads clamp marks oldest first.
+in Python under a user lock, and reads clamp (`services/repayment_marks`).
 Partial unique indexes allow one active mark per credit and spend, and per
 credit and category. Deleting the user or either transaction deletes the mark.
 """

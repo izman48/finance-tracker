@@ -88,7 +88,8 @@ def budgetable_categories(db: Session, user, today: date, covered: set[str] | No
     spend, less those that are mostly commitments. Income, refunds and
     transfers never count against a budget, so a category seen only on them
     could never track anything (eng-a's live-stack check)."""
-    purchases = budget_spend(db, user, today - timedelta(days=CATEGORY_LOOKBACK_DAYS), today).by_category
+    # Gross: a paid-back mark never changes which categories may have a budget (T-03-2 T5).
+    purchases = budget_spend(db, user, today - timedelta(days=CATEGORY_LOOKBACK_DAYS), today).gross_by_category
     if covered is None:
         covered = commitment_covered(db, user, today)
     return set(purchases) - covered - {UNCATEGORISED}
@@ -100,7 +101,7 @@ def commitment_covered(db: Session, user, today: date) -> set[str]:
     spend = budget_spend(db, user, today - timedelta(days=COVERED_LOOKBACK_DAYS), today)
     return {
         cat for cat, committed in spend.commitments_by_category.items()
-        if committed > spend.by_category.get(cat, Decimal(0))
+        if committed > spend.gross_by_category.get(cat, Decimal(0))
     }
 
 

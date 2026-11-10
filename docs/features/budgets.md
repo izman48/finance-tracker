@@ -39,7 +39,8 @@ set, pause, resume and remove budgets.
 **Services**: `services/budgets.py` (cycles, cap, `budget_list`,
 `budget_projection`, `budget_nudges`, `suggest`), `services/budget_spend.py`
 (the one counting rule, `classify_purchase`: excludes commitments,
-transfers, card payoffs, financed purchases), `services/budget_history.py`,
+transfers, card payoffs, financed purchases; nets paid-back marks, see
+[paid-back.md](paid-back.md) "Figures"), `services/budget_history.py`,
 `api/app/schemas/budgets.py`.
 
 **UI**: Spending tab, `?section=budgets` (`components/budgets/BudgetsPanel`,
@@ -54,7 +55,7 @@ transfers, card payoffs, financed purchases), `services/budget_history.py`,
 
 **Tests**: `api/tests/integration/test_budgets_api.py`,
 `test_budget_spend.py`, `test_budget_history.py`,
-`test_budget_projection.py`, `test_budget_invariance.py`,
+`test_budget_projection.py`, `test_budget_invariance.py`, `test_budget_paid_back.py`,
 `test_budget_home_nudges.py`, `test_budgets_consent.py`,
 `test_budget_writes_api.py`; `api/mcp/tests/test_budget_tools.py`; UI tests
 next to every component and lib file above.

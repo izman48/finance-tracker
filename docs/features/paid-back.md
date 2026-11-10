@@ -59,7 +59,20 @@ None yet.
 
 ## Figures
 
-None yet.
+Budgets (T-03-4 P2, `services/budget_spend.py`; PRD ACs 1, 2, 4 to 7, 29, 30):
+
+- A mark on a spend nets that spend in its own cycle, and only while the
+  spend still counts as card or cash spending. A spend later set to a
+  transfer or card payoff nets nothing; setting it back restores the net.
+- A mark on a category nets that category in the cycle its credit arrived
+  (UTC day, as the transaction window), never below £0. Unbudgeted and
+  paused categories net under "Other spending".
+- Tracking, pace, `left`, nudges, snapshots, suggest and the dotted line
+  inherit the net. `budgetable_categories` and `commitment_covered` read
+  `gross_by_category`, so a mark never changes which categories may have a
+  budget (T-03-2 T5).
+- `budget_spend(..., extra_marks=[...])` nets unsaved marks for previews
+  (T7). No money figure moves (`test_budget_invariance.py`, "paid-back marks").
 
 ## Services
 

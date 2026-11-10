@@ -87,6 +87,17 @@ def fits(db: Session, user_id: uuid.UUID, credit_id: uuid.UUID, spend_id: uuid.U
     return all(i in left and amount <= left[i] for i in ids)
 
 
+def marked_credit_ids(db: Session, user_id: uuid.UUID) -> set[uuid.UUID]:
+    """Credits with an active mark: never income (PRD decision 3). Ids are
+    plain, so nothing is decrypted."""
+    rows = (
+        db.query(RepaymentMark.credit_transaction_id)
+        .filter(RepaymentMark.user_id == user_id, RepaymentMark.active.is_(True))
+        .all()
+    )
+    return {credit_id for (credit_id,) in rows}
+
+
 def _active_rows(db: Session, user_id: uuid.UUID) -> list[RepaymentMark]:
     return (
         db.query(RepaymentMark)

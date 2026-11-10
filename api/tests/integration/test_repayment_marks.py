@@ -81,11 +81,14 @@ def fk_on(db_session):
 
 def test_amount_and_label_are_encrypted_and_the_rest_is_plain(ledger, db_session):
     dinner, sam = ledger.spend("200.00"), ledger.credit("60.00")
-    ledger.mark(sam, "60.00", spend=dinner, label="Sam £60, Pizza Express")
+    mark = ledger.mark(sam, "60.00", spend=dinner, label="Sam £60, Pizza Express")
 
     raw = db_session.execute(text("SELECT amount, label, active, created_via FROM repayment_marks")).one()
-    assert "60" not in raw.amount and "Pizza" not in raw.label
+    # Fernet tokens, not the values: a substring check on base64 is flaky.
+    assert raw.amount.startswith("gAAAAA") and raw.label.startswith("gAAAAA")
     assert bool(raw.active) is True and raw.created_via == "mcp"
+    db_session.expire_all()
+    assert ledger.as_user(lambda: (mark.amount, mark.label)) == (Decimal("60.00"), "Sam £60, Pizza Express")
 
 
 @pytest.mark.parametrize("target", ["neither", "both"])

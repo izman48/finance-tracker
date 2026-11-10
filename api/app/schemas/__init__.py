@@ -1087,6 +1087,15 @@ class CategorySlice(BaseModel):
     category: str
     total: Decimal
     count: int
+    # Category paid-back marks netted here (T-03-4): the drill's reference row.
+    paid_back_by_others: Decimal = Decimal(0)
+
+
+class PaidBackExcessSlice(BaseModel):
+    """Marked against a category beyond what it spent in the range: never income."""
+
+    category: str
+    amount: Decimal
 
 
 class MerchantSlice(BaseModel):
@@ -1118,6 +1127,10 @@ class SpendingResponse(BaseModel):
     composition: MoneyOutComposition | None = None
     by_category: list[CategorySlice]
     top_merchants: list[MerchantSlice]
+    # Purchases lens, no account or kind filter (T-03-4): category paid-back
+    # marks taken off, so total = card + cash - paid_back_by_others.
+    paid_back_by_others: Decimal = Decimal(0)
+    paid_back_excess: list[PaidBackExcessSlice] = []
 
 
 class SpendingTransaction(BaseModel):
@@ -1131,6 +1144,9 @@ class SpendingTransaction(BaseModel):
     category: str
     account: str
     kind: str  # cash | credit
+    # Paid-back marks on this spend, and what it counts as after them (T-03-4).
+    paid_back: Decimal = Decimal(0)
+    counted: Decimal | None = None
 
 
 class MonthSpend(BaseModel):
@@ -1138,6 +1154,8 @@ class MonthSpend(BaseModel):
     total: Decimal
     charged_to_credit: Decimal
     paid_from_cash: Decimal
+    # Category paid-back marks by credit month, floored per category (T-03-4).
+    paid_back_by_others: Decimal = Decimal(0)
 
 
 class SpendingTrendResponse(BaseModel):

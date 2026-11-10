@@ -152,6 +152,7 @@ SCENARIOS = {
     "budgets changed by Claude": _changed_by_claude,
     "paid-back marks": _paid_back,
 }
+MOVES_AVERAGE_SPENDING = {"paid-back marks"}
 
 
 @pytest.mark.parametrize("scenario", SCENARIOS)
@@ -161,7 +162,12 @@ def test_budgets_never_move_a_money_figure(client, db_session, scenario):
     token = _web_login(client, "budgets@example.com")
     before = _money(client, token)
     SCENARIOS[scenario](w, client, token)
-    assert _money(client, token) == before
+    after = _money(client, token)
+    if scenario in MOVES_AVERAGE_SPENDING:
+        # Wealth's average spending reads the netted trend, so marks may lower
+        # it (PRD AC-8, test_spending_paid_back.py); AC-5 never covered it.
+        before.pop("projection"), after.pop("projection")
+    assert after == before
 
 
 def test_the_harness_sees_a_real_change(client, db_session):

@@ -22,7 +22,10 @@ tab too ([budgets.md](budgets.md)).
 
 **Services**: `services/analytics/spending.py` (`classify_noise`,
 `classify_purchase`, transfer and card-settlement detection,
-`financed_transaction_ids`), `services/analytics/common.py`.
+`financed_transaction_ids`), `services/analytics/common.py`. The purchases
+lens, the drill and the trend net paid-back marks by budgets' rule
+(`services/paid_back.py`; [paid-back.md](paid-back.md) "Figures"); the
+money-out lens never reads them.
 
 **UI**: `/insights` (`SpendingPage`), `MonthlySpendingChart`,
 `lib/categoryColors.ts`. Home Spending card. The account filter lists
@@ -36,6 +39,7 @@ filter.
 **Tests**: `api/tests/unit/test_analytics_service.py`,
 `test_transfer_category.py`, `test_counts_as.py`,
 `test_card_payment_indicators.py`; `api/tests/integration/test_budget_spend.py`,
+`test_spending_paid_back.py`,
 `test_transactions_endpoint.py`; UI `sampleAccount.test.ts`
 (the sample's spending reconciles).
 

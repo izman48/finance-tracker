@@ -3,6 +3,13 @@
 Real spending = card purchases (debits on credit accounts) + cash purchases
 (debits on spending accounts), excluding internal transfers and card
 repayments (which just settle existing spending).
+
+The purchases lens, drill and trend net paid-back marks by the same rule as
+budgets (`services/paid_back.py`, T-03-4): a spend mark nets that spend in
+its own kind and month; a category mark nets its category in the range or
+month its credit arrived, never below £0, and only with no account or kind
+filter (a category mark has neither, T-03-2 T8). The money-out lens never
+reads marks: it reconciles to the bank.
 """
 from __future__ import annotations
 
@@ -13,6 +20,8 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.models import Account, AccountRole, PlannedItem, Transaction
+from app.services.paid_back import UNCATEGORISED, category_paid_back, floor_at_zero, paid_back_by_spend
+from app.services.repayment_marks import active_marks
 
 from .commitments import commitment_match_keys, last_payday, transaction_match_key
 from .common import (
@@ -164,23 +173,36 @@ def get_spending(
     txns = [tx for tx in txns_all if not account_id or str(tx.account_id) == account_id]
     kind_scope = kind if kind in ("cash", "credit") else None
 
-    by_category: dict[str, dict] = defaultdict(lambda: {"total": Decimal(0), "count": 0})
+    by_category: dict[str, dict] = defaultdict(
+        lambda: {"total": Decimal(0), "count": 0, "paid_back_by_others": Decimal(0)})
     by_merchant: dict[str, Decimal] = defaultdict(Decimal)
+    paid_back_by_others = Decimal(0)
+    excess: dict[str, Decimal] = {}
 
     if lens == "purchases":
         keys = commitment_keys if exclude_commitments else set()
         charged_to_credit = Decimal(0)
         paid_from_cash = Decimal(0)
+        marks = active_marks(db, user.id)
+        by_spend = paid_back_by_spend(marks)
         for tx, tx_kind in _iter_spending(txns, transfers, roles, financed, keys):
             if kind_scope and tx_kind != kind_scope:
                 continue
-            amount = _d(tx.amount)
+            amount = _d(tx.amount) - by_spend.get(tx.id, Decimal(0))
             if tx_kind == "credit":
                 charged_to_credit += amount
             else:
                 paid_from_cash += amount
             _tally(by_category, by_merchant, tx, amount)
-        total = charged_to_credit + paid_from_cash
+        if not account_id and not kind_scope:
+            totals = {cat: v["total"] for cat, v in by_category.items()}
+            taken, excess = floor_at_zero(totals, category_paid_back(marks, start, end))
+            for cat, amount in taken.items():
+                if cat in by_category:
+                    by_category[cat]["total"] -= amount
+                    by_category[cat]["paid_back_by_others"] = amount
+            paid_back_by_others = sum(taken.values(), Decimal(0))
+        total = charged_to_credit + paid_from_cash - paid_back_by_others
         composition = None
     else:  # money_out
         charged_to_credit = Decimal(0)
@@ -213,7 +235,8 @@ def get_spending(
         composition = comp
 
     categories = sorted(
-        ({"category": k, "total": v["total"], "count": v["count"]} for k, v in by_category.items()),
+        ({"category": k, "total": v["total"], "count": v["count"], "paid_back_by_others": v["paid_back_by_others"]}
+         for k, v in by_category.items()),
         key=lambda c: c["total"], reverse=True,
     )
     merchants = sorted(
@@ -232,11 +255,13 @@ def get_spending(
         "composition": composition,
         "by_category": categories,
         "top_merchants": merchants,
+        "paid_back_by_others": paid_back_by_others,
+        "paid_back_excess": [{"category": c, "amount": a} for c, a in sorted(excess.items())],
     }
 
 
 def _tally(by_category, by_merchant, tx, amount):
-    category = tx.category or "Uncategorized"
+    category = tx.category or UNCATEGORISED
     by_category[category]["total"] += amount
     by_category[category]["count"] += 1
     by_merchant[tx.merchant_name or tx.description or "Unknown"] += amount
@@ -332,6 +357,7 @@ def spending_transactions(
         .all()
     )
     transfers = _effective_transfers(txns)
+    by_spend = paid_back_by_spend(active_marks(db, user.id))
 
     out: list[dict] = []
     for tx, k in _iter_spending(txns, transfers, roles, financed, commitment_keys):
@@ -343,12 +369,15 @@ def spending_transactions(
         mer = tx.merchant_name or tx.description or "Unknown"
         if merchant is not None and mer != merchant:
             continue
+        paid_back = by_spend.get(tx.id, Decimal(0))
         out.append({
             "id": str(tx.id),
             "date": tx.transaction_date.date(),
             "description": tx.description,
             "merchant": tx.merchant_name,
             "amount": _d(tx.amount),
+            "paid_back": paid_back,
+            "counted": _d(tx.amount) - paid_back,
             "category": cat,
             "account": acc_names.get(tx.account_id, ""),
             "kind": k,
@@ -394,16 +423,25 @@ def get_spending_trend(
     buckets: dict[str, dict] = {}
     m = start_month
     while m <= first_of_this_month:
-        buckets[_month_key(m)] = {"total": Decimal(0), "credit": Decimal(0), "cash": Decimal(0)}
+        buckets[_month_key(m)] = _empty_month(m)
         m = _add_months(m, 1)
 
     # Same iterator as the purchases lens, so the trend can never apply a
-    # different set of exclusions.
+    # different set of exclusions; and the same marks rule.
+    marks = active_marks(db, user.id)
+    by_spend = paid_back_by_spend(marks)
     for tx, kind in _iter_spending(txns, transfers, roles, financed, commitment_keys):
-        amount = _d(tx.amount)
-        b = buckets.setdefault(_month_key(tx.transaction_date.date()), {"total": Decimal(0), "credit": Decimal(0), "cash": Decimal(0)})
+        amount = _d(tx.amount) - by_spend.get(tx.id, Decimal(0))
+        day = tx.transaction_date.date()
+        b = buckets.setdefault(_month_key(day), _empty_month(date(day.year, day.month, 1)))
         b["total"] += amount
         b[kind] += amount
+        b["categories"][tx.category or UNCATEGORISED] += amount
+    for b in buckets.values():
+        last = _add_months(b["first"], 1) - timedelta(days=1)
+        taken, _ = floor_at_zero(b["categories"], category_paid_back(marks, b["first"], last))
+        b["others"] = sum(taken.values(), Decimal(0))
+        b["total"] -= b["others"]
 
     rows = [
         {
@@ -411,7 +449,13 @@ def get_spending_trend(
             "total": v["total"],
             "charged_to_credit": v["credit"],
             "paid_from_cash": v["cash"],
+            "paid_back_by_others": v["others"],
         }
         for key, v in sorted(buckets.items())
     ]
     return {"months": rows}
+
+
+def _empty_month(first: date) -> dict:
+    return {"first": first, "total": Decimal(0), "credit": Decimal(0), "cash": Decimal(0),
+            "categories": defaultdict(Decimal), "others": Decimal(0)}

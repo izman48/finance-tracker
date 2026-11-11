@@ -19,7 +19,9 @@ describe('demo reads that used to be gaps', () => {
     expect(p.rule_count).toBeGreaterThan(0)
     expect(p.already_owned).toBe(false)
   })
-  it("Claude's changes: none in demo, so the Changes page shows its empty state (T-16-1)", () => {
-    expect(get('/audit')).toEqual({ items: [], next_cursor: null })
+  it("Claude's changes: the sample's two paid-back marks, and nothing else (T-16-1, T-03-6 AC-33)", () => {
+    const audit = get('/audit') as { items: { tool: string }[]; next_cursor: null }
+    expect(audit.items.map((i) => i.tool)).toEqual(['mark_paid_back', 'mark_paid_back'])
+    expect(audit.next_cursor).toBeNull()
   })
 })

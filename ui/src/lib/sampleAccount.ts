@@ -155,6 +155,11 @@ function buildLedger(): SampleTx[] {
     p('Solent Transit', 'Solent Transit', 'Transport', 8.1, 'debit', 'sa1', base + 9)
     p('Bexley Goods', 'Bexley Goods', 'Shopping', 45 + v * 25, 'debit', m % 2 ? 'sa4' : 'sa2', base + 11)
   }
+  // The PRD's paid-back example (T-03-6, AC-33): a shared dinner on the card,
+  // two friends paying their share back, both marked by Claude (SAMPLE_MARKS).
+  p('Harbour Pizzeria', 'Harbour Pizzeria', 'Eating out', 200, 'debit', 'sa4', 5)
+  p('S PATEL DINNER', 'S PATEL', 'Transfers', 60, 'credit', 'sa1', 3)
+  p('J OKAFOR', 'J OKAFOR', 'Transfers', 50, 'credit', 'sa1', 2)
   // noise, in the recent month — shown, labelled, opt-in to hide
   p('Payment to Harbor Rewards', 'Harbor Financial', 'Transfers', 300, 'debit', 'sa1', 6, { excluded: 'card_payment' })
   p('Transfer to Acorn Saver', 'Acorn Bank', 'Transfers', 500, 'debit', 'sa1', 6, { excluded: 'internal_transfer' })
@@ -162,6 +167,46 @@ function buildLedger(): SampleTx[] {
   return out
 }
 const L: SampleTx[] = buildLedger()
+
+// Claude's marks on the dinner (T-03-6): what each paid back, by the API's rule (both fit, so both apply).
+const txId = (merchant: string) => (L.find((x) => x.merchant_name === merchant) as SampleTx).id
+const SAMPLE_MARKS = [
+  { id: 'sm1', audit_id: 'sample-mark-1', credit: txId('S PATEL'), spend: txId('Harbour Pizzeria'), amount: 60 },
+  { id: 'sm2', audit_id: 'sample-mark-2', credit: txId('J OKAFOR'), spend: txId('Harbour Pizzeria'), amount: 50 },
+]
+const byId = (id: string) => L.find((x) => x.id === id) as SampleTx
+const markLabel = (m: (typeof SAMPLE_MARKS)[number]) =>
+  `${byId(m.credit).merchant_name} £${m.amount.toFixed(2)}, ${byId(m.spend).merchant_name}`
+/** What a purchase's marks net: it counts as its amount less this. */
+const paidBackOn = (txId: string) => SAMPLE_MARKS.filter((m) => m.spend === txId).reduce((t, m) => t + m.amount, 0)
+
+function markRow(m: (typeof SAMPLE_MARKS)[number]) {
+  const credit = byId(m.credit)
+  const spend = byId(m.spend)
+  return {
+    mark_id: m.id, credit_id: m.credit, spend_id: m.spend, category: null, amount: m.amount.toFixed(2),
+    label: markLabel(m), created_via: 'mcp', applied: true, cycle_closed: false, audit_id: m.audit_id,
+    payer: credit.merchant_name, against: spend.merchant_name,
+    credit_date: isoDate(nowMinus(credit.daysAgo)), spend_date: isoDate(nowMinus(spend.daysAgo)),
+  }
+}
+
+/** GET /audit: Claude's two marks, for "Changes made by Claude". */
+function auditResponse() {
+  return {
+    items: SAMPLE_MARKS.map((m) => ({
+      id: m.audit_id, created_at: isoDateTime(nowMinus(1)), tool: 'mark_paid_back', batch_id: 'sample-mark-batch',
+      client_name: 'Claude', connection_created_at: isoDateTime(nowMinus(30)), target_kind: 'repayment_mark',
+      target_id: m.id, target_label: markLabel(m), undone_at: null,
+      changes: [
+        { field: 'amount', before: null, after: m.amount.toFixed(2) },
+        { field: 'spend_transaction_id', before: null, after: m.spend },
+        { field: 'active', before: null, after: true },
+      ],
+    })),
+    next_cursor: null,
+  }
+}
 
 
 function t(
@@ -198,11 +243,17 @@ const purchaseKind = (tx: SampleTx) => (ROLE[tx.account_id] === 'credit' ? 'cred
 // Budgets (T-11-8) read the same ledger: purchases count, commitments,
 // transfers and card payoffs are named as not counted.
 const BUDGET_LEDGER: BudgetLedgerTx[] = L.map((tx) => ({
-  category: tx.category, amount: tx.amount, daysAgo: tx.daysAgo,
+  category: tx.category, amount: tx.amount - paidBackOn(tx.id), daysAgo: tx.daysAgo,
   kind: tx.excluded_reason === 'internal_transfer' ? 'transfer'
     : tx.excluded_reason === 'card_payment' ? 'card_payoff'
     : !isPurchase(tx) ? 'other'
     : tx.is_commitment ? 'commitment' : 'purchase',
+}))
+// Before marks: what left would be without them, for the dotted-line copy.
+const GROSS_BUDGET_LEDGER: BudgetLedgerTx[] = BUDGET_LEDGER.map((b, i) => ({ ...b, amount: L[i].amount }))
+const SAMPLE_PAID_BACK = SAMPLE_MARKS.map((m) => ({
+  label: markLabel(m), amount: m.amount, against: byId(m.spend).merchant_name, category: byId(m.spend).category,
+  daysAgo: byId(m.spend).daysAgo,
 }))
 const PAYDAY_AGO = Math.min(...L.filter((x) => x.transaction_type === 'credit' && x.is_commitment).map((x) => x.daysAgo))
 
@@ -277,6 +328,8 @@ function txItem(tx: SampleTx) {
     counts_as_override: null,
     counts_as_locked: false,
     transaction_date: isoDateTime(nowMinus(tx.daysAgo)),
+    paid_back_amount: tx.transaction_type === 'debit' ? paidBackOn(tx.id).toFixed(2) : null,
+    paid_back_marks: SAMPLE_MARKS.filter((m) => m.credit === tx.id || m.spend === tx.id).map(markRow),
   }
 }
 
@@ -321,12 +374,12 @@ function spendingResponse(q: {
 
   const byCat = new Map<string, { total: number; count: number }>()
   const byMerch = new Map<string, number>()
-  const tally = (tx: SampleTx) => {
+  const tally = (tx: SampleTx, amount = tx.amount) => {
     const c = byCat.get(tx.category) ?? { total: 0, count: 0 }
-    c.total += tx.amount
+    c.total += amount
     c.count += 1
     byCat.set(tx.category, c)
-    byMerch.set(tx.merchant_name, (byMerch.get(tx.merchant_name) ?? 0) + tx.amount)
+    byMerch.set(tx.merchant_name, (byMerch.get(tx.merchant_name) ?? 0) + amount)
   }
 
   let total = 0
@@ -338,9 +391,10 @@ function spendingResponse(q: {
     for (const tx of L) {
       if (!isPurchase(tx) || !inRange(tx) || !inScope(tx) || (q.exclude_commitments && tx.is_commitment)) continue
       if (kindScope && purchaseKind(tx) !== kindScope) continue
-      if (purchaseKind(tx) === 'credit') credit += tx.amount
-      else cash += tx.amount
-      tally(tx)
+      const counted = tx.amount - paidBackOn(tx.id) // friends' marked repayments (T-03-6)
+      if (purchaseKind(tx) === 'credit') credit += counted
+      else cash += counted
+      tally(tx, counted)
     }
     total = cash + credit
   } else {
@@ -502,11 +556,17 @@ function forecastTimeline(horizon = '30') {
 // The forecast with its budget line (T-11-10): the sample budgets by the API's rule.
 function forecastResponse(horizon = '30') {
   const forecast = forecastTimeline(horizon)
-  const list = sampleBudgetList(BUDGET_LEDGER, PAYDAY_AGO, false)
+  const list = sampleBudgetList(BUDGET_LEDGER, PAYDAY_AGO, false, SAMPLE_PAID_BACK)
   const reach = forecast.timeline.find((t) => t.date === list.cycle.end)
     ?? forecastTimeline('payday').timeline.find((t) => t.date === list.cycle.end)
   const { projection, reason } = sampleBudgetProjection(list, forecast.timeline, reach ? reach.balance : forecast.end_balance)
-  return { ...forecast, budget_projection: projection, budget_projection_reason: reason }
+  const gross = sampleBudgetList(GROSS_BUDGET_LEDGER, PAYDAY_AGO, false)
+  const raised = Number(list.summary_this_cycle.left) - Number(gross.summary_this_cycle.left)
+  return {
+    ...forecast,
+    budget_projection: projection && { ...projection, left_raised_by_marks: raised.toFixed(2) },
+    budget_projection_reason: reason,
+  }
 }
 
 function trendResponse(months: number) {
@@ -627,7 +687,7 @@ function decompositionResponse(months: number) {
 }
 
 function nudgesResponse() {
-  return [...cardOverlapNudges(), ...cashDragNudges(), ...sampleBudgetNudges(sampleBudgetList(BUDGET_LEDGER, PAYDAY_AGO, false))]
+  return [...cardOverlapNudges(), ...cashDragNudges(), ...sampleBudgetNudges(sampleBudgetList(BUDGET_LEDGER, PAYDAY_AGO, false, SAMPLE_PAID_BACK))]
 }
 
 // T-12-7a (ux demo): a manual "Card bill" ticked as a card payment, due
@@ -1011,9 +1071,9 @@ export function sampleResponse(url: string, params: unknown): unknown {
   if (is('/liabilities')) return liabilitiesResponse()
   if (is('/card-plans')) return cardPlansResponse()
   if (is('/budgets/history')) return sampleBudgetHistory(BUDGET_LEDGER, PAYDAY_AGO, Number(p.cycles) || 6)
-  if (is('/budgets')) return sampleBudgetList(BUDGET_LEDGER, PAYDAY_AGO, p.include === 'categories')
+  if (is('/budgets')) return sampleBudgetList(BUDGET_LEDGER, PAYDAY_AGO, p.include === 'categories', SAMPLE_PAID_BACK)
   if (is('/rules')) return { packs: [], personal: [] }
-  if (is('/audit')) return { items: [], next_cursor: null }
+  if (is('/audit')) return auditResponse()
   return {}
 }
 

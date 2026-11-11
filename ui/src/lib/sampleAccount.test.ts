@@ -50,7 +50,8 @@ describe('sample account — internal reconciliation', () => {
       kind: 'spend', page: '1', page_size: '200',
       date_from: purchases.period_start, date_to: purchases.period_end,
     })
-    const sum = list.items.reduce((s: number, t: any) => s + Math.abs(t.amount), 0)
+    // What each purchase counts as: its amount less what friends paid back (T-03-6).
+    const sum = list.items.reduce((s: number, t: any) => s + Math.abs(t.amount) - Number(t.paid_back_amount ?? 0), 0)
     expect(near(sum, Number(purchases.total_spent))).toBe(true)
   })
 
@@ -203,3 +204,43 @@ describe('sample projection spending', () => {
     }
   })
 })
+
+// The PRD's dinner example, marked by Claude (T-03-6; PRD T-03-1 AC-33, owner rule 2026-10-15):
+// a £200 card dinner, Sam £60 and Jo £50 paid back, in this pay cycle.
+describe('sample account — paid back', () => {
+  const txs: any = sampleResponse('/api/v1/banking/transactions', { page: '1', page_size: '500' })
+  const dinner = txs.items.find((t: any) => t.merchant_name === 'Harbour Pizzeria')
+  const sam = txs.items.find((t: any) => t.merchant_name === 'S PATEL')
+
+  it('the dinner carries both marks and counts as £90; the credit carries its own', () => {
+    expect(dinner.paid_back_amount).toBe('110.00')
+    expect(dinner.paid_back_marks.map((m: any) => [m.payer, m.amount, m.applied])).toEqual([
+      ['S PATEL', '60.00', true], ['J OKAFOR', '50.00', true]])
+    expect(sam.paid_back_amount).toBeNull()
+    expect(sam.paid_back_marks.map((m: any) => [m.against, m.spend_date !== null])).toEqual([['Harbour Pizzeria', true]])
+  })
+
+  it('budgets: Eating out counts the dinner as £90, and Paid back by others lists both', () => {
+    const plain: any = sampleResponse('/api/v1/analytics/spending', { period: 'since_payday', lens: 'purchases' })
+    const budgets: any = sampleResponse('/api/v1/budgets', {})
+    const eatingOut = budgets.budgets.find((b: any) => b.category === 'Eating out')
+    const spent = plain.by_category.find((c: any) => c.category === 'Eating out').total
+    expect(eatingOut.spent).toBe(Number(spent).toFixed(2)) // three-sources rule: budgets = Spending
+    expect(budgets.not_counted.paid_back).toBe('110.00')
+    expect(budgets.not_counted.paid_back_marks.map((m: any) => m.amount)).toEqual(['60.00', '50.00'])
+    expect(budgets.not_counted.paid_back_excess).toEqual([])
+  })
+
+  it('the dotted line knows the marks raised what is left', () => {
+    const f: any = sampleResponse('/api/v1/analytics/forecast', { horizon: 'payday' })
+    expect(Number(f.budget_projection.left_raised_by_marks)).toBeGreaterThan(0)
+  })
+
+  it('Changes made by Claude lists both marks with Undo-able audit rows', () => {
+    const audit: any = sampleResponse('/api/v1/audit', {})
+    expect(audit.items.map((i: any) => [i.tool, i.target_label])).toEqual([
+      ['mark_paid_back', 'S PATEL £60.00, Harbour Pizzeria'], ['mark_paid_back', 'J OKAFOR £50.00, Harbour Pizzeria']])
+    expect(dinner.paid_back_marks.map((m: any) => m.audit_id)).toEqual(audit.items.map((i: any) => i.id))
+  })
+})
+

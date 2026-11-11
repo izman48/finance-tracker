@@ -554,6 +554,12 @@ class PaidBackMarkOut(BaseModel):
     applied: bool
     cycle_closed: bool
     audit_id: uuid.UUID | None
+    # For the sheet's rows: who paid (bank text), what it paid back (the
+    # spend's name, or the category), and the two payments' days.
+    payer: str | None = None
+    against: str | None = None
+    credit_date: date | None = None
+    spend_date: date | None = None
 
 
 class TransactionResponse(BaseModel):

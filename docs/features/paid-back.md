@@ -76,7 +76,7 @@ Reads: `GET /api/v1/banking/transactions` and `POST /api/v1/banking/transactions
 `amount` (after the caps), `label`, `created_via`, `applied` (false when the
 spend no longer counts as spending, AC-29), `cycle_closed` (it nets in a
 cycle before the current one) and `audit_id` (Claude's change, for Undo;
-null for a mark made in the app). Search's `total_amount` stays the bank total.
+null for a mark made in the app), plus `payer`, `against` (the spend's name or the category), `credit_date` and `spend_date` for the sheet's rows. Search's `total_amount` stays the bank total.
 
 ## Scopes
 

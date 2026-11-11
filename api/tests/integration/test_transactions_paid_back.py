@@ -61,6 +61,7 @@ def test_a_claude_mark_shows_on_both_payments(w):
         "mark_id": applied["results"][0]["target_id"], "credit_id": w.tx_id(w.sam), "spend_id": w.tx_id(w.dinner),
         "category": None, "amount": "60.00", "label": "SAM £60.00, Acme", "created_via": "mcp",
         "applied": True, "cycle_closed": True, "audit_id": applied["results"][0]["audit_id"],
+        "payer": "SAM", "against": "Acme", "credit_date": "2026-10-04", "spend_date": "2026-10-02",
     }
 
 
@@ -70,6 +71,7 @@ def test_a_category_mark_shows_on_the_credit_only_and_an_open_cycle_is_not_close
     items = w.items()
     [mark] = items[w.tx_id(jo)]["paid_back_marks"]
     assert (mark["category"], mark["spend_id"], mark["cycle_closed"]) == ("Eating out", None, False)
+    assert (mark["against"], mark["spend_date"], mark["payer"]) == ("Eating out", None, "JO")
     assert items[w.tx_id(w.dinner)]["paid_back_marks"] == []
 
 

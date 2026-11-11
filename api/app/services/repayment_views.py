@@ -43,6 +43,7 @@ def paid_back_view(db: Session, user, txns: list[Transaction]) -> PaidBackView:
         return PaidBackView()
     spend_ids = {m.spend_id for m in marks if m.spend_id is not None}
     spends = _own(db, user, spend_ids)
+    credits = _own(db, user, {m.credit_id for m in marks})
     counted = _still_counted(db, user, list(spends.values()))
     audits = claude_markers(db, user.id, "repayment_mark", [m.id for m in marks])
     cycle_start = current_cycle(db, user, _today()).start
@@ -50,13 +51,17 @@ def paid_back_view(db: Session, user, txns: list[Transaction]) -> PaidBackView:
     view = PaidBackView()
     for m in marks:
         applies = m.applied_amount > 0 and (m.spend_id is None or m.spend_id in counted)
-        day = spends[m.spend_id].transaction_date if m.spend_id in spends else m.credit_at
+        spend, credit = spends.get(m.spend_id), credits.get(m.credit_id)
+        day = spend.transaction_date if spend is not None else m.credit_at
         row = {
             "mark_id": str(m.id), "credit_id": str(m.credit_id),
             "spend_id": str(m.spend_id) if m.spend_id else None, "category": m.category,
             "amount": f"{m.applied_amount:.2f}", "label": m.label, "created_via": m.created_via,
             "applied": applies, "cycle_closed": _utc_day(day) < cycle_start,
             "audit_id": str(audits[m.id]["audit_id"]) if m.id in audits else None,
+            # For the sheet's rows (PRD Screens 1): who paid, what it paid back, and when.
+            "payer": _name(credit), "against": _name(spend) if spend is not None else m.category,
+            "credit_date": _utc_day(m.credit_at), "spend_date": _utc_day(spend.transaction_date) if spend else None,
         }
         for tx_id in (m.credit_id, m.spend_id):
             if tx_id in page:
@@ -83,6 +88,10 @@ def _still_counted(db: Session, user, spends: list[Transaction]) -> set[uuid.UUI
     roles, transfers = resolve_roles(accounts, settings), _effective_transfers(nearby)
     financed, keys = financed_transaction_ids(db, user), commitment_match_keys(db, user)
     return {s.id for s in spends if classify_purchase(s, transfers, roles, financed, keys) in ("credit", "cash")}
+
+
+def _name(tx: Transaction | None) -> str | None:
+    return None if tx is None else (tx.merchant_name or tx.description)
 
 
 def _own(db: Session, user, ids: set[uuid.UUID]) -> dict[uuid.UUID, Transaction]:

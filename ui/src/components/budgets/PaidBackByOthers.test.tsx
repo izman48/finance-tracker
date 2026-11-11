@@ -33,8 +33,9 @@ describe('PaidBackByOthers', () => {
 
   it('open: each mark with what it netted and its amount, and the helper text', () => {
     const t = text(html(dinner, true))
-    expect(t).toContain('Sam £60.00, Pizza Express Pizza Express £60.00')
-    expect(t).toContain('Jo £50.00, Pizza Express Pizza Express £50.00')
+    expect(t).toContain('Sam £60.00, Pizza Express £60.00')
+    expect(t).toContain('Jo £50.00, Pizza Express £50.00')
+    expect(t).not.toContain('Pizza Express Pizza Express') // said once, for screen readers too
     expect(t).toContain("Friends' repayments you marked. They reduce what counts as spending here and are never income.")
     expect(html(dinner, true)).toMatch(/aria-expanded="true"/)
   })
@@ -46,8 +47,7 @@ describe('PaidBackByOthers', () => {
   })
 
   it('labels are text, never markup', () => {
-    const h = html({ ...dinner, paid_back_marks: [{ label: '<img src=x>', amount: '1.00', against: '<b>x</b>', category: 'x' }] }, true)
+    const h = html({ ...dinner, paid_back_marks: [{ label: '<img src=x>', amount: '1.00', against: 'x', category: 'x' }] }, true)
     expect(h).not.toContain('<img')
-    expect(h).not.toContain('<b>x')
   })
 })

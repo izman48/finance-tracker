@@ -27,7 +27,10 @@ lens, the drill and the trend net paid-back marks by budgets' rule
 (`services/paid_back.py`; [paid-back.md](paid-back.md) "Figures"); the
 money-out lens never reads them.
 
-**UI**: `/insights` (`SpendingPage`), `MonthlySpendingChart`,
+**UI**: `/insights` (`SpendingPage`, with `SpendingPaidBack`: a marked
+purchase's chip "£110 paid back" and line "£110.00 of £200.00 paid back.
+Counts as £90.00.", a category's "Paid back by others −£110.00" and any
+excess, T-03-6), `MonthlySpendingChart`,
 `lib/categoryColors.ts`. Home Spending card. The account filter lists
 accounts in `<optgroup>`s, Current accounts, Savings, Credit cards (roles from
 the summary, as Wealth and Cashflow; excluded accounts left out;

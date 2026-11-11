@@ -14,7 +14,7 @@ export const RULES_EDIT_DESCRIPTION =
   "Edit or switch off your existing categorisation rules. It's asked to show you a preview before each change. An edited rule can recategorise past transactions, but never ones you set by hand. Every change is listed under Changes made by Claude, where you can undo it."
 
 export const REPAYMENTS_DESCRIPTION =
-  "Mark payments people send you as paying back a purchase or a category, so your budgets and spending show what you really spent. It's asked to show you a preview before each change. Changes take effect at once, and every one is listed under Changes made by Claude, where you can undo it. A marked payment never counts as income and never changes your safe to spend."
+  "Mark payments people send you as paying back a purchase or a category. This lowers what your budgets and Spending page count as spent. It's asked to show you a preview before each change. Changes take effect at once, and every one is listed under Changes made by Claude, where you can undo it. A marked payment never counts as income and never changes your safe to spend."
 
 type Props = {
   allowRules: boolean

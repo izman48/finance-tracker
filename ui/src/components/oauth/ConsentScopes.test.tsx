@@ -183,7 +183,7 @@ describe('ConsentScopes', () => {
   it('T-03-3: the paid-back copy names the power, is exact, and is linked to its box', () => {
     const html = render()
     expect(REPAYMENTS_DESCRIPTION).toBe(
-      "Mark payments people send you as paying back a purchase or a category, so your budgets and spending show what you really spent. It's asked to show you a preview before each change. Changes take effect at once, and every one is listed under Changes made by Claude, where you can undo it. A marked payment never counts as income and never changes your safe to spend.",
+      "Mark payments people send you as paying back a purchase or a category. This lowers what your budgets and Spending page count as spent. It's asked to show you a preview before each change. Changes take effect at once, and every one is listed under Changes made by Claude, where you can undo it. A marked payment never counts as income and never changes your safe to spend.",
     )
     expect(html).toMatch(/<label[^>]*for="allow-repayments"[^>]*>/)
     const box = input(html, 'allow-repayments')

@@ -117,3 +117,13 @@ def test_unmark_of_anything_but_an_active_claude_mark_is_not_found(client, db_se
 
     assert r.status_code == 404 and r.json()["detail"] == "Not found"
     assert w.audit_rows() == 0
+
+
+def test_undoing_an_unmark_made_through_the_route_puts_the_mark_back(w):
+    mark_id = w.mark()
+    audit_id = w.unmark(mark_id, dry_run=False).json()["audit_id"]
+
+    r = w.client.post(f"/api/v1/audit/{audit_id}/undo", headers=_bearer(w.web))
+
+    assert r.status_code == 200, r.text
+    assert w.active(mark_id) is True

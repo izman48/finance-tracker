@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.planning_write import RepaymentsWriter
 from app.models import RepaymentMark
-from app.models.budget import CREATED_VIA_MCP
+from app.models.repayment_mark import CREATED_VIA_MCP
 from app.schemas.repayments import ClaudeUnmarkRequest
 from app.services.planning_writes import WriteRequest, replay_if_applied, run_write
 from app.services.repayment_marks import lock_user_marks

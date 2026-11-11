@@ -137,6 +137,8 @@ LIMITS: dict[str, tuple[int, int]] = {
     "rules-preview": (30, 60),
     "rules-impact": (10, 60),
     "transactions": (60, 60),
+    # Claude's repayment candidates: each call decrypts up to a year (T-03-5).
+    "repayment-candidates": (30, 60),
     "packs-bulk": (10, 60 * 60),
     # Share-code lookups (preview and import): guessing codes must not pay.
     "shared-lookup": (20, 60 * 60),

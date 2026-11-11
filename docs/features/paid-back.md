@@ -69,6 +69,13 @@ Claude's writes (`api/app/routers/repayment_writes.py`, all
 | `POST /api/v1/planning/repayments/mark` | 1 to 8 marks (`credit_id`, exactly one of `spend_id` or `category`, optional `amount_pounds`), all saved or none, one audit row each with a shared `batch_id`. Every check runs first, under `lock_user_marks` (`services/repayment_writes.plan_marks`): both payments the user's (else 404 "Not found"), a credit and a purchase that budgets count (not a transfer, card payoff, financed or commitment), a known category, the caps across the whole call, the income block (`repayment_guards`), and the payer warning (refused on apply until `accept_warnings`). The amount defaults to the smaller room. An identical repeat is `unchanged`; the same pair with another amount is 422 "Already marked …". The response adds `marks`: per entry the amount, warnings, `cycle` (`start`, `end`, `closed`), `spend_before`/`spend_after`, `category_spent_before`/`after`, `budget_left_before`/`after` (null with no active budget; negative means over, and the sentence says "£n over £limit") and an `effect` sentence. "After" is after every mark in the call, by `budget_spend(extra_marks=)` (T7); figures are computed before the write, for a preview and an apply alike. A replay returns the stored audit rows only (T4). |
 | `POST /api/v1/planning/repayments/{mark_id}/unmark` | Soft-deletes one active mark Claude made (`created_via == "mcp"`). Any other id, another user's included, is 404 "Not found". Takes `lock_user_marks` first. A retry of an applied unmark replays. |
 
+Read: `POST /api/v1/repayments/candidates` (`routers/repayments.py`, `CurrentUserOrMcpRead`,
+read only despite POST so the payer hint stays out of access logs, as search does):
+the PRD's `list_repayment_candidates` over `services/repayment_candidates`.
+Body `payer`, `about` (≤ 100 visible characters), `spend_date`, `frm`, `to` (at most
+366 days, `frm` ≤ `to`), `include_marked`, `limit` (1 to 50); unknown keys 422.
+Rate limited per user (`repayment-candidates`, 30 a minute).
+
 Reads: `GET /api/v1/banking/transactions` and `POST /api/v1/banking/transactions/search`
 (`services/repayment_views.paid_back_view`, T-03-3 P6) give each debit
 `paid_back_amount` (what its marks net now) and both payments

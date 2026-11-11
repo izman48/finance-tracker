@@ -23,6 +23,9 @@ from app.core.database import Base
 from app.core.encryption import UserEncryptedDecimal, UserEncryptedString
 
 
+CREATED_VIA_WEB, CREATED_VIA_MCP = "web", "mcp"
+
+
 def _now() -> datetime:
     # Set in Python, not only by the database: reads clamp marks oldest
     # first, and marks written in one transaction share the database's now().

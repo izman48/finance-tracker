@@ -132,6 +132,7 @@ def test_authorization_server_metadata(client):
     assert m["token_endpoint_auth_methods_supported"] == ["none"]
     assert set(m["scopes_supported"]) == {
         READ, WRITE, "finance:planning.write", "finance:sync", "finance:budgets.write", "finance:rules.edit",
+        "finance:repayments.write",
     }
 
 

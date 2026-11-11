@@ -42,8 +42,14 @@ SCOPE_BUDGETS_WRITE = "finance:budgets.write"
 # scope's consent copy says Claude "can't edit or delete your existing
 # rules", so existing grants must not gain this; refresh can't widen to it.
 SCOPE_RULES_EDIT = "finance:rules.edit"
+# Claude's paid-back marks (T-03-3). Its own scope, not budgets.write: those
+# grants were consented with copy naming budgets only, and marks change what
+# every budget and Spending figure counts. Existing grants don't gain it;
+# refresh can't widen to it.
+SCOPE_REPAYMENTS_WRITE = "finance:repayments.write"
 SUPPORTED_SCOPES = (
     SCOPE_READ, SCOPE_RULES_WRITE, SCOPE_PLANNING_WRITE, SCOPE_SYNC, SCOPE_BUDGETS_WRITE, SCOPE_RULES_EDIT,
+    SCOPE_REPAYMENTS_WRITE,
 )
 
 MCP_ACCESS_TOKEN_TTL = timedelta(hours=1)

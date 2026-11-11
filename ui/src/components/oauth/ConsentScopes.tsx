@@ -13,17 +13,22 @@ export const BUDGETS_DESCRIPTION =
 export const RULES_EDIT_DESCRIPTION =
   "Edit or switch off your existing categorisation rules. It's asked to show you a preview before each change. An edited rule can recategorise past transactions, but never ones you set by hand. Every change is listed under Changes made by Claude, where you can undo it."
 
+export const REPAYMENTS_DESCRIPTION =
+  "Mark payments people send you as paying back a purchase or a category. This lowers what your budgets and Spending page count as spent. It's asked to show you a preview before each change. Changes take effect at once, and every one is listed under Changes made by Claude, where you can undo it. A marked payment never counts as income and never changes your safe to spend."
+
 type Props = {
   allowRules: boolean
   allowPlanning: boolean
   allowSync: boolean
   allowBudgets: boolean
   allowRulesEdit: boolean
+  allowRepayments: boolean
   onRulesChange: (allowed: boolean) => void
   onPlanningChange: (allowed: boolean) => void
   onSyncChange: (allowed: boolean) => void
   onBudgetsChange: (allowed: boolean) => void
   onRulesEditChange: (allowed: boolean) => void
+  onRepaymentsChange: (allowed: boolean) => void
 }
 
 /** The permissions an MCP client asks for on the consent screen. Read is always granted. */
@@ -33,11 +38,13 @@ export default function ConsentScopes({
   allowSync,
   allowBudgets,
   allowRulesEdit,
+  allowRepayments,
   onRulesChange,
   onPlanningChange,
   onSyncChange,
   onBudgetsChange,
   onRulesEditChange,
+  onRepaymentsChange,
 }: Props) {
   return (
     <ul className="space-y-3">
@@ -138,6 +145,25 @@ export default function ConsentScopes({
               Edit your existing rules
             </span>
             <span id="allow-rules-edit-desc" className="block text-xs text-slate-400">{RULES_EDIT_DESCRIPTION}</span>
+          </span>
+        </label>
+      </li>
+      <li>
+        <label htmlFor="allow-repayments" className="flex gap-3 cursor-pointer">
+          <input
+            id="allow-repayments"
+            type="checkbox"
+            checked={allowRepayments}
+            onChange={(e) => onRepaymentsChange(e.target.checked)}
+            aria-labelledby="allow-repayments-title"
+            aria-describedby="allow-repayments-desc"
+            className="mt-1 shrink-0 accent-accent"
+          />
+          <span className="min-w-0">
+            <span id="allow-repayments-title" className="block text-sm text-slate-100">
+              Mark payments as paid back
+            </span>
+            <span id="allow-repayments-desc" className="block text-xs text-slate-400">{REPAYMENTS_DESCRIPTION}</span>
           </span>
         </label>
       </li>

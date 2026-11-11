@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import ConsentScopes, {
   BUDGETS_DESCRIPTION,
   PLANNING_DESCRIPTION,
+  REPAYMENTS_DESCRIPTION,
   RULES_DESCRIPTION,
   RULES_EDIT_DESCRIPTION,
   SYNC_DESCRIPTION,
@@ -12,7 +13,14 @@ import ConsentScopes, {
 
 const noop = () => {}
 
-function render(allowRules = true, allowPlanning = false, allowSync = false, allowBudgets = false, allowRulesEdit = false) {
+function render(
+  allowRules = true,
+  allowPlanning = false,
+  allowSync = false,
+  allowBudgets = false,
+  allowRulesEdit = false,
+  allowRepayments = false,
+) {
   return renderToStaticMarkup(
     <ConsentScopes
       allowRules={allowRules}
@@ -20,11 +28,13 @@ function render(allowRules = true, allowPlanning = false, allowSync = false, all
       allowSync={allowSync}
       allowBudgets={allowBudgets}
       allowRulesEdit={allowRulesEdit}
+      allowRepayments={allowRepayments}
       onRulesChange={noop}
       onPlanningChange={noop}
       onSyncChange={noop}
       onBudgetsChange={noop}
       onRulesEditChange={noop}
+      onRepaymentsChange={noop}
     />,
   )
 }
@@ -158,5 +168,29 @@ describe('ConsentScopes', () => {
     const text = (id?: string) => (html.match(new RegExp(`id="${id}"[^>]*>([^<]*)<`))?.[1] ?? '').replace(/&#x27;/g, "'")
     expect(text(described)).toBe(RULES_EDIT_DESCRIPTION)
     expect(text(named)).toBe('Edit your existing rules')
+  })
+
+  it('T-03-3: the paid-back box is last, unchecked and enabled by default, and reflects its state', () => {
+    const html = render()
+    const box = input(html, 'allow-repayments')
+    expect(box).not.toBe('')
+    expect(box).not.toMatch(/checked/)
+    expect(box).not.toMatch(/disabled/)
+    expect(html.indexOf('Mark payments as paid back')).toBeGreaterThan(html.indexOf('Edit your existing rules'))
+    expect(input(render(true, false, false, false, false, true), 'allow-repayments')).toMatch(/checked/)
+  })
+
+  it('T-03-3: the paid-back copy names the power, is exact, and is linked to its box', () => {
+    const html = render()
+    expect(REPAYMENTS_DESCRIPTION).toBe(
+      "Mark payments people send you as paying back a purchase or a category. This lowers what your budgets and Spending page count as spent. It's asked to show you a preview before each change. Changes take effect at once, and every one is listed under Changes made by Claude, where you can undo it. A marked payment never counts as income and never changes your safe to spend.",
+    )
+    expect(html).toMatch(/<label[^>]*for="allow-repayments"[^>]*>/)
+    const box = input(html, 'allow-repayments')
+    const described = box.match(/aria-describedby="([^"]+)"/)?.[1]
+    const named = box.match(/aria-labelledby="([^"]+)"/)?.[1]
+    const text = (id?: string) => (html.match(new RegExp(`id="${id}"[^>]*>([^<]*)<`))?.[1] ?? '').replace(/&#x27;/g, "'")
+    expect(text(described)).toBe(REPAYMENTS_DESCRIPTION)
+    expect(text(named)).toBe('Mark payments as paid back')
   })
 })

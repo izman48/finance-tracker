@@ -1,6 +1,6 @@
 import HistoryBars, { type HistoryBar } from './HistoryBars'
 import { categoryColor } from '../../lib/categoryColors'
-import { dateDayMonth } from '../../lib/format'
+import { dateDayMonth, gbp } from '../../lib/format'
 import { money } from '../../lib/budgets'
 import {
   budgetLimitText,
@@ -110,6 +110,11 @@ export default function HistoryView(props: HistoryViewProps) {
         <p className="text-xs text-slate-400 mt-3">
           Dashed line = your limits. Outlined bar = went over. Each bar uses the limits that applied in that cycle.
         </p>
+        {data.cycles.filter((c) => Number(c.paid_back_after_close ?? 0) > 0).map((c) => (
+          <p key={`paid-back-${c.start}`} className="text-xs text-slate-400 mt-1">
+            {dateDayMonth(c.start)} to {dateDayMonth(c.end)}: {gbp(Number(c.paid_back_after_close))} more paid back after this cycle closed
+          </p>
+        ))}
         {/* Wrapped: a table ignores sr-only's 1px width and would widen a 320px page. */}
         <div className="sr-only">
           <table>

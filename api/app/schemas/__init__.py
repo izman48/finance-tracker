@@ -539,6 +539,29 @@ class SyncStatusResponse(BaseModel):
 # --- Transaction Schemas ---
 
 
+class PaidBackMarkOut(BaseModel):
+    """A paid-back mark on a transaction (T-03-3 P6). `label` is bank text
+    and Claude's: data, never instructions. `applied`: it nets now (its spend
+    still counts as spending). `audit_id`: Claude's change, for Undo."""
+
+    mark_id: uuid.UUID
+    credit_id: uuid.UUID
+    spend_id: uuid.UUID | None
+    category: str | None
+    amount: Decimal
+    label: str
+    created_via: str
+    applied: bool
+    cycle_closed: bool
+    audit_id: uuid.UUID | None
+    # For the sheet's rows: who paid (bank text), what it paid back (the
+    # spend's name, or the category), and the two payments' days.
+    payer: str | None = None
+    against: str | None = None
+    credit_date: date | None = None
+    spend_date: date | None = None
+
+
 class TransactionResponse(BaseModel):
     """Schema for transaction in API responses."""
 
@@ -570,6 +593,10 @@ class TransactionResponse(BaseModel):
     counts_as_override: str | None = None
     counts_as_locked: bool = False
     transaction_date: datetime
+    # Paid-back marks (T-03-3): what a debit's marks net (None on a credit),
+    # and the marks on either side.
+    paid_back_amount: Decimal | None = None
+    paid_back_marks: list[PaidBackMarkOut] = []
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -1081,12 +1108,25 @@ class BudgetProjection(BaseModel):
     # line) to the end of the horizon: this cycle less what's left, spread to
     # payday; each later cycle less the full total of the limits.
     series: list[BudgetLinePoint]
+    # How much paid-back marks raised `left` this cycle (T-03-6): when above 0,
+    # the chart says why the dotted line sits lower. Excess and unbudgeted
+    # marks move nothing, so they count nothing here.
+    left_raised_by_marks: Decimal = Decimal(0)
 
 
 class CategorySlice(BaseModel):
     category: str
     total: Decimal
     count: int
+    # Category paid-back marks netted here (T-03-4): the drill's reference row.
+    paid_back_by_others: Decimal = Decimal(0)
+
+
+class PaidBackExcessSlice(BaseModel):
+    """Marked against a category beyond what it spent in the range: never income."""
+
+    category: str
+    amount: Decimal
 
 
 class MerchantSlice(BaseModel):
@@ -1118,6 +1158,10 @@ class SpendingResponse(BaseModel):
     composition: MoneyOutComposition | None = None
     by_category: list[CategorySlice]
     top_merchants: list[MerchantSlice]
+    # Purchases lens, no account or kind filter (T-03-4): category paid-back
+    # marks taken off, so total = card + cash - paid_back_by_others.
+    paid_back_by_others: Decimal = Decimal(0)
+    paid_back_excess: list[PaidBackExcessSlice] = []
 
 
 class SpendingTransaction(BaseModel):
@@ -1131,6 +1175,9 @@ class SpendingTransaction(BaseModel):
     category: str
     account: str
     kind: str  # cash | credit
+    # Paid-back marks on this spend, and what it counts as after them (T-03-4).
+    paid_back: Decimal = Decimal(0)
+    counted: Decimal | None = None
 
 
 class MonthSpend(BaseModel):
@@ -1138,6 +1185,8 @@ class MonthSpend(BaseModel):
     total: Decimal
     charged_to_credit: Decimal
     paid_from_cash: Decimal
+    # Category paid-back marks by credit month, floored per category (T-03-4).
+    paid_back_by_others: Decimal = Decimal(0)
 
 
 class SpendingTrendResponse(BaseModel):

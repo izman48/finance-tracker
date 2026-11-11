@@ -13,6 +13,8 @@ from app.routers.commitment_writes import router as commitment_writes_router
 from app.routers.budgets import router as budgets_router
 from app.routers.budget_writes import router as budget_writes_router
 from app.routers.rule_writes import router as rule_writes_router
+from app.routers.repayment_writes import router as repayment_writes_router
+from app.routers.repayments import router as repayments_router
 from app.routers.card_statements import router as card_statements_router
 from app.routers.card_plans import router as card_plans_router
 from app.routers.holdings_list import router as holdings_list_router
@@ -34,6 +36,8 @@ __all__ = [
     "budgets_router",
     "budget_writes_router",
     "rule_writes_router",
+    "repayment_writes_router",
+    "repayments_router",
     "holdings_list_router",
     "card_statements_router",
     "card_plans_router",

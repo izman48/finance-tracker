@@ -111,6 +111,37 @@ def _changed_by_claude(w, client, token):
     post(f"/{ids[0]}/pause")
     post(f"/{ids[1]}/remove")
     client.get(f"{API}/budgets", headers=_bearer(token))
+
+
+def _paid_back(w, client, token):
+    """Marks on a spend and on a category, with excess (T-03-4, PRD AC-5): budgets
+    net them, and still no money figure moves."""
+    from decimal import Decimal
+
+    from app.models import Account, RepaymentMark, Transaction
+    from tests.integration.test_transactions_endpoint import _tx
+
+    _create(client, token, "Eating out", 150)
+
+    def mark():
+        pret = next(t for t in w.db.query(Transaction).join(Account).filter(Account.user_id == w.user.id)
+                    if t.merchant_name == "Pret" and t.transaction_date.date() >= START)
+        current = pret.account
+        sam = _tx(w.db, current, "15.00", TODAY - timedelta(days=1), ttype="credit", merchant="SAM")
+        jo = _tx(w.db, current, "40.00", TODAY - timedelta(days=1), ttype="credit", merchant="JO")
+        w.db.add_all([
+            RepaymentMark(user_id=w.user.id, credit_transaction_id=sam.id, spend_transaction_id=pret.id,
+                          amount=Decimal("15.00"), label="Sam, Pret", created_via="mcp"),
+            RepaymentMark(user_id=w.user.id, credit_transaction_id=jo.id, category="Groceries",
+                          amount=Decimal("40.00"), label="Jo, Tesco", created_via="mcp"),
+        ])
+        w.db.commit()
+    w.as_user(mark)
+    body = client.get(f"{API}/budgets", headers=_bearer(token)).json()
+    assert Decimal(body["not_counted"]["paid_back"]) == Decimal("55.00")  # the marks did net
+    assert Decimal(body["budgets"][0]["spent"]) == Decimal("50.00")  # Pret £20 + £45, less Sam's £15
+
+
 SCENARIOS = {
     "budget spend computed": _spend_computed,
     "active budgets": _active,
@@ -120,7 +151,9 @@ SCENARIOS = {
     "bulk set and suggest": _bulk_and_suggest,
     "history loaded": _history_loaded,
     "budgets changed by Claude": _changed_by_claude,
+    "paid-back marks": _paid_back,
 }
+MOVES_AVERAGE_SPENDING = {"paid-back marks"}
 
 
 @pytest.mark.parametrize("scenario", SCENARIOS)
@@ -130,7 +163,12 @@ def test_budgets_never_move_a_money_figure(client, db_session, scenario):
     token = _web_login(client, "budgets@example.com")
     before = _money(client, token)
     SCENARIOS[scenario](w, client, token)
-    assert _money(client, token) == before
+    after = _money(client, token)
+    if scenario in MOVES_AVERAGE_SPENDING:
+        # Wealth's average spending reads the netted trend, so marks may lower
+        # it (PRD AC-8, test_spending_paid_back.py); AC-5 never covered it.
+        before.pop("projection"), after.pop("projection")
+    assert after == before
 
 
 def test_the_harness_sees_a_real_change(client, db_session):

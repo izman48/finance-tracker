@@ -11,6 +11,9 @@ T-09-3 criteria).
   unique (budget, cycle start) makes two loads at once write one row.
   Snapshots are never updated.
 - "Kept" is computed here, once: spend at or under the limit at close.
+- Paid-back marks made after a cycle's snapshot never change it (PRD
+  decision 6); `paid_back_after_close` names them. A mark made before the
+  first load is in the snapshot (T-03-2 T17).
 """
 from __future__ import annotations
 
@@ -25,6 +28,7 @@ from app.models import Budget, BudgetChange, BudgetCycleSnapshot
 from app.services.analytics.common import _today
 from app.services.budget_spend import budget_spend
 from app.services.budgets import current_cycle, previous_cycles
+from app.services.repayment_marks import active_marks
 
 HISTORY_MAX_CYCLES = 12
 # Cycles looked back over when writing missing snapshots.
@@ -125,6 +129,9 @@ def _snapshot_row(user, budget: Budget, cycle, state: BudgetChange, spend: dict)
         user_id=user.id, budget_id=budget.id, cycle_start=cycle.start, cycle_end=cycle.end,
         limit_pounds=Decimal(state.limit_pounds), spent=spend.get(budget.category, Decimal(0)),
         paused=state.paused,
+        # The app's clock, as a mark's `created_at`, so "marked after the
+        # snapshot" compares like with like (T-03-6).
+        written_at=datetime.now(timezone.utc),
     )
 
 
@@ -145,6 +152,7 @@ def history(db: Session, user, cycles: int, before: date | None) -> dict:
     in_page = [r for r in ranges if before is None or r[1] < before]
     shown, has_more = in_page[-cycles:], len(in_page) > cycles
     overall = [o for o in overall_all if (o["start"], o["end"]) in set(shown)]
+    _note_later_marks(db, user, overall, by_range)
 
     budgets = db.query(Budget).filter(Budget.user_id == user.id).all()
     category_of = {b.id: b.category for b in budgets}
@@ -165,6 +173,25 @@ def _overall(start: date, end: date, snaps: list[BudgetCycleSnapshot]) -> dict:
     spent = sum((Decimal(s.spent) for s in counted), Decimal(0))
     return {"start": start, "end": end, "total_limit": limit, "total_spent": spent,
             "on_target": (spent <= limit) if counted else None}
+
+
+def _note_later_marks(db: Session, user, overall: list[dict], by_range: dict) -> None:
+    """Set each shown cycle's `paid_back_after_close`: marks netted in it,
+    against a category it has a snapshot for, made after that snapshot. Spend
+    is recounted only for cycles some mark is newer than (most have none)."""
+    newest = max((_aware(m.created_at) for m in active_marks(db, user.id) if m.created_at), default=None)
+    budgets = {b.id: b.category for b in db.query(Budget).filter(Budget.user_id == user.id)}
+    for cycle in overall:
+        snaps = by_range[(cycle["start"], cycle["end"])]
+        written = min(_aware(s.written_at) for s in snaps)
+        cycle["paid_back_after_close"] = Decimal(0)
+        if newest is None or newest <= written:
+            continue
+        categories = {budgets[s.budget_id] for s in snaps}
+        netted = budget_spend(db, user, cycle["start"], cycle["end"]).paid_back_marks
+        cycle["paid_back_after_close"] = sum(
+            (p.amount for p in netted if p.category in categories and p.created_at and _aware(p.created_at) > written),
+            Decimal(0))
 
 
 def _category_row(category: str, shown, by_range, budgets: list[Budget], category_of: dict) -> dict:

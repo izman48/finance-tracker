@@ -32,3 +32,30 @@ export const addEvent = (direction: 'income' | 'expense', over: Partial<AuditIte
     ],
     ...over,
   })
+
+/** Claude's paid-back marks (T-03-6): a mark on a spend, on a category, and an unmark. */
+export const markItem = (over: Partial<AuditItem> = {}) =>
+  item({
+    tool: 'mark_paid_back',
+    target_kind: 'repayment_mark',
+    target_label: 'Sam £60.00, Pizza Express',
+    changes: [
+      { field: 'amount', before: null, after: '60.00' },
+      { field: 'spend_transaction_id', before: null, after: 'tx-dinner' },
+      { field: 'active', before: null, after: true },
+    ],
+    ...over,
+  })
+
+export const categoryMarkItem = () =>
+  markItem({
+    target_label: 'Sam £60.00, Eating out',
+    changes: [
+      { field: 'amount', before: null, after: '60.00' },
+      { field: 'category', before: null, after: 'Eating out' },
+      { field: 'active', before: null, after: true },
+    ],
+  })
+
+export const unmarkItem = () =>
+  markItem({ tool: 'unmark_paid_back', changes: [{ field: 'active', before: true, after: false }] })

@@ -36,10 +36,11 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.oauth_tokens import Caller
-from app.models import AuditEntry, Budget, CategoryRule, CommitmentRule, PlannedItem, WriteIdempotency
+from app.models import AuditEntry, Budget, CategoryRule, CommitmentRule, PlannedItem, RepaymentMark, WriteIdempotency
 from app.models.audit import AUDIT_KIND_UNDO, AUDIT_KIND_WRITE
 from app.schemas import PlanningWriteRequest
 from app.services.linked_commitments import refuse_linked_edit
+from app.services.repayment_marks import fits, lock_user_marks
 
 IDEMPOTENCY_TTL = timedelta(hours=24)
 # Maintained by the database, not by a write.
@@ -93,6 +94,11 @@ TARGETS: dict[str, TargetSpec] = {
     "rule": TargetSpec(CategoryRule, "pattern", {
         "pattern": str, "match_type": str, "match_field": str, "category": str, "counts_as": str, "enabled": bool,
     }, together=("pattern", "match_type")),
+    # Claude's paid-back marks (T-03-3): unmarking is `active`, so undo works.
+    # The spend id is in the diff for undo; the Changes page never shows it.
+    "repayment_mark": TargetSpec(RepaymentMark, "label", {
+        "amount": Decimal, "spend_transaction_id": uuid.UUID, "category": str, "active": bool,
+    }),
 }
 
 
@@ -428,6 +434,10 @@ def undo_write(db: Session, user, audit_id: uuid.UUID) -> AuditEntry:
     if entry.created_target and "active" not in spec.fields:
         # Nothing to soft-delete it with; refuse rather than hard-delete.
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Can't undo this kind of change.")
+    if entry.target_kind == "repayment_mark":
+        # Mark writes lock the user row, then the mark: same order here, so
+        # a write and an undo of one mark can't deadlock (eng-b on #272).
+        lock_user_marks(db, user.id)
     target = _load_target(db, spec, entry.target_id, user.id, lock=True)
     if target is None or getattr(target, "deleted_at", None) is not None:
         # Gone, or deleted by the user on the web (T-12-9b): an undo never
@@ -444,6 +454,8 @@ def undo_write(db: Session, user, audit_id: uuid.UUID) -> AuditEntry:
     restore = [{"field": "active", "before": True, "after": False}] if entry.created_target else [
         {"field": c["field"], "before": c["after"], "after": c["before"]} for c in changes
     ]
+    if entry.target_kind == "repayment_mark":
+        _refuse_unrestorable_mark(db, user, target, restore)
     if entry.target_kind == "rule":
         _refuse_unrunnable_rule(current, restore)
         # Found while the stored rule is still the edited one (T-16-2). The
@@ -490,6 +502,22 @@ def undo_write(db: Session, user, audit_id: uuid.UUID) -> AuditEntry:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Can't undo: it has changed since.") from None
     db.refresh(entry)
     return entry
+
+
+def _refuse_unrestorable_mark(db: Session, user, mark: RepaymentMark, restore: list[dict]) -> None:
+    """409 when undoing an unmark would put back a mark that a new one could
+    not be: its credit or spend has no room left (T-03-2 T6), or the credit
+    now counts as income (PRD decision 3, eng-b on #272). The mark is still
+    inactive here, so neither check sees it. The caller holds
+    `lock_user_marks`."""
+    if not any(c["field"] == "active" and c["after"] is True for c in restore):
+        return
+    from app.services.analytics.common import _today
+    from app.services.repayment_guards import income_locked_credit_ids
+
+    if (not fits(db, user.id, mark.credit_transaction_id, mark.spend_transaction_id, Decimal(mark.amount))
+            or mark.credit_transaction_id in income_locked_credit_ids(db, user, _today())):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Can't undo: it has changed since.")
 
 
 def _refuse_unrunnable_rule(current: dict, restore: list[dict]) -> None:

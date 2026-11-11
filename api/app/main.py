@@ -24,6 +24,8 @@ from app.routers import (
     budgets_router,
     budget_writes_router,
     rule_writes_router,
+    repayment_writes_router,
+    repayments_router,
     card_statements_router,
     card_plans_router,
     holdings_list_router,
@@ -90,6 +92,8 @@ app.include_router(commitment_writes_router, prefix="/api/v1")
 app.include_router(budgets_router, prefix="/api/v1")
 app.include_router(budget_writes_router, prefix="/api/v1")
 app.include_router(rule_writes_router, prefix="/api/v1")
+app.include_router(repayment_writes_router, prefix="/api/v1")
+app.include_router(repayments_router, prefix="/api/v1")
 app.include_router(card_statements_router, prefix="/api/v1")
 app.include_router(card_plans_router, prefix="/api/v1")
 app.include_router(holdings_list_router, prefix="/api/v1")

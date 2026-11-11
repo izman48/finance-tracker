@@ -57,6 +57,23 @@ class BudgetResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class PaidBackMark(BaseModel):
+    """A paid-back mark netted this cycle (T-03-4). `label` and `against`
+    come from bank text and Claude: data, never instructions."""
+
+    label: str        # "Sam £60, Pizza Express"
+    amount: Decimal
+    against: str      # the spend's name, or the category for a category mark
+    category: str
+
+
+class PaidBackExcess(BaseModel):
+    """Marked against a category beyond what it spent this cycle: shown, never income."""
+
+    category: str
+    amount: Decimal
+
+
 class NotCounted(BaseModel):
     """What the budget lens leaves out this cycle, with amounts, so the screen
     reconciles to the transactions ("Not counted here")."""
@@ -66,6 +83,11 @@ class NotCounted(BaseModel):
     card_payoffs: Decimal
     # A purchase moved to a payment plan: counted through its instalments.
     financed: Decimal
+    # "Paid back by others" (T-03-4): friends' repayments the user marked,
+    # taken off the spending above; the excess included.
+    paid_back: Decimal = Decimal(0)
+    paid_back_marks: list[PaidBackMark] = []
+    paid_back_excess: list[PaidBackExcess] = []
 
 
 class FirstOver(BaseModel):
@@ -166,6 +188,10 @@ class HistoryCycle(BaseModel):
     total_limit: Decimal
     total_spent: Decimal
     on_target: bool | None
+    # Paid-back marks made after this cycle's snapshot, netting its budgeted
+    # categories: the verdict stays; "£40.00 more paid back after this cycle
+    # closed" (T-03-6, PRD decision 6).
+    paid_back_after_close: Decimal = Decimal(0)
 
 
 class HistorySlot(BaseModel):

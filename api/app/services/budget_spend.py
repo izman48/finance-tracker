@@ -15,25 +15,34 @@ with their amounts so the budget screen reconciles to the transactions:
 - `financed`: a purchase moved to a payment plan (counted through its
   instalments, which are planned items).
 
-Income and refunds are never netted (fail safe: refunds never turn spending
-into less spending). Transactions are the caller's own, read at request time
-with their key and bounded to the window; nothing is cached or shared.
+Income and refunds are never netted on their own: refunds never turn
+spending into less spending. The one exception is a paid-back mark, which
+the user (through Claude) made explicitly, which is logged and which can be
+undone (T-03-4): `services/paid_back.py` nets them, a spend mark in the
+spend's own window and a category mark in its credit's, floored at £0.
+`gross_by_category` is the spend before marks, for which categories may
+have a budget (T-03-2 T5). Transactions and marks are the caller's own,
+read at request time with their key and bounded to the window; nothing is
+cached or shared.
 """
 from __future__ import annotations
 
+import uuid
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from app.models import Account, Transaction
+from app.models import Account, RepaymentMark, Transaction
 from app.services.analytics.commitments import commitment_match_keys
 from app.services.analytics.common import _d, _load, resolve_roles
 from app.services.analytics.spending import _effective_transfers, classify_purchase, financed_transaction_ids
+from app.services.paid_back import UNCATEGORISED, PaidBack, net_paid_back
+from app.services.repayment_marks import active_marks
 
-UNCATEGORISED = "Uncategorized"
 # classify_purchase's reasons, as reported in `excluded`.
 EXCLUDED = {"commitment": "commitments", "transfer": "transfers", "card_payoff": "card_payoffs",
             "financed": "financed"}
@@ -41,15 +50,26 @@ EXCLUDED = {"commitment": "commitments", "transfer": "transfers", "card_payoff":
 
 @dataclass(frozen=True)
 class BudgetSpend:
+    # Net of paid-back marks.
     by_category: dict[str, Decimal]
     excluded: dict[str, Decimal] = field(default_factory=dict)
     # Commitment-matched spending by category: a category that is mostly
     # commitments can't have a budget (T-09-2).
     commitments_by_category: dict[str, Decimal] = field(default_factory=dict)
+    # Before marks: which categories may have a budget (T-03-2 T5).
+    gross_by_category: dict[str, Decimal] = field(default_factory=dict)
+    # "Paid back by others": every mark netted here, excess included.
+    paid_back: Decimal = Decimal(0)
+    paid_back_marks: list[PaidBack] = field(default_factory=list)
+    # Category marks beyond what the category spent here: shown, never income.
+    paid_back_excess: dict[str, Decimal] = field(default_factory=dict)
 
 
-def budget_spend(db: Session, user, start: date, end: date) -> BudgetSpend:
-    """Purchases by category in [start, end], and what was left out."""
+def budget_spend(db: Session, user, start: date, end: date,
+                 extra_marks: Sequence[RepaymentMark] = ()) -> BudgetSpend:
+    """Purchases by category in [start, end], net of paid-back marks, and
+    what was left out. `extra_marks`: unsaved marks a preview proposes
+    (T-03-2 T7), netted as if saved."""
     accounts, settings = _load(db, user)
     roles = resolve_roles(accounts, settings)
     txns = (
@@ -69,12 +89,22 @@ def budget_spend(db: Session, user, start: date, end: date) -> BudgetSpend:
     by_category: dict[str, Decimal] = defaultdict(Decimal)
     excluded = {name: Decimal(0) for name in EXCLUDED.values()}
     commitments: dict[str, Decimal] = defaultdict(Decimal)
+    counted: dict[uuid.UUID, Transaction] = {}
     for tx in txns:
         kind = classify_purchase(tx, transfers, roles, financed, commitment_keys)
         if kind in ("credit", "cash"):
             by_category[tx.category or UNCATEGORISED] += _d(tx.amount)
+            counted[tx.id] = tx
         elif kind is not None:
             excluded[EXCLUDED[kind]] += _d(tx.amount)
             if kind == "commitment":
                 commitments[tx.category or UNCATEGORISED] += _d(tx.amount)
-    return BudgetSpend(by_category=dict(by_category), excluded=excluded, commitments_by_category=dict(commitments))
+    gross = dict(by_category)
+    marks = active_marks(db, user.id, extra=extra_marks)
+    paid_back, excess = net_paid_back(by_category, marks, counted, start, end)
+    return BudgetSpend(
+        by_category=dict(by_category), excluded=excluded, commitments_by_category=dict(commitments),
+        gross_by_category=gross, paid_back=sum((p.amount for p in paid_back), Decimal(0)),
+        paid_back_marks=paid_back, paid_back_excess=excess,
+    )
+

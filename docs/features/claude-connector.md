@@ -22,9 +22,10 @@ also runs over stdio with the user's password.
 
 **Scopes** (`core/oauth_tokens.py`): `finance:read` (always),
 `finance:rules.write`, `finance:planning.write`, `finance:sync`,
-`finance:budgets.write`, `finance:rules.edit`. The consent page ticks rules
-by default; planning, sync, budgets and editing existing rules are opt-in. A
-refresh never widens scopes.
+`finance:budgets.write`, `finance:rules.edit`, `finance:repayments.write`
+(paid-back marks, T-03-3). The consent page ticks rules by default;
+planning, sync, budgets, editing existing rules and paid-back marks are
+opt-in. A refresh never widens scopes.
 
 **Tables**: `oauth_clients`, `oauth_authorization_codes`, `oauth_grants`
 (DEK wrapped under the code, then under each refresh token).
@@ -60,6 +61,9 @@ refresh never widens scopes.
 | `pause_budget` | write (budgets) | `POST /api/v1/planning/budgets/{budget_id}/pause` |
 | `resume_budget` | write (budgets) | `POST /api/v1/planning/budgets/{budget_id}/resume` |
 | `remove_budget` | write (budgets) | `POST /api/v1/planning/budgets/{budget_id}/remove` |
+| `list_repayment_candidates` | read | `POST /api/v1/repayments/candidates` |
+| `mark_paid_back` | write (repayments) | `POST /api/v1/planning/repayments/mark` |
+| `unmark_paid_back` | write (repayments) | `POST /api/v1/planning/repayments/{mark_id}/unmark` |
 
 The reads that decrypt the whole ledger are limited per user, never per IP
 (every MCP call arrives from one address): summary, forecast, spending and

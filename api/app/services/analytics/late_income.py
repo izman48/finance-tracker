@@ -20,10 +20,10 @@ least the expected amount less that tolerance. A payer often splits one
 payment ("PAYER X RENT" + "PAYER X MAMA AND DADA") or varies it; a stray
 GBP 5 from the payer still doesn't hide a missing GBP 1,000. The payer is
 the leading words of the description, before the free-text reference
-(`_payer`). Credits the user marked as a transfer count here, for this
+(`payer_words`). Credits the user marked as a transfer count here, for this
 check only (it changes no figure); detected internal transfer legs and
 card payments never do: money moved in from your own savings isn't the
-income. Skip on a late income settles that payment (`skipped_through`).
+income, and neither does a credit marked as paid back (T-03-3). Skip on a late income settles that payment (`skipped_through`).
 Recomputed on every read, with the user's key.
 """
 from __future__ import annotations
@@ -54,6 +54,7 @@ _BANK_PREFIX = _STOP_WORDS | {
 
 @dataclass(frozen=True)
 class _Credit:
+    id: uuid.UUID
     key: str
     payer: tuple[str, ...]
     day: date
@@ -83,6 +84,21 @@ def last_expected(rule: CommitmentRule, today: date) -> date:
 
 
 def late_incomes(db: Session, user, today: date) -> dict[uuid.UUID, LateIncome]:
+    late, _ = _settle(db, user, today, due_before=today - timedelta(days=GRACE_DAYS))
+    return late
+
+
+def income_credit_ids(db: Session, user, today: date) -> set[uuid.UUID]:
+    """Credits that pay a confirmed income's latest expected payment, late or
+    not yet (inside the grace days): marking one paid back would make that
+    income late (T-03-3 guard)."""
+    _, used = _settle(db, user, today, due_before=today + timedelta(days=1))
+    return used
+
+
+def _settle(db: Session, user, today: date, due_before: date) -> tuple[dict[uuid.UUID, LateIncome], set[uuid.UUID]]:
+    """(late incomes, ids of the credits that paid the others) for confirmed
+    incomes expected before `due_before`."""
     rules = (
         db.query(CommitmentRule)
         .filter(
@@ -97,14 +113,15 @@ def late_incomes(db: Session, user, today: date) -> dict[uuid.UUID, LateIncome]:
         expected = last_expected(rule, today)
         created = rule.created_at.date() if rule.created_at else expected
         skipped = rule.skipped_through is not None and expected <= rule.skipped_through
-        if today - expected > timedelta(days=GRACE_DAYS) and created <= expected and not skipped:
+        if expected < due_before and created <= expected and not skipped:
             candidates.append((rule, expected))
     if not candidates:
-        return {}
+        return {}, set()
     credits = _income_credits(db, user, min(e for _, e in candidates) - timedelta(days=EARLY_DAYS))
     # Each credit pays one income (eng-a on #133): exact matches first, then
     # the payer's leftover credits, soonest expected income first.
     unused = list(credits)
+    used: set[uuid.UUID] = set()
     waiting = []
     for rule, expected in sorted(candidates, key=lambda c: c[1]):
         match = _exact_match(rule, expected, unused)
@@ -112,24 +129,26 @@ def late_incomes(db: Session, user, today: date) -> dict[uuid.UUID, LateIncome]:
             waiting.append((rule, expected))
         else:
             unused.remove(match)
+            used.add(match.id)
     out = {}
     for rule, expected in waiting:
-        used = _split_match(rule, expected, unused)
-        if used is None:
+        split = _split_match(rule, expected, unused)
+        if split is None:
             out[rule.id] = LateIncome(rule.id, rule.label, _d(rule.amount), expected)
         else:
-            for c in used:
+            for c in split:
                 unused.remove(c)
-    return out
+                used.add(c.id)
+    return out, used
 
 
-def _keys(rule: CommitmentRule) -> set[str]:
+def income_rule_keys(rule: CommitmentRule) -> set[str]:
     return {k for k in (rule.match_key, _match_key(rule.direction, rule.label)) if k}
 
 
 def _exact_match(rule: CommitmentRule, expected: date, credits: list[_Credit]) -> _Credit | None:
     """One credit with the commitment's own key, within tolerance."""
-    keys, amount = _keys(rule), _d(rule.amount)
+    keys, amount = income_rule_keys(rule), _d(rule.amount)
     allowed = tolerance(amount)  # the same rule as planned items (T-08-7)
     early = expected - timedelta(days=EARLY_DAYS)
     return next(
@@ -142,7 +161,7 @@ def _split_match(rule: CommitmentRule, expected: date, credits: list[_Credit]) -
     """Credits from the same payer near the expected date that together make
     at least the expected amount less tolerance, taken in date order until
     they do; None if they don't."""
-    payers = {_payer(k.split(":", 1)[1]) for k in _keys(rule)} - {()}
+    payers = {payer_words(k.split(":", 1)[1]) for k in income_rule_keys(rule)} - {()}
     amount = _d(rule.amount)
     needed = amount - tolerance(amount)
     near = sorted(
@@ -158,7 +177,7 @@ def _split_match(rule: CommitmentRule, expected: date, credits: list[_Credit]) -
     return None
 
 
-def _payer(text: str) -> tuple[str, ...]:
+def payer_words(text: str) -> tuple[str, ...]:
     """The payer's name: the leading words of a normalised description after
     any bank prefix ("FASTER PAYMENT", "BANK GIRO CREDIT", "TRANSFER FROM")
     and before the free-text reference ("PAYER X RENT" -> payer x)."""
@@ -174,7 +193,9 @@ def _income_credits(db: Session, user, since: date) -> list[_Credit]:
     payment. One the user marked as a transfer (override or transfer
     category) still counts here: it is often pass-through money that did
     arrive, and this check moves no figure. Spending and safe-to-spend keep
-    excluding it."""
+    excluding it. A credit marked as paid back never counts (T-03-3)."""
+    from app.services.repayment_marks import marked_credit_ids
+
     from .spending import classify_noise
 
     txns = (
@@ -193,13 +214,14 @@ def _income_credits(db: Session, user, since: date) -> list[_Credit]:
         tx.id for tx in txns
         if tx.id in noise and noise[tx.id] == "internal_transfer" and tx.id not in own_legs
     }
+    paid_back = marked_credit_ids(db, user.id)
     return [
         _Credit(
-            transaction_match_key(tx), _payer(tx.merchant_name or tx.description or ""),
+            tx.id, transaction_match_key(tx), payer_words(tx.merchant_name or tx.description or ""),
             tx.transaction_date.date(), _d(tx.amount),
         )
         for tx in txns
-        if tx.transaction_type == "credit"
+        if tx.transaction_type == "credit" and tx.id not in paid_back
         and (tx.id not in noise or tx.id in marked)
         and tx.transaction_date.date() >= since
     ]

@@ -49,6 +49,9 @@ It runs two ways:
 | `list_budgets` | this pay cycle's budgets: limit, spent, pace, status, and the cycle summary |
 | `set_budgets(budgets, idempotency_key, dry_run=true)` | **writes** (`finance:budgets.write`): set up to 8 budgets in one go, all or none |
 | `pause_budget` / `resume_budget` / `remove_budget(budget_id, idempotency_key, dry_run=true)` | **writes** (`finance:budgets.write`): pause, resume or remove one budget |
+| `list_repayment_candidates(payer, about, spend_date, frm, to, include_marked, limit)` | incoming payments that may be repayments, each with the purchase it most likely paid back |
+| `mark_paid_back(marks, idempotency_key, dry_run=true, accept_warnings=false)` | **writes** (`finance:repayments.write`): mark 1-8 payments as paid back against a purchase or a category, all or none; the preview has before/after figures and an `effect` sentence |
+| `unmark_paid_back(mark_id, idempotency_key, dry_run=true)` | **writes** (`finance:repayments.write`): remove one mark Claude made |
 
 ### `spending` has two lenses that don't compare
 
@@ -144,7 +147,8 @@ Scopes: `finance:read` for every tool; `create_rule_pack` also needs
 `finance:rules.write`; `update_rule` needs `finance:rules.edit`; `add_planned_event`, `remove_planned_event`,
 `update_commitment` and `dismiss_commitment` need `finance:planning.write`;
 `set_budgets`, `pause_budget`, `resume_budget` and `remove_budget` need
-`finance:budgets.write`. Each write scope is a separate box on the consent
+`finance:budgets.write`; `mark_paid_back` and `unmark_paid_back` need
+`finance:repayments.write`. Each write scope is a separate box on the consent
 screen, unticked by default, and
 is enforced by the API itself, so a token without it is refused even when it
 calls the API directly. An existing connection never gains it: connect again

@@ -16,7 +16,7 @@ Claude's changes to commitments and removals of planned expenses are held
   verified `grant_id`, `client_id`) and apply per-user limits (30 writes and
   120 dry runs per hour, in process). `dry_run` must be a JSON body field.
 - `services/planning_writes.py`: `TARGETS` (`planned_event`, `commitment`,
-  `budget`, `rule`, each with allow-listed fields), `run_write` (dry run in a
+  `budget`, `rule`, `repayment_mark`, each with allow-listed fields), `run_write` (dry run in a
   savepoint; apply claims the idempotency key, writes, records an audit row), and a retry of an applied write with the same key and request replays the stored result, even where a route checks its target first (`replay_if_applied`, T-12-9c; a different request under the key is a 409),
   `run_batch`, `undo_write`, `claude_markers`, `key_in_use`.
 - Routers using it: `routers/planning.py`, `routers/commitment_writes.py`,
@@ -44,7 +44,11 @@ keyed request hash).
 **UI**: `/changes` (`ChangesPage`, user menu "Changes made by Claude"),
 `components/changes/ChangesView`, `ChangeList`, `ChangeRow`,
 `UndoControls`, `KeepControls`, `ClaudeMarker` (also shown on budgets and
-commitments), `lib/changes.ts`, `lib/keep.ts`.
+commitments), `lib/changes.ts`, `lib/keep.ts`. Paid-back marks (T-03-6):
+"Marked a payment as paid back: “label”" / "Removed a paid-back mark: “label”",
+lines Amount and, for a category mark, Against (never the spend id); the
+toast "Removed the mark: “label”."; `UndoButton` takes an optional `name`
+for its accessible name ("Undo: mark £60.00 for Pizza Express").
 
 **Tests**: `api/tests/integration/test_planning_writes.py`,
 `test_planning_write_auth.py`, `test_audit_api.py` (route set is exactly

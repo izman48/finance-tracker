@@ -27,6 +27,7 @@ from app.models.oauth import OAuthAuthorizationCode, OAuthClient, OAuthGrant
 from app.models.audit import AuditEntry, WriteIdempotency
 from app.models.sync_lock import UserSyncLock
 from app.models.budget import Budget, BudgetChange, BudgetCycleSnapshot, BudgetNudge
+from app.models.repayment_mark import RepaymentMark
 
 __all__ = [
     "AuditEntry",
@@ -36,6 +37,7 @@ __all__ = [
     "BudgetNudge",
     "BudgetChange",
     "BudgetCycleSnapshot",
+    "RepaymentMark",
     "User",
     "BankConnection",
     "Account",

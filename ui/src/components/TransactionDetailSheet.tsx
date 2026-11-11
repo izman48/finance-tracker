@@ -5,6 +5,7 @@ import { analyticsAPI, bankingAPI } from '../services/api'
 import { Transaction } from '../types'
 import { money, dateDMY } from '../lib/format'
 import { useToast } from './ui/Toast'
+import PaidBackSection from './PaidBackSection'
 
 const CADENCES = [
   { key: 'weekly', label: 'Weekly' },
@@ -114,7 +115,13 @@ export default function TransactionDetailSheet({
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-3">
-          <h3 className="text-lg font-semibold text-slate-50 min-w-0 truncate">{label}</h3>
+          <h3
+            id="tx-sheet-title"
+            tabIndex={-1}
+            className="text-lg font-semibold text-slate-50 min-w-0 truncate rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent/60"
+          >
+            {label}
+          </h3>
           <div className="flex items-center gap-3 shrink-0">
             <span className={`text-lg font-semibold tnum ${isCredit ? 'text-pos' : 'text-slate-100'}`}>
               {isCredit ? '+' : '−'}{money(transaction.amount, transaction.currency)}
@@ -138,6 +145,13 @@ export default function TransactionDetailSheet({
         {transaction.excluded_reason && !countsAs && (
           <p className="text-xs text-slate-500 mb-3">{EXCLUDED_COPY[transaction.excluded_reason]}</p>
         )}
+
+        {/* Friends' repayments Claude marked (T-03-6): absent with none. */}
+        <PaidBackSection
+          transaction={transaction}
+          onChanged={() => onChanged()}
+          fallbackFocus={() => document.getElementById('tx-sheet-title')?.focus()}
+        />
 
         {/* Counts as — the user's word beats automatic detection everywhere
             (spending figures, the trend, the projection's surplus). */}

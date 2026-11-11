@@ -39,6 +39,7 @@ from app.models import (
     OAuthAuthorizationCode,
     OAuthGrant,
     PlannedItem,
+    RepaymentMark,
     RepaymentScheduleItem,
     RulePack,
     Transaction,
@@ -47,6 +48,8 @@ from app.models import (
 
 # Delete order matters: each model comes before anything it references.
 _OWNED_BY_USER = (
+    # Before transactions: it references a credit and a spend (T-03-3).
+    RepaymentMark,
     WriteIdempotency,
     BudgetNudge,
     BudgetCycleSnapshot,

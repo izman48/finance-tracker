@@ -9,9 +9,12 @@ derived surplus), and the list's excluded_reason labels.
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
+import pytest
+
 from app.models import Account, AccountSetting, CategoryRule, Transaction, User
 from app.services import analytics_service as svc
 from app.services import categorization
+from tests.clock import CALENDAR_EDGE_DAYS, earlier_this_month
 
 
 def _user(db):
@@ -59,10 +62,13 @@ def _spending(db, user, **kw):
 
 
 class TestTransferOverride:
-    def test_marked_transfer_leaves_purchases_and_trend(self, db_session):
+    @pytest.mark.parametrize("day", CALENDAR_EDGE_DAYS, ids=str)
+    def test_marked_transfer_leaves_purchases_and_trend(self, db_session, today_is, day):
+        today = today_is(day)
         user = _user(db_session)
         acc = _account(db_session, user)
-        d = svc._today() - timedelta(days=2)
+        # Inside this month, so it lands in the trend's current month.
+        d = earlier_this_month(today, 2)
         _tx(db_session, acc, 60, d, merchant="Tesco")
         _tx(db_session, acc, 500, d, merchant="Vanguard", counts_as="transfer")
 

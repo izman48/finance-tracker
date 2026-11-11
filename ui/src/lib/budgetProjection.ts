@@ -19,6 +19,8 @@ export interface BudgetProjection {
   after_budgets_balance: Money
   /** The dotted line: from today (at the solid line's value) to the end of the chart. */
   series: { date: string; balance: Money }[]
+  /** How much paid-back marks raised what is left this cycle (T-03-6), so the dotted line sits lower. */
+  left_raised_by_marks?: Money
 }
 
 /** Why there's no projection: BC2 shows nothing, BC3 asks for a payday,
@@ -35,6 +37,13 @@ const figure = (value: Money) => ({ amount: signed(value), negative: Number(valu
 /** The payday line's two figures, as the API sent them. */
 export function paydayFigures(p: BudgetProjection) {
   return { scheduled: figure(p.scheduled_balance), afterBudgets: figure(p.after_budgets_balance) }
+}
+
+/** Only when marks moved the dotted line this cycle (PRD T-03-1 Screens 3). */
+export function paidBackNote(p: BudgetProjection): string | null {
+  return Number(p.left_raised_by_marks ?? 0) > 0
+    ? 'Marking a repayment raises what is left in a budget, so this line is lower. The cash itself is already in your balance.'
+    : null
 }
 
 /** BC6: informational, only when the dotted line goes below £0. */

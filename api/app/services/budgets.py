@@ -34,6 +34,8 @@ from app.schemas.budgets import (
     FirstOver,
     CycleFigure,
     NotCounted,
+    PaidBackExcess,
+    PaidBackMark,
 )
 from app.services.analytics.commitments import held_next_payday, held_payday_dates, last_payday
 from app.services.analytics.common import _today
@@ -88,7 +90,8 @@ def budgetable_categories(db: Session, user, today: date, covered: set[str] | No
     spend, less those that are mostly commitments. Income, refunds and
     transfers never count against a budget, so a category seen only on them
     could never track anything (eng-a's live-stack check)."""
-    purchases = budget_spend(db, user, today - timedelta(days=CATEGORY_LOOKBACK_DAYS), today).by_category
+    # Gross: a paid-back mark never changes which categories may have a budget (T-03-2 T5).
+    purchases = budget_spend(db, user, today - timedelta(days=CATEGORY_LOOKBACK_DAYS), today).gross_by_category
     if covered is None:
         covered = commitment_covered(db, user, today)
     return set(purchases) - covered - {UNCATEGORISED}
@@ -100,7 +103,7 @@ def commitment_covered(db: Session, user, today: date) -> set[str]:
     spend = budget_spend(db, user, today - timedelta(days=COVERED_LOOKBACK_DAYS), today)
     return {
         cat for cat, committed in spend.commitments_by_category.items()
-        if committed > spend.by_category.get(cat, Decimal(0))
+        if committed > spend.gross_by_category.get(cat, Decimal(0))
     }
 
 
@@ -254,8 +257,17 @@ def budget_list(db: Session, user, markers: dict | None = None,
                           days_left=inputs.days_left, fallback=cycle.fallback),
         summary=summary,
         budgets=rows, other_spending=other, total_spent=sum(spend.by_category.values(), Decimal(0)),
-        not_counted=NotCounted(**spend.excluded), summary_this_cycle=this_cycle,
+        not_counted=_not_counted(spend), summary_this_cycle=this_cycle,
         budgetable_categories=sorted(budgetable_categories(db, user, _today())) if include_categories else None,
+    )
+
+
+def _not_counted(spend: BudgetSpend) -> NotCounted:
+    return NotCounted(
+        **spend.excluded, paid_back=spend.paid_back,
+        paid_back_marks=[PaidBackMark(label=m.label, amount=m.amount, against=m.against, category=m.category)
+                         for m in spend.paid_back_marks],
+        paid_back_excess=[PaidBackExcess(category=c, amount=a) for c, a in sorted(spend.paid_back_excess.items())],
     )
 
 
@@ -336,7 +348,15 @@ def budget_projection(db: Session, user, forecast: dict) -> tuple[dict | None, s
         "scheduled_balance": scheduled,
         "after_budgets_balance": scheduled - inputs.left,
         "series": series,
+        "left_raised_by_marks": inputs.left - _left_before_marks(inputs),
     }, None
+
+
+def _left_before_marks(inputs: CycleBudgets) -> Decimal:
+    """`left` as if nothing were paid back: what marks add to it is what
+    lowers the dotted line (excess and unbudgeted marks add nothing)."""
+    return sum((max(Decimal(0), Decimal(b.limit_pounds) - inputs.spend.gross_by_category.get(b.category, Decimal(0)))
+                for b in inputs.budgets if not b.paused), Decimal(0))
 
 
 # --- nudges (T-09-4b) ------------------------------------------------------------------

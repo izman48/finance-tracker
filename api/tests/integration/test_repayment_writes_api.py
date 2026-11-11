@@ -84,8 +84,7 @@ def test_unmark_is_a_dry_run_by_default(w):
     mark_id = w.mark()
     r = w.unmark(mark_id)
     assert r.status_code == 200, r.text
-    assert r.json()["dry_run"] is True and r.json()["changes"] == [
-        {"field": "active", "before": True, "after": False}]
+    assert r.json()["dry_run"] is True and {"field": "active", "before": True, "after": False} in r.json()["changes"]
     assert w.active(mark_id) is True and w.audit_rows() == 0
 
 
@@ -127,3 +126,10 @@ def test_undoing_an_unmark_made_through_the_route_puts_the_mark_back(w):
 
     assert r.status_code == 200, r.text
     assert w.active(mark_id) is True
+
+
+def test_an_unmark_records_what_it_removed_for_the_changes_page(w):
+    r = w.unmark(w.mark(), dry_run=False)
+    changes = {c["field"]: (c["before"], c["after"]) for c in r.json()["changes"]}
+    assert changes["active"] == (True, False)
+    assert changes["amount"] == ("60.00", "60.00") and changes["category"] == (None, None)

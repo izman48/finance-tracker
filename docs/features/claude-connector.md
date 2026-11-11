@@ -61,6 +61,9 @@ opt-in. A refresh never widens scopes.
 | `pause_budget` | write (budgets) | `POST /api/v1/planning/budgets/{budget_id}/pause` |
 | `resume_budget` | write (budgets) | `POST /api/v1/planning/budgets/{budget_id}/resume` |
 | `remove_budget` | write (budgets) | `POST /api/v1/planning/budgets/{budget_id}/remove` |
+| `list_repayment_candidates` | read | `POST /api/v1/repayments/candidates` |
+| `mark_paid_back` | write (repayments) | `POST /api/v1/planning/repayments/mark` |
+| `unmark_paid_back` | write (repayments) | `POST /api/v1/planning/repayments/{mark_id}/unmark` |
 
 The reads that decrypt the whole ledger are limited per user, never per IP
 (every MCP call arrives from one address): summary, forecast, spending and

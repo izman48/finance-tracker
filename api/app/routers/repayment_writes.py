@@ -80,7 +80,10 @@ def unmark_paid_back(mark_id: uuid.UUID, body: ClaudeUnmarkRequest, caller: Repa
         mark.active = False
         return mark
 
-    req = WriteRequest(tool="unmark_paid_back", target_kind="repayment_mark", target_id=mark_id, apply=apply)
+    # Amount and category as context (before == after), so the Changes page
+    # can say what the unmark removed; undo checks them too.
+    req = WriteRequest(tool="unmark_paid_back", target_kind="repayment_mark", target_id=mark_id, apply=apply,
+                       context_fields=("amount", "category"))
     # A retry of an unmark that already applied replays it, before the check
     # below would call the mark not found (T-12-9c).
     replay = replay_if_applied(db, caller, req, body)

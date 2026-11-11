@@ -21,10 +21,11 @@ from config import Settings
 from server import create_server
 
 WRITE_PREFIXES = ("create_", "add_", "refresh_", "update_", "dismiss_", "remove_", "delete_", "set_",
-                  "pause_", "resume_")
+                  "pause_", "resume_", "mark_", "unmark_")
 # set_budgets can lower a limit and pause_ stops a budget tracking (sec, T-09-5);
 # resume_ only restores one.
-DESTRUCTIVE_PREFIXES = ("update_", "dismiss_", "remove_", "delete_", "set_", "pause_")
+# mark_/unmark_ change what every budget and Spending figure counts (T-03-5).
+DESTRUCTIVE_PREFIXES = ("update_", "dismiss_", "remove_", "delete_", "set_", "pause_", "mark_", "unmark_")
 
 
 async def _tools():
@@ -94,11 +95,12 @@ async def test_dry_run_tools_require_confirmation_and_distrust_bank_data():
 READ_ONLY_TOOLS = {
     "cashflow_summary", "forecast", "spending", "spending_trend", "commitments", "accounts",
     "sync_status", "recent_transactions", "search_transactions", "rules", "rule_impact",
-    "preview_rule", "list_planned_events", "list_budgets", "list_holdings",
+    "preview_rule", "list_planned_events", "list_budgets", "list_holdings", "list_repayment_candidates",
 }
 WRITE_TOOLS = {
     "create_rule_pack", "add_planned_event", "remove_planned_event", "update_commitment", "dismiss_commitment",
     "refresh_banks", "set_budgets", "pause_budget", "resume_budget", "remove_budget", "update_rule",
+    "mark_paid_back", "unmark_paid_back",
 }
 
 

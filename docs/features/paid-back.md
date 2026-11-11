@@ -52,7 +52,7 @@ suggested income from that payer can fade. Money figures don't move.
 - `income_locked_credit_ids`: credits that settle a planned income item
   (`planned_income`) or pay a confirmed income's latest payment, late or
   still inside its grace days (`late_income`). Marking them is refused.
-- `income_commitment_payers`: credits whose payer (`late_income._payer`)
+- `income_commitment_payers`: credits whose payer (`late_income.payer_words`)
   has a suggested or confirmed income commitment. Marking them needs
   `accept_warnings`.
 
@@ -66,6 +66,7 @@ Claude's writes (`api/app/routers/repayment_writes.py`, all
 
 | Route | Notes |
 |---|---|
+| `POST /api/v1/planning/repayments/mark` | 1 to 8 marks (`credit_id`, exactly one of `spend_id` or `category`, optional `amount_pounds`), all saved or none, one audit row each with a shared `batch_id`. Every check runs first, under `lock_user_marks` (`services/repayment_writes.plan_marks`): both payments the user's (else 404 "Not found"), a credit and a purchase that budgets count (not a transfer, card payoff, financed or commitment), a known category, the caps across the whole call, the income block (`repayment_guards`), and the payer warning (refused on apply until `accept_warnings`). The amount defaults to the smaller room. An identical repeat is `unchanged`; the same pair with another amount is 422 "Already marked …". The response adds `marks` (amount and warnings per entry). |
 | `POST /api/v1/planning/repayments/{mark_id}/unmark` | Soft-deletes one active mark Claude made (`created_via == "mcp"`). Any other id, another user's included, is 404 "Not found". Takes `lock_user_marks` first. A retry of an applied unmark replays. |
 
 ## Scopes

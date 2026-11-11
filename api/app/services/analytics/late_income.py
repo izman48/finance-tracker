@@ -20,7 +20,7 @@ least the expected amount less that tolerance. A payer often splits one
 payment ("PAYER X RENT" + "PAYER X MAMA AND DADA") or varies it; a stray
 GBP 5 from the payer still doesn't hide a missing GBP 1,000. The payer is
 the leading words of the description, before the free-text reference
-(`_payer`). Credits the user marked as a transfer count here, for this
+(`payer_words`). Credits the user marked as a transfer count here, for this
 check only (it changes no figure); detected internal transfer legs and
 card payments never do: money moved in from your own savings isn't the
 income, and neither does a credit marked as paid back (T-03-3). Skip on a late income settles that payment (`skipped_through`).
@@ -142,13 +142,13 @@ def _settle(db: Session, user, today: date, due_before: date) -> tuple[dict[uuid
     return out, used
 
 
-def _keys(rule: CommitmentRule) -> set[str]:
+def income_rule_keys(rule: CommitmentRule) -> set[str]:
     return {k for k in (rule.match_key, _match_key(rule.direction, rule.label)) if k}
 
 
 def _exact_match(rule: CommitmentRule, expected: date, credits: list[_Credit]) -> _Credit | None:
     """One credit with the commitment's own key, within tolerance."""
-    keys, amount = _keys(rule), _d(rule.amount)
+    keys, amount = income_rule_keys(rule), _d(rule.amount)
     allowed = tolerance(amount)  # the same rule as planned items (T-08-7)
     early = expected - timedelta(days=EARLY_DAYS)
     return next(
@@ -161,7 +161,7 @@ def _split_match(rule: CommitmentRule, expected: date, credits: list[_Credit]) -
     """Credits from the same payer near the expected date that together make
     at least the expected amount less tolerance, taken in date order until
     they do; None if they don't."""
-    payers = {_payer(k.split(":", 1)[1]) for k in _keys(rule)} - {()}
+    payers = {payer_words(k.split(":", 1)[1]) for k in income_rule_keys(rule)} - {()}
     amount = _d(rule.amount)
     needed = amount - tolerance(amount)
     near = sorted(
@@ -177,7 +177,7 @@ def _split_match(rule: CommitmentRule, expected: date, credits: list[_Credit]) -
     return None
 
 
-def _payer(text: str) -> tuple[str, ...]:
+def payer_words(text: str) -> tuple[str, ...]:
     """The payer's name: the leading words of a normalised description after
     any bank prefix ("FASTER PAYMENT", "BANK GIRO CREDIT", "TRANSFER FROM")
     and before the free-text reference ("PAYER X RENT" -> payer x)."""
@@ -217,7 +217,7 @@ def _income_credits(db: Session, user, since: date) -> list[_Credit]:
     paid_back = marked_credit_ids(db, user.id)
     return [
         _Credit(
-            tx.id, transaction_match_key(tx), _payer(tx.merchant_name or tx.description or ""),
+            tx.id, transaction_match_key(tx), payer_words(tx.merchant_name or tx.description or ""),
             tx.transaction_date.date(), _d(tx.amount),
         )
         for tx in txns

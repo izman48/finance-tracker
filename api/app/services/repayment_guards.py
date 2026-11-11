@@ -31,7 +31,7 @@ from app.models import (
     PlannedKind,
     Transaction,
 )
-from app.services.analytics.late_income import _keys, _payer, income_credit_ids
+from app.services.analytics.late_income import income_credit_ids, income_rule_keys, payer_words
 from app.services.analytics.planned_matching import planned_states
 
 PLANNED_INCOME, LATE_INCOME = "planned_income", "late_income"
@@ -72,7 +72,7 @@ def income_commitment_payers(db: Session, user, credit_ids: Iterable[uuid.UUID])
         )
         .all()
     )
-    payers = {_payer(key.split(":", 1)[1]) for rule in rules for key in _keys(rule)} - {()}
+    payers = {payer_words(key.split(":", 1)[1]) for rule in rules for key in income_rule_keys(rule)} - {()}
     if not payers:
         return set()
     credits = (
@@ -81,4 +81,4 @@ def income_commitment_payers(db: Session, user, credit_ids: Iterable[uuid.UUID])
         .filter(Account.user_id == user.id, Transaction.id.in_(ids), Transaction.transaction_type == "credit")
         .all()
     )
-    return {tx.id for tx in credits if _payer(tx.merchant_name or tx.description or "") in payers}
+    return {tx.id for tx in credits if payer_words(tx.merchant_name or tx.description or "") in payers}

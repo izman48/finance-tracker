@@ -27,7 +27,7 @@ export interface AuditItem {
   batch_id: string | null
   client_name: string | null
   connection_created_at: string | null
-  target_kind: 'planned_event' | 'commitment' | 'budget' | 'rule' | string
+  target_kind: 'planned_event' | 'commitment' | 'budget' | 'rule' | 'repayment_mark' | string
   target_id: string
   target_label: string
   changes: AuditChange[]
@@ -94,6 +94,10 @@ export function changeTitle(item: AuditItem): string {
       return `Removed the budget ${name}`
     case 'update_rule':
       return isSwitchOff(item) ? `Switched off the rule ${name}` : `Changed the rule ${name}`
+    case 'mark_paid_back':
+      return `Marked a payment as paid back: ${name}`
+    case 'unmark_paid_back':
+      return `Removed a paid-back mark: ${name}`
     default:
       return `Changed ${name}`
   }
@@ -164,6 +168,17 @@ function budgetLines(item: AuditItem): ChangeLine[] {
   return lines
 }
 
+/** A paid-back mark (T-03-6): its amount, and the category for a mark with no spend. The
+ *  spend id is in the audit row for undo only and never shown; an unmark records only `active`. */
+function markLines(item: AuditItem): ChangeLine[] {
+  const lines: ChangeLine[] = []
+  const amount = changeOf(item, 'amount')
+  if (amount?.after != null) lines.push({ label: 'Amount', after: gbp(Number(amount.after)) })
+  const category = changeOf(item, 'category')
+  if (category?.after != null) lines.push({ label: 'Against', after: String(category.after) })
+  return lines
+}
+
 const RULE_FIELD_LABEL: Record<string, string> = {
   pattern: 'Matches',
   match_type: 'How it matches',
@@ -207,6 +222,7 @@ export function changeLines(item: AuditItem, accountNames: Record<string, string
 
   if (item.target_kind === 'budget') return budgetLines(item)
   if (item.target_kind === 'rule') return ruleLines(item)
+  if (item.target_kind === 'repayment_mark') return markLines(item)
 
   if (item.tool === 'add_planned_event' || item.tool === 'remove_planned_event') {
     // Adds and removes have no before/after: one value per line (a remove's
@@ -284,6 +300,10 @@ export function undoToast(item: AuditItem): string {
       return `Put the budget ${name} back.`
     case 'update_rule':
       return isSwitchOff(item) ? `Switched the rule ${name} back on.` : `Put the rule ${name} back to how it was.`
+    case 'mark_paid_back':
+      return `Removed the mark: ${name}.`
+    case 'unmark_paid_back':
+      return `Put the mark back: ${name}.`
     default:
       return `Put ${name} back to how it was.`
   }

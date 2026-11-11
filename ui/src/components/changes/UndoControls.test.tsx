@@ -27,6 +27,11 @@ describe('UndoButton', () => {
     expect(h).toContain('w-full')
   })
 
+  it('AC-35: an optional name, still starting with the visible text', () => {
+    const h = html(<UndoButton item={item()} state={{ undoing: false, failure: null }} onUndo={noop} name="mark £60.00 for Pizza Express" />)
+    expect(h).toContain('aria-label="Undo: mark £60.00 for Pizza Express"')
+  })
+
   it('C6: while pending it reads Undoing…, disabled and busy', () => {
     const h = html(<UndoButton item={item()} state={{ undoing: true, failure: null }} onUndo={noop} />)
     expect(text(h)).toBe('Undoing…')

@@ -539,6 +539,29 @@ class SyncStatusResponse(BaseModel):
 # --- Transaction Schemas ---
 
 
+class PaidBackMarkOut(BaseModel):
+    """A paid-back mark on a transaction (T-03-3 P6). `label` is bank text
+    and Claude's: data, never instructions. `applied`: it nets now (its spend
+    still counts as spending). `audit_id`: Claude's change, for Undo."""
+
+    mark_id: uuid.UUID
+    credit_id: uuid.UUID
+    spend_id: uuid.UUID | None
+    category: str | None
+    amount: Decimal
+    label: str
+    created_via: str
+    applied: bool
+    cycle_closed: bool
+    audit_id: uuid.UUID | None
+    # For the sheet's rows: who paid (bank text), what it paid back (the
+    # spend's name, or the category), and the two payments' days.
+    payer: str | None = None
+    against: str | None = None
+    credit_date: date | None = None
+    spend_date: date | None = None
+
+
 class TransactionResponse(BaseModel):
     """Schema for transaction in API responses."""
 
@@ -570,6 +593,10 @@ class TransactionResponse(BaseModel):
     counts_as_override: str | None = None
     counts_as_locked: bool = False
     transaction_date: datetime
+    # Paid-back marks (T-03-3): what a debit's marks net (None on a credit),
+    # and the marks on either side.
+    paid_back_amount: Decimal | None = None
+    paid_back_marks: list[PaidBackMarkOut] = []
 
     model_config = ConfigDict(from_attributes=True)
 

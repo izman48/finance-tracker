@@ -10,7 +10,7 @@ per-transaction edits (category, sub-category, "counts as").
 
 | Route | Auth | Notes |
 |---|---|---|
-| `GET /api/v1/banking/transactions` | `CurrentUserOrMcpRead` | Filters run in Python (encrypted columns). Adds computed `excluded_reason`, `is_commitment`, `is_financed`. `kind` = spend, cash, credit, money_out. |
+| `GET /api/v1/banking/transactions` | `CurrentUserOrMcpRead` | Filters run in Python (encrypted columns). Adds computed `excluded_reason`, `is_commitment`, `is_financed`, and the paid-back fields (`paid_back_amount` on debits, `paid_back_marks` on both sides; see [paid-back.md](paid-back.md)). `kind` = spend, cash, credit, money_out. |
 | `POST /api/v1/banking/transactions/search` | `CurrentUserOrMcpRead` | 10/min per user, one at a time, capped window. |
 | `GET /api/v1/banking/transactions/facets` | `CurrentUser` | |
 | `PATCH /api/v1/banking/transactions/{transaction_id}` | `CurrentUser` | `category` learns a rule (`learn_and_apply`); null or "" clears it and forgets the rule (T-12-12); category/subcategory up to 100 visible characters (422); `counts_as` sets a locked override. |

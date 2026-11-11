@@ -38,6 +38,7 @@ from app.schemas.transaction_search import TransactionSearchRequest, Transaction
 from app.services import analytics_service, categorization
 from app.services import transaction_search as search
 from app.services.balance_sign import credit_owed
+from app.services.repayment_views import paid_back_view
 from app.services.sync_lock import RETRY_AFTER_SECONDS, SyncBusy, cooldown_left, start_cooldown, sync_lease
 from app.services.sync_status import freshness, sync_status
 from app.services.truelayer import ReauthRequired, TrueLayerError, truelayer_service
@@ -729,22 +730,26 @@ def get_transactions(
     page_txns = filtered[offset : offset + page_size]
 
     return TransactionListResponse(
-        items=_transaction_items(page_txns, commitment_keys, financed, noise),
+        items=_transaction_items(db, current_user, page_txns, commitment_keys, financed, noise),
         total=total,
         page=page,
         page_size=page_size,
     )
 
 
-def _transaction_items(txns, commitment_keys, financed, noise) -> list[TransactionResponse]:
+def _transaction_items(db, user, txns, commitment_keys, financed, noise) -> list[TransactionResponse]:
     """Response items with the computed fields, shared by the list and the
     search so both return exactly the same shape."""
+    paid_back = paid_back_view(db, user, txns)
     items = []
     for tx in txns:
         item = TransactionResponse.model_validate(tx)
         item.is_commitment = analytics_service.transaction_match_key(tx) in commitment_keys
         item.is_financed = tx.id in financed
         item.excluded_reason = noise.get(tx.id)
+        if tx.transaction_type == "debit":
+            item.paid_back_amount = paid_back.netted.get(tx.id, Decimal("0.00")).quantize(Decimal("0.01"))
+        item.paid_back_marks = paid_back.marks.get(tx.id, [])
         items.append(item)
     return items
 
@@ -799,7 +804,7 @@ def _search(db: Session, current_user, body: TransactionSearchRequest) -> Transa
     offset = (body.page - 1) * body.page_size
     return TransactionSearchResponse(
         items=_transaction_items(
-            found[offset: offset + body.page_size],
+            db, current_user, found[offset: offset + body.page_size],
             analytics_service.commitment_match_keys(db, current_user),
             analytics_service.financed_transaction_ids(db, current_user),
             noise,

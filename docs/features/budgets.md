@@ -45,7 +45,7 @@ transfers, card payoffs, financed purchases; nets paid-back marks, see
 
 **UI**: Spending tab, `?section=budgets` (`components/budgets/BudgetsPanel`,
 `BudgetsView`, `BudgetsSegment`, `HistoryView`, `HistoryBars`,
-`ManageSheet`, `ManageModes`, `SuggestSheet`), Home budget line
+`ManageSheet`, `ManageModes`, `SuggestSheet`, `PaidBackByOthers`), Home budget line
 (`OverviewPage`), `forecast/BudgetStrip` and `ForecastChart` on Cashflow,
 `NudgeFeed`. `lib/budgets.ts`, `lib/budgetHistory.ts`,
 `lib/budgetProjection.ts`, `lib/budgets.fixtures.ts`.

@@ -40,6 +40,15 @@ describe('BudgetStrip', () => {
   })
 })
 
+describe('BudgetStrip, paid-back copy (T-03-6; PRD Screens 3)', () => {
+  const copy = 'Marking a repayment raises what is left in a budget, so this line is lower. The cash itself is already in your balance.'
+  it('only when marks moved the line this cycle', () => {
+    expect(text(renderToStaticMarkup(<BudgetStrip projection={p()} />))).not.toContain(copy)
+    expect(text(renderToStaticMarkup(<BudgetStrip projection={p({ left_raised_by_marks: '0.00' })} />))).not.toContain(copy)
+    expect(text(renderToStaticMarkup(<BudgetStrip projection={p({ left_raised_by_marks: '110.00' })} />))).toContain(copy)
+  })
+})
+
 describe('BudgetLegend (BC10: pattern and text, not colour alone)', () => {
   it('names both lines with their swatches', () => {
     const h = renderToStaticMarkup(<BudgetLegend />)

@@ -1,4 +1,4 @@
-import { dipSentence, paydayFigures, type BudgetProjection } from '../../lib/budgetProjection'
+import { dipSentence, paidBackNote, paydayFigures, type BudgetProjection } from '../../lib/budgetProjection'
 
 const SOLID = '#2DD4A7'
 const DOTTED = '#38BDF8'
@@ -31,6 +31,7 @@ const Figure = ({ amount, negative }: { amount: string; negative: boolean }) => 
 export function BudgetStrip({ projection }: { projection: BudgetProjection }) {
   const f = paydayFigures(projection)
   const dip = dipSentence(projection)
+  const paidBack = paidBackNote(projection)
   return (
     <div className="mt-4 pt-4 border-t border-white/[0.06]">
       <p className="text-sm text-slate-300">
@@ -40,6 +41,7 @@ export function BudgetStrip({ projection }: { projection: BudgetProjection }) {
       <p className="text-xs text-slate-400 mt-2">
         Budgets only: spending outside your budgets isn&apos;t included. Safe to spend and “Lowest point” are unchanged.
       </p>
+      {paidBack && <p className="text-xs text-slate-400 mt-1">{paidBack}</p>}
     </div>
   )
 }

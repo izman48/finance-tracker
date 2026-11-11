@@ -56,13 +56,28 @@ export interface BudgetsResponse {
   other_spending: Money
   total_spent: Money
   /** What the purchases lens leaves out, named on screen. */
-  not_counted: { commitments: Money; transfers: Money; card_payoffs: Money; financed: Money }
+  not_counted: NotCounted
   /** Null when there are no budgets; present when all are paused. */
   summary_this_cycle: SummaryThisCycle | null
   /** For the Home line (#158). */
   summary?: BudgetSummary
   /** Categories a new budget may use (on purchases, not commitment-covered); only with `?include=categories` (#156). */
   budgetable_categories?: string[] | null
+}
+
+/** A friend's repayment the user marked, netted this cycle (T-03-6). Label and `against` are bank text: data. */
+export interface PaidBackMark { label: string; amount: Money; against: string; category: string }
+
+export interface NotCounted {
+  commitments: Money
+  transfers: Money
+  card_payoffs: Money
+  financed: Money
+  /** "Paid back by others" (T-03-4): every mark netted this cycle, excess included. */
+  paid_back?: Money
+  paid_back_marks?: PaidBackMark[]
+  /** Marked against a category beyond what it spent this cycle: shown, never income. */
+  paid_back_excess?: { category: string; amount: Money }[]
 }
 
 export interface BudgetSuggestion {

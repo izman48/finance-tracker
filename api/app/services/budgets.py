@@ -348,7 +348,15 @@ def budget_projection(db: Session, user, forecast: dict) -> tuple[dict | None, s
         "scheduled_balance": scheduled,
         "after_budgets_balance": scheduled - inputs.left,
         "series": series,
+        "left_raised_by_marks": inputs.left - _left_before_marks(inputs),
     }, None
+
+
+def _left_before_marks(inputs: CycleBudgets) -> Decimal:
+    """`left` as if nothing were paid back: what marks add to it is what
+    lowers the dotted line (excess and unbudgeted marks add nothing)."""
+    return sum((max(Decimal(0), Decimal(b.limit_pounds) - inputs.spend.gross_by_category.get(b.category, Decimal(0)))
+                for b in inputs.budgets if not b.paused), Decimal(0))
 
 
 # --- nudges (T-09-4b) ------------------------------------------------------------------

@@ -31,6 +31,7 @@ class PaidBack:
     amount: Decimal
     against: str
     category: str
+    created_at: datetime | None = None  # when it was marked: History notes later ones
 
 
 def net_paid_back(by_category: dict[str, Decimal], marks: list[AppliedMark],
@@ -52,10 +53,10 @@ def net_paid_back(by_category: dict[str, Decimal], marks: list[AppliedMark],
             category = spend.category or UNCATEGORISED
             by_category[category] -= mark.applied_amount
             netted.append(PaidBack(mark.label, mark.applied_amount, spend.merchant_name or spend.description,
-                                   category))
+                                   category, mark.created_at))
         elif mark.category is not None and start <= _utc_day(mark.credit_at) <= end:
             by_mark_category[mark.category] += mark.applied_amount
-            netted.append(PaidBack(mark.label, mark.applied_amount, mark.category, mark.category))
+            netted.append(PaidBack(mark.label, mark.applied_amount, mark.category, mark.category, mark.created_at))
     _, excess = floor_at_zero(by_category, by_mark_category)
     return netted, excess
 

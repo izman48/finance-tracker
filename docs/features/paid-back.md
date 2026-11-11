@@ -119,6 +119,18 @@ Budgets (T-03-4 P2, `services/budget_spend.py`; PRD ACs 1, 2, 4 to 7, 29, 30):
 - `budget_spend(..., extra_marks=[...])` nets unsaved marks for previews
   (T7). No money figure moves (`test_budget_invariance.py`, "paid-back marks").
 
+History and Cashflow (T-03-6 P11a; AC-3, decision 6, T-03-2 T17):
+
+- A closed cycle's snapshot is never rewritten. A mark made before the
+  snapshot is first written (snapshots are lazy) is in it. Each History cycle
+  has `paid_back_after_close`: marks netted in that cycle, against one of its
+  budgeted categories, made after its snapshot ("£40.00 more paid back after
+  this cycle closed"). Snapshots now take `written_at` from the app's clock,
+  as marks take `created_at`.
+- `budget_projection.left_raised_by_marks`: how much marks raised `left`
+  this cycle (excess and unbudgeted marks move nothing), so the chart says
+  why the dotted line sits lower only when it does.
+
 Spending (T-03-4 P3, `services/analytics/spending.py`; ACs 3, 8, 32):
 
 - Purchases lens: a spend mark nets the spend in its own kind (card or
@@ -157,7 +169,11 @@ None yet.
 
 ## Demo
 
-None yet.
+Not yet. The sample account's dinner example (Sam and Jo marked to a £200
+dinner; PRD AC-33, owner rule 2026-10-15) lands in P10, with the sample
+ledger and `sampleBudgets` netting, **before `feat/paid-back` merges to
+`main`** (ux condition on #284). Until then the sample has no marks, so the
+paid-back elements stay hidden in demo mode.
 
 ## Tests
 
@@ -171,7 +187,7 @@ None yet.
 | 1 Tables | `repayment_marks`, additive migration with downgrade. |
 | 2 Purge | Yes, first in `_OWNED_BY_USER`, before transactions (seeded in the reset test). |
 | 3 Deletion | Cascade from `users`, and from either transaction. |
-| 4 Demo mode | Nothing shown yet. |
+| 4 Demo mode | Not yet: the sample dinner lands in P10, before `feat/paid-back` merges to `main` (see Demo). |
 | 5 Ownership | No account ids. Reads join transactions to the user's accounts. |
 | 6 Scopes | Claude's writes `finance:repayments.write` (own consent box). |
 | 7 Claude tools | None yet. |

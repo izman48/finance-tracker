@@ -188,6 +188,10 @@ class HistoryCycle(BaseModel):
     total_limit: Decimal
     total_spent: Decimal
     on_target: bool | None
+    # Paid-back marks made after this cycle's snapshot, netting its budgeted
+    # categories: the verdict stays; "£40.00 more paid back after this cycle
+    # closed" (T-03-6, PRD decision 6).
+    paid_back_after_close: Decimal = Decimal(0)
 
 
 class HistorySlot(BaseModel):

@@ -12,7 +12,7 @@ import {
   undoFailure,
   undoToast,
 } from './changes'
-import { addEvent, item } from './changes.fixtures'
+import { addEvent, categoryMarkItem, item, markItem, unmarkItem } from './changes.fixtures'
 
 // ux spec nilu-s08-claude-changes.md section 1 (C-criteria), T-08-5.
 
@@ -282,5 +282,27 @@ describe('rule rows', () => {
   it('undo toasts say what undoing did', () => {
     expect(undoToast(recategorised)).toBe('Put the rule “TESCO PFS” back to how it was.')
     expect(undoToast(switchedOff)).toBe('Switched the rule “TESCO PFS” back on.')
+  })
+})
+
+describe('paid-back marks (T-03-6; PRD "Changes made by Claude", AC-25)', () => {
+  it('titles name the mark by its label', () => {
+    expect(changeTitle(markItem())).toBe('Marked a payment as paid back: “Sam £60.00, Pizza Express”')
+    expect(changeTitle(unmarkItem())).toBe('Removed a paid-back mark: “Sam £60.00, Pizza Express”')
+  })
+
+  it('lines: the amount, and what it was against only for a category mark; never the spend id', () => {
+    expect(changeLines(markItem(), {})).toEqual([{ label: 'Amount', after: '£60.00' }])
+    expect(changeLines(categoryMarkItem(), {})).toEqual([
+      { label: 'Amount', after: '£60.00' },
+      { label: 'Against', after: 'Eating out' },
+    ])
+    expect(JSON.stringify(changeLines(markItem(), {}))).not.toContain('tx-dinner')
+    expect(changeLines(unmarkItem(), {})).toEqual([])
+  })
+
+  it('the undo toast names the label', () => {
+    expect(undoToast(markItem())).toBe('Removed the mark: “Sam £60.00, Pizza Express”.')
+    expect(undoToast(unmarkItem())).toBe('Put the mark back: “Sam £60.00, Pizza Express”.')
   })
 })

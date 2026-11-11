@@ -19,7 +19,13 @@ export type { UndoState } from '../../lib/changes'
  * is undone, and for this session after a "changed since" refusal, which a
  * retry can never fix.
  */
-export function UndoButton({ item, state, onUndo }: { item: AuditItem; state: UndoState; onUndo: (item: AuditItem) => void }) {
+export function UndoButton({ item, state, onUndo, name }: {
+  item: AuditItem
+  state: UndoState
+  onUndo: (item: AuditItem) => void
+  /** What the button acts on, after "Undo: " (default: the change's title); e.g. "mark £60.00 for Pizza Express" (AC-35). */
+  name?: string
+}) {
   if (item.undone_at !== null || state.failure === 'changed') return null
   const label = state.undoing
     ? { visible: 'Undoing…', name: 'Undoing: ' }
@@ -35,7 +41,7 @@ export function UndoButton({ item, state, onUndo }: { item: AuditItem; state: Un
       disabled={state.undoing}
       aria-busy={state.undoing}
       // The accessible name starts with the visible text (WCAG 2.5.3).
-      aria-label={`${label.name}${changeTitle(item)}`}
+      aria-label={`${label.name}${name ?? changeTitle(item)}`}
     >
       {label.visible}
     </button>
@@ -48,6 +54,8 @@ const OPEN_LINK: Record<string, { to: string; label: string }> = {
   commitment: { to: '/commitments', label: 'Open commitments' },
   budget: { to: '/insights?section=budgets', label: 'Open budgets' },
   rule: { to: '/rules', label: 'Open rules' },
+  // A mark changes what budgets count (T-03-6).
+  repayment_mark: { to: '/insights?section=budgets', label: 'Open budgets' },
 }
 
 /** The inline message after a failed undo. It never carries the server's text. */

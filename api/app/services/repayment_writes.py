@@ -23,13 +23,18 @@ from app.schemas.repayments import MarkEntry
 from app.services.analytics.commitments import commitment_match_keys
 from app.services.analytics.common import _load, _today, resolve_roles
 from app.services.analytics.spending import _effective_transfers, classify_purchase, financed_transaction_ids
+from app.services.budget_spend import budget_spend
+from app.services.budgets import Cycle, active_budgets, current_cycle, previous_cycles
+from app.services.paid_back import UNCATEGORISED
 from app.services.repayment_guards import income_commitment_payers, income_locked_credit_ids
-from app.services.repayment_marks import remaining
+from app.services.repayment_marks import active_marks, remaining
 
 WARN_INCOME_PAYER = "income_commitment_payer"
 # Transfer pairs are found among nearby transactions (detection pairs legs a few days apart).
 _PAIRING_DAYS = 7
 _LABEL_PART = 40
+# A mark's cycle is found by walking back from today's; marks are on recent payments.
+_MAX_CYCLES_BACK = 24
 
 
 @dataclass
@@ -37,6 +42,8 @@ class PlannedMark:
     entry: MarkEntry
     amount: Decimal
     label: str
+    credit: Transaction
+    spend: Transaction | None
     existing: RepaymentMark | None = None  # the identical active mark: unchanged
     warnings: list[str] = field(default_factory=list)
 
@@ -81,14 +88,90 @@ def plan_marks(db: Session, user, entries: list[MarkEntry], *, accept_warnings: 
         if existing is not None:
             if e.amount_pounds is not None and e.amount_pounds != Decimal(existing.amount):
                 raise _refuse(f"Already marked £{Decimal(existing.amount):.2f}. Unmark it first to change the amount.")
-            plans.append(PlannedMark(e, Decimal(existing.amount), existing.label, existing, warnings))
+            plans.append(PlannedMark(e, Decimal(existing.amount), existing.label, credit, spend, existing, warnings))
             continue
         amount = _within_caps(e, left[credit.id], left[spend.id] if spend is not None else None)
         left[credit.id] -= amount
         if spend is not None:
             left[spend.id] -= amount
-        plans.append(PlannedMark(e, amount, _label(credit, amount, spend, e.category), None, warnings))
+        plans.append(PlannedMark(e, amount, _label(credit, amount, spend, e.category), credit, spend, None,
+                                 warnings))
     return plans
+
+
+def preview_figures(db: Session, user, plans: list[PlannedMark], today) -> list[dict]:
+    """Per mark: its cycle, and the spend, the category and the budget
+    before this call and after every mark in it, by the budgets' own rule
+    (`budget_spend(extra_marks=)`, T-03-2 T7), plus a sentence for Claude."""
+    proposed = [
+        RepaymentMark(user_id=user.id, credit_transaction_id=p.credit.id,
+                      spend_transaction_id=p.spend.id if p.spend is not None else None,
+                      category=p.entry.category, amount=p.amount, label=p.label, created_via="mcp")
+        for p in plans if p.existing is None
+    ]
+    budgets = {b.category: b for b in active_budgets(db, user) if not b.paused}
+    applied = active_marks(db, user.id, extra=proposed)
+    spends: dict[tuple, tuple] = {}
+    out = []
+    for p in plans:
+        cycle = _cycle_of(db, user, today, (p.spend or p.credit).transaction_date.date())
+        key = (cycle.start, cycle.end)
+        if key not in spends:
+            spends[key] = (budget_spend(db, user, cycle.start, cycle.end),
+                           budget_spend(db, user, cycle.start, cycle.end, extra_marks=proposed))
+        before, after = spends[key]
+        category = (p.spend.category or UNCATEGORISED) if p.spend is not None else p.entry.category
+        out.append(_figures(p, cycle, today, category, before, after, budgets.get(category), applied))
+    return out
+
+
+def _figures(p: PlannedMark, cycle: Cycle, today, category: str, before, after, budget, applied) -> dict:
+    spent_before = before.by_category.get(category, Decimal(0))
+    spent_after = after.by_category.get(category, Decimal(0))
+    spend_before = spend_after = None
+    if p.spend is not None:
+        gross = abs(Decimal(str(p.spend.amount)))
+        saved = sum((m.applied_amount for m in applied if m.spend_id == p.spend.id and m.id is not None), Decimal(0))
+        netted = sum((m.applied_amount for m in applied if m.spend_id == p.spend.id), Decimal(0))
+        spend_before, spend_after = gross - saved, gross - netted
+    limit = Decimal(budget.limit_pounds) if budget is not None else None
+    closed = cycle.end < today
+    name = (p.spend.merchant_name or p.spend.description) if p.spend is not None else category
+    counts = (f"{name}: £{spend_before:.2f} counts as £{spend_after:.2f} in {category}." if p.spend is not None
+              else f"{name}: £{spent_before:.2f} counts as £{spent_after:.2f}.")
+    effect = " ".join(part for part in (
+        counts,
+        _budget_clause(limit, spent_after) if limit is not None else "",
+        "That cycle has closed, so its result stays as it was." if closed else "",
+    ) if part)
+    return {
+        "cycle": {"start": cycle.start.isoformat(), "end": cycle.end.isoformat(), "closed": closed},
+        "spend_before": _money(spend_before), "spend_after": _money(spend_after),
+        "category_spent_before": _money(spent_before), "category_spent_after": _money(spent_after),
+        "budget_left_before": _money(limit - spent_before if limit is not None else None),
+        "budget_left_after": _money(limit - spent_after if limit is not None else None),
+        "effect": effect,
+    }
+
+
+def _budget_clause(limit: Decimal, spent: Decimal) -> str:
+    """As /budgets says it: never a negative "left" (review on #282)."""
+    if spent > limit:
+        return f"£{spent - limit:.2f} over £{limit:.2f}."
+    return f"£{limit - spent:.2f} left of £{limit:.2f}."
+
+
+def _cycle_of(db: Session, user, today, day) -> Cycle:
+    cycle = current_cycle(db, user, today)
+    for _ in range(_MAX_CYCLES_BACK):
+        if day >= cycle.start:
+            break
+        cycle = previous_cycles(db, user, cycle, 1)[0]
+    return cycle
+
+
+def _money(amount: Decimal | None) -> str | None:
+    return None if amount is None else f"{amount:.2f}"
 
 
 def _within_caps(e: MarkEntry, credit_left: Decimal, spend_left: Decimal | None) -> Decimal:

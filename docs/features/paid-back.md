@@ -103,7 +103,18 @@ an unmark re-activates the mark only if its credit and spend still have room
 
 ## MCP
 
-None yet.
+`api/mcp/server.py` (T-03-5 P9): `list_repayment_candidates` (read),
+`mark_paid_back` and `unmark_paid_back` (`write_tool(destructive=True)`,
+`dry_run` by default, each checks `finance:repayments.write` first and
+names the power when it is missing: "This connection wasn't granted
+permission to mark payments as paid back. Reconnect and approve it.").
+Every id is parsed as a UUID before it reaches a URL or body; a mark entry
+may carry only `credit_id`, `spend_id`, `category` and `amount_pounds` (a
+decimal string). API errors become the PRD's sentences: 404 "Not found: no
+payment of yours has that id." / "… no active mark of yours that Claude
+made has that id.", 422 details pass through, 5xx "The change failed (500)."
+A replayed mark returns `results` without figures. Tests:
+`api/mcp/tests/test_repayment_tools.py`, `test_tool_annotations.py`.
 
 ## Figures
 
@@ -207,7 +218,7 @@ paid-back elements stay hidden in demo mode.
 | 4 Demo mode | Not yet: the sample dinner lands in P10, before `feat/paid-back` merges to `main` (see Demo). |
 | 5 Ownership | No account ids. Reads join transactions to the user's accounts. |
 | 6 Scopes | Claude's writes `finance:repayments.write` (own consent box). |
-| 7 Claude tools | None yet. |
+| 7 Claude tools | `list_repayment_candidates`, `mark_paid_back`, `unmark_paid_back`. |
 | 8 Audit | Yes, target `repayment_mark` (above). |
 | 9 Bank sync | A sync never changes marks. A transaction removed with its connection removes its marks. |
 | 10 Home | n/a. |

@@ -21,7 +21,8 @@ from app.models.repayment_mark import CREATED_VIA_MCP, CREATED_VIA_WEB
 from app.schemas.repayments import ClaudeMarkRequest, ClaudeUnmarkRequest
 from app.services.planning_writes import WriteRequest, key_in_use, replay_if_applied, run_batch, run_write
 from app.services.repayment_marks import lock_user_marks
-from app.services.repayment_writes import PlannedMark, plan_marks
+from app.services.analytics.common import _today
+from app.services.repayment_writes import PlannedMark, plan_marks, preview_figures
 
 router = APIRouter(prefix="/planning/repayments", tags=["planning"])
 _TOOL_MARK = "mark_paid_back"
@@ -40,13 +41,15 @@ def mark_paid_back(body: ClaudeMarkRequest, caller: RepaymentsWriter, db: Annota
                          batch_id=uuid.uuid4())
     lock_user_marks(db, user.id)
     plans = plan_marks(db, user, body.marks, accept_warnings=body.accept_warnings, dry_run=body.dry_run)
+    # Before the write, so "before" is today's figures and "after" is what the marks will show (T7).
+    figures = preview_figures(db, user, plans, _today())
     created_via = CREATED_VIA_MCP if caller.grant_id else CREATED_VIA_WEB
     reqs = [_mark_write(user.id, plan, created_via) for plan in plans]
     result = run_batch(db, caller, reqs, body, batch_id=uuid.uuid4())
     result["marks"] = [
         {"credit_id": str(p.entry.credit_id), "spend_id": str(p.entry.spend_id) if p.entry.spend_id else None,
-         "category": p.entry.category, "amount_pounds": f"{p.amount:.2f}", "warnings": p.warnings}
-        for p in plans
+         "category": p.entry.category, "amount_pounds": f"{p.amount:.2f}", "warnings": p.warnings, **f}
+        for p, f in zip(plans, figures)
     ]
     return result
 

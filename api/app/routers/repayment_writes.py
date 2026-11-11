@@ -19,9 +19,9 @@ from app.core.planning_write import RepaymentsWriter
 from app.models import RepaymentMark
 from app.models.repayment_mark import CREATED_VIA_MCP, CREATED_VIA_WEB
 from app.schemas.repayments import ClaudeMarkRequest, ClaudeUnmarkRequest
+from app.services.analytics.common import _today
 from app.services.planning_writes import WriteRequest, key_in_use, replay_if_applied, run_batch, run_write
 from app.services.repayment_marks import lock_user_marks
-from app.services.analytics.common import _today
 from app.services.repayment_writes import PlannedMark, plan_marks, preview_figures
 
 router = APIRouter(prefix="/planning/repayments", tags=["planning"])

@@ -141,7 +141,7 @@ def _figures(p: PlannedMark, cycle: Cycle, today, category: str, before, after, 
               else f"{name}: £{spent_before:.2f} counts as £{spent_after:.2f}.")
     effect = " ".join(part for part in (
         counts,
-        f"£{limit - spent_after:.2f} left of £{limit:.2f}." if limit is not None else "",
+        _budget_clause(limit, spent_after) if limit is not None else "",
         "That cycle has closed, so its result stays as it was." if closed else "",
     ) if part)
     return {
@@ -152,6 +152,13 @@ def _figures(p: PlannedMark, cycle: Cycle, today, category: str, before, after, 
         "budget_left_after": _money(limit - spent_after if limit is not None else None),
         "effect": effect,
     }
+
+
+def _budget_clause(limit: Decimal, spent: Decimal) -> str:
+    """As /budgets says it: never a negative "left" (review on #282)."""
+    if spent > limit:
+        return f"£{spent - limit:.2f} over £{limit:.2f}."
+    return f"£{limit - spent:.2f} left of £{limit:.2f}."
 
 
 def _cycle_of(db: Session, user, today, day) -> Cycle:

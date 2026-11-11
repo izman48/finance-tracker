@@ -83,3 +83,9 @@ def test_the_applied_result_carries_the_same_figures_and_a_replay_does_not(ex):
     assert applied["marks"][0]["spend_after"] == "140.00" and applied["results"][0]["audit_id"]
     replay = ex.post([ex.entry(credit=ex.sam2, spend=ex.pizza)], **body).json()
     assert "marks" not in replay and replay["results"] == applied["results"]
+
+
+def test_a_mark_that_leaves_the_budget_over_says_over_not_a_negative_left(ex):
+    mark = ex.post([ex.entry(credit=ex.jo, spend=ex.pizza, amount_pounds="20.00")]).json()["marks"][0]
+    assert (mark["budget_left_before"], mark["budget_left_after"]) == ("-50.00", "-30.00")  # negative = over
+    assert mark["effect"] == "Pizza Express: £200.00 counts as £180.00 in Eating out. £30.00 over £150.00."

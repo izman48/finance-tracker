@@ -16,7 +16,7 @@ from app.core.clock import LONDON
 from app.models import Account, Transaction
 from app.services.analytics.commitments import commitment_match_keys
 from app.services.analytics.common import _d, _load, resolve_roles
-from app.services.analytics.late_income import _payer
+from app.services.analytics.late_income import payer_words
 from app.services.analytics.planned_matching import _words
 from app.services.analytics.spending import _effective_transfers, classify_purchase, financed_transaction_ids
 from app.services.paid_back import UNCATEGORISED
@@ -142,7 +142,7 @@ def _candidate(credit, unmarked, ranked, blocked, warned, marks, counted) -> dic
         confidence = "high" if likely.score >= HIGH and lead >= LEAD else "medium"
     out = {
         "credit_id": str(credit.id), "date": _uk_day(credit), "amount_pounds": _pounds(_d(credit.amount)),
-        "payer": " ".join(_payer(_reference(credit))), "description": credit.description,
+        "payer": " ".join(payer_words(_reference(credit))), "description": credit.description,
         "unmarked_pounds": _pounds(unmarked),
         "suggested_amount_pounds": _pounds(min(unmarked, likely.remaining) if likely else unmarked),
         "blocked": blocked, "warnings": ["income_commitment_payer"] if warned else [],

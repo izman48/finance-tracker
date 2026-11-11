@@ -100,6 +100,21 @@ Budgets (T-03-4 P2, `services/budget_spend.py`; PRD ACs 1, 2, 4 to 7, 29, 30):
 - `budget_spend(..., extra_marks=[...])` nets unsaved marks for previews
   (T7). No money figure moves (`test_budget_invariance.py`, "paid-back marks").
 
+Spending (T-03-4 P3, `services/analytics/spending.py`; ACs 3, 8, 32):
+
+- Purchases lens: a spend mark nets the spend in its own kind (card or
+  cash), category and merchant. Category marks net per category for the
+  range shown, floored at £0, only with no `account_id` or `kind` filter
+  (T8). `total_spent` = card + cash − `paid_back_by_others`; each category
+  has `paid_back_by_others` (the drill's reference row);
+  `paid_back_excess` lists the rest.
+- `/spending/transactions` rows gain `paid_back` and `counted`.
+- Trend: spend marks in the spend's month, category marks in the credit's
+  month floored per category and month; rows gain `paid_back_by_others`.
+  Wealth's average spending reads this trend, so marked months read lower.
+- The money-out lens never reads marks (T9). Near the £0 floor, a cycle, a
+  date range and a month can differ (PRD Risks).
+
 ## Services
 
 None yet.

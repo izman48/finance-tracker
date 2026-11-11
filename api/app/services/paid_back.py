@@ -56,15 +56,44 @@ def net_paid_back(by_category: dict[str, Decimal], marks: list[AppliedMark],
         elif mark.category is not None and start <= _utc_day(mark.credit_at) <= end:
             by_mark_category[mark.category] += mark.applied_amount
             netted.append(PaidBack(mark.label, mark.applied_amount, mark.category, mark.category))
-    excess = {}
-    for category, amount in by_mark_category.items():
-        spent = by_category.get(category, Decimal(0))
-        taken = min(spent, amount)
-        if category in by_category:
-            by_category[category] = spent - taken
-        if amount > taken:
-            excess[category] = amount - taken
+    _, excess = floor_at_zero(by_category, by_mark_category)
     return netted, excess
+
+
+def paid_back_by_spend(marks: list[AppliedMark]) -> dict[uuid.UUID, Decimal]:
+    """{spend id: what its marks net}. The caller applies it only to spends
+    it counts, in their own range."""
+    out: dict[uuid.UUID, Decimal] = defaultdict(Decimal)
+    for mark in marks:
+        if mark.spend_id is not None and mark.applied_amount > 0:
+            out[mark.spend_id] += mark.applied_amount
+    return dict(out)
+
+
+def category_paid_back(marks: list[AppliedMark], start: date, end: date) -> dict[str, Decimal]:
+    """{category: what its marks net}, for credits that arrived in [start, end]."""
+    out: dict[str, Decimal] = defaultdict(Decimal)
+    for mark in marks:
+        if mark.category is not None and mark.applied_amount > 0 and start <= _utc_day(mark.credit_at) <= end:
+            out[mark.category] += mark.applied_amount
+    return dict(out)
+
+
+def floor_at_zero(by_category: dict[str, Decimal],
+                  marked: dict[str, Decimal]) -> tuple[dict[str, Decimal], dict[str, Decimal]]:
+    """Take category marks off `by_category` in place, never below £0. A
+    category with no spending gets no line. Returns what was taken and the
+    excess, by category."""
+    taken: dict[str, Decimal] = {}
+    excess: dict[str, Decimal] = {}
+    for category, amount in marked.items():
+        spent = by_category.get(category, Decimal(0))
+        taken[category] = min(spent, amount)
+        if category in by_category:
+            by_category[category] = spent - taken[category]
+        if amount > taken[category]:
+            excess[category] = amount - taken[category]
+    return taken, excess
 
 
 def _utc_day(moment: datetime) -> date:

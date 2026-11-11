@@ -248,3 +248,60 @@ def test_marking_raises_left_and_lowers_only_the_dotted_line(w):
     assert (Decimal(before["budget_projection"]["after_budgets_balance"])
             - Decimal(after["budget_projection"]["after_budgets_balance"])) == Decimal("60.00")
     assert after["timeline"] == before["timeline"]
+
+
+# --- History and the dotted-line copy (P11a) ---------------------------------------------
+
+
+def _history_eating_out(w):
+    r = w.client.get(f"{API}/budgets/history", params={"cycles": 3}, headers=_bearer(w.web))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    closed = body["cycles"][-1]
+    [slot] = [b for b in body["budgets"] if b["category"] == "Eating out"][0]["cycles"][-1:]
+    return closed, slot
+
+
+def test_history_keeps_a_closed_verdict_and_notes_later_repayments(w):
+    """AC-3 (History) and T-03-2 T17: Sam's and Jo's marks, made before last
+    cycle's snapshot was first written, are in it (£90, kept); Sam's later £40
+    leaves the verdict alone and is noted."""
+    from tests.integration.test_budget_history import _backdate
+
+    dinner = w.purchase("200.00", days_ago=25)  # last cycle
+    _backdate(w, w.create("Eating out", 150).json()["id"])
+    w.mark(w.credit("60.00", days_ago=24), "60.00", spend=dinner)
+    w.mark(w.credit("50.00", days_ago=22, merchant="JO"), "50.00", spend=dinner)
+    closed, slot = _history_eating_out(w)
+    assert (Decimal(slot["spent"]), slot["kept"], Decimal(closed["paid_back_after_close"])) == (
+        Decimal("90.00"), True, Decimal(0))
+
+    w.mark(w.credit("40.00", days_ago=3), "40.00", spend=dinner)
+    closed, slot = _history_eating_out(w)
+    assert (Decimal(slot["spent"]), slot["kept"]) == (Decimal("90.00"), True)
+    assert Decimal(closed["paid_back_after_close"]) == Decimal("40.00")
+
+
+def test_a_later_category_mark_belongs_to_its_own_cycle_not_the_closed_one(w):
+    """Worked example, "No spend: + £40": no note on cycle 1."""
+    from tests.integration.test_budget_history import _backdate
+
+    w.purchase("200.00", days_ago=25)
+    _backdate(w, w.create("Eating out", 150).json()["id"])
+    _history_eating_out(w)
+    w.mark(w.credit("40.00", days_ago=3), "40.00", category="Eating out")
+    closed, _ = _history_eating_out(w)
+    assert Decimal(closed["paid_back_after_close"]) == 0
+
+
+def test_the_dotted_line_says_when_marks_moved_it_this_cycle(w):
+    w.purchase("200.00")
+    w.budget("Eating out", 150)
+
+    def projection():
+        r = w.client.get(f"{API}/analytics/forecast", params={"horizon": "payday"}, headers=_bearer(w.web))
+        return r.json()["budget_projection"]
+
+    assert Decimal(projection()["paid_back_this_cycle"]) == 0
+    w.mark(w.credit("60.00"), "60.00", category="Eating out")
+    assert Decimal(projection()["paid_back_this_cycle"]) == Decimal("60.00")

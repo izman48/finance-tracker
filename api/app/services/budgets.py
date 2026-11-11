@@ -348,6 +348,7 @@ def budget_projection(db: Session, user, forecast: dict) -> tuple[dict | None, s
         "scheduled_balance": scheduled,
         "after_budgets_balance": scheduled - inputs.left,
         "series": series,
+        "paid_back_this_cycle": inputs.spend.paid_back,
     }, None
 
 

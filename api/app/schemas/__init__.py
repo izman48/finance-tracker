@@ -1108,6 +1108,9 @@ class BudgetProjection(BaseModel):
     # line) to the end of the horizon: this cycle less what's left, spread to
     # payday; each later cycle less the full total of the limits.
     series: list[BudgetLinePoint]
+    # Marks netted this cycle (T-03-6): when above 0, the chart says why the
+    # dotted line sits lower ("Marking a repayment raises what is left...").
+    paid_back_this_cycle: Decimal = Decimal(0)
 
 
 class CategorySlice(BaseModel):

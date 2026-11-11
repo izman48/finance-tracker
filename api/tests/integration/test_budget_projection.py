@@ -180,7 +180,8 @@ def test_no_payday_no_projection(client, db_session):
 
 def test_the_strip_has_exactly_the_agreed_fields(w):
     w.create("Eating out", 200)
-    assert set(_strip(w)) == {"payday", "scheduled_balance", "after_budgets_balance", "series"}
+    # paid_back_this_cycle: agreed in T-03-2 section 5, for the dotted-line copy (T-03-6).
+    assert set(_strip(w)) == {"payday", "scheduled_balance", "after_budgets_balance", "series", "paid_back_this_cycle"}
 
 
 def test_a_short_horizon_clips_the_line_but_keeps_the_payday_figures(w):

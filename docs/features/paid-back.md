@@ -119,6 +119,17 @@ Budgets (T-03-4 P2, `services/budget_spend.py`; PRD ACs 1, 2, 4 to 7, 29, 30):
 - `budget_spend(..., extra_marks=[...])` nets unsaved marks for previews
   (T7). No money figure moves (`test_budget_invariance.py`, "paid-back marks").
 
+History and Cashflow (T-03-6 P11a; AC-3, decision 6, T-03-2 T17):
+
+- A closed cycle's snapshot is never rewritten. A mark made before the
+  snapshot is first written (snapshots are lazy) is in it. Each History cycle
+  has `paid_back_after_close`: marks netted in that cycle, against one of its
+  budgeted categories, made after its snapshot ("£40.00 more paid back after
+  this cycle closed"). Snapshots now take `written_at` from the app's clock,
+  as marks take `created_at`.
+- `budget_projection.paid_back_this_cycle`: the marks netted this cycle, so
+  the chart can say why the dotted line sits lower.
+
 Spending (T-03-4 P3, `services/analytics/spending.py`; ACs 3, 8, 32):
 
 - Purchases lens: a spend mark nets the spend in its own kind (card or

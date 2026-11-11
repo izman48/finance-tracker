@@ -5,6 +5,7 @@ import { analyticsAPI, bankingAPI } from '../services/api'
 import { Transaction } from '../types'
 import { money, dateDMY } from '../lib/format'
 import { useToast } from './ui/Toast'
+import PaidBackSection from './PaidBackSection'
 
 const CADENCES = [
   { key: 'weekly', label: 'Weekly' },
@@ -138,6 +139,9 @@ export default function TransactionDetailSheet({
         {transaction.excluded_reason && !countsAs && (
           <p className="text-xs text-slate-500 mb-3">{EXCLUDED_COPY[transaction.excluded_reason]}</p>
         )}
+
+        {/* Friends' repayments Claude marked (T-03-6): absent with none. */}
+        <PaidBackSection transaction={transaction} onChanged={() => onChanged()} />
 
         {/* Counts as — the user's word beats automatic detection everywhere
             (spending figures, the trend, the projection's surplus). */}

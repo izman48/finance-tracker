@@ -50,13 +50,18 @@ def repayment_candidates(db: Session, user, *, today: date, payer: str | None = 
     frm = max(frm or to - timedelta(days=DEFAULT_DAYS), to - timedelta(days=MAX_DAYS))
     txns = _own_transactions(db, user, frm - timedelta(days=AFTER_DAYS), to + timedelta(days=AFTER_DAYS))
     credits = [t for t in txns if t.transaction_type == "credit" and frm <= _uk_day(t) <= to]
-    payer_words = _words(payer or "")
-    if payer_words:
-        credits = [c for c in credits if payer_words & _words(_reference(c))]
+    payer_filter = _words(payer or "")
+    if payer_filter:
+        credits = [c for c in credits if payer_filter & _words(_reference(c))]
     spends = _eligible_spends(db, user, frm - timedelta(days=BEFORE_DAYS), to + timedelta(days=AFTER_DAYS))
     left = remaining(db, user.id, [t.id for t in credits] + [s.id for s in spends])
     marks = active_marks(db, user.id)
     marked_spends = {m.spend_id for m in marks if m.spend_id is not None}
+    counted = {s.id for s in spends}
+    if include_marked and marked_spends - counted:
+        # Marked spends outside the window: is each still counted as spending?
+        days = [_uk_day(t) for t in _own_by_id(db, user, marked_spends - counted)]
+        counted |= {s.id for s in _eligible_spends(db, user, min(days), max(days))} if days else set()
     if not include_marked:
         credits = [c for c in credits if left.get(c.id, Decimal(0)) >= CENT]
     credits.sort(key=lambda c: (c.transaction_date, c.id), reverse=True)
@@ -69,7 +74,8 @@ def repayment_candidates(db: Session, user, *, today: date, payer: str | None = 
     for credit in credits:
         ranked = _rank(credit, left[credit.id], spends, left, marked_spends, hints)
         out.append(_candidate(credit, left[credit.id], ranked, blocked.get(credit.id), credit.id in warned,
-                              [m for m in marks if m.credit_id == credit.id] if include_marked else None))
+                              [m for m in marks if m.credit_id == credit.id] if include_marked else None,
+                              counted))
     return out
 
 
@@ -79,7 +85,8 @@ def _rank(credit, unmarked, spends, left, marked_spends, hints) -> list[_Scored]
     for spend in spends:
         days = (_uk_day(credit) - _uk_day(spend)).days
         room = left.get(spend.id, Decimal(0))
-        if -AFTER_DAYS <= days <= BEFORE_DAYS and unmarked >= CENT and room >= unmarked - tolerance:
+        if -AFTER_DAYS <= days <= BEFORE_DAYS and unmarked >= CENT and room >= CENT \
+                and room >= unmarked - tolerance:
             scored.append(_score(credit, unmarked, spend, room, days, spend.id in marked_spends, hints))
     # Ties: nearest date, then more left, then id.
     return sorted(scored, key=lambda s: (-s.score, abs(s.days), -s.remaining, str(s.spend.id)))
@@ -104,7 +111,8 @@ def _score(credit, unmarked, spend, room, days, has_marks, hints) -> _Scored:
         words += 15
         reasons.append("It is on the day the user named.")
     when = _date_points(days)
-    reasons.append(f"It was {abs(days)} days {'before' if days >= 0 else 'after'} the payment.")
+    reasons.append("It was on the same day as the payment." if days == 0
+                   else f"It was {abs(days)} days {'before' if days > 0 else 'after'} the payment.")
     unmarked_points = 15 if not has_marks else 10 if room >= unmarked else 0
     return _Scored(spend, room, amount + min(25, words) + when + unmarked_points, reasons, days)
 
@@ -125,7 +133,7 @@ def _date_points(days: int) -> int:
     return 25 if days <= 3 else 18 if days <= 7 else 10 if days <= 14 else 4
 
 
-def _candidate(credit, unmarked, ranked, blocked, warned, marks) -> dict:
+def _candidate(credit, unmarked, ranked, blocked, warned, marks, counted) -> dict:
     best = ranked[0] if ranked else None
     likely = best if best and best.score >= LIKELY else None
     confidence = "medium"
@@ -148,7 +156,9 @@ def _candidate(credit, unmarked, ranked, blocked, warned, marks) -> dict:
     if marks is not None:
         out["marks"] = [{"mark_id": str(m.id), "amount_pounds": _pounds(m.applied_amount),
                          "spend_id": str(m.spend_id) if m.spend_id else None, "category": m.category,
-                         "applied": m.applied_amount > 0} for m in marks]
+                         # As on transactions (P6): it nets now, so a spend no longer counted is false.
+                         "applied": m.applied_amount > 0 and (m.spend_id is None or m.spend_id in counted)}
+                        for m in marks]
     return out
 
 
@@ -182,6 +192,10 @@ def _own_transactions(db: Session, user, start: date, end: date) -> list[Transac
         )
         .all()
     )
+
+
+def _own_by_id(db: Session, user, ids: set) -> list[Transaction]:
+    return db.query(Transaction).join(Account).filter(Account.user_id == user.id, Transaction.id.in_(ids)).all()
 
 
 def _reference(tx: Transaction) -> str:

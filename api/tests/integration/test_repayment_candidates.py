@@ -100,6 +100,17 @@ def test_below_45_there_is_no_likely_spend_only_a_fallback_category(w):
     assert c["likely_spend"] is None and c["fallback_category"] == "Eating out"
 
 
+def test_a_fully_paid_back_spend_is_never_a_candidate_even_for_pennies(w):
+    """eng-a on #280: below the £1 tolerance floor, a spend with £0 left used
+    to pass the room check (and divide by zero)."""
+    lunch = w.purchase("12.00", on=FRIDAY)
+    w.mark(w.credit("7.00", on=FRIDAY, merchant="JO"), "7.00", spend=lunch)
+    w.mark(w.credit("5.00", on=FRIDAY, merchant="AL"), "5.00", spend=lunch)
+    w.credit("0.50", on=FRIDAY + timedelta(days=2))
+    [c] = w.candidates()
+    assert (c["amount_pounds"], c["likely_spend"], c["fallback_category"]) == ("0.50", None, None)
+
+
 def test_with_no_eligible_spend_there_is_no_fallback(w):
     w.credit("60.00", on=FRIDAY)
     c = w.one()
@@ -190,6 +201,10 @@ def test_marked_credits_hide_unless_asked_and_marks_shrink_what_is_left(w):
     [mark] = c["marks"]
     assert (mark["amount_pounds"], mark["spend_id"], mark["category"], mark["applied"]) == (
         "60.00", w.as_user(lambda: str(dinner.id)), None, True)
+
+    w.counts_as(dinner, "transfer")  # no longer counted as spending: the mark nets nothing (AC-29)
+    assert w.one(include_marked=True)["marks"][0]["applied"] is False
+    w.counts_as(dinner, None)
 
     jo = w.credit("50.00", on=FRIDAY + timedelta(days=3), merchant="JO")
     likely = w.as_user(lambda: [c for c in w.candidates() if c["credit_id"] == str(jo.id)][0])["likely_spend"]

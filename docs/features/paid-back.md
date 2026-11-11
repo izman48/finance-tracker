@@ -117,7 +117,20 @@ Spending (T-03-4 P3, `services/analytics/spending.py`; ACs 3, 8, 32):
 
 ## Services
 
-None yet.
+- `services/paid_back.py`: the netting rule shared by budgets and Spending
+  (see Figures).
+- `services/repayment_candidates.py` (T-03-5 P7; PRD "Which spend is most
+  likely", ACs 9 to 14): `repayment_candidates(db, user, today=..., payer,
+  about, spend_date, frm, to, include_marked, limit)` lists the user's
+  credits in the range (default 45 days, at most 366), newest first, at most
+  50. A credit is listed while part of it is unmarked, whether or not it is
+  typed as a transfer. Each comes with `blocked` and `warnings` from
+  `repayment_guards`, its `likely_spend` (score 45 or more), up to 2
+  `alternatives` (30 or more), and a `fallback_category` when nothing
+  reaches 45. A spend is eligible if budgets count it, it falls 21 days
+  before to 3 days after the credit, and its unmarked room covers the credit
+  less max(£1, 2%). Scores are computed per request and never stored. P8
+  serves them on a read route.
 
 ## UI
 

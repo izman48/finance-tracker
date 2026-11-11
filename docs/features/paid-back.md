@@ -165,7 +165,17 @@ Spending (T-03-4 P3, `services/analytics/spending.py`; ACs 3, 8, 32):
 
 ## UI
 
-None yet.
+- Budgets, Not counted (`components/budgets/PaidBackByOthers.tsx`, T-03-6
+  P11b): "Paid back by others £110.00", only above £0, as a toggle button
+  (`aria-expanded`) listing each mark's label, what it netted and its amount,
+  with the helper "Friends' repayments you marked. They reduce what counts as
+  spending here and are never income." Excess: "£40.00 was more than you
+  spent in Eating out this cycle. It isn't income."
+- History (`HistoryView`): "{cycle}: £40.00 more paid back after this cycle
+  closed" under the bars; the result is unchanged.
+- Cashflow (`forecast/BudgetStrip`): when `paid_back_this_cycle` is above £0,
+  "Marking a repayment raises what is left in a budget, so this line is
+  lower. The cash itself is already in your balance."
 
 ## Demo
 

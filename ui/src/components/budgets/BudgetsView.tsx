@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import ClaudeMarker from '../changes/ClaudeMarker'
+import PaidBackByOthers from './PaidBackByOthers'
 import { categoryColor } from '../../lib/categoryColors'
 import { dateDayMonth } from '../../lib/format'
 import {
@@ -216,6 +217,7 @@ function BudgetsBox({ data, summary, allPaused }: { data: BudgetsResponse; summa
             )}
           </dl>
         )}
+        {open && <PaidBackByOthers notCounted={data.not_counted} />}
       </div>
     </div>
   )

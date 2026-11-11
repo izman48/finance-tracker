@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import HistoryView, { type HistoryViewProps } from './HistoryView'
+import { dateDayMonth } from '../../lib/format'
 import type { HistoryBudget, HistoryCycle, HistoryResponse, HistorySlot } from '../../lib/budgetHistory'
 
 // Spending > Budgets > Past cycles (concept 14; BH1-BH14). Static markup.
@@ -109,5 +110,12 @@ describe('HistoryView', () => {
     const h = html({ data: data({ budgets: [{ ...groceries, category: '<img src=x onerror=alert(1)>' }] }) })
     expect(h).not.toContain('<img src=x')
     expect(h).toContain('&lt;img src=x onerror=alert(1)&gt;')
+  })
+
+  it('AC-3: a closed cycle keeps its result and notes what was paid back after it closed', () => {
+    const later = cycles.map((c, i) => (i === 5 ? { ...c, paid_back_after_close: '40.00' } : c))
+    const t = text(html({ data: data({ cycles: later }) }))
+    expect(t).toContain(`${dateDayMonth('2026-08-30')} to ${dateDayMonth('2026-09-26')}: £40.00 more paid back after this cycle closed`)
+    expect(text(html())).not.toContain('paid back after')
   })
 })

@@ -20,6 +20,8 @@ export interface HistoryCycle {
   total_spent: Money
   /** Null when every budget was paused in it (not counted). */
   on_target: boolean | null
+  /** Marks made after this cycle closed: the result stays, a note says so (T-03-6). */
+  paid_back_after_close?: Money
 }
 
 export interface HistorySlot {

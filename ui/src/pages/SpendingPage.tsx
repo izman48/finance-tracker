@@ -16,11 +16,14 @@ import { EXPLAIN } from '../copy/statExplainers'
 import useReveal from '../components/ui/useReveal'
 import BudgetsPanel from '../components/budgets/BudgetsPanel'
 import { CATEGORY_COLORS } from '../lib/categoryColors'
+import { CategoryPaidBack, PaidBackChip, PaidBackLine } from '../components/SpendingPaidBack'
 
 interface CategorySlice {
   category: string
   total: number
   count: number
+  /** Marks against the category (no purchase), taken off `total` (T-03-4). */
+  paid_back_by_others?: number | string
 }
 interface MerchantSlice {
   merchant: string
@@ -43,6 +46,8 @@ interface Spending {
   composition: Composition | null
   by_category: CategorySlice[]
   top_merchants: MerchantSlice[]
+  /** Category marks in the range beyond what the category spent: shown, never income. */
+  paid_back_excess?: { category: string; amount: number | string }[]
 }
 
 type Lens = 'money_out' | 'purchases'
@@ -833,7 +838,13 @@ export default function SpendingPage() {
                     <div className="text-xs text-slate-600 mt-1">
                       {c.count} transaction{c.count !== 1 ? 's' : ''}
                     </div>
+                    <CategoryPaidBack amount={c.paid_back_by_others} />
                   </button>
+                ))}
+                {((breakdownData ?? data).paid_back_excess ?? []).map((e) => (
+                  <p key={e.category} className="text-xs text-slate-400">
+                    {gbp(Number(e.amount))} paid back by others was more than you spent in {e.category} in these dates. It isn&apos;t income.
+                  </p>
                 ))}
               </div>
             </div>
@@ -1168,8 +1179,10 @@ export default function SpendingPage() {
                       <div className="text-xs text-slate-500 mt-0.5">
                         {dateDMY(tx.transaction_date)} · {accountName(tx.account_id)}
                       </div>
+                      <PaidBackLine transaction={tx} />
                       <div className="mt-1 flex flex-wrap gap-1.5">
                         {tx.category && <span className="chip">{tx.category}</span>}
+                        <PaidBackChip transaction={tx} />
                         {tx.is_commitment && <span className="chip-warn">Commitment</span>}
                         {tx.is_financed && <span className="chip-info">On finance</span>}
                         {tx.excluded_reason && (
@@ -1248,6 +1261,7 @@ export default function SpendingPage() {
                             <div className="text-xs text-slate-500">{tx.description}</div>
                           )}
                           <div className="flex flex-wrap gap-1 mt-1">
+                            <PaidBackChip transaction={tx} />
                             {tx.is_commitment && <span className="chip-warn">Commitment</span>}
                             {tx.is_financed && <span className="chip-info">On finance</span>}
                             {tx.excluded_reason && (
@@ -1270,6 +1284,7 @@ export default function SpendingPage() {
                         }`}>
                           {tx.transaction_type === 'credit' ? '+' : '−'}
                           {money(tx.amount, tx.currency)}
+                          <PaidBackLine transaction={tx} />
                         </td>
                       </tr>
                     ))}

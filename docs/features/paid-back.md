@@ -191,6 +191,11 @@ Spending (T-03-4 P3, `services/analytics/spending.py`; ACs 3, 8, 32):
   spent in Eating out this cycle. It isn't income."
 - History (`HistoryView`): "{cycle}: £40.00 more paid back after this cycle
   closed" under the bars; the result is unchanged.
+- Spending (`components/SpendingPaidBack.tsx`, T-03-6 P12): each marked
+  purchase in the list keeps its bank amount and adds the chip "£110 paid
+  back" and "£110.00 of £200.00 paid back. Counts as £90.00." (AC-32); a
+  category with category marks shows "Paid back by others −£110.00", and any
+  excess is named as never income.
 - Cashflow (`forecast/BudgetStrip`): when `paid_back_this_cycle` is above £0,
   "Marking a repayment raises what is left in a budget, so this line is
   lower. The cash itself is already in your balance."

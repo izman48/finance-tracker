@@ -843,7 +843,7 @@ export default function SpendingPage() {
                 ))}
                 {((breakdownData ?? data).paid_back_excess ?? []).map((e) => (
                   <p key={e.category} className="text-xs text-slate-400">
-                    Paid back by others {gbp(Number(e.amount))}: more than you spent in {e.category} in these dates. It isn&apos;t income.
+                    {gbp(Number(e.amount))} paid back by others was more than you spent in {e.category} in these dates. It isn&apos;t income.
                   </p>
                 ))}
               </div>

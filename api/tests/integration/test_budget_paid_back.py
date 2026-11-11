@@ -295,13 +295,19 @@ def test_a_later_category_mark_belongs_to_its_own_cycle_not_the_closed_one(w):
 
 
 def test_the_dotted_line_says_when_marks_moved_it_this_cycle(w):
+    """Only what marks added to `left` lowers the dotted line (ux on #284): a
+    mark on an unbudgeted category, or beyond the £0 floor, moves nothing."""
     w.purchase("200.00")
+    w.purchase("20.00", category="Groceries", merchant="Tesco")
     w.budget("Eating out", 150)
 
-    def projection():
+    def raised():
         r = w.client.get(f"{API}/analytics/forecast", params={"horizon": "payday"}, headers=_bearer(w.web))
-        return r.json()["budget_projection"]
+        return Decimal(r.json()["budget_projection"]["left_raised_by_marks"])
 
-    assert Decimal(projection()["paid_back_this_cycle"]) == 0
-    w.mark(w.credit("60.00"), "60.00", category="Eating out")
-    assert Decimal(projection()["paid_back_this_cycle"]) == Decimal("60.00")
+    assert raised() == 0
+    w.mark(w.credit("15.00"), "15.00", category="Groceries")       # no Groceries budget
+    w.mark(w.credit("30.00"), "30.00", category="Eating out")      # £200 to £170: still over, left stays £0
+    assert raised() == 0
+    w.mark(w.credit("60.00", merchant="JO"), "60.00", category="Eating out")  # £170 to £110: £40 left
+    assert raised() == Decimal("40.00")

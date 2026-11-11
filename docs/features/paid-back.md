@@ -127,8 +127,9 @@ History and Cashflow (T-03-6 P11a; AC-3, decision 6, T-03-2 T17):
   budgeted categories, made after its snapshot ("£40.00 more paid back after
   this cycle closed"). Snapshots now take `written_at` from the app's clock,
   as marks take `created_at`.
-- `budget_projection.paid_back_this_cycle`: the marks netted this cycle, so
-  the chart can say why the dotted line sits lower.
+- `budget_projection.left_raised_by_marks`: how much marks raised `left`
+  this cycle (excess and unbudgeted marks move nothing), so the chart says
+  why the dotted line sits lower only when it does.
 
 Spending (T-03-4 P3, `services/analytics/spending.py`; ACs 3, 8, 32):
 

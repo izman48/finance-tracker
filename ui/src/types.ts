@@ -27,6 +27,31 @@ export interface Transaction {
   counts_as_override?: 'spending' | 'transfer' | 'card_payment' | null
   counts_as_locked?: boolean
   transaction_date: string
+  /** What this debit's paid-back marks net (T-03-3 P6); null on a credit. */
+  paid_back_amount?: number | string | null
+  /** The marks on this payment, as the credit or as the spend. */
+  paid_back_marks?: PaidBackMark[]
+}
+
+/** A paid-back mark on a transaction (T-03-3 P6). Label, payer and against are bank and Claude text: data only. */
+export interface PaidBackMark {
+  mark_id: string
+  credit_id: string
+  spend_id: string | null
+  category: string | null
+  amount: number | string
+  label: string
+  created_via: 'mcp' | 'web' | string
+  /** It nets now: false once its spend no longer counts as spending (AC-29). */
+  applied: boolean
+  cycle_closed: boolean
+  /** Claude's live change, for Undo; null for a mark made in the app. */
+  audit_id: string | null
+  payer?: string | null
+  /** The spend's name, or the category for a category mark. */
+  against?: string | null
+  credit_date?: string | null
+  spend_date?: string | null
 }
 
 export interface Account {

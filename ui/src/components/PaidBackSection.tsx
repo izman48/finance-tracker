@@ -1,7 +1,8 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { auditAPI } from '../services/api'
 import { failureFromError, undoToast, type AuditItem, type UndoState } from '../lib/changes'
 import { dateDayMonth, gbp } from '../lib/format'
+import { nextUndoAfter } from '../lib/paidBack'
 import type { PaidBackMark, Transaction } from '../types'
 import ClaudeMarker from './changes/ClaudeMarker'
 import { UndoButton, UndoNotice } from './changes/UndoControls'
@@ -17,17 +18,22 @@ const auditItem = (m: PaidBackMark): AuditItem => ({
 })
 
 /** "£60.00 for Pizza Express, 6 Nov" on a credit, "£60.00 from Sam, 8 Nov" on a spend. */
-function rowText(m: PaidBackMark, onSpend: boolean): string {
+function rowText(m: PaidBackMark, onSpend: boolean, withDate = true): string {
   const amount = pounds(m.amount)
   if (!onSpend && m.spend_id === null && m.against) return `${amount} against ${m.against}`
   const who = onSpend ? m.payer : m.against
   const day = onSpend ? m.credit_date : m.spend_date
   if (!who) return `${amount}: ${m.label}`
-  return `${amount} ${onSpend ? 'from' : 'for'} ${who}${day ? `, ${dateDayMonth(day)}` : ''}`
+  return `${amount} ${onSpend ? 'from' : 'for'} ${who}${withDate && day ? `, ${dateDayMonth(day)}` : ''}`
 }
 
 /** The row without its date: for the Undo's accessible name (AC-35) and a mark that isn't applied. */
-const shortText = (m: PaidBackMark, onSpend: boolean) => rowText(m, onSpend).replace(/, \d.*$/, '')
+const shortText = (m: PaidBackMark, onSpend: boolean) => rowText(m, onSpend, false)
+
+
+/** Set to a transfer by the user or a rule, or detected as one (and not set back). */
+const isTransfer = (t: Transaction) =>
+  t.counts_as_override === 'transfer' || (!t.counts_as_override && t.excluded_reason === 'internal_transfer')
 
 export type PaidBackViewProps = {
   transaction: Transaction
@@ -49,14 +55,14 @@ export function PaidBackView({ transaction, undo, onUndo }: PaidBackViewProps) {
   const marked = marks.reduce((t, m) => t + Number(m.amount), 0)
   return (
     <section aria-labelledby="paid-back-heading" className="rounded-xl border border-white/10 p-4 mb-3 text-sm">
-      <h4 id="paid-back-heading" tabIndex={-1} className="font-medium text-slate-100 outline-none">Paid back</h4>
+      <h4 id="paid-back-heading" tabIndex={-1} className="font-medium text-slate-100 rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent/60">Paid back</h4>
       {onSpend && (
         <p className="text-slate-300 mt-1">
           {pounds(transaction.paid_back_amount)} of {pounds(amount)} paid back. Counts as{' '}
           {pounds(amount - Number(transaction.paid_back_amount ?? 0))}.
         </p>
       )}
-      {!onSpend && transaction.counts_as_override === 'transfer' && (
+      {!onSpend && isTransfer(transaction) && (
         <p className="text-slate-400 mt-1">Counted as a transfer, and also marked paid back.</p>
       )}
       <ul className="mt-2 space-y-2">
@@ -95,12 +101,30 @@ export function PaidBackView({ transaction, undo, onUndo }: PaidBackViewProps) {
 }
 
 /** The section with its undo wired: Undo removes the mark, the sheet refetches, focus never jumps to the page top. */
-export default function PaidBackSection({ transaction, onChanged }: { transaction: Transaction; onChanged: () => void }) {
+export default function PaidBackSection({ transaction, onChanged, fallbackFocus }: {
+  transaction: Transaction
+  onChanged: () => void
+  /** Focus something that stays (the sheet's title) when the section empties. */
+  fallbackFocus: () => void
+}) {
   const showToast = useToast()
   const [undo, setUndo] = useState<Record<string, UndoState>>({})
   // Marks undone here: a local mirror until the page refetches (as the sheet's counts-as mirror).
   const [removed, setRemoved] = useState<PaidBackMark[]>([])
   const root = useRef<HTMLDivElement>(null)
+  // Where focus goes once the undo's render lands: an Undo or alert by id, or the fallback (AC-34).
+  const pendingFocus = useRef<{ undo?: string | null; alert?: string } | null>(null)
+  useEffect(() => {
+    const want = pendingFocus.current
+    if (!want) return
+    pendingFocus.current = null
+    const q = (sel: string) => root.current?.querySelector<HTMLElement>(sel) ?? null
+    const target = want.alert
+      ? q(`button[data-undo="${want.alert}"]`) ?? q(`#change-${want.alert}-alert`)
+      : (want.undo ? q(`button[data-undo="${want.undo}"]`) : null) ?? q('#paid-back-heading')
+    if (target) target.focus()
+    else fallbackFocus()
+  })
   const gone = new Set(removed.map((m) => m.mark_id))
   const shown: Transaction = {
     ...transaction,
@@ -112,14 +136,14 @@ export default function PaidBackSection({ transaction, onChanged }: { transactio
     setUndo((u) => ({ ...u, [m.mark_id]: { undoing: true, failure: null } }))
     try {
       await auditAPI.undo(m.audit_id as string)
+      const ids = (shown.paid_back_marks ?? []).flatMap((x) => (x.audit_id ? [x.audit_id] : []))
+      pendingFocus.current = { undo: nextUndoAfter(ids, m.audit_id as string) }
       setRemoved((r) => [...r, m])
       showToast(undoToast(auditItem(m)))
       onChanged()
-      // Focus the next Undo, or the section heading; never the page top (AC-34).
-      const buttons = Array.from(root.current?.querySelectorAll<HTMLButtonElement>('button[data-undo]') ?? [])
-      const next = buttons.find((b) => b.dataset.undo !== m.audit_id)
-      ;(next ?? root.current?.querySelector<HTMLElement>('#paid-back-heading'))?.focus()
     } catch (err) {
+      // Keep focus on the row: its "Try again", or the alert when it can't be retried.
+      pendingFocus.current = { alert: m.audit_id as string }
       setUndo((u) => ({ ...u, [m.mark_id]: { undoing: false, failure: failureFromError(err) } }))
     }
   }

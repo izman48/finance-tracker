@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter } from 'react-router-dom'
 import { PaidBackView, type PaidBackViewProps } from './PaidBackSection'
+import { nextUndoAfter } from '../lib/paidBack'
 import type { PaidBackMark, Transaction } from '../types'
 
 // The transaction sheet's "Paid back" section (T-03-6; PRD Screens 1-2, ACs 29-32, 34, 35). Static markup.
@@ -96,3 +97,22 @@ describe('PaidBackView, spend sheet', () => {
     expect(html({ transaction: tx({ paid_back_marks: [mark({ against: '<img src=x>' })] }) })).not.toContain('<img')
   })
 })
+
+describe('after an undo (AC-34; ux on #288)', () => {
+  it('focus goes to the next Undo still shown, else to something that stays (null)', () => {
+    expect(nextUndoAfter(['a1', 'a2', 'a3'], 'a2')).toBe('a3')
+    expect(nextUndoAfter(['a1', 'a2'], 'a2')).toBe('a1')
+    expect(nextUndoAfter(['a1'], 'a1')).toBeNull() // the last mark: the section goes, so the sheet title
+  })
+
+  it("the Undo's name keeps a spend name with a comma and digits whole", () => {
+    const h = html({ transaction: tx({ paid_back_marks: [mark({ against: 'Shop, 2 Go' })] }) })
+    expect(h).toContain('aria-label="Undo: mark £60.00 for Shop, 2 Go"')
+  })
+
+  it('a credit detected as a transfer also says it is marked', () => {
+    const t = text(html({ transaction: tx({ excluded_reason: 'internal_transfer', paid_back_marks: [mark()] }) }))
+    expect(t).toContain('Counted as a transfer, and also marked paid back.')
+  })
+})
+

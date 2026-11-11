@@ -158,8 +158,8 @@ function buildLedger(): SampleTx[] {
   // The PRD's paid-back example (T-03-6, AC-33): a shared dinner on the card,
   // two friends paying their share back, both marked by Claude (SAMPLE_MARKS).
   p('Harbour Pizzeria', 'Harbour Pizzeria', 'Eating out', 200, 'debit', 'sa4', 5)
-  p('S PATEL DINNER', 'S PATEL', 'Transfers', 60, 'credit', 'sa1', 3)
-  p('J OKAFOR', 'J OKAFOR', 'Transfers', 50, 'credit', 'sa1', 2)
+  p('S PATEL DINNER', 'S PATEL', 'Other', 60, 'credit', 'sa1', 3)
+  p('J OKAFOR', 'J OKAFOR', 'Other', 50, 'credit', 'sa1', 2)
   // noise, in the recent month — shown, labelled, opt-in to hide
   p('Payment to Harbor Rewards', 'Harbor Financial', 'Transfers', 300, 'debit', 'sa1', 6, { excluded: 'card_payment' })
   p('Transfer to Acorn Saver', 'Acorn Bank', 'Transfers', 500, 'debit', 'sa1', 6, { excluded: 'internal_transfer' })

@@ -16,7 +16,8 @@ interface SampleBudget { id: string; category: string; limit_pounds: number; pau
 
 const SAMPLE_BUDGETS: SampleBudget[] = [
   { id: 'sb1', category: 'Groceries', limit_pounds: 320, paused: false },
-  { id: 'sb2', category: 'Eating out', limit_pounds: 90, paused: false },
+  // £150, as in the PRD's paid-back example: the dinner's marks bring Eating out back under (T-03-6).
+  { id: 'sb2', category: 'Eating out', limit_pounds: 150, paused: false },
   { id: 'sb3', category: 'Transport', limit_pounds: 30, paused: false },
   { id: 'sb4', category: 'Shopping', limit_pounds: 120, paused: true },
 ]
@@ -51,7 +52,12 @@ function status(spent: number, pace: number, limit: number) {
 }
 
 /** GET /budgets. `paydayAgo` is how many days ago the sample salary landed. */
-export function sampleBudgetList(ledger: BudgetLedgerTx[], paydayAgo: number, includeCategories: boolean) {
+/** A spend mark netted this cycle (T-03-6): the ledger's purchase amounts are already net of it. */
+export interface SamplePaidBack { label: string; amount: number; against: string; category: string; daysAgo: number }
+
+export function sampleBudgetList(ledger: BudgetLedgerTx[], paydayAgo: number, includeCategories: boolean,
+  paidBack: SamplePaidBack[] = []) {
+  const netted = paidBack.filter((m) => m.daysAgo <= paydayAgo)
   const elapsed = paydayAgo + 1
   const spend = spendByCategory(ledger, paydayAgo, 0)
   const rows = SAMPLE_BUDGETS.map((b) => {
@@ -82,6 +88,9 @@ export function sampleBudgetList(ledger: BudgetLedgerTx[], paydayAgo: number, in
     not_counted: {
       commitments: excluded('commitment'), transfers: excluded('transfer'),
       card_payoffs: excluded('card_payoff'), financed: '0.00',
+      paid_back: money(netted.reduce((t, m) => t + m.amount, 0)),
+      paid_back_marks: netted.map((m) => ({ label: m.label, amount: money(m.amount), against: m.against, category: m.category })),
+      paid_back_excess: [],
     },
     summary_this_cycle: {
       total_limit: money(counting.reduce((t, r) => t + r.limit_pounds, 0)),

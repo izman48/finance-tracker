@@ -197,11 +197,15 @@ Spending (T-03-4 P3, `services/analytics/spending.py`; ACs 3, 8, 32):
 
 ## Demo
 
-Not yet. The sample account's dinner example (Sam and Jo marked to a £200
-dinner; PRD AC-33, owner rule 2026-10-15) lands in P10, with the sample
-ledger and `sampleBudgets` netting, **before `feat/paid-back` merges to
-`main`** (ux condition on #284). Until then the sample has no marks, so the
-paid-back elements stay hidden in demo mode.
+The sample account (`ui/src/lib/sampleAccount.ts`, T-03-6 P10c; AC-33,
+owner rule 2026-10-15) has the PRD's example in this pay cycle: a £200
+Harbour Pizzeria dinner on the card, S PATEL £60 and J OKAFOR £50 marked
+against it by Claude (`SAMPLE_MARKS`). The transactions carry
+`paid_back_amount` and `paid_back_marks`; the purchases lens and budgets net
+the dinner to £90 (the sample's Eating out budget is £150, as in the PRD);
+budgets list both under "Paid back by others"; the forecast's
+`left_raised_by_marks` is set; `/audit` lists the two marks, so "Changes made
+by Claude" shows them. Undo is a write, so demo mode blocks it like any other.
 
 ## Tests
 
@@ -215,7 +219,7 @@ paid-back elements stay hidden in demo mode.
 | 1 Tables | `repayment_marks`, additive migration with downgrade. |
 | 2 Purge | Yes, first in `_OWNED_BY_USER`, before transactions (seeded in the reset test). |
 | 3 Deletion | Cascade from `users`, and from either transaction. |
-| 4 Demo mode | Not yet: the sample dinner lands in P10, before `feat/paid-back` merges to `main` (see Demo). |
+| 4 Demo mode | Yes: the sample dinner and its two marks (see Demo). |
 | 5 Ownership | No account ids. Reads join transactions to the user's accounts. |
 | 6 Scopes | Claude's writes `finance:repayments.write` (own consent box). |
 | 7 Claude tools | `list_repayment_candidates`, `mark_paid_back`, `unmark_paid_back`. |

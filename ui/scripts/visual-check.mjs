@@ -242,23 +242,22 @@ const statementStates = {
   empty: { statements: [], current: null, missing_statement: false, conflict: false, next_payment: { ...nextPayment, amount: '642.31', date: daysFromNow(30) } },
 }
 
-// Cashflow > Plan (T-24-6): synthetic, and the lines add up (3,100.00 − 989.49 − 620.50 = 1,490.01).
-const planItem = (id, label, days, amount, status) => ({ source: 'commitment', commitment_id: id, label, due_date: daysFromNow(days), amount, status, transaction_id: status === 'paid' ? `tx-${id}` : null })
+// Cashflow > Plan (T-25-2): synthetic, and the rows add up (3,100.00 − 1,009.49 − 620.50 = 1,470.01).
+const planItem = (id, label, days, amount, status) => ({ commitment_id: id, label, date: daysFromNow(days), amount, status, transaction_id: status === 'paid' ? `tx-${id}` : null })
 const plan = {
   cycle: { start: daysFromNow(-14), end: daysFromNow(16), days_left: 16 },
-  income: { total: '3100.00', received_count: 1, expected_count: 1, items: [
-    { id: 'in1', label: 'Salary', date: daysFromNow(-14), amount: '2800.00', status: 'received', transaction_id: 'tx-in1' },
-    { id: 'in2', label: 'Side job', date: daysFromNow(15), amount: '300.00', status: 'expected', transaction_id: null }] },
-  fixed: { total: '989.49', paid: '959.99', to_pay: '29.50', paid_count: 2, count: 4, groups: [
-    { source: 'commitment', category: 'Housing', total: '950.00', paid_count: 1, count: 1, items: [planItem('rent', 'Rent', -12, '950.00', 'paid')] },
-    { source: 'commitment', category: 'Subscriptions', total: '14.49', paid_count: 1, count: 2, items: [planItem('str', 'Streamly', -9, '9.99', 'paid'), planItem('cb', 'Cloudbox with a very long bank description', 8, '4.50', 'due'),
-      { ...planItem('pass', 'Annual pass', 0, '120.00', 'not_due_this_cycle'), due_date: null }] },
-    { source: 'commitment', category: null, total: '25.00', paid_count: 0, count: 1, items: [planItem('gym', 'Gym club', 7, '25.00', 'due')] }] },
-  budgets: { limits_total: '550.00', planned_total: '620.50', spent: '450.50', coming_up: '40.00', count: 2, items: [
+  money_in: { total: '3100.00', items: [
+    { label: 'Salary', date: daysFromNow(-14), amount: '2800.00', status: 'received', transaction_id: 'tx-in1' },
+    { label: 'Side job', date: daysFromNow(15), amount: '300.00', status: 'expected', transaction_id: null }] },
+  commitments: { total: '1009.49', groups: [
+    { name: 'Rent & bills', total: '970.00', count: 2, paid_count: 1, items: [planItem('rent', 'Rent', -12, '950.00', 'paid'), planItem('water', 'Water co', -3, '20.00', 'not_seen')] },
+    { name: 'Subscriptions', total: '14.49', count: 2, paid_count: 1, items: [planItem('str', 'Streamly', -9, '9.99', 'paid'), planItem('cb', 'Cloudbox with a very long bank description', 8, '4.50', 'coming')] },
+    { name: 'Fitness', total: '25.00', count: 1, paid_count: 0, items: [planItem('gym', 'Gym club', 7, '25.00', 'coming')] }] },
+  budgets: { limits_total: '550.00', planned_total: '620.50', items: [
     { budget_id: 'pb1', category: 'Eating out', limit: '300.00', spent: '330.50', coming_up: '40.00', planned: '370.50', status: 'over', over_by: '30.50', other_purchases: '310.50',
-      commitments: [{ ...planItem('pz', 'Pizza club', -7, '20.00', 'paid'), date: daysFromNow(-7) }, { ...planItem('pz', 'Pizza club', 7, '20.00', 'due'), date: daysFromNow(7) }, { ...planItem('pz', 'Pizza club', 14, '20.00', 'due'), date: daysFromNow(14) }] },
+      commitments: [{ ...planItem('pz', 'Pizza club', -7, '20.00', 'paid') }, { ...planItem('pz', 'Pizza club', 7, '20.00', 'due') }, { ...planItem('pz', 'Pizza club', 14, '20.00', 'due') }] },
     { budget_id: 'pb2', category: 'Groceries', limit: '250.00', spent: '120.00', coming_up: '0.00', planned: '250.00', status: 'under_pace', over_by: '0.00', other_purchases: '120.00', commitments: [] }] },
-  spent_outside_budgets: '1700.00', not_planned: '1490.01', outside_vs_not_planned: '209.99',
+  left_over: '1470.01',
 }
 
 const routes = [

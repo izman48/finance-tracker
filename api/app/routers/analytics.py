@@ -136,7 +136,8 @@ def get_nudges(
     from app.services.budgets import budget_nudges
 
     nudges = analytics_service.get_nudges(db, current_user) + budget_nudges(db, current_user)
-    return [NudgeResponse(**n) for n in nudges]
+    # One ranked feed (the app shows the first three); stable, so equal ranks keep their order.
+    return [NudgeResponse(**n) for n in sorted(nudges, key=lambda n: n["rank"])]
 
 
 @router.get("/net-worth-projection", response_model=ProjectionResponse)

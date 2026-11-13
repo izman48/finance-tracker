@@ -5,7 +5,7 @@ import type { PlanBudget, PlanResponse } from './plan'
  *  at £370.50: £330.50 spent + £40.00 coming up, over its £300 limit). */
 export function planBudget(over: Partial<PlanBudget> = {}): PlanBudget {
   return {
-    budget_id: 'pb2', category: 'Groceries', limit: '250.00', spent: '120.00', coming_up: '0.00',
+    budget_id: 'pb2', category: 'Groceries', limit: '250.00', spent: '120.00', coming_up: '0.00', planned: '250.00',
     status: 'under_pace', over_by: '0.00', commitments: [], commitment_count: 0, other_purchases: '120.00', ...over,
   }
 }
@@ -41,7 +41,7 @@ export function planResponse(over: Partial<PlanResponse> = {}): PlanResponse {
       items: [
         planBudget({
           budget_id: 'pb1', category: 'Eating out', limit: '300.00', spent: '330.50', coming_up: '40.00',
-          status: 'over', over_by: '30.50', other_purchases: '310.50',
+          planned: '370.50', status: 'over', over_by: '30.50', other_purchases: '310.50',
           commitments: [
             { commitment_id: 'c-pz', label: 'Pizza club', date: '2026-11-06', amount: '20.00', status: 'paid', transaction_id: 'tx-pz1' },
             { commitment_id: 'c-pz', label: 'Pizza club', date: '2026-11-20', amount: '20.00', status: 'due', transaction_id: null },

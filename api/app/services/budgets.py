@@ -389,7 +389,8 @@ def _left_before_marks(inputs: CycleBudgets) -> Decimal:
 
 # --- nudges (T-09-4b) ------------------------------------------------------------------
 
-AT_LIMIT, PACE = "at_limit", "pace"
+AT_LIMIT, PACE, OVER_SOON = "at_limit", "pace", "over_soon"
+RAISE_STEP = 50
 
 
 def _money(amount: Decimal) -> str:
@@ -423,6 +424,9 @@ def budget_nudges(db: Session, user) -> list[dict]:
                 if b.spent > limit else
                 f"{b.category} has reached its {_money(limit)} budget {_left(days_left)}."
             )
+        elif b.over_by_payday > 0:
+            # Under the limit, but the instalments still to come take it over (T-24-5).
+            kind = OVER_SOON
         elif b.status == "ahead_of_pace" and early:
             kind = PACE
             body = f"{b.category} is ahead of pace: {_money(b.spent)} of {_money(limit)} {_left(days_left)}."
@@ -431,12 +435,55 @@ def budget_nudges(db: Session, user) -> list[dict]:
         nudge = _fire(db, user, b.id, cycle_start, kind)
         if nudge is None or nudge.dismissed_at is not None:
             continue
+        if kind == OVER_SOON:
+            out.append({"id": f"budget-{nudge.id}", "rank": 10, "source": None, "as_of": cycle_start,
+                        **_will_go_over(b, cycle_start)})
+            continue
         out.append({
             "id": f"budget-{nudge.id}", "rank": 10, "body": body,
             "detail": f"Spent {_money(b.spent)} of {_money(limit)} this pay cycle, from {cycle_start:%-d %b}.",
             "source": None, "as_of": cycle_start,
         })
     return out
+
+
+def _will_go_over(b: BudgetResponse, cycle_start: date) -> dict:
+    """The "will go over" copy (spec T-24-1), built when shown from current
+    figures; the nudge row stores none. Labels are bank text: plain text."""
+    limit, coming = Decimal(b.limit_pounds), b.coming_up.amount
+    total = b.spent + coming
+    raise_to = math.ceil(total / RAISE_STEP) * RAISE_STEP
+    names, many = _commitment_names(b.coming_up.items, b.coming_up.commitment_count)
+    when: dict[str, list] = {}
+    for i in b.coming_up.items:
+        when.setdefault(i.label, []).append(i)
+    coming_text = "; ".join(f"{label} {_money(sum((i.amount for i in items), Decimal(0)))} ({_dates([i.due_date for i in items])})"
+                            for label, items in when.items())
+    return {
+        "title": f"{b.category} will go over",
+        "body": (f"{_money(limit - b.spent)} left, but {names} {'have' if many else 'has'} {_money(coming)} still to come "
+                 f"before payday. Raise the budget or expect to be {_money(b.over_by_payday)} over."),
+        "detail": (f"Spent {_money(b.spent)} of {_money(limit)} this pay cycle, from {cycle_start:%-d %b}. "
+                   f"Coming up: {coming_text}. {_money(total)} in all."),
+        "cta": {"label": f"Raise to £{raise_to:,}", "budget_id": b.id, "new_limit_pounds": raise_to},
+    }
+
+
+def _commitment_names(items, count: int) -> tuple[str, bool]:
+    """The largest commitment by amount (ties: earliest due), and "and N other(s)"."""
+    first = min(items, key=lambda i: (-i.amount, i.due_date))
+    others = count - 1
+    if others <= 0:
+        return first.label, False
+    return f"{first.label} and {others} other{'' if others == 1 else 's'}", True
+
+
+def _dates(days: list[date]) -> str:
+    """"18 and 25 Nov", or "30 Nov and 7 Dec" across months."""
+    same_month = len({(d.year, d.month) for d in days}) == 1
+    parts = [f"{d:%-d}" if same_month else f"{d:%-d %b}" for d in days]
+    text = parts[0] if len(parts) == 1 else f"{', '.join(parts[:-1])} and {parts[-1]}"
+    return f"{text} {days[0]:%b}" if same_month else text
 
 
 def _fire(db: Session, user, budget_id, cycle_start: date, kind: str) -> BudgetNudge | None:

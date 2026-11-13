@@ -346,6 +346,18 @@ export function homeBudgetLine(summary: BudgetSummary | undefined): { count: str
   return { count: `${summary.on_pace_count} of ${summary.budget_count}`, rest: `on pace${over}` }
 }
 
+/** "Raise to £550" on a "will go over" nudge (T-24-5): the limit the API worked out. */
+export interface NudgeRaise { label: string; budgetId: string; newLimit: number; category: string }
+
+/** The raise a server nudge offers, if any. The category is the title's, "<Category> will go over". */
+export function nudgeRaise(n: { title?: string | null; cta?: { label: string; budget_id: string; new_limit_pounds: number } | null }): NudgeRaise | undefined {
+  if (!n.cta) return undefined
+  return { label: n.cta.label, budgetId: n.cta.budget_id, newLimit: n.cta.new_limit_pounds,
+    category: (n.title ?? '').replace(/ will go over$/, '') }
+}
+
+export const raisedText = (r: NudgeRaise) => `${r.category} budget raised to ${money(r.newLimit)}.`
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** A budget nudge's id for the dismiss route (`budget-<uuid>`), or null for other nudges. */

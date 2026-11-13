@@ -1,14 +1,17 @@
 import { ReactNode, useState } from 'react'
 import NudgeRow from './NudgeRow'
 import { budgetsAPI } from '../services/api'
-import { budgetNudgeId } from '../lib/budgets'
+import { budgetNudgeId, raisedText, type NudgeRaise } from '../lib/budgets'
 
 export interface UiNudge {
   id: string
+  title?: string
   body: ReactNode
   /** The arithmetic + source + as-of behind the observation, shown in a tip. */
   detail?: string
   cta?: { label: string; onClick: () => void; disabled?: boolean }
+  /** "Raise to £N" (T-24-5): sets the budget's limit; the nudge then goes. */
+  raise?: NudgeRaise
 }
 
 const MAX_VISIBLE = 3
@@ -23,12 +26,32 @@ export default function NudgeFeed({ nudges }: { nudges: UiNudge[] }) {
   void dismissedAt
   const [serverDismissed, setServerDismissed] = useState<Set<string>>(new Set())
   const [failed, setFailed] = useState<Set<string>>(new Set())
+  const [raising, setRaising] = useState<string | null>(null)
+  const [raiseFailed, setRaiseFailed] = useState<string | null>(null)
+  const [announced, setAnnounced] = useState('')
 
   const visible = nudges
     .filter((n) => !serverDismissed.has(n.id) && localStorage.getItem(key(n.id)) !== '1')
     .slice(0, MAX_VISIBLE)
 
-  if (visible.length === 0) return null
+  // Polite, and always rendered, so the news survives the nudge leaving.
+  const liveRegion = <p role="status" aria-live="polite" className="sr-only">{announced}</p>
+  if (visible.length === 0) return liveRegion
+
+  const raise = (n: UiNudge) => {
+    if (!n.raise) return
+    const r = n.raise
+    setRaising(n.id)
+    setRaiseFailed(null)
+    budgetsAPI
+      .update(r.budgetId, { limit_pounds: r.newLimit })
+      .then(() => {
+        setServerDismissed((s) => new Set(s).add(n.id))
+        setAnnounced(raisedText(r))
+      })
+      .catch(() => setRaiseFailed(n.id))
+      .finally(() => setRaising(null))
+  }
 
   const dismiss = (id: string) => {
     const budgetId = budgetNudgeId(id)
@@ -49,8 +72,10 @@ export default function NudgeFeed({ nudges }: { nudges: UiNudge[] }) {
   return (
     <div className="mb-6 space-y-3" data-reveal>
       {visible.map((n) => (
-        <NudgeRow key={n.id} nudge={n} dismissFailed={failed.has(n.id)} onDismiss={() => dismiss(n.id)} />
+        <NudgeRow key={n.id} nudge={n} dismissFailed={failed.has(n.id)} onDismiss={() => dismiss(n.id)}
+          onRaise={() => raise(n)} raising={raising === n.id} raiseFailed={raiseFailed === n.id} />
       ))}
+      {liveRegion}
     </div>
   )
 }

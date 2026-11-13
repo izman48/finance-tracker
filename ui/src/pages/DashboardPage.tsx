@@ -22,6 +22,7 @@ import { loanLenders } from '../lib/homeOwed'
 import { withLoanLabels } from '../lib/loanLabel'
 import ForecastChart from '../components/ForecastChart'
 import NudgeFeed, { UiNudge } from '../components/NudgeFeed'
+import { nudgeRaise } from '../lib/budgets'
 import AnimatedNumber from '../components/ui/AnimatedNumber'
 import InfoTip from '../components/ui/InfoTip'
 import { EXPLAIN } from '../copy/statExplainers'
@@ -177,8 +178,10 @@ export default function DashboardPage() {
       : []),
     ...nudges.map((n) => ({
       id: n.id,
+      title: n.title ?? undefined,
       body: <>{n.body}</>,
       detail: n.detail,
+      raise: nudgeRaise(n),
       // ux O-2: Review opens the planned card payments it is about.
       ...(isCardOverlapNudge(n.id)
         ? { cta: { label: 'Review', onClick: () => navigate(`/commitments#${CARD_OVERLAP_ANCHOR}`) } }

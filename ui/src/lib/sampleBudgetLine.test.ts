@@ -77,17 +77,27 @@ describe('the payday strip', () => {
 describe('budget nudges in demo mode', () => {
   it('one per unpaused budget at its limit or ahead of pace early in the cycle, with the API wording', () => {
     const list = budgets()
-    const nudges = sampleResponse('/api/v1/analytics/nudges', {}) as { id: string; body: string; detail: string; rank: number }[]
+    const nudges = sampleResponse('/api/v1/analytics/nudges', {}) as { id: string; title?: string; body: string; detail: string; rank: number }[]
     const budgetNudges = nudges.filter((x) => x.id.startsWith('budget-'))
     const early = list.cycle.days_left >= list.cycle.days_total / 2
-    const due = list.budgets.filter((b) => !b.paused && (n(b.spent) >= b.limit_pounds || (b.status === 'ahead_of_pace' && early)))
+    const due = list.budgets.filter((b) => !b.paused && (n(b.spent) >= b.limit_pounds || n(b.over_by_payday) > 0
+      || (b.status === 'ahead_of_pace' && early)))
     expect(due.length).toBeGreaterThan(0)
-    expect(budgetNudges.map((x) => x.body.split(' ')[0])).toEqual(due.map((b) => b.category.split(' ')[0]))
+    expect(budgetNudges.map((x) => (x.title ?? x.body).split(' ')[0])).toEqual(due.map((b) => b.category.split(' ')[0]))
     const groceries = budgetNudges.find((x) => x.body.startsWith('Groceries'))!
     expect(groceries.body).toBe(`Groceries is ahead of pace: £${n(list.budgets[0].spent).toFixed(2)} of £320 with ${list.cycle.days_left} days left.`)
     expect(groceries.detail).toMatch(/^Spent £[\d.,]+ of £320 this pay cycle, from \d{1,2} [A-Z][a-z]{2}\.$/)
     expect(groceries.rank).toBe(10)
     expect(budgetNudges.every((x) => /^budget-[0-9a-f-]{36}$/.test(x.id))).toBe(true)
+  })
+
+  it('"will go over" for the Subscriptions budget, by the API copy and raise rule (T-24-5c)', () => {
+    const nudges = sampleResponse('/api/v1/analytics/nudges', {}) as { title?: string; body: string; detail: string; cta?: { label: string; budget_id: string; new_limit_pounds: number } }[]
+    const subs = budgets().budgets.find((b) => b.category === 'Subscriptions')!
+    const x = nudges.find((m) => m.title === 'Subscriptions will go over')!
+    expect(x.body).toBe('£20 left, but Netflix and 1 other have £24.98 still to come before payday. Raise the budget or expect to be £4.98 over.')
+    expect(x.cta).toEqual({ label: 'Raise to £50', budget_id: subs.id, new_limit_pounds: 50 })
+    expect(x.detail).toMatch(/^Spent £0 of £20 this pay cycle, from \d{1,2} [A-Z][a-z]{2}\. Coming up: .*£24\.98 in all\.$/)
   })
 
   it('a paused budget never nudges', () => {

@@ -281,6 +281,15 @@ class AssetDecomposition(BaseModel):
     flows_recorded: int
 
 
+class NudgeCta(BaseModel):
+    """"Raise to £550": the app sets this budget's limit through the normal
+    budget update (T-24-5)."""
+
+    label: str
+    budget_id: uuid.UUID
+    new_limit_pounds: int
+
+
 class NudgeResponse(BaseModel):
     """An honest, dismissible observation: a fact + its arithmetic and source."""
 
@@ -292,6 +301,9 @@ class NudgeResponse(BaseModel):
     # nudge about the user's own data, e.g. duplicate commitments (T-08-25).
     source: str | None
     as_of: date | None
+    # "Eating out will go over" (T-24-5); null for nudges with body only.
+    title: str | None = None
+    cta: NudgeCta | None = None
 
 
 class ProjectionPoint(BaseModel):

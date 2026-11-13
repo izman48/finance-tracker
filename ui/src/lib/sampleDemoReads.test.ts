@@ -90,3 +90,19 @@ describe('demo Plan: three sources and overdue bills', () => {
     expect(mortgage.map((i) => [i.status, (i.due_date ?? "") < today])).toEqual([["due", true]])
   })
 })
+
+describe('demo Plan agrees with demo Budgets (T-24-5b)', () => {
+  const plan = get<import('./plan').PlanResponse>('/plan')
+  const list = get<{ budgets: { category: string; paused: boolean; coming_up: { amount: string } }[] }>('/budgets')
+
+  it("each budget's coming up is the Budgets tab's", () => {
+    const tab = Object.fromEntries(list.budgets.filter((b) => !b.paused).map((b) => [b.category, b.coming_up.amount]))
+    expect(Object.fromEntries(plan.budgets.items.map((b) => [b.category, b.coming_up]))).toEqual(tab)
+  })
+
+  it('subscriptions sit under the Subscriptions budget, not in Fixed', () => {
+    const subs = plan.budgets.items.find((b) => b.category === 'Subscriptions')
+    expect(subs?.commitments.map((c) => c.label).sort()).toEqual(['Netflix', 'Spotify'])
+    expect(plan.fixed.groups.flatMap((g) => g.items).some((i) => i.label === 'Netflix' || i.label === 'Spotify')).toBe(false)
+  })
+})

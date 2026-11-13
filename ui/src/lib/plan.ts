@@ -59,6 +59,8 @@ export interface PlanBudget {
   limit: Money
   spent: Money
   coming_up: Money
+  /** max(limit, spent + coming up), from the API (T-24-4c): what this row counts; rows sum to `planned_total`. */
+  planned: Money
   status: PaceStatus | 'budget_used' | null
   over_by: Money
   commitments: PlanBudgetCommitment[]

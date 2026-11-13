@@ -34,7 +34,9 @@ describe('demo Plan', () => {
 
   it('the lines add up to the penny', () => {
     expect(n(plan.not_planned)).toBe(n(plan.income.total) - n(plan.fixed.total) - n(plan.budgets.planned_total))
-    expect(n(plan.budgets.planned_total)).toBe(sum(plan.budgets.items.map((b) => String(Math.max(Number(b.limit), Number(b.spent) + Number(b.coming_up))))))
+    // Each budget carries what it counts (T-24-4c), and the rows add up to the line (ux on #297).
+    for (const b of plan.budgets.items) expect(n(b.planned)).toBe(Math.max(n(b.limit), n(b.spent) + n(b.coming_up)))
+    expect(n(plan.budgets.planned_total)).toBe(sum(plan.budgets.items.map((b) => b.planned)))
     expect(n(plan.fixed.total)).toBe(n(plan.fixed.paid) + n(plan.fixed.to_pay))
     expect(n(plan.fixed.total)).toBe(sum(plan.fixed.groups.map((g) => g.total)))
     expect(n(plan.income.total)).toBe(sum(plan.income.items.map((i) => i.amount)))

@@ -1118,13 +1118,14 @@ function planResponse() {
     const coming = sum(commitments.filter((c) => c.status === 'due'))
     return {
       budget_id: b.id, category: b.category, limit: r2(b.limit_pounds), spent: b.spent, coming_up: r2(coming),
+      planned: r2(Math.max(b.limit_pounds, Number(b.spent) + coming)),
       status: b.status, over_by: b.over_by, commitments, commitment_count: commitments.length,
       other_purchases: r2(Math.max(0, Number(b.spent) - sum(commitments.filter((c) => c.status === 'paid')))),
     }
   })
   const incomeTotal = sum(income)
   const fixedTotal = sum(fixedItems)
-  const plannedTotal = planBudgets.reduce((t, b) => t + Math.max(Number(b.limit), Number(b.spent) + Number(b.coming_up)), 0)
+  const plannedTotal = planBudgets.reduce((t, b) => t + Number(b.planned), 0)
   const notPlanned = incomeTotal - fixedTotal - plannedTotal
   return {
     cycle: { start: list.cycle.start, end: list.cycle.end, days_left: list.cycle.days_left },

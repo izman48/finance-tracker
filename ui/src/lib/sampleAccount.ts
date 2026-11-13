@@ -11,7 +11,7 @@
  */
 
 import {
-  SAMPLE_BUDGETS_MONTHLY, sampleBudgetHistory, sampleBudgetList, sampleBudgetNudges, sampleBudgetProjection, type BudgetLedgerTx,
+  SAMPLE_BUDGETS_MONTHLY, sampleBudgetHistory, sampleBudgetList, sampleBudgetNudges, sampleBudgetProjection, type BudgetLedgerTx, type SampleScheduledBill,
 } from './sampleBudgets'
 import { sampleInvestmentGraph } from './sampleInvestments'
 
@@ -243,7 +243,7 @@ const purchaseKind = (tx: SampleTx) => (ROLE[tx.account_id] === 'credit' ? 'cred
 // Budgets (T-11-8) read the same ledger: purchases count, commitments,
 // transfers and card payoffs are named as not counted.
 const BUDGET_LEDGER: BudgetLedgerTx[] = L.map((tx) => ({
-  category: tx.category, amount: tx.amount - paidBackOn(tx.id), daysAgo: tx.daysAgo,
+  category: tx.category, amount: tx.amount - paidBackOn(tx.id), daysAgo: tx.daysAgo, label: tx.description,
   kind: tx.excluded_reason === 'internal_transfer' ? 'transfer'
     : tx.excluded_reason === 'card_payment' ? 'card_payoff'
     : !isPurchase(tx) ? 'other'
@@ -519,6 +519,14 @@ function summaryResponse() {
   }
 }
 
+// Subscriptions the demo forecast schedules (T-24-5b): the same list feeds
+// budgets' coming up and the dotted line, so they agree with the forecast.
+// Each sits in its latest payment's category, as the API derives it (T-24-2).
+const SCHEDULED_BILLS: SampleScheduledBill[] = [
+  { id: 'sc-Netflix', label: 'Netflix', amount: 12.99, nextIn: 20 },
+  { id: 'sc-Spotify', label: 'Spotify', amount: 11.99, nextIn: 18 },
+].map((b) => ({ ...b, category: L.find((tx) => tx.description === b.label && tx.is_commitment)?.category ?? null }))
+
 function forecastTimeline(horizon = '30') {
   // The horizon control must actually move the chart: build a timeline whose
   // length matches the requested window, with the monthly income/bills cycle
@@ -538,6 +546,9 @@ function forecastTimeline(horizon = '30') {
       if (i === r.due_in) { bal -= r.amount; events.push({ label: r.label, amount: -r.amount, kind: 'repayment', projected: r.projected }) }
     }
     if (i > 0 && dom === 15) { bal -= 1100; events.push({ label: 'Rent', amount: -1100, kind: 'commitment' }) }
+    for (const b of SCHEDULED_BILLS) {
+      if (i > 0 && dom === b.nextIn) { bal -= b.amount; events.push({ label: b.label, amount: -b.amount, kind: 'commitment' }) }
+    }
     if (i > 0 && dom === 24) { bal += 3200; events.push({ label: 'Salary', amount: 3200, kind: 'income' }) }
     if (i > 0 && dom === MORTGAGE_BILL.nextIn) { bal -= MORTGAGE_BILL.amount; events.push({ label: MORTGAGE_BILL.label, amount: -MORTGAGE_BILL.amount, kind: 'commitment' }) }
     bal = Math.round(bal * 100) / 100
@@ -556,11 +567,12 @@ function forecastTimeline(horizon = '30') {
 // The forecast with its budget line (T-11-10): the sample budgets by the API's rule.
 function forecastResponse(horizon = '30') {
   const forecast = forecastTimeline(horizon)
-  const list = sampleBudgetList(BUDGET_LEDGER, PAYDAY_AGO, false, SAMPLE_PAID_BACK)
+  const list = sampleBudgetList(BUDGET_LEDGER, PAYDAY_AGO, false, SAMPLE_PAID_BACK, SCHEDULED_BILLS)
   const reach = forecast.timeline.find((t) => t.date === list.cycle.end)
     ?? forecastTimeline('payday').timeline.find((t) => t.date === list.cycle.end)
-  const { projection, reason } = sampleBudgetProjection(list, forecast.timeline, reach ? reach.balance : forecast.end_balance)
-  const gross = sampleBudgetList(GROSS_BUDGET_LEDGER, PAYDAY_AGO, false)
+  const { projection, reason } = sampleBudgetProjection(list, forecast.timeline, reach ? reach.balance : forecast.end_balance,
+    SCHEDULED_BILLS)
+  const gross = sampleBudgetList(GROSS_BUDGET_LEDGER, PAYDAY_AGO, false, [], SCHEDULED_BILLS)
   const raised = Number(list.summary_this_cycle.left) - Number(gross.summary_this_cycle.left)
   return {
     ...forecast,
@@ -687,7 +699,7 @@ function decompositionResponse(months: number) {
 }
 
 function nudgesResponse() {
-  return [...cardOverlapNudges(), ...cashDragNudges(), ...sampleBudgetNudges(sampleBudgetList(BUDGET_LEDGER, PAYDAY_AGO, false, SAMPLE_PAID_BACK))]
+  return [...cardOverlapNudges(), ...cashDragNudges(), ...sampleBudgetNudges(sampleBudgetList(BUDGET_LEDGER, PAYDAY_AGO, false, SAMPLE_PAID_BACK, SCHEDULED_BILLS))]
 }
 
 // T-12-7a (ux demo): a manual "Card bill" ticked as a card payment, due
@@ -1071,7 +1083,7 @@ export function sampleResponse(url: string, params: unknown): unknown {
   if (is('/liabilities')) return liabilitiesResponse()
   if (is('/card-plans')) return cardPlansResponse()
   if (is('/budgets/history')) return sampleBudgetHistory(BUDGET_LEDGER, PAYDAY_AGO, Number(p.cycles) || 6)
-  if (is('/budgets')) return sampleBudgetList(BUDGET_LEDGER, PAYDAY_AGO, p.include === 'categories', SAMPLE_PAID_BACK)
+  if (is('/budgets')) return sampleBudgetList(BUDGET_LEDGER, PAYDAY_AGO, p.include === 'categories', SAMPLE_PAID_BACK, SCHEDULED_BILLS)
   if (is('/rules')) return { packs: [], personal: [] }
   if (is('/audit')) return auditResponse()
   return {}

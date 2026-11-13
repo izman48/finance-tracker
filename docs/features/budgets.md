@@ -59,6 +59,13 @@ cycle only: a pending Claude change can't lift the line at any payday eve
 (tested). Instalments past the horizon are unknown, so a cycle the horizon
 cuts subtracts more, never less.
 
+**Demo (T-24-5b):** `sampleBudgets.ts` mirrors the counting, coming-up,
+pace and dotted-line rules. A sample Subscriptions budget (£20) holds the
+sample's two subscriptions. They're due before payday, so demo shows the
+"will go over" bar. They come from `SCHEDULED_BILLS` in `sampleAccount.ts`,
+the same list the demo forecast schedules, so coming up never holds an
+instalment the demo forecast doesn't.
+
 ## Code
 
 **API**, web (`api/app/routers/budgets.py`):

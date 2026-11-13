@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter } from 'react-router-dom'
 import { sampleResponse } from './sampleAccount'
+import { sampleBudgetList } from './sampleBudgets'
 import type { BudgetsResponse } from './budgets'
 import type { HistoryResponse } from './budgetHistory'
 import BudgetsView from '../components/budgets/BudgetsView'
@@ -12,9 +13,10 @@ import HistoryView from '../components/budgets/HistoryView'
 // are computed from the sample ledger, so they reconcile with Spending.
 const list = () => sampleResponse('/api/v1/budgets', {}) as BudgetsResponse
 const history = () => sampleResponse('/api/v1/budgets/history', { cycles: 6 }) as HistoryResponse
+// A budget counts purchases and, in its own category, paid commitments (T-24-3).
 const purchases = (from: string, to: string, category: string) => {
   const res = sampleResponse('/api/v1/analytics/spending', {
-    period: 'custom', frm: from, to, lens: 'purchases', exclude_commitments: true,
+    period: 'custom', frm: from, to, lens: 'purchases', exclude_commitments: false,
   }) as { by_category: { category: string; total: string }[] }
   return Number(res.by_category.find((c) => c.category === category)?.total ?? 0)
 }
@@ -74,7 +76,9 @@ describe('sample budgets (this cycle)', () => {
   it('lists the budgetable categories only when asked', () => {
     expect(list().budgetable_categories ?? null).toBeNull()
     const withCats = sampleResponse('/api/v1/budgets', { include: 'categories' }) as BudgetsResponse
-    expect(withCats.budgetable_categories).toEqual(['Eating out', 'Groceries', 'Shopping', 'Transport'])
+    // Purchase categories and, since T-24-3, commitment categories too.
+    expect(withCats.budgetable_categories).toEqual(
+      ['Bills', 'Eating out', 'Groceries', 'Health', 'Housing', 'Shopping', 'Subscriptions', 'Transport'])
   })
 
   it('the projection\'s "My budgets" choice uses the sample budgets', () => {
@@ -86,6 +90,42 @@ describe('sample budgets (this cycle)', () => {
     expect(n(p.contribution_basis.budgets_monthly)).toBe(total)
     expect(n(p.contribution_basis.spending_applied)).toBe(total)
     expect(p.contribution_basis.budgets_fallback).toBe(false)
+  })
+})
+
+describe('sample budgets with commitments (T-24-5b)', () => {
+  it('coming up is exactly what the demo forecast schedules in the category before payday', () => {
+    const data = list()
+    const subs = data.budgets.find((b) => b.category === 'Subscriptions')!
+    const f = sampleResponse('/api/v1/analytics/forecast', { horizon: 'payday' }) as {
+      timeline: { date: string; events: { label: string; amount: number }[] }[]
+    }
+    const labels = new Set(['Netflix', 'Spotify']) // the sample's subscriptions
+    const scheduled = f.timeline.filter((t) => t.date > isoToday() && t.date <= data.cycle.end)
+      .flatMap((t) => t.events.filter((e) => labels.has(e.label)).map((e) => [e.label, t.date, -e.amount]))
+    expect(scheduled.length).toBeGreaterThan(0)
+    expect(subs.coming_up!.items.map((i) => [i.label, i.due_date, n(i.amount)])).toEqual(scheduled)
+    expect(n(subs.coming_up!.amount)).toBeCloseTo(scheduled.reduce((t, s) => t + (s[2] as number), 0), 2)
+    expect(n(subs.over_by_payday)).toBeCloseTo(Math.max(0, n(subs.spent) + n(subs.coming_up!.amount) - subs.limit_pounds), 2)
+    expect(n(subs.over_by_payday)).toBeGreaterThan(0) // the demo shows the "will go over" bar
+  })
+
+  it('counts, places and reports commitments by the API rule (synthetic ledger)', () => {
+    const tx = (category: string, amount: number, daysAgo: number, kind: 'purchase' | 'commitment', label = 'Club') =>
+      ({ category, amount, daysAgo, kind, label })
+    const ledger = [
+      tx('Subscriptions', 10, 3, 'commitment'), tx('Subscriptions', 300, 2, 'commitment'), // instalment + one-off
+      tx('Bills', 40, 2, 'commitment', 'Power'), tx('', 7, 2, 'commitment', 'Mystery'),
+      tx('Groceries', 20, 1, 'purchase'),
+    ]
+    const club = { id: 'sc-Club', label: 'Club', category: 'Subscriptions', amount: 10, nextIn: 27 } // due 3 days ago
+    const out = sampleBudgetList(ledger, 6, false, [], [club])
+    const subs = out.budgets.find((b) => b.category === 'Subscriptions')!
+    expect(n(subs.spent)).toBe(310)
+    expect(n(out.not_counted.commitments)).toBe(40)
+    expect(n(out.not_counted.commitments_no_category)).toBe(7)
+    const share = 7 / 30
+    expect(n(subs.pace_spent)).toBeCloseTo(10 + (subs.limit_pounds - 10) * share, 2) // only the £10 instalment is placed
   })
 })
 

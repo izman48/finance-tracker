@@ -38,7 +38,7 @@ from sqlalchemy.orm import Session
 from app.models import Account, CommitmentDirection, CommitmentRule, CommitmentStatus, Transaction
 
 from .cadence import _step, _step_back
-from .commitments import _match_key, _normalise_merchant, transaction_match_key
+from .commitments import _normalise_merchant, rule_match_keys, transaction_match_key
 from .common import _d, _load, detect_internal_transfers, resolve_roles
 from .planned_matching import _STOP_WORDS, tolerance
 
@@ -156,7 +156,9 @@ def _settle(db: Session, user, today: date, due_before: date,
 
 
 def income_rule_keys(rule: CommitmentRule) -> set[str]:
-    return {k for k in (rule.match_key, _match_key(rule.direction, rule.label)) if k}
+    """The same keys every other matcher uses (`rule_match_keys`), so a
+    stored "... BGC" key still answers to credits without the suffix."""
+    return rule_match_keys(rule)
 
 
 def _exact_match(rule: CommitmentRule, expected: date, credits: list[_Credit]) -> _Credit | None:

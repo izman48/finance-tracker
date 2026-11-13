@@ -5,6 +5,7 @@ import re
 import statistics
 import uuid as _uuid
 from collections import Counter, defaultdict
+from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -62,6 +63,15 @@ _PAYPAL_GLUED_REF = re.compile(r"(PAYPAL \*[^*]+?)\*\S+")
 # "*" was already gone: the last word of "paypal spotify p12a3b4", seven
 # characters starting with P and holding at least two digits.
 _STORED_PAYPAL_REF = re.compile(r"^(paypal .+) p(?=(?:[a-z]*\d){2})[a-z0-9]{6}$")
+# How a UK bank says the money moved, appended after the payee (T-25-1):
+# standing order, faster payment, direct debit, bank giro credit, card
+# payment. It changes when the payment method does (rent set up from an
+# "... FT" payment, then paid "... STO"), so it is never part of the name.
+# Only trailing words are dropped, longest phrase first, and never the last
+# word left: "DD SHOP" and a payee called "SO" keep their names.
+_PAYMENT_TYPE_SUFFIXES = tuple(phrase.split() for phrase in (
+    "FIRST DDR PAYMENT", "FIRST PAYMENT", "STO", "FT", "DDR", "BGC", "CPM", "SO", "DD",
+))
 
 
 def _normalise_merchant(raw: str | None) -> str:
@@ -81,8 +91,21 @@ def _normalise_merchant(raw: str | None) -> str:
         and not _DATE_TOKEN.match(t)
         and not _REFERENCE_RUN.search(t)
     ]
+    tokens = _drop_payment_type_suffixes(tokens)
     # Fall back to the raw text if normalising left nothing (e.g. "123456").
     return " ".join(tokens).strip() or (raw or "").strip().upper()
+
+
+def _drop_payment_type_suffixes(tokens: list[str]) -> list[str]:
+    dropped = True
+    while dropped:
+        dropped = False
+        for phrase in _PAYMENT_TYPE_SUFFIXES:
+            if len(tokens) > len(phrase) and tokens[-len(phrase):] == phrase:
+                tokens = tokens[:-len(phrase)]
+                dropped = True
+                break
+    return tokens
 
 
 def _match_key(direction: str, merchant: str) -> str:
@@ -136,24 +159,77 @@ def transaction_match_key(tx: Transaction) -> str:
     return _match_key(direction, (tx.merchant_name or tx.description or "Unknown").strip())
 
 
-def commitment_match_keys(db: Session, user) -> set[str]:
-    """Match keys of confirmed commitments, for flagging/excluding their transactions.
+AMOUNT_TOLERANCE_SHARE = Decimal("0.25")
+AMOUNT_TOLERANCE_FLOOR = Decimal("5")
 
-    Detected commitments carry the match_key they were grouped under; manual ones
-    fall back to their label, which catches commitments added from a transaction.
+
+def amount_matches(tx_amount: Decimal, commitment_amount: Decimal) -> bool:
+    """Within max(25%, GBP 5) of the commitment's amount (owner, 2026-11-02):
+    wide enough for price rises, narrow enough that a one-off purchase under
+    the same descriptor is not taken for the subscription."""
+    expected = abs(commitment_amount)
+    allowed = max(expected * AMOUNT_TOLERANCE_SHARE, AMOUNT_TOLERANCE_FLOOR)
+    return abs(abs(tx_amount) - expected) <= allowed
+
+
+@dataclass(frozen=True)
+class CommitmentMatcher:
+    """Which commitment, if any, a transaction pays (T-19-1, T-25-1): its key
+    must be one of the rule's keys (`rule_match_keys`) and its amount near
+    the rule's. The one matcher for budgets, Spending, Plan and the
+    transactions list.
+
+    `by_key` maps a key to (rule, amount) pairs; amount None means the rule
+    matches on its key alone: rules with no amount, and rules linked to a
+    holding or loan, whose extra payments (an overpayment, a lump sum) move
+    money into the holding and are not spending either.
     """
-    rules = (
-        db.query(CommitmentRule)
-        .filter(
-            CommitmentRule.user_id == user.id,
-            CommitmentRule.status == CommitmentStatus.CONFIRMED.value,
+    by_key: dict[str, tuple[tuple[object, Decimal | None], ...]]
+
+    def matches(self, tx: Transaction) -> bool:
+        return self.rule_for(tx) is not None
+
+    def rule_for(self, tx: Transaction):
+        """The rule this transaction pays, or None. A key-only rule on its
+        key wins (the safe side: the payment stays out of spending), then
+        the rule whose amount is closest."""
+        candidates = self.by_key.get(transaction_match_key(tx), ())
+        key_only = next((rule for rule, amount in candidates if amount is None), None)
+        if key_only is not None:
+            return key_only
+        paid = abs(_d(tx.amount))
+        near = [(abs(paid - amount), rule) for rule, amount in candidates if amount_matches(paid, amount)]
+        return min(near, key=lambda n: n[0])[1] if near else None
+
+
+NO_COMMITMENTS = CommitmentMatcher({})
+
+
+def build_commitment_matcher(rules, linked_ids: set) -> CommitmentMatcher:
+    """Detected rules carry the key they were grouped under; manual ones also
+    answer to their label, which catches commitments added from a transaction."""
+    by_key: dict[str, list[tuple[object, Decimal | None]]] = defaultdict(list)
+    for rule in rules:
+        amount = _d(rule.amount)
+        expected = None if rule.id in linked_ids or amount == 0 else amount
+        for key in rule_match_keys(rule):
+            by_key[key].append((rule, expected))
+    return CommitmentMatcher({k: tuple(v) for k, v in by_key.items()})
+
+
+def commitment_matcher(db: Session, user, rules=None) -> CommitmentMatcher:
+    """The matcher for `rules` (default: every confirmed commitment), built
+    once per request."""
+    if rules is None:
+        rules = (
+            db.query(CommitmentRule)
+            .filter(
+                CommitmentRule.user_id == user.id,
+                CommitmentRule.status == CommitmentStatus.CONFIRMED.value,
+            )
+            .all()
         )
-        .all()
-    )
-    keys: set[str] = set()
-    for r in rules:
-        keys |= rule_match_keys(r)
-    return keys
+    return build_commitment_matcher(rules, linked_commitment_ids(db, user.id))
 
 
 def detect_recurring(db: Session, user) -> list[dict]:
@@ -304,7 +380,7 @@ def commitment_from_transaction(db: Session, user, transaction_id: str, cadence:
         (
             r
             for r in db.query(CommitmentRule).filter(CommitmentRule.user_id == user.id)
-            if r.match_key == key
+            if key in rule_match_keys(r)
         ),
         None,
     )

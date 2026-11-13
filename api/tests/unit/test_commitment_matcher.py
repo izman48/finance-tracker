@@ -1,0 +1,157 @@
+"""Which transactions are a confirmed commitment's payments (T-19-1).
+
+A merchant bills one-off purchases under the same descriptor as its
+subscription, so the description key alone tags a large one-off as the
+commitment and hides it from Spending. A transaction matches only when its
+key matches and its amount is within max(25% of the commitment amount, GBP 5)
+of some commitment with that key.
+"""
+import uuid
+from decimal import Decimal
+from types import SimpleNamespace
+
+import pytest
+
+from app.services.analytics.commitments import NO_COMMITMENTS, build_commitment_matcher
+
+KEY = "expense:streamco com/uk london"
+
+
+def _rule(amount, match_key=KEY, label="StreamCo", direction="expense"):
+    return SimpleNamespace(
+        id=uuid.uuid4(), direction=direction, label=label, match_key=match_key,
+        amount=Decimal(amount),
+    )
+
+
+def _tx(amount, description="STREAMCO.COM/UK LONDON", ttype="debit"):
+    return SimpleNamespace(
+        transaction_type=ttype, merchant_name=None, description=description, amount=Decimal(amount),
+    )
+
+
+@pytest.mark.parametrize("commitment,paid,matches", [
+    ("9.99", "9.99", True),
+    ("9.99", "10.49", True),      # a price rise
+    ("9.99", "14.99", True),      # GBP 5 floor (25% would be 2.50)
+    ("9.99", "15.00", False),
+    ("9.99", "4.99", True),
+    ("9.99", "4.98", False),
+    ("100.00", "125.00", True),   # 25% of 100 = 25 (more than GBP 5)
+    ("100.00", "125.01", False),
+    ("100.00", "75.00", True),
+    ("100.00", "74.99", False),
+    ("9.99", "1499.00", False),   # a one-off purchase under the same descriptor
+])
+def test_amount_tolerance_is_max_of_five_pounds_and_a_quarter(commitment, paid, matches):
+    matcher = build_commitment_matcher([_rule(commitment)], linked_ids=set())
+    assert matcher.matches(_tx(paid)) is matches
+
+
+def test_the_amount_sign_of_the_transaction_does_not_matter():
+    matcher = build_commitment_matcher([_rule("9.99")], linked_ids=set())
+    assert matcher.matches(_tx("-9.99"))
+
+
+def test_a_different_description_never_matches_whatever_the_amount():
+    matcher = build_commitment_matcher([_rule("9.99")], linked_ids=set())
+    assert not matcher.matches(_tx("9.99", description="OTHERCO LONDON"))
+
+
+def test_two_commitments_on_one_key_each_match_their_own_amount():
+    matcher = build_commitment_matcher([_rule("9.99"), _rule("59.99")], linked_ids=set())
+    assert matcher.matches(_tx("9.99"))
+    assert matcher.matches(_tx("59.99"))
+    assert not matcher.matches(_tx("30.00"))  # between the two, outside both tolerances
+
+
+def test_a_rule_without_an_amount_matches_on_its_key_alone():
+    matcher = build_commitment_matcher([_rule("0")], linked_ids=set())
+    assert matcher.matches(_tx("1499.00"))
+
+
+def test_a_rule_linked_to_a_holding_or_loan_matches_on_its_key_alone():
+    """A mortgage overpayment or an ISA lump sum under the bill's descriptor
+    moves money into the holding; it is not spending."""
+    linked = _rule("500.00")
+    matcher = build_commitment_matcher([linked], linked_ids={linked.id})
+    assert matcher.matches(_tx("5000.00"))
+
+
+def test_a_label_derived_key_still_matches_with_the_amount_check():
+    matcher = build_commitment_matcher([_rule("9.99", match_key=None, label="STREAMCO.COM/UK LONDON")], linked_ids=set())
+    assert matcher.matches(_tx("9.99"))
+    assert not matcher.matches(_tx("1499.00"))
+
+
+def test_no_commitments_matches_nothing():
+    assert not NO_COMMITMENTS.matches(_tx("9.99"))
+    assert not build_commitment_matcher([], linked_ids=set()).matches(_tx("9.99"))
+
+
+def test_a_key_only_rule_wins_over_an_amount_rule_on_the_same_key():
+    """Fails safe towards the linked or amount-less rule: any payment on its key stays excluded."""
+    linked, priced = _rule("500.00"), _rule("9.99")
+    assert build_commitment_matcher([linked, priced], linked_ids={linked.id}).matches(_tx("5000.00"))
+    assert build_commitment_matcher([_rule("0"), priced], linked_ids=set()).matches(_tx("5000.00"))
+
+
+# --- T-25-1: bank payment-type suffixes are not part of the name ----------
+# Synthetic descriptors shaped like real UK bank text: the same payee is
+# paid by standing order one month ("... STO") and faster payment the next
+# ("... FT"), and a direct debit's first collection says "FIRST DDR PAYMENT".
+
+def _manual(amount, label, match_key=None, direction="expense"):
+    key = match_key if match_key is not None else f"{direction}:{label.lower()}"
+    return _rule(amount, match_key=key, label=label, direction=direction)
+
+
+def test_rent_paid_by_standing_order_matches_a_commitment_set_up_from_a_faster_payment():
+    rent = _manual("1500.00", "ACME LETTINGS RENT 12HIGHSTREE FT")
+    matcher = build_commitment_matcher([rent], linked_ids=set())
+    assert matcher.matches(_tx("1500.00", description="ACME LETTINGS RENT 12HIGHSTREE STO"))
+
+
+def test_a_later_direct_debit_matches_a_commitment_set_up_from_its_first_collection():
+    loan = _manual("42.50", "LENDCO BANK UUID-55500011122 FIRST DDR PAYMENT DDR")
+    matcher = build_commitment_matcher([loan], linked_ids=set())
+    assert matcher.matches(_tx("42.50", description="LENDCO BANK UUID-55500011122 DDR"))
+
+
+def test_a_weekly_card_payment_still_matches_its_commitment_within_tolerance():
+    box = _rule("30.00", match_key="expense:veg box cpm", label="VEG BOX ON 04 OCT CPM")
+    matcher = build_commitment_matcher([box], linked_ids=set())
+    assert matcher.matches(_tx("30.87", description="VEG BOX ON 11 NOV CPM"))
+
+
+def test_a_large_one_off_under_the_subscription_descriptor_still_does_not_match():
+    sub = _manual("9.99", "STREAMCO.COM/UK LONDON")
+    matcher = build_commitment_matcher([sub], linked_ids=set())
+    assert not matcher.matches(_tx("1499.00"))
+
+
+def test_a_card_refund_is_not_a_payment_of_the_expense_commitment():
+    sub = _manual("9.99", "STREAMCO.COM/UK LONDON")
+    matcher = build_commitment_matcher([sub], linked_ids=set())
+    assert not matcher.matches(_tx("4.99", ttype="credit"))
+    assert not matcher.matches(_tx("9.99", ttype="credit"))
+
+
+def test_an_income_paid_by_bank_giro_credit_matches_its_income_commitment():
+    pay = _manual("800.00", "SMITH J RENT BGC", direction="income")
+    matcher = build_commitment_matcher([pay], linked_ids=set())
+    assert matcher.matches(_tx("800.00", description="SMITH J RENT", ttype="credit"))
+
+
+def test_a_different_payee_with_the_same_suffix_does_not_match():
+    rent = _manual("1500.00", "ACME LETTINGS RENT 12HIGHSTREE FT")
+    matcher = build_commitment_matcher([rent], linked_ids=set())
+    assert not matcher.matches(_tx("1500.00", description="OTHER LETTINGS RENT STO"))
+
+
+def test_rule_for_names_the_commitment_whose_amount_is_closest():
+    small, large = _rule("9.99"), _rule("59.99")
+    matcher = build_commitment_matcher([large, small], linked_ids=set())
+    assert matcher.rule_for(_tx("10.49")) is small
+    assert matcher.rule_for(_tx("58.00")) is large
+    assert matcher.rule_for(_tx("1499.00")) is None

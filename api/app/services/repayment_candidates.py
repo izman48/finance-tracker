@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.core.clock import LONDON
 from app.models import Account, Transaction
-from app.services.analytics.commitments import commitment_match_keys
+from app.services.analytics.commitments import commitment_matcher
 from app.services.analytics.common import _d, _load, resolve_roles
 from app.services.analytics.late_income import payer_words
 from app.services.analytics.planned_matching import _words
@@ -175,9 +175,9 @@ def _eligible_spends(db: Session, user, start: date, end: date) -> list[Transact
     accounts, settings = _load(db, user)
     roles = resolve_roles(accounts, settings)
     txns = _own_transactions(db, user, start, end)
-    transfers, financed, keys = _effective_transfers(txns), financed_transaction_ids(db, user), \
-        commitment_match_keys(db, user)
-    return [t for t in txns if classify_purchase(t, transfers, roles, financed, keys) in ("credit", "cash")]
+    transfers, financed, matcher = _effective_transfers(txns), financed_transaction_ids(db, user), \
+        commitment_matcher(db, user)
+    return [t for t in txns if classify_purchase(t, transfers, roles, financed, matcher) in ("credit", "cash")]
 
 
 def _own_transactions(db: Session, user, start: date, end: date) -> list[Transaction]:

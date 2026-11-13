@@ -34,8 +34,7 @@ from app.schemas.plan import (
     PlanIncome, PlanResponse,
 )
 from app.services.analytics.cadence import _step_back, commitment_occurrences
-from app.services.analytics.commitments import commitment_match_keys, payday_dates, rule_match_keys, \
-    transaction_match_key
+from app.services.analytics.commitments import commitment_matcher, payday_dates
 from app.services.analytics.common import _d, _load, _today, resolve_roles
 from app.services.analytics.late_income import income_payments, late_incomes
 from app.services.analytics.planned_matching import planned_states
@@ -94,13 +93,13 @@ def _paid_this_cycle(db: Session, user, rules, start: date, today: date) -> list
                     Transaction.transaction_date >= datetime.combine(start, datetime.min.time(), timezone.utc),
                     Transaction.transaction_date <= datetime.combine(today, datetime.max.time(), timezone.utc))
             .all())
-    transfers, financed, keys = _effective_transfers(txns), financed_transaction_ids(db, user), commitment_match_keys(db, user)
-    rule_of = {k: r for r in rules for k in rule_match_keys(r)}
+    transfers, financed, matcher = _effective_transfers(txns), financed_transaction_ids(db, user), commitment_matcher(db, user)
+    of_rules = commitment_matcher(db, user, rules)
     out = []
     for tx in sorted(txns, key=lambda t: (t.transaction_date, str(t.id))):
-        kind = classify_purchase(tx, transfers, roles, financed, keys)
+        kind = classify_purchase(tx, transfers, roles, financed, matcher)
         if kind in ("commitment", "card_payoff"):
-            out.append((tx, kind, rule_of.get(transaction_match_key(tx))))
+            out.append((tx, kind, of_rules.rule_for(tx)))
     return out
 
 

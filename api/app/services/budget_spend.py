@@ -41,7 +41,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.models import Account, RepaymentMark, Transaction
-from app.services.analytics.commitments import commitment_match_keys
+from app.services.analytics.commitments import commitment_matcher
 from app.services.analytics.common import _d, _load, resolve_roles
 from app.services.analytics.spending import _effective_transfers, classify_purchase, financed_transaction_ids
 from app.services.paid_back import UNCATEGORISED, PaidBack, net_paid_back
@@ -94,7 +94,7 @@ def budget_spend(db: Session, user, start: date, end: date,
     )
     transfers = _effective_transfers(txns)
     financed = financed_transaction_ids(db, user)
-    commitment_keys = commitment_match_keys(db, user)
+    matcher = commitment_matcher(db, user)
 
     by_category: dict[str, Decimal] = defaultdict(Decimal)
     excluded = {name: Decimal(0) for name in (*EXCLUDED.values(), "commitments_no_category")}
@@ -102,7 +102,7 @@ def budget_spend(db: Session, user, start: date, end: date,
     counted_commitments: list[Transaction] = []
     counted: dict[uuid.UUID, Transaction] = {}
     for tx in txns:
-        kind = classify_purchase(tx, transfers, roles, financed, commitment_keys)
+        kind = classify_purchase(tx, transfers, roles, financed, matcher)
         if kind in ("credit", "cash") or (kind == "commitment" and tx.category in budgeted):
             by_category[tx.category or UNCATEGORISED] += _d(tx.amount)
             counted[tx.id] = tx

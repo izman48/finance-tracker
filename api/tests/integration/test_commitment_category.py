@@ -21,7 +21,7 @@ from tests.integration.test_transactions_endpoint import _account, _tx
 API = "/api/v1"
 
 
-def _rule(w, label, amount="10.00"):
+def _rule(w, label, amount="16.00"):
     rule = CommitmentRule(user_id=w.user.id, direction="expense", label=label, amount=Decimal(amount),
                           cadence="weekly", next_date=TODAY + timedelta(days=3),
                           source="manual", status="confirmed")
@@ -62,11 +62,21 @@ def test_a_commitment_with_no_matched_payment_has_no_category(client, db_session
     assert _categories(w) == {rule_id: None}
 
 
+def test_a_one_off_under_the_same_descriptor_never_lends_its_category(client, db_session):
+    """Should not match (T-25-1): a large purchase billed under the
+    subscription's descriptor is not its payment, however recent."""
+    w = World(client, db_session)
+    rule_id, current = _seed(w, [(9, "Entertainment")], label="STREAMCO.COM/UK LONDON")
+    w.as_user(lambda: _tx(w.db, current, "1499.00", TODAY - timedelta(days=1),
+                          merchant="STREAMCO.COM/UK LONDON", category="Shopping"))
+    assert _categories(w) == {rule_id: "Entertainment"}
+
+
 def test_a_payment_with_a_changing_reference_still_matches(client, db_session):
     """Should match: the bank's per-payment reference is not part of the key."""
     w = World(client, db_session)
     rule_id, current = _seed(w, [], label="GYM CLUB REF 1234567")
-    w.as_user(lambda: _tx(w.db, current, "30.00", TODAY - timedelta(days=3),
+    w.as_user(lambda: _tx(w.db, current, "16.00", TODAY - timedelta(days=3),
                           merchant="GYM CLUB REF 7654321", category="Health"))
     assert _categories(w) == {rule_id: "Health"}
 

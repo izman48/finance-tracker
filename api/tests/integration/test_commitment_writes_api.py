@@ -257,7 +257,9 @@ def test_a_relabelled_detected_commitment_keeps_its_key_and_is_not_re_suggested(
     assert _rules(world) == [("Streaming", "confirmed")]  # the merchant isn't suggested again
     with world.as_user():
         user = world.db.get(User, world.user.id)
-        assert key in svc.commitment_match_keys(world.db, user)  # its payments still match it
+        matcher = svc.commitment_matcher(world.db, user)
+        payments = world.db.query(Transaction).all()
+        assert payments and all(matcher.matches(t) for t in payments)  # its payments still match it
 
 
 def test_a_dismissed_commitment_is_not_re_added_by_sync(world):

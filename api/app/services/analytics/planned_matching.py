@@ -40,7 +40,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Account, PlannedItem, PlannedKind, Transaction
 
-from .commitments import commitment_match_keys, transaction_match_key
+from .commitments import commitment_matcher
 from .common import _d, _load, resolve_roles
 
 MATCH_DAYS = 7
@@ -158,10 +158,10 @@ def _real_money(db: Session, user, txns: list[Transaction]) -> list[Transaction]
     accounts, settings = _load(db, user)
     noise = classify_noise(txns, resolve_roles(accounts, settings))
     financed = financed_transaction_ids(db, user)
-    commitment_keys = commitment_match_keys(db, user)
+    commitments = commitment_matcher(db, user)
     paid_back = marked_credit_ids(db, user.id)
     return [
         tx for tx in txns
         if tx.id not in noise and tx.id not in financed and tx.id not in paid_back
-        and transaction_match_key(tx) not in commitment_keys
+        and not commitments.matches(tx)
     ]

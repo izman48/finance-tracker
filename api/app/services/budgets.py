@@ -183,7 +183,8 @@ def _status(spent: Decimal, pace: Decimal, limit: Decimal) -> str:
 @dataclass(frozen=True)
 class CycleBudgets:
     """This cycle's budgets and spend: GET /budgets and the forecast's
-    budget_projection both read them, so "left" is one number (T-09-14)."""
+    budget_projection both read them, so spent is one number (T-09-14);
+    the dotted line nets instalments still due off "left" (T-24-3b)."""
 
     cycle: Cycle
     days_total: int
@@ -363,13 +364,13 @@ def budget_projection(db: Session, user, forecast: dict) -> tuple[dict | None, s
         return sum((max(Decimal(0), Decimal(b.limit_pounds) - spent.get(b.category, Decimal(0))
                         - due(b.category, first, last)) for b in counting), Decimal(0))
 
-    left = free(inputs.spend.by_category, today + timedelta(days=1), eve, this_due)
+    free_this_cycle = free(inputs.spend.by_category, today + timedelta(days=1), eve, this_due)
     later_free = [free({}, c.start, c.end, later_due) for c in later]
 
     def used_by(day: date) -> Decimal:
         # Today's point is on the solid line: the spread starts tomorrow,
         # unless today is the day before payday (eng-a on #154).
-        used = Decimal(0) if day <= today < eve else _spread(left, today + timedelta(days=1), eve, day)
+        used = Decimal(0) if day <= today < eve else _spread(free_this_cycle, today + timedelta(days=1), eve, day)
         for c, amount in zip(later, later_free):
             if day < c.start:
                 break
@@ -382,9 +383,9 @@ def budget_projection(db: Session, user, forecast: dict) -> tuple[dict | None, s
     return {
         "payday": eve + timedelta(days=1),
         "scheduled_balance": scheduled,
-        "after_budgets_balance": scheduled - left,
+        "after_budgets_balance": scheduled - free_this_cycle,
         "series": series,
-        "left_raised_by_marks": left - before_marks,
+        "left_raised_by_marks": free_this_cycle - before_marks,
     }, None
 
 

@@ -249,13 +249,13 @@ describe('BudgetsView with the plan', () => {
     expect(t).toContain('Subscriptions £14.49')
     expect(t).toContain('Streamly Paid 4 Nov £9.99')
     expect(t).toContain('Cloudbox Coming 21 Nov £4.50')
-    expect(t).toContain('No budget: listed so you can see them.')
+    expect(t).toContain("Not in a budget. These don't count in the bars above.")
   })
 
   it('no Subscriptions card when a Subscriptions budget exists', () => {
     const data = budgetsResponse()
     data.budgets.push(budget({ id: 'b9', category: 'Subscriptions', paused: true }))
-    expect(text(html({ data, plan: planResponse() }))).not.toContain('No budget: listed so you can see them.')
+    expect(text(html({ data, plan: planResponse() }))).not.toContain("Not in a budget. These don't count in the bars above.")
   })
 
   it('a budget with commitments in it says so', () => {
@@ -266,6 +266,6 @@ describe('BudgetsView with the plan', () => {
   it('without the plan, the page is as before', () => {
     const t = text(html({}))
     expect(t).not.toContain('Includes')
-    expect(t).not.toContain('No budget: listed so you can see them.')
+    expect(t).not.toContain("Not in a budget. These don't count in the bars above.")
   })
 })

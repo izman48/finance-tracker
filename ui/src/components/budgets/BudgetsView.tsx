@@ -229,7 +229,7 @@ function SubscriptionsCard({ group }: { group: PlanCommitmentGroup }) {
         <h2 id="subscriptions-heading" className="font-display font-semibold text-slate-100">Subscriptions</h2>
         <span className="tnum font-semibold text-slate-100">{planMoney(group.total)}</span>
       </div>
-      <p className="text-xs text-slate-400 mt-1 mb-3">No budget: listed so you can see them.</p>
+      <p className="text-xs text-slate-400 mt-1 mb-3">Not in a budget. These don&apos;t count in the bars above.</p>
       <ul className="space-y-1.5 text-sm">
         {group.items.map((i) => (
           <li key={`${i.commitment_id}-${i.date}-${i.transaction_id ?? i.status}`} className="flex items-center gap-2">

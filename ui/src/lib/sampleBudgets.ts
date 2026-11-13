@@ -27,8 +27,9 @@ const SAMPLE_BUDGETS: SampleBudget[] = [
   { id: 'sb2', category: 'Eating out', limit_pounds: 150, paused: false },
   { id: 'sb3', category: 'Transport', limit_pounds: 30, paused: false },
   { id: 'sb4', category: 'Shopping', limit_pounds: 120, paused: true },
-  // Holds the sample's subscriptions, due before payday: the "will go over" bar (T-24-5b).
-  { id: 'sb5', category: 'Subscriptions', limit_pounds: 20, paused: false },
+  // Holds the sample's phone bill, due before payday: the "will go over" bar (T-24-5b). No
+  // Subscriptions budget, so Budgets shows the Subscriptions card as the owner sees it (T-25-3).
+  { id: 'sb5', category: 'Bills', limit_pounds: 10, paused: false },
 ]
 const BUDGETED = new Set(SAMPLE_BUDGETS.filter((b) => !b.paused).map((b) => b.category))
 const CYCLE_DAYS = 30

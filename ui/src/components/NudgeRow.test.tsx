@@ -58,6 +58,7 @@ describe('NudgeRow with a title and Raise to', () => {
     const h = row()
     expect(h).toMatch(/<span class="[^"]*w-full sm:w-auto[^"]*"><button[^>]*>Raise to £550/)
     expect(h).toContain(`data-nudge="${willGoOver.id}"`)
+    expect(h).toMatch(/<button[^>]*data-raise=""[^>]*>Raise to £550/) // re-focused after a failed raise (ux on #302)
   })
 })
 

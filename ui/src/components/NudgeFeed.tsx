@@ -32,14 +32,12 @@ export default function NudgeFeed({ nudges }: { nudges: UiNudge[] }) {
   const [raising, setRaising] = useState<string | null>(null)
   const [raiseFailed, setRaiseFailed] = useState<string | null>(null)
   const [announced, setAnnounced] = useState('')
-  // undefined: nothing to move; null: the page heading; else that nudge's first button.
+  // undefined: nothing to move; null: the page heading; else a selector to focus.
   const [focusNext, setFocusNext] = useState<string | null | undefined>(undefined)
 
   useEffect(() => {
     if (focusNext === undefined) return
-    const target = focusNext === null
-      ? document.getElementById(PAGE_HEADING_ID)
-      : document.querySelector<HTMLElement>(`[data-nudge="${CSS.escape(focusNext)}"] button`)
+    const target = focusNext === null ? document.getElementById(PAGE_HEADING_ID) : document.querySelector<HTMLElement>(focusNext)
     target?.focus()
     setFocusNext(undefined)
   }, [focusNext])
@@ -52,7 +50,11 @@ export default function NudgeFeed({ nudges }: { nudges: UiNudge[] }) {
   const liveRegion = <p role="status" aria-live="polite" className="sr-only">{announced}</p>
   if (visible.length === 0) return liveRegion
 
-  const gone = (id: string) => setFocusNext(focusTargetAfter(visible.map((n) => n.id), id))
+  const inNudge = (id: string, part: string) => `[data-nudge="${CSS.escape(id)}"] ${part}`
+  const gone = (id: string) => {
+    const next = focusTargetAfter(visible.map((n) => n.id), id)
+    setFocusNext(next === null ? null : inNudge(next, 'button'))
+  }
 
   const raise = (n: UiNudge) => {
     if (!n.raise) return
@@ -68,7 +70,11 @@ export default function NudgeFeed({ nudges }: { nudges: UiNudge[] }) {
       })
       // Demo mode cancels writes and says so in its own toast: no "Try again" here.
       .catch((e) => { if (!axios.isCancel(e)) setRaiseFailed(n.id) })
-      .finally(() => setRaising(null))
+      .finally(() => {
+        setRaising(null)
+        // Still here (failed or blocked in demo): give focus back to Raise so a keyboard user can retry.
+        setFocusNext((f) => (f === undefined ? inNudge(n.id, '[data-raise]') : f))
+      })
   }
 
   const dismiss = (id: string) => {

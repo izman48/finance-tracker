@@ -30,7 +30,7 @@ export default function NudgeRow({ nudge, dismissFailed, onDismiss, onRaise, rai
       {/* Below sm the buttons take their own row, so the text keeps the width (mockup E1). */}
       <span className="flex flex-wrap justify-end gap-2 shrink-0 w-full sm:w-auto">
         {nudge.raise && onRaise && (
-          <button onClick={onRaise} disabled={raising} className="btn-ghost !py-1.5 !text-accent min-h-[44px] sm:min-h-0">
+          <button data-raise="" onClick={onRaise} disabled={raising} className="btn-ghost !py-1.5 !text-accent min-h-[44px] sm:min-h-0">
             {raising ? 'Raising…' : nudge.raise.label}
           </button>
         )}

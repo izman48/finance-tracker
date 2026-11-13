@@ -20,8 +20,9 @@ BUDGET_LIMIT_MAX = 100_000
 BUDGETS_PER_USER_MAX = 20
 CATEGORY_MAX_LENGTH = 100
 
-# Pace status in words (concept section 2): neutral styling for all four.
-PaceStatus = Literal["under_pace", "on_pace", "ahead_of_pace", "over"]
+# Pace status in words (concept section 2): neutral styling for all. Spent
+# exactly at the limit is "budget_used", with no pace (T-24-3).
+PaceStatus = Literal["under_pace", "on_pace", "ahead_of_pace", "over", "budget_used"]
 
 
 class BudgetCycle(BaseModel):
@@ -44,8 +45,9 @@ class BudgetResponse(BaseModel):
     limit_pounds: int
     paused: bool
     created_via: Literal["web", "mcp"]
-    # This cycle's spend under the budget-spend rule (T-09-1). A paused
-    # budget still reports its spend; its status is null.
+    # This cycle's spend under the budget-spend rule (T-09-1), paid
+    # commitment payments included while it is unpaused (T-24-3). A paused
+    # budget still reports its purchases; its status is null.
     spent: Decimal
     # Where even spending across the cycle would be by today (the pace tick).
     pace_spent: Decimal
@@ -78,7 +80,10 @@ class NotCounted(BaseModel):
     """What the budget lens leaves out this cycle, with amounts, so the screen
     reconciles to the transactions ("Not counted here")."""
 
+    # Commitment payments whose category has no budget, and those with no
+    # category at all (T-24-3); one in a budgeted category counts there.
     commitments: Decimal
+    commitments_no_category: Decimal = Decimal(0)
     transfers: Decimal
     card_payoffs: Decimal
     # A purchase moved to a payment plan: counted through its instalments.

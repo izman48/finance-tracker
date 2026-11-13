@@ -5,8 +5,8 @@ A budget is one whole-pound limit (1 to 100,000) for one of the user's own
 categories, at most one active per category and 20 per user. The limit is
 DEK-encrypted. The category is untrusted text (Claude can create category
 labels through rule packs): it must be one of the user's categories, at
-most 100 characters with no hidden characters, it's never in a URL path, and
-a category whose spending is mostly commitments can't have a budget.
+most 100 characters with no hidden characters, and it's never in a URL path.
+A category whose spending is mostly commitments can have a budget (T-24-3).
 PUT /budgets is all or nothing. Suggest writes nothing. Every route is web
 session only and scoped to the caller; another user's id is a 404.
 """
@@ -154,10 +154,9 @@ def test_left_is_the_number_the_dotted_line_uses(w):
     assert _drops(body)[_eve(payday)] == Decimal(_summary(w)["left"])
 
 
-def test_a_key_matched_commitment_in_a_budgeted_category_is_never_counted(w):
-    """T-09-13 AC2: key-matched commitment spending never enters a budget's
-    spend, so a part-commitment category can't count a scheduled payment
-    twice (it's already in the solid line)."""
+def test_a_key_matched_commitment_in_a_budgeted_category_counts_once_paid(w):
+    """T-24-3 (reverses T-09-13 AC2, owner 2026-11-13): a commitment's
+    payment counts in its category's budget once it is paid."""
     from tests.integration.test_budget_projection import _spend
 
     _spend(w, "100.00", "Bills")
@@ -171,7 +170,8 @@ def test_a_key_matched_commitment_in_a_budgeted_category_is_never_counted(w):
         w.db.commit()
         _tx(w.db, w.current, "40.00", TODAY - timedelta(days=4), merchant="OCTOPUS ENERGY", category="Bills")
     w.as_user(octopus)
-    assert next(b for b in w.get().json()["budgets"] if b["category"] == "Bills")["spent"] == spent
+    after = next(b for b in w.get().json()["budgets"] if b["category"] == "Bills")["spent"]
+    assert Decimal(after) == Decimal(spent) + Decimal("40.00")
 
 
 def test_the_limit_is_encrypted_at_rest(w):
@@ -193,12 +193,6 @@ def test_the_limit_is_a_whole_pound_amount_from_1_to_100000(w, limit):
 def test_the_category_must_be_one_of_the_users_own(w, category):
     assert w.create(category, 150).status_code == 422
     assert w.budget_rows() == 0
-
-
-def test_a_category_that_is_mostly_commitments_cant_have_a_budget(w):
-    r = w.create("Rent", 1000)
-    assert r.status_code == 422
-    assert "commitment" in r.json()["detail"].lower()
 
 
 def test_one_active_budget_per_category(w):
@@ -279,7 +273,6 @@ def test_put_creates_and_updates_and_leaves_others_alone(w):
 
 @pytest.mark.parametrize("bad_last", [
     {"category": "Holidays", "limit_pounds": 50},             # not the user's category
-    {"category": "Rent", "limit_pounds": 50},                 # commitment-covered
     {"category": "Groceries", "limit_pounds": 0},             # bounds
     {"category": "Eating out", "limit_pounds": 99},           # duplicate in one request
 ])
@@ -396,24 +389,6 @@ def test_no_payday_the_summary_uses_the_last_30_days(client, db_session):
     assert body["cycle"]["fallback"] is True and body["summary_this_cycle"]["total_limit"] == "150.00"
 
 
-def test_an_existing_budgets_limit_can_change_after_its_category_becomes_mostly_commitments(w):
-    """Lead on #150: new budgets can't use such a category, but a budget that
-    already exists can still have its limit edited."""
-    w.create("Eating out", 150)
-
-    def becomes_commitments():
-        w.db.add(CommitmentRule(user_id=w.user.id, direction="expense", label="Meal kit", amount=Decimal("500"),
-                                cadence="monthly", next_date=TODAY + timedelta(days=3), source="manual",
-                                status="confirmed"))
-        _tx(w.db, w.current, "500.00", TODAY - timedelta(days=2), merchant="Meal kit", category="Eating out")
-        w.db.commit()
-    w.as_user(becomes_commitments)
-    r = w.put([{"category": "Eating out", "limit_pounds": 200}])
-    assert r.status_code == 200, r.text
-    r = w.put([{"category": "Eating out", "limit_pounds": 210}, {"category": "Rent", "limit_pounds": 10}])
-    assert r.status_code == 422  # a new one still can't
-
-
 # --- only purchase categories can have a budget (eng-a's live-stack check) -----------
 
 def _income_and_transfers(w):
@@ -442,8 +417,8 @@ def test_get_budgets_lists_the_budgetable_categories_on_request(w):
     assert w.get().json()["budgetable_categories"] is None
     r = w.client.get(f"{API}/budgets", params={"include": "categories"}, headers=_bearer(w.web))
     categories = r.json()["budgetable_categories"]
-    assert {"Eating out", "Groceries", "Shopping"} <= set(categories)
-    assert not {"Income", "Savings", "Rent", "Uncategorized"} & set(categories)
+    assert {"Eating out", "Groceries", "Shopping", "Rent"} <= set(categories)  # Rent: commitments (T-24-3)
+    assert not {"Income", "Savings", "Uncategorized"} & set(categories)
     assert categories == sorted(categories)
 
 

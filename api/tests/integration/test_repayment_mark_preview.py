@@ -89,3 +89,18 @@ def test_a_mark_that_leaves_the_budget_over_says_over_not_a_negative_left(ex):
     mark = ex.post([ex.entry(credit=ex.jo, spend=ex.pizza, amount_pounds="20.00")]).json()["marks"][0]
     assert (mark["budget_left_before"], mark["budget_left_after"]) == ("-50.00", "-30.00")  # negative = over
     assert mark["effect"] == "Pizza Express: £200.00 counts as £180.00 in Eating out. £30.00 over £150.00."
+
+
+def test_a_paid_commitment_in_the_budgeted_category_counts_in_the_preview_too(ex):
+    """T-24-3: the preview reads the budget the way GET /budgets does."""
+    from app.models import CommitmentRule
+
+    def meal_kit():
+        _tx(ex.db, ex.ledger.account, "16.00", TODAY - timedelta(days=4), merchant="MEAL KIT CO", category="Eating out")
+        ex.db.add(CommitmentRule(user_id=ex.user.id, direction="expense", label="MEAL KIT CO", amount=Decimal("16"),
+                                 cadence="weekly", next_date=TODAY + timedelta(days=3), source="manual",
+                                 status="confirmed"))
+        ex.db.commit()
+    ex.ledger.as_user(meal_kit)
+    mark = ex.post([ex.entry(credit=ex.jo, spend=ex.pizza)]).json()["marks"][0]
+    assert (mark["category_spent_before"], mark["category_spent_after"]) == ("216.00", "166.00")

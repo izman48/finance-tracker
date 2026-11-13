@@ -5,11 +5,15 @@ Budget tracking, History and the Cashflow projection all read spend from
 `budget_spend`, so they can never disagree (three-sources rule). It is the
 Spending screen's purchases lens with commitments excluded (the same
 `classify_purchase` predicate): card purchases
-and cash purchases, by category, inside one cycle. Excluded, and reported
-with their amounts so the budget screen reconciles to the transactions:
+and cash purchases, by category, inside one cycle. A payment matching a
+confirmed commitment counts too when its own category is in `budgeted`
+(exact text; T-24-3, owner 2026-11-13: a commitment counts inside its
+budget category, when paid). Excluded, and reported with their amounts so
+the budget screen reconciles to the transactions:
 
-- `commitments`: spending matching a confirmed commitment (already inside
-  safe-to-spend);
+- `commitments`: spending matching a confirmed commitment whose category
+  has no budget (already inside safe-to-spend);
+- `commitments_no_category`: the same, for payments with no category;
 - `transfers`: money moved between the user's own accounts;
 - `card_payoffs`: paying a card off (its purchases counted when made);
 - `financed`: a purchase moved to a payment plan (counted through its
@@ -29,7 +33,7 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from decimal import Decimal
@@ -53,8 +57,8 @@ class BudgetSpend:
     # Net of paid-back marks.
     by_category: dict[str, Decimal]
     excluded: dict[str, Decimal] = field(default_factory=dict)
-    # Commitment-matched spending by category: a category that is mostly
-    # commitments can't have a budget (T-09-2).
+    # Commitment-matched spending left out, by category: suggestions skip a
+    # category that is mostly commitments (T-09-2).
     commitments_by_category: dict[str, Decimal] = field(default_factory=dict)
     # Before marks: which categories may have a budget (T-03-2 T5).
     gross_by_category: dict[str, Decimal] = field(default_factory=dict)
@@ -66,10 +70,12 @@ class BudgetSpend:
 
 
 def budget_spend(db: Session, user, start: date, end: date,
-                 extra_marks: Sequence[RepaymentMark] = ()) -> BudgetSpend:
+                 extra_marks: Sequence[RepaymentMark] = (),
+                 budgeted: Collection[str] = frozenset()) -> BudgetSpend:
     """Purchases by category in [start, end], net of paid-back marks, and
     what was left out. `extra_marks`: unsaved marks a preview proposes
-    (T-03-2 T7), netted as if saved."""
+    (T-03-2 T7), netted as if saved. `budgeted`: the categories whose
+    commitment payments count (those with an active, unpaused budget)."""
     accounts, settings = _load(db, user)
     roles = resolve_roles(accounts, settings)
     txns = (
@@ -87,18 +93,20 @@ def budget_spend(db: Session, user, start: date, end: date,
     commitment_keys = commitment_match_keys(db, user)
 
     by_category: dict[str, Decimal] = defaultdict(Decimal)
-    excluded = {name: Decimal(0) for name in EXCLUDED.values()}
+    excluded = {name: Decimal(0) for name in (*EXCLUDED.values(), "commitments_no_category")}
     commitments: dict[str, Decimal] = defaultdict(Decimal)
     counted: dict[uuid.UUID, Transaction] = {}
     for tx in txns:
         kind = classify_purchase(tx, transfers, roles, financed, commitment_keys)
-        if kind in ("credit", "cash"):
+        if kind in ("credit", "cash") or (kind == "commitment" and tx.category in budgeted):
             by_category[tx.category or UNCATEGORISED] += _d(tx.amount)
             counted[tx.id] = tx
+        elif kind == "commitment" and not tx.category:
+            excluded["commitments_no_category"] += _d(tx.amount)
         elif kind is not None:
             excluded[EXCLUDED[kind]] += _d(tx.amount)
             if kind == "commitment":
-                commitments[tx.category or UNCATEGORISED] += _d(tx.amount)
+                commitments[tx.category] += _d(tx.amount)
     gross = dict(by_category)
     marks = active_marks(db, user.id, extra=extra_marks)
     paid_back, excess = net_paid_back(by_category, marks, counted, start, end)

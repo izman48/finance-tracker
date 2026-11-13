@@ -84,22 +84,23 @@ def previous_cycles(db: Session, user, cycle: Cycle, n: int) -> list[Cycle]:
     return list(reversed(out))
 
 
-def budgetable_categories(db: Session, user, today: date, covered: set[str] | None = None) -> set[str]:
+def budgetable_categories(db: Session, user, today: date) -> set[str]:
     """The categories a budget can track: those on the user's own purchases
-    over the last year, through the same `classify_purchase` lens as budget
-    spend, less those that are mostly commitments. Income, refunds and
-    transfers never count against a budget, so a category seen only on them
-    could never track anything (eng-a's live-stack check)."""
+    and commitment payments over the last year, through the same
+    `classify_purchase` lens as budget spend. A category that is mostly
+    commitments can have a budget too (T-24-3): its payments count there.
+    Income, refunds and transfers never count against a budget, so a
+    category seen only on them could never track anything (eng-a's
+    live-stack check)."""
+    spend = budget_spend(db, user, today - timedelta(days=CATEGORY_LOOKBACK_DAYS), today)
     # Gross: a paid-back mark never changes which categories may have a budget (T-03-2 T5).
-    purchases = budget_spend(db, user, today - timedelta(days=CATEGORY_LOOKBACK_DAYS), today).gross_by_category
-    if covered is None:
-        covered = commitment_covered(db, user, today)
-    return set(purchases) - covered - {UNCATEGORISED}
+    return (set(spend.gross_by_category) | set(spend.commitments_by_category)) - {UNCATEGORISED}
 
 
 def commitment_covered(db: Session, user, today: date) -> set[str]:
     """Categories whose recent spending is mostly confirmed commitments
-    (rent, bills): already in safe-to-spend, so not offered as budgets."""
+    (rent, bills): suggestions leave them out (they can still have a
+    budget, T-24-3)."""
     spend = budget_spend(db, user, today - timedelta(days=COVERED_LOOKBACK_DAYS), today)
     return {
         cat for cat, committed in spend.commitments_by_category.items()
@@ -114,9 +115,7 @@ def _refuse(detail: str) -> HTTPException:
 def validate_categories(db: Session, user, categories: list[str], budgeted: set[str] = frozenset()) -> None:
     """Every category is listed once and is visible text. A new one (not in
     `budgeted`, the user's active budgets) must also be one of the user's own
-    categories and not mostly commitments; an existing budget's limit can
-    still be changed after its category becomes mostly commitments (lead on
-    #150). Raises 422 with fixed words (the category is never echoed)."""
+    categories. Raises 422 with fixed words (the category is never echoed)."""
     if len(set(categories)) != len(categories):
         raise _refuse("Each category can appear only once.")
     if any(has_hidden_characters(c) or not c.strip() for c in categories):
@@ -124,11 +123,7 @@ def validate_categories(db: Session, user, categories: list[str], budgeted: set[
     new = [c for c in categories if c not in budgeted]
     if not new:
         return
-    today = _today()
-    covered = commitment_covered(db, user, today)
-    if any(c in covered for c in new):
-        raise _refuse("That category is mostly commitments, which are already counted in safe to spend.")
-    allowed = budgetable_categories(db, user, today, covered)
+    allowed = budgetable_categories(db, user, _today())
     if any(c not in allowed for c in new):
         raise _refuse("Budgets can only use categories you spend in.")
 
@@ -173,6 +168,8 @@ def check_cap(count_after: int) -> None:
 def _status(spent: Decimal, pace: Decimal, limit: Decimal) -> str:
     if spent > limit:
         return "over"
+    if spent == limit:
+        return "budget_used"
     if spent > pace * (1 + PACE_BAND):
         return "ahead_of_pace"
     if spent < pace * (1 - PACE_BAND):
@@ -200,10 +197,11 @@ class CycleBudgets:
 
 def cycle_budgets(db: Session, user, today: date) -> CycleBudgets:
     cycle = current_cycle(db, user, today)
-    spend = budget_spend(db, user, cycle.start, cycle.end)
-    days_total = (cycle.end - cycle.start).days + 1
     budgets = active_budgets(db, user)
     counting = [b for b in budgets if not b.paused]
+    # A commitment's payments count in its category's budget (T-24-3).
+    spend = budget_spend(db, user, cycle.start, cycle.end, budgeted={b.category for b in counting})
+    days_total = (cycle.end - cycle.start).days + 1
     spent = [spend.by_category.get(b.category, Decimal(0)) for b in counting]
     return CycleBudgets(
         cycle=cycle, days_total=days_total,

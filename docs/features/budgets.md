@@ -1,11 +1,27 @@
 # Budgets
 
 A whole-pound limit per spending category, per pay cycle. Budgets track
-purchases only and never change safe to spend or any other money figure. Up
+purchases and, once paid, the payments of commitments in a budgeted
+category; they never change safe to spend or any other money figure. Up
 to 20 per user, one active budget per category. Users get suggestions
 (median of the last 3 cycles, rounded up to £10), a history of past cycles,
 nudges when a budget is at risk, and a budget line on the forecast. Claude can
 set, pause, resume and remove budgets.
+
+## Commitments inside a budget (T-24-3a)
+
+Owner, 2026-11-13: a commitment counts inside its budget category, only when
+paid. A payment `classify_purchase` calls a commitment counts in `spent`
+when its own category (exact text) has an active, unpaused budget;
+otherwise it stays under "Not counted here" (`not_counted.commitments`, or
+`commitments_no_category` for a payment with no category). Any category can
+have a budget now, rent and bills included (the Sprint 09 "mostly
+commitments" block is lifted for the web and `set_budgets`; suggestions
+still leave such categories out).
+
+`status` is `budget_used` when spent equals the limit. A closed cycle's
+stored snapshot is never rewritten; a cycle first loaded after this change
+is written under the new rule.
 
 ## Code
 
@@ -38,8 +54,9 @@ set, pause, resume and remove budgets.
 
 **Services**: `services/budgets.py` (cycles, cap, `budget_list`,
 `budget_projection`, `budget_nudges`, `suggest`), `services/budget_spend.py`
-(the one counting rule, `classify_purchase`: excludes commitments,
-transfers, card payoffs, financed purchases; nets paid-back marks, see
+(the one counting rule, `classify_purchase`: excludes commitments outside
+a budgeted category, transfers, card payoffs, financed purchases; nets
+paid-back marks, see
 [paid-back.md](paid-back.md) "Figures"), `services/budget_history.py`,
 `api/app/schemas/budgets.py`.
 
@@ -57,7 +74,7 @@ transfers, card payoffs, financed purchases; nets paid-back marks, see
 `test_budget_spend.py`, `test_budget_history.py`,
 `test_budget_projection.py`, `test_budget_invariance.py`, `test_budget_paid_back.py`,
 `test_budget_home_nudges.py`, `test_budgets_consent.py`,
-`test_budget_writes_api.py`; `api/mcp/tests/test_budget_tools.py`; UI tests
+`test_budget_writes_api.py`, `test_budget_commitments.py`; `api/mcp/tests/test_budget_tools.py`; UI tests
 next to every component and lib file above.
 
 ## Touchpoints

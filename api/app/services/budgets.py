@@ -41,6 +41,7 @@ from app.schemas.budgets import (
 )
 from app.services.analytics.commitments import held_next_payday, held_payday_dates, last_payday
 from app.services.analytics.common import _today
+from app.services.budget_pace import placed_by_category, placed_commitments
 from app.services.budget_coming_up import ITEMS_MAX, coming_up_by_category
 from app.services.budget_spend import UNCATEGORISED, BudgetSpend, budget_spend
 
@@ -228,12 +229,13 @@ def budget_list(db: Session, user, markers: dict | None = None,
     cycle, spend = inputs.cycle, inputs.spend
     share = Decimal(inputs.elapsed) / Decimal(inputs.days_total)
     coming = coming_up_by_category(db, user, today, cycle.end, {b.category for b in inputs.budgets if not b.paused})
+    placed = placed_by_category(spend, placed_commitments(db, user, spend, cycle.start, today))
     rows = []
     for b in inputs.budgets:
         limit = Decimal(b.limit_pounds)
         spent = spend.by_category.get(b.category, Decimal(0))
         coming_up = _coming_up(coming.get(b.category)) if not b.paused else ComingUp()
-        pace = _pace(limit, share, spend.commitments_counted.get(b.category, Decimal(0)), coming_up.amount)
+        pace = _pace(limit, share, placed.get(b.category, Decimal(0)))
         rows.append(BudgetResponse(
             id=b.id, category=b.category, limit_pounds=int(limit), paused=b.paused, created_via=b.created_via,
             spent=spent, pace_spent=pace, over_by=max(Decimal(0), spent - limit),
@@ -267,13 +269,14 @@ def budget_list(db: Session, user, markers: dict | None = None,
     )
 
 
-def _pace(limit: Decimal, share: Decimal, paid_commitments: Decimal, coming_up: Decimal) -> Decimal:
-    """Where spending would be by today (lead, 2026-11-13): commitments sit
-    on the line at their real dates (paid ones now, coming ones later), and
-    only the flexible rest of the limit is spread evenly. With no
-    commitments this is the even spread, `limit * share`."""
-    flexible = max(Decimal(0), limit - paid_commitments - coming_up)
-    return (paid_commitments + flexible * share).quantize(Decimal("0.01"))
+def _pace(limit: Decimal, share: Decimal, placed: Decimal) -> Decimal:
+    """Where spending would be by today (lead, 2026-11-13): paid commitments
+    sit on the line at their real dates (`placed`, see budget_pace) and the
+    rest of the limit is spread evenly. Coming up plays no part, so an
+    instalment that is only due never moves the status (owner: a hint
+    only). With no commitments this is the even spread, `limit * share`."""
+    flexible = max(Decimal(0), limit - placed)
+    return (placed + flexible * share).quantize(Decimal("0.01"))
 
 
 def _coming_up(found) -> ComingUp:

@@ -80,8 +80,9 @@ def _normalise_merchant(raw: str | None) -> str:
     Conservative: pure digit runs, dates, and alphanumeric tokens carrying a
     long digit run are dropped. Short mixed alphanumerics are left alone,
     because stripping those would eat real merchant names ("O2", "MONZO123")
-    and over-merge unrelated payments. Two exceptions (T-10-9): PayPal's
-    glued reference and the bank's "ON dd MON" date phrase are dropped.
+    and over-merge unrelated payments. Exceptions: PayPal's glued reference
+    and the bank's "ON dd MON" date phrase (T-10-9), and a trailing payment
+    type such as STO, FT or DDR (T-25-1), are dropped.
     """
     upper = _PAYPAL_GLUED_REF.sub(r"\1", (raw or "").upper())
     text = _ON_DATE_PHRASE.sub(" ", re.sub(r"[^A-Z0-9/\- ]+", " ", upper))

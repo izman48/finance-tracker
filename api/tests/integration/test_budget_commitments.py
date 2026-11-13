@@ -141,3 +141,16 @@ def test_a_bill_claude_confirms_without_a_keep_moves_no_spending_out(client, db_
     assert r.status_code == 201, r.text
     bill.claude_update(rule_id, status="confirmed")
     assert _row(bill, "Phone")[1]["spent"] == "45.00"
+
+
+def test_suggest_measures_a_commitment_the_way_the_budget_counts_it(w):
+    """eng-b on #294: Suggest and Past cycles must agree on a cycle's spend,
+    so a category's paid commitments are in its suggested figures too."""
+    def last_cycles():
+        rows = w.suggest().json()["suggestions"]
+        return [Decimal(c["spent"]) for c in next(s for s in rows if s["category"] == "Eating out")["last_cycles"]]
+    before = last_cycles()
+    _weekly(w, amount="5.00", paid_days_ago=(26, 33, 40))  # three instalments in the last complete cycle
+    after = last_cycles()
+    assert after[-1] == before[-1] + Decimal("15.00")
+    assert after[:-1] == before[:-1]

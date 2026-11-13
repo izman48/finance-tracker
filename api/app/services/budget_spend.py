@@ -105,7 +105,7 @@ def budget_spend(db: Session, user, start: date, end: date,
             excluded["commitments_no_category"] += _d(tx.amount)
         elif kind is not None:
             excluded[EXCLUDED[kind]] += _d(tx.amount)
-            if kind == "commitment":
+            if kind == "commitment":  # categorised: the branch above took the rest
                 commitments[tx.category] += _d(tx.amount)
     gross = dict(by_category)
     marks = active_marks(db, user.id, extra=extra_marks)

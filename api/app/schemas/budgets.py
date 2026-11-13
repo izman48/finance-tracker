@@ -136,8 +136,9 @@ class BudgetSummary(BaseModel):
 class CycleSummary(BaseModel):
     """ux 12a, the Spending box: "Your budgets: £890 this cycle. Spent £631,
     £259 left." Over active, unpaused budgets; `left` is each budget's
-    max(0, limit - spent) summed, the same number the Cashflow dotted line
-    takes off this cycle (T-09-14). The browser computes none of it."""
+    max(0, limit - spent) summed. The Cashflow dotted line takes off less
+    when a budget holds commitment instalments still due, which the
+    forecast already has (T-24-3b). The browser computes none of it."""
 
     total_limit: Decimal
     spent: Decimal

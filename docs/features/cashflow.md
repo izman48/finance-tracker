@@ -91,7 +91,7 @@ that already owns it:
 - **Budgets**: `budget_list`, each with its commitment payments and
   instalments (`coming_up`) and the other purchases. A commitment in a
   budget is never also in Fixed. Each budget counts at
-  `max(limit, spent + coming_up)` (`planned_total`), so moving a commitment
+  `max(limit, spent + coming_up)` (its `planned`; they sum to `planned_total`), so moving a commitment
   into a budget never raises Not planned.
 - **Not planned** = income − Fixed − `planned_total`.
   `spent_outside_budgets` is `other_spending`.

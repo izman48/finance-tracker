@@ -19,7 +19,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.models import Account, Transaction
-from app.services.analytics.commitments import commitment_match_keys
+from app.services.analytics.commitments import commitment_matcher
 from app.services.analytics.common import _load, _today, resolve_roles
 from app.services.analytics.spending import _effective_transfers, classify_purchase, financed_transaction_ids
 from app.services.budgets import current_cycle
@@ -86,8 +86,8 @@ def _still_counted(db: Session, user, spends: list[Transaction]) -> set[uuid.UUI
     )
     accounts, settings = _load(db, user)
     roles, transfers = resolve_roles(accounts, settings), _effective_transfers(nearby)
-    financed, keys = financed_transaction_ids(db, user), commitment_match_keys(db, user)
-    return {s.id for s in spends if classify_purchase(s, transfers, roles, financed, keys) in ("credit", "cash")}
+    financed, matcher = financed_transaction_ids(db, user), commitment_matcher(db, user)
+    return {s.id for s in spends if classify_purchase(s, transfers, roles, financed, matcher) in ("credit", "cash")}
 
 
 def _name(tx: Transaction | None) -> str | None:

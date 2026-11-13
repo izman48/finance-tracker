@@ -107,13 +107,14 @@ def test_two_bare_paypal_payments_with_different_references_stay_apart():
 
 
 @pytest.mark.parametrize("desc, key", [
-    # The existing cases (#63, #68) give the same keys as before. (The one
-    # change outside PayPal is the "ON dd MON" date phrase, tested above.)
+    # The existing cases (#63, #68) give the same keys as before. (The
+    # changes outside PayPal are the "ON dd MON" date phrase, tested above,
+    # and the trailing payment type, T-25-1, in test_payment_type_suffix.py.)
     ("O2 UK", "expense:o2 uk"),
     ("MONZO123", "expense:monzo123"),
-    ("RENT 1606LANDMARKE FT", "expense:rent 1606landmarke ft"),
-    ("EE LIMITED Q42181371737681503 DDR", "expense:ee limited ddr"),
-    ("COMMUNITYFIBRE LTD A1539913 DDR", "expense:communityfibre ltd ddr"),
+    ("RENT 1606LANDMARKE FT", "expense:rent 1606landmarke"),
+    ("EE LIMITED Q42181371737681503 DDR", "expense:ee limited"),
+    ("COMMUNITYFIBRE LTD A1539913 DDR", "expense:communityfibre ltd"),
     ("PP UTILITIES 12AB", "expense:pp utilities 12ab"),
     # PayPal withdrawals (income) and transfers key as before.
     ("TRANSFER FROM PAYPAL 12345", "expense:transfer from paypal"),

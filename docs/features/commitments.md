@@ -16,6 +16,13 @@ every descriptor, and PayPal's reference glued on with a second `*` is
 dropped ("PAYPAL *SPOTIFY*P12A3B4 …" keys as `paypal spotify` every month).
 The merchant after `PAYPAL *` always stays, digits and all, so "PAYPAL *O2 UK"
 and "PAYPAL *7DIGITAL UK" never merge; other PayPal shapes key as before.
+T-25-1: a trailing payment type is dropped (`_PAYMENT_TYPE_SUFFIXES`: STO,
+FT, DDR, BGC, CPM, SO, DD, "FIRST DDR PAYMENT", "FIRST PAYMENT"), so rent
+set up from "… FT" matches its "… STO" payments and a direct debit set up
+from its first collection matches the later ones. Only whole trailing
+words go, and never the last word ("DD SHOP" and a payee called "SO" keep
+their names). Mark-as-recurring dedupes on `rule_match_keys` too, but reuses
+a confirmed rule only when the amount is within the matcher bound (sec on #308).
 Changing normalisation is a two-part change: `sync_suggestions` heals
 detected rules from their label, and `rule_match_keys` (stored key, that key
 re-normalised, a PayPal reference stored before T-10-9 healed, label key) is what dedupes detection and matches payments, so
@@ -34,6 +41,28 @@ together, so its query count does not grow with the number of commitments.
 The category is returned exactly as stored (bank text, rules, Claude's rule
 edits) and is compared by exact string only. `GET /api/v1/analytics/commitments`
 and Claude's `commitments` tool return it.
+
+## Which payments are a commitment's (T-19-1, T-25-1)
+
+A merchant can bill one-off purchases under its subscription's descriptor,
+so the key alone is not enough. `commitment_matcher` (built once per request
+from confirmed rules) matches a transaction when its key matches and its
+amount is within max(25%, GBP 5) of some commitment with that key;
+`rule_for` names the rule (a key-only rule first, else the closest amount).
+Rules with no amount, and rules linked to a holding or loan, match on the
+key alone (an overpayment into the holding is not spending). Every consumer
+uses it: the transactions list and search (`is_commitment`,
+`exclude_commitments`), the Spending lenses, drill-down, trend and money-out
+composition, budget spend and pace, a commitment's category (also matched
+at its before-Claude amount while a Claude change is unkept), Plan's paid
+list, paid-back views and candidates, and planned-event matching. Income
+lateness and Plan's money in use the same keys (`rule_match_keys`) with
+their own tighter amount check (max(GBP 1, 2%), plus split payments). A
+refund is a credit, so it never pays an expense commitment. A one-off outside the tolerance counts as
+spending; so does a bill that grows past it until its amount is updated. A card-tied
+"DD to card" rule is amount-checked too, so with commitments excluded and card
+payments shown, a month far off its amount counts in money out (the safe side).
+If any rule on a key matches on the key alone, every payment on that key does.
 
 ## Linked repayments (T-10-8)
 
@@ -98,14 +127,14 @@ helpers), `cadence.py`, `card_links.py`, `late_income.py`,
 **MCP**: `commitments`, `update_commitment`, `dismiss_commitment`.
 
 **Tests**: `api/tests/unit/test_commitment_dedupe.py`,
-`test_paypal_match_key.py`, `test_paypal_commitments.py`,
+`test_paypal_match_key.py`, `test_paypal_commitments.py`, `test_commitment_matcher.py`,
 `api/tests/integration/test_linked_commitment_guards.py`, `test_contribution_guards.py`,
 `test_commitment_links.py`, `test_commitment_links_migration.py`, `test_card_link.py`,
 `test_analytics_service.py`; `api/tests/integration/test_commitment_writes_api.py`,
 `test_keep_commitment_api.py`, `test_card_link_api.py`,
 `test_claude_payday_dismissal.py`, `test_claude_payday_window.py`,
 `test_claude_income_timing.py`, `test_rename_null_match_key.py`,
-`test_web_relabel_keeps_match_key.py`; `api/mcp/tests/test_commitment_tools.py`;
+`test_web_relabel_keeps_match_key.py`, `test_commitment_amount_match.py`; `api/mcp/tests/test_commitment_tools.py`;
 UI `KeepControls.test.tsx`, `ClaudeMarker.test.tsx`, `keep.test.ts`.
 
 ## Touchpoints

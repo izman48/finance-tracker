@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from app.core.display_text import has_hidden_characters
 from app.models import Account, RepaymentMark, Transaction
 from app.schemas.repayments import MarkEntry
-from app.services.analytics.commitments import commitment_match_keys
+from app.services.analytics.commitments import commitment_matcher
 from app.services.analytics.common import _load, _today, resolve_roles
 from app.services.analytics.spending import _effective_transfers, classify_purchase, financed_transaction_ids
 from app.services.budget_spend import budget_spend
@@ -196,7 +196,7 @@ def _check_spend(db: Session, user, spend: Transaction) -> None:
     nearby = _own_between(db, user, spend.transaction_date - timedelta(days=_PAIRING_DAYS),
                           spend.transaction_date + timedelta(days=_PAIRING_DAYS))
     kind = classify_purchase(spend, _effective_transfers(nearby), resolve_roles(accounts, settings),
-                             financed_transaction_ids(db, user), commitment_match_keys(db, user))
+                             financed_transaction_ids(db, user), commitment_matcher(db, user))
     if kind == "commitment":
         raise _refuse("That purchase is a commitment, which budgets never count. Mark a category instead, or leave it.")
     if kind not in ("credit", "cash"):

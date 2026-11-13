@@ -13,7 +13,7 @@ from types import SimpleNamespace
 
 from app.models import CommitmentRule, Transaction
 from app.services import analytics_service as svc
-from app.services.analytics.commitments import commitment_match_keys, rule_match_keys, transaction_match_key
+from app.services.analytics.commitments import commitment_matcher, rule_match_keys
 from tests.clock import TODAY
 from tests.unit.test_analytics_service import _account, _tx_desc, _user
 
@@ -94,10 +94,10 @@ def test_a_dismissed_detected_rule_under_an_old_key_stays_dismissed(db_session):
 def test_a_confirmed_paypal_rule_matches_every_months_payment(db_session):
     user, card, _ = _world(db_session)
     _rule(db_session, user, "Spotify", "expense:paypal spotify p12a3b4")
-    keys = commitment_match_keys(db_session, user)
+    matcher = commitment_matcher(db_session, user)
     payments = db_session.query(Transaction).filter(Transaction.account_id == card.id).all()
     assert len(payments) == 3
-    assert all(transaction_match_key(t) in keys for t in payments)
+    assert all(matcher.matches(t) for t in payments)
 
 
 def test_stored_key_healing_only_drops_a_paypal_shaped_reference():

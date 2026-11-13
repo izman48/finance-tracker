@@ -665,7 +665,7 @@ def get_transactions(
     accounts, settings = analytics_service._load(db, current_user)
     roles = analytics_service.resolve_roles(accounts, settings)
     noise = analytics_service.classify_noise(txns, roles)
-    commitment_keys = analytics_service.commitment_match_keys(db, current_user)
+    commitments = analytics_service.commitment_matcher(db, current_user)
     financed = analytics_service.financed_transaction_ids(db, current_user)
 
     search_lc = search.lower() if search else None
@@ -681,7 +681,7 @@ def get_transactions(
             return False
         if hide_card_payments and reason == "card_payment":
             return False
-        if exclude_commitments and analytics_service.transaction_match_key(tx) in commitment_keys:
+        if exclude_commitments and commitments.matches(tx):
             return False
         if kind == "money_out":
             # Money out of the bank = every debit that left a spending account
@@ -730,21 +730,21 @@ def get_transactions(
     page_txns = filtered[offset : offset + page_size]
 
     return TransactionListResponse(
-        items=_transaction_items(db, current_user, page_txns, commitment_keys, financed, noise),
+        items=_transaction_items(db, current_user, page_txns, commitments, financed, noise),
         total=total,
         page=page,
         page_size=page_size,
     )
 
 
-def _transaction_items(db, user, txns, commitment_keys, financed, noise) -> list[TransactionResponse]:
+def _transaction_items(db, user, txns, commitments, financed, noise) -> list[TransactionResponse]:
     """Response items with the computed fields, shared by the list and the
     search so both return exactly the same shape."""
     paid_back = paid_back_view(db, user, txns)
     items = []
     for tx in txns:
         item = TransactionResponse.model_validate(tx)
-        item.is_commitment = analytics_service.transaction_match_key(tx) in commitment_keys
+        item.is_commitment = commitments.matches(tx)
         item.is_financed = tx.id in financed
         item.excluded_reason = noise.get(tx.id)
         if tx.transaction_type == "debit":
@@ -805,7 +805,7 @@ def _search(db: Session, current_user, body: TransactionSearchRequest) -> Transa
     return TransactionSearchResponse(
         items=_transaction_items(
             db, current_user, found[offset: offset + body.page_size],
-            analytics_service.commitment_match_keys(db, current_user),
+            analytics_service.commitment_matcher(db, current_user),
             analytics_service.financed_transaction_ids(db, current_user),
             noise,
         ),

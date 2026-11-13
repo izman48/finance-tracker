@@ -23,7 +23,7 @@ class TestReferenceDrift:
         """EE rolls the Q-reference between payments; both are the same bill."""
         july = _match_key("expense", "EE LIMITED Q42181371737681503 DDR")
         august = _match_key("expense", "EE LIMITED Q42181371746583221 DDR")
-        assert july == august == "expense:ee limited ddr"
+        assert july == august == "expense:ee limited"
 
     def test_other_real_reference_formats(self):
         for a, b in [

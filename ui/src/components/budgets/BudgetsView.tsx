@@ -5,6 +5,7 @@ import PaidBackByOthers from './PaidBackByOthers'
 import { categoryColor } from '../../lib/categoryColors'
 import { dateDayMonth, gbp } from '../../lib/format'
 import { barGeometry, comingUpA11y, comingUpLine, overByPaydayText, takesYouOverLine } from '../../lib/budgetBar'
+import { budgetIncludes, itemStatus, planMoney, subscriptionsWithoutBudget, type PlanCommitmentGroup, type PlanResponse } from '../../lib/plan'
 import {
   cycleLabel,
   footText,
@@ -29,6 +30,8 @@ export type BudgetsViewProps = {
   onManage?: () => void
   /** The existing drill-down to a category's transactions. */
   onOpenCategory: (category: string) => void
+  /** GET /plan, for the Subscriptions card and each budget's "includes" line (T-25-3); absent if it didn't load. */
+  plan?: PlanResponse | null
 }
 
 const NO_PAYDAY =
@@ -40,7 +43,7 @@ const NO_PAYDAY =
  * says so in plain words (12a). Every figure is shown as the API sent it.
  */
 export default function BudgetsView(props: BudgetsViewProps) {
-  const { status, data, staleAccounts = [], retrying = false, onRetry, onSuggest, onManage, onOpenCategory } = props
+  const { status, data, staleAccounts = [], retrying = false, onRetry, onSuggest, onManage, onOpenCategory, plan = null } = props
   if (status === 'loading') {
     return (
       <div className="card card-pad">
@@ -68,16 +71,20 @@ export default function BudgetsView(props: BudgetsViewProps) {
   }
 
   const tracked = data.budgets.filter((b) => !b.paused)
+  const subscriptions = subscriptionsWithoutBudget(plan, data.budgets.map((b) => b.category))
   if (data.budgets.length === 0) {
     return (
-      <div className="card card-pad text-center py-8">
-        <h2 className="font-display font-semibold text-lg text-slate-100">
-          Set a limit for the things you want to keep an eye on.
-        </h2>
-        <p className="text-sm text-slate-400 mt-2">Budgets follow your pay cycle and never change your safe to spend.</p>
-        <button type="button" className="btn-primary mt-4 min-h-[44px] sm:min-h-0" onClick={onSuggest}>
-          Suggest budgets
-        </button>
+      <div className="space-y-4">
+        <div className="card card-pad text-center py-8">
+          <h2 className="font-display font-semibold text-lg text-slate-100">
+            Set a limit for the things you want to keep an eye on.
+          </h2>
+          <p className="text-sm text-slate-400 mt-2">Budgets follow your pay cycle and never change your safe to spend.</p>
+          <button type="button" className="btn-primary mt-4 min-h-[44px] sm:min-h-0" onClick={onSuggest}>
+            Suggest budgets
+          </button>
+        </div>
+        {subscriptions && <SubscriptionsCard group={subscriptions} />}
       </div>
     )
   }
@@ -113,7 +120,8 @@ export default function BudgetsView(props: BudgetsViewProps) {
             )}
             {tracked.map((b) => (
               // Colour by position among all budgets, as in Manage, so a budget keeps its colour when another pauses.
-              <BudgetRow key={b.id} budget={b} color={categoryColor(data.budgets.indexOf(b))} daysLeft={data.cycle.days_left} onOpen={onOpenCategory} />
+              <BudgetRow key={b.id} budget={b} color={categoryColor(data.budgets.indexOf(b))} daysLeft={data.cycle.days_left} onOpen={onOpenCategory}
+                includes={budgetIncludes(plan, b.category)} />
             ))}
             <li>
               <div className="flex justify-between gap-3 text-sm">
@@ -128,13 +136,18 @@ export default function BudgetsView(props: BudgetsViewProps) {
             </li>
           </ul>
         </div>
-        <BudgetsBox data={data} summary={data.summary_this_cycle} allPaused={tracked.length === 0} />
+        <div className="space-y-4">
+          <BudgetsBox data={data} summary={data.summary_this_cycle} allPaused={tracked.length === 0} />
+          {subscriptions && <SubscriptionsCard group={subscriptions} />}
+        </div>
       </div>
     </div>
   )
 }
 
-function BudgetRow({ budget: b, color, daysLeft, onOpen }: { budget: Budget; color: string; daysLeft: number; onOpen: (c: string) => void }) {
+function BudgetRow({ budget: b, color, daysLeft, onOpen, includes }: {
+  budget: Budget; color: string; daysLeft: number; onOpen: (c: string) => void; includes: string | null
+}) {
   const spent = Number(b.spent)
   const over = b.status === 'over'
   const geo = barGeometry(b)
@@ -192,6 +205,7 @@ function BudgetRow({ budget: b, color, daysLeft, onOpen }: { budget: Budget; col
           <span data-endcap aria-hidden="true" className="absolute -right-[3px] -top-[3px] h-3.5 w-1.5 rounded-sm border-[1.5px] border-slate-200 bg-ink-900" />
         )}
       </div>
+      {includes && <p className="mt-1.5 text-xs text-slate-400 [overflow-wrap:anywhere]">{includes}</p>}
       {comingUp && <ComingUpLine budget={b} line={comingUp} />}
       {takesYouOver && <p className="mt-1 text-xs text-slate-300">{takesYouOver}</p>}
       <div className="flex flex-wrap justify-between gap-x-3 gap-y-0.5 mt-1.5 text-xs text-slate-400">
@@ -204,6 +218,30 @@ function BudgetRow({ budget: b, color, daysLeft, onOpen }: { budget: Budget; col
         <span className="tnum">{footText(b, daysLeft)}</span>
       </div>
     </li>
+  )
+}
+
+/** Subscriptions with no budget (T-25-3): each one paid or coming, and the total. No limit, no pace. */
+function SubscriptionsCard({ group }: { group: PlanCommitmentGroup }) {
+  return (
+    <section aria-labelledby="subscriptions-heading" className="card card-pad">
+      <div className="flex justify-between gap-3">
+        <h2 id="subscriptions-heading" className="font-display font-semibold text-slate-100">Subscriptions</h2>
+        <span className="tnum font-semibold text-slate-100">{planMoney(group.total)}</span>
+      </div>
+      <p className="text-xs text-slate-400 mt-1 mb-3">Not in a budget. These don&apos;t count in the bars above.</p>
+      <ul className="space-y-1.5 text-sm">
+        {group.items.map((i) => (
+          <li key={`${i.commitment_id}-${i.date}-${i.transaction_id ?? i.status}`} className="flex items-center gap-2">
+            <span className="min-w-0 flex-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="min-w-0 break-words text-slate-300">{i.label}</span>{' '}
+              <span className={i.status === 'paid' ? 'chip-pos' : 'chip'}>{itemStatus(i.status, i.date)}</span>
+            </span>{' '}
+            <span className="shrink-0 tnum text-slate-200">{planMoney(i.amount)}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 

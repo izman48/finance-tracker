@@ -96,11 +96,11 @@ describe('sample budgets (this cycle)', () => {
 describe('sample budgets with commitments (T-24-5b)', () => {
   it('coming up is exactly what the demo forecast schedules in the category before payday', () => {
     const data = list()
-    const subs = data.budgets.find((b) => b.category === 'Subscriptions')!
+    const subs = data.budgets.find((b) => b.category === 'Bills')!
     const f = sampleResponse('/api/v1/analytics/forecast', { horizon: 'payday' }) as {
       timeline: { date: string; events: { label: string; amount: number }[] }[]
     }
-    const labels = new Set(['Netflix', 'Spotify']) // the sample's subscriptions
+    const labels = new Set(['Phone']) // the sample's bill filed as Bills
     const scheduled = f.timeline.filter((t) => t.date > isoToday() && t.date <= data.cycle.end)
       .flatMap((t) => t.events.filter((e) => labels.has(e.label)).map((e) => [e.label, t.date, -e.amount]))
     expect(scheduled.length).toBeGreaterThan(0)
@@ -114,13 +114,13 @@ describe('sample budgets with commitments (T-24-5b)', () => {
     const tx = (category: string, amount: number, daysAgo: number, kind: 'purchase' | 'commitment', label = 'Club') =>
       ({ category, amount, daysAgo, kind, label })
     const ledger = [
-      tx('Subscriptions', 10, 3, 'commitment'), tx('Subscriptions', 300, 2, 'commitment'), // instalment + one-off
-      tx('Bills', 40, 2, 'commitment', 'Power'), tx('', 7, 2, 'commitment', 'Mystery'),
+      tx('Bills', 10, 3, 'commitment'), tx('Bills', 300, 2, 'commitment'), // instalment + one-off
+      tx('Utilities', 40, 2, 'commitment', 'Power'), tx('', 7, 2, 'commitment', 'Mystery'),
       tx('Groceries', 20, 1, 'purchase'),
     ]
-    const club = { id: 'sc-Club', label: 'Club', category: 'Subscriptions', amount: 10, nextIn: 27 } // due 3 days ago
+    const club = { id: 'sc-Club', label: 'Club', category: 'Bills', amount: 10, nextIn: 27 } // due 3 days ago
     const out = sampleBudgetList(ledger, 6, false, [], [club])
-    const subs = out.budgets.find((b) => b.category === 'Subscriptions')!
+    const subs = out.budgets.find((b) => b.category === 'Bills')!
     expect(n(subs.spent)).toBe(310)
     expect(n(out.not_counted.commitments)).toBe(40)
     expect(n(out.not_counted.commitments_no_category)).toBe(7)

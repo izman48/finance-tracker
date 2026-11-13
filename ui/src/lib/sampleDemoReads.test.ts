@@ -69,10 +69,10 @@ describe('demo Plan', () => {
     expect(mortgage.map((i) => i.status)).toEqual(['not_seen'])
   })
 
-  it('subscriptions sit under the Subscriptions budget, not in Commitments', () => {
-    const subs = plan.budgets.items.find((b) => b.category === 'Subscriptions')
-    expect([...new Set(subs?.commitments.map((c) => c.label))].sort()).toEqual(['Netflix', 'Spotify'])
-    expect(items.some((i) => i.label === 'Netflix' || i.label === 'Spotify')).toBe(false)
+  it('no Subscriptions budget: the subscriptions are Commitments, and Groceries includes Freshbox (T-25-3)', () => {
+    expect(plan.commitments.groups.find((g) => g.name === 'Subscriptions')?.items.map((i) => i.label).sort()).toEqual(['Netflix', 'Spotify'])
+    const groceries = plan.budgets.items.find((b) => b.category === 'Groceries')
+    expect(groceries?.commitments.filter((c) => c.status === 'paid').map((c) => c.label)).toEqual(['Freshbox'])
   })
 
   it('paid items link to sample transactions', () => {

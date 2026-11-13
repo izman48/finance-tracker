@@ -144,6 +144,8 @@ function buildLedger(): SampleTx[] {
     p('Phone', 'Beacon Mobile', 'Bills', 20, 'debit', 'sa1', base + 8, { commitment: true, recurring: true })
     p('Netflix', 'Verano Media', 'Subscriptions', 12.99, 'debit', 'sa4', base + 10, { commitment: true, recurring: true })
     p('Spotify', 'Larkfield Audio', 'Subscriptions', 11.99, 'debit', 'sa4', base + 12, { commitment: true, recurring: true })
+    // A grocery box, filed as Groceries: its payments count in that budget ("Includes Freshbox", T-25-3).
+    p('Freshbox', 'Freshbox', 'Groceries', 24.5, 'debit', 'sa1', base + 3, { commitment: true, recurring: true })
     // discretionary — varies month to month so ranges differ
     p('Fernwood Grocers', 'Fernwood Grocers', 'Groceries', 54.2 + v * 4, 'debit', 'sa1', base + 1)
     p('Oakvale Market', 'Oakvale Market', 'Groceries', 62.4 - v * 3, 'debit', 'sa2', base + 3)
@@ -519,12 +521,13 @@ function summaryResponse() {
   }
 }
 
-// Subscriptions the demo forecast schedules (T-24-5b): the same list feeds
+// Bills the demo forecast schedules (T-24-5b): the same list feeds
 // budgets' coming up and the dotted line, so they agree with the forecast.
 // Each sits in its latest payment's category, as the API derives it (T-24-2).
 const SCHEDULED_BILLS: SampleScheduledBill[] = [
   { id: 'sc-Netflix', label: 'Netflix', amount: 12.99, nextIn: 20 },
   { id: 'sc-Spotify', label: 'Spotify', amount: 11.99, nextIn: 18 },
+  { id: 'sc-Phone', label: 'Phone', amount: 20, nextIn: 12 },
 ].map((b) => ({ ...b, category: L.find((tx) => tx.description === b.label && tx.is_commitment)?.category ?? null }))
 
 function forecastTimeline(horizon = '30') {
@@ -617,6 +620,7 @@ function commitmentsResponse() {
     mk('Phone', 20, 'expense', 12),
     mk('Netflix', 12.99, 'expense', 20),
     mk('Spotify', 11.99, 'expense', 18),
+    mk('Freshbox', 24.5, 'expense', 27),
     // The ISA's contribution: a linked bill, edited through the holding.
     { ...mk(CONTRIBUTION.label, CONTRIBUTION.amount, 'expense', CONTRIBUTION.nextIn), id: CONTRIBUTION.id,
       source: 'manual', account_id: CONTRIBUTION.account, linked_holding: true },

@@ -19,11 +19,11 @@ const daysFrom = (a: string, b: string) => Math.round((Date.parse(b) - Date.pars
 // This cycle, per unpaused budget: the limit less spent and the instalments still due (T-24-3b).
 const thisCycleFree = (list: BudgetsResponse) => list.budgets.filter((b) => !b.paused)
   .reduce((t, b) => t + Math.max(0, b.limit_pounds - n(b.spent) - n(b.coming_up?.amount ?? 0)), 0)
-// The sample's subscriptions in a category's budget, as the demo forecast schedules them, days [from, to] ahead.
-const SUBSCRIPTIONS = new Set(['Netflix', 'Spotify'])
+// The sample's scheduled bills in a category's budget, as the demo forecast schedules them, days [from, to] ahead.
+const BILL_CATEGORY: Record<string, string> = { Netflix: 'Subscriptions', Spotify: 'Subscriptions', Phone: 'Bills' }
 const due = (f: Forecast, category: string, from: number, to: number) =>
-  category !== 'Subscriptions' ? 0 : f.timeline.filter((_, d) => d >= from && d <= to)
-    .reduce((t, p) => t + p.events.filter((e) => SUBSCRIPTIONS.has(e.label)).reduce((s, e) => s - e.amount, 0), 0)
+  f.timeline.filter((_, d) => d >= from && d <= to)
+    .reduce((t, p) => t + p.events.filter((e) => BILL_CATEGORY[e.label] === category).reduce((s, e) => s - e.amount, 0), 0)
 
 describe.each(['payday', '30', '90', '180', '365'])('the %s forecast in demo mode', (horizon) => {
   it('has a budget line over the whole chart, starting on the solid line', () => {
@@ -92,18 +92,18 @@ describe('budget nudges in demo mode', () => {
     expect(budgetNudges.every((x) => /^budget-[0-9a-f-]{36}$/.test(x.id))).toBe(true)
   })
 
-  it('"will go over" for the Subscriptions budget, by the API copy and raise rule (T-24-5c)', () => {
+  it('"will go over" for the Bills budget, by the API copy and raise rule (T-24-5c)', () => {
     const nudges = sampleResponse('/api/v1/analytics/nudges', {}) as { title?: string; body: string; detail: string; cta?: { label: string; budget_id: string; new_limit_pounds: number } }[]
-    const subs = budgets().budgets.find((b) => b.category === 'Subscriptions')!
-    const x = nudges.find((m) => m.title === 'Subscriptions will go over')!
-    expect(x.body).toBe('£20 left, but Netflix and 1 other have £24.98 still to come before payday. Raise the budget or expect to be £4.98 over.')
-    expect(x.cta).toEqual({ label: 'Raise to £50', budget_id: subs.id, new_limit_pounds: 50 })
-    expect(x.detail).toMatch(/^Spent £0 of £20 this pay cycle, from \d{1,2} [A-Z][a-z]{2}\. Coming up: .*£24\.98 in all\.$/)
+    const bills = budgets().budgets.find((b) => b.category === 'Bills')!
+    const x = nudges.find((m) => m.title === 'Bills will go over')!
+    expect(x.body).toBe('£10 left, but Phone has £20 still to come before payday. Raise the budget or expect to be £10 over.')
+    expect(x.cta).toEqual({ label: 'Raise to £50', budget_id: bills.id, new_limit_pounds: 50 })
+    expect(x.detail).toMatch(/^Spent £0 of £10 this pay cycle, from \d{1,2} [A-Z][a-z]{2}\. Coming up: Phone £20 \(.*\)\. £20 in all\.$/)
   })
 
   it('"will go over" ranks first among budget nudges, so the feed of three shows it (ux on #302)', () => {
     const nudges = sampleResponse('/api/v1/analytics/nudges', {}) as { title?: string; rank: number }[]
-    const i = nudges.findIndex((m) => m.title === 'Subscriptions will go over')
+    const i = nudges.findIndex((m) => m.title === 'Bills will go over')
     expect(i).toBeGreaterThanOrEqual(0)
     expect(i).toBeLessThan(3)
     expect(nudges[i].rank).toBe(9)

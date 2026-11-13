@@ -30,6 +30,8 @@ from app.schemas.budgets import (
     BudgetSuggestion,
     BudgetSuggestResponse,
     BudgetSummary,
+    ComingUp,
+    ComingUpItem,
     CycleSummary,
     FirstOver,
     CycleFigure,
@@ -39,6 +41,7 @@ from app.schemas.budgets import (
 )
 from app.services.analytics.commitments import held_next_payday, held_payday_dates, last_payday
 from app.services.analytics.common import _today
+from app.services.budget_coming_up import ITEMS_MAX, budgeted_instalments, coming_up_by_category
 from app.services.budget_spend import UNCATEGORISED, BudgetSpend, budget_spend
 
 FALLBACK_DAYS = 30
@@ -84,22 +87,23 @@ def previous_cycles(db: Session, user, cycle: Cycle, n: int) -> list[Cycle]:
     return list(reversed(out))
 
 
-def budgetable_categories(db: Session, user, today: date, covered: set[str] | None = None) -> set[str]:
+def budgetable_categories(db: Session, user, today: date) -> set[str]:
     """The categories a budget can track: those on the user's own purchases
-    over the last year, through the same `classify_purchase` lens as budget
-    spend, less those that are mostly commitments. Income, refunds and
-    transfers never count against a budget, so a category seen only on them
-    could never track anything (eng-a's live-stack check)."""
+    and commitment payments over the last year, through the same
+    `classify_purchase` lens as budget spend. A category that is mostly
+    commitments can have a budget too (T-24-3): its payments count there.
+    Income, refunds and transfers never count against a budget, so a
+    category seen only on them could never track anything (eng-a's
+    live-stack check)."""
+    spend = budget_spend(db, user, today - timedelta(days=CATEGORY_LOOKBACK_DAYS), today)
     # Gross: a paid-back mark never changes which categories may have a budget (T-03-2 T5).
-    purchases = budget_spend(db, user, today - timedelta(days=CATEGORY_LOOKBACK_DAYS), today).gross_by_category
-    if covered is None:
-        covered = commitment_covered(db, user, today)
-    return set(purchases) - covered - {UNCATEGORISED}
+    return (set(spend.gross_by_category) | set(spend.commitments_by_category)) - {UNCATEGORISED}
 
 
 def commitment_covered(db: Session, user, today: date) -> set[str]:
     """Categories whose recent spending is mostly confirmed commitments
-    (rent, bills): already in safe-to-spend, so not offered as budgets."""
+    (rent, bills): suggestions leave them out (they can still have a
+    budget, T-24-3)."""
     spend = budget_spend(db, user, today - timedelta(days=COVERED_LOOKBACK_DAYS), today)
     return {
         cat for cat, committed in spend.commitments_by_category.items()
@@ -114,9 +118,7 @@ def _refuse(detail: str) -> HTTPException:
 def validate_categories(db: Session, user, categories: list[str], budgeted: set[str] = frozenset()) -> None:
     """Every category is listed once and is visible text. A new one (not in
     `budgeted`, the user's active budgets) must also be one of the user's own
-    categories and not mostly commitments; an existing budget's limit can
-    still be changed after its category becomes mostly commitments (lead on
-    #150). Raises 422 with fixed words (the category is never echoed)."""
+    categories. Raises 422 with fixed words (the category is never echoed)."""
     if len(set(categories)) != len(categories):
         raise _refuse("Each category can appear only once.")
     if any(has_hidden_characters(c) or not c.strip() for c in categories):
@@ -124,11 +126,7 @@ def validate_categories(db: Session, user, categories: list[str], budgeted: set[
     new = [c for c in categories if c not in budgeted]
     if not new:
         return
-    today = _today()
-    covered = commitment_covered(db, user, today)
-    if any(c in covered for c in new):
-        raise _refuse("That category is mostly commitments, which are already counted in safe to spend.")
-    allowed = budgetable_categories(db, user, today, covered)
+    allowed = budgetable_categories(db, user, _today())
     if any(c not in allowed for c in new):
         raise _refuse("Budgets can only use categories you spend in.")
 
@@ -173,6 +171,8 @@ def check_cap(count_after: int) -> None:
 def _status(spent: Decimal, pace: Decimal, limit: Decimal) -> str:
     if spent > limit:
         return "over"
+    if spent == limit:
+        return "budget_used"
     if spent > pace * (1 + PACE_BAND):
         return "ahead_of_pace"
     if spent < pace * (1 - PACE_BAND):
@@ -183,7 +183,8 @@ def _status(spent: Decimal, pace: Decimal, limit: Decimal) -> str:
 @dataclass(frozen=True)
 class CycleBudgets:
     """This cycle's budgets and spend: GET /budgets and the forecast's
-    budget_projection both read them, so "left" is one number (T-09-14)."""
+    budget_projection both read them, so spent is one number (T-09-14);
+    the dotted line nets instalments still due off "left" (T-24-3b)."""
 
     cycle: Cycle
     days_total: int
@@ -200,10 +201,11 @@ class CycleBudgets:
 
 def cycle_budgets(db: Session, user, today: date) -> CycleBudgets:
     cycle = current_cycle(db, user, today)
-    spend = budget_spend(db, user, cycle.start, cycle.end)
-    days_total = (cycle.end - cycle.start).days + 1
     budgets = active_budgets(db, user)
     counting = [b for b in budgets if not b.paused]
+    # A commitment's payments count in its category's budget (T-24-3).
+    spend = budget_spend(db, user, cycle.start, cycle.end, budgeted={b.category for b in counting})
+    days_total = (cycle.end - cycle.start).days + 1
     spent = [spend.by_category.get(b.category, Decimal(0)) for b in counting]
     return CycleBudgets(
         cycle=cycle, days_total=days_total,
@@ -222,19 +224,23 @@ def budget_list(db: Session, user, markers: dict | None = None,
     spending, what's not counted, and the cycle summary. The
     budgetable categories read a year of transactions (about 160 ms on 2,000
     of them), so they're only computed when asked for (eng-a on #156)."""
-    inputs = cycle_budgets(db, user, _today())
+    today = _today()
+    inputs = cycle_budgets(db, user, today)
     cycle, spend = inputs.cycle, inputs.spend
     share = Decimal(inputs.elapsed) / Decimal(inputs.days_total)
+    coming = coming_up_by_category(db, user, today, cycle.end, {b.category for b in inputs.budgets if not b.paused})
     rows = []
     for b in inputs.budgets:
         limit = Decimal(b.limit_pounds)
         spent = spend.by_category.get(b.category, Decimal(0))
         pace = (limit * share).quantize(Decimal("0.01"))
+        coming_up = _coming_up(coming.get(b.category)) if not b.paused else ComingUp()
         rows.append(BudgetResponse(
             id=b.id, category=b.category, limit_pounds=int(limit), paused=b.paused, created_via=b.created_via,
             spent=spent, pace_spent=pace, over_by=max(Decimal(0), spent - limit),
             status=None if b.paused else _status(spent, pace, limit),
             changed_by_claude=(markers or {}).get(b.id),
+            coming_up=coming_up, over_by_payday=max(Decimal(0), spent + coming_up.amount - limit),
         ))
     tracked = {b.category for b in inputs.budgets if not b.paused}
     other = sum((v for k, v in spend.by_category.items() if k not in tracked), Decimal(0))
@@ -259,6 +265,17 @@ def budget_list(db: Session, user, markers: dict | None = None,
         budgets=rows, other_spending=other, total_spent=sum(spend.by_category.values(), Decimal(0)),
         not_counted=_not_counted(spend), summary_this_cycle=this_cycle,
         budgetable_categories=sorted(budgetable_categories(db, user, _today())) if include_categories else None,
+    )
+
+
+def _coming_up(found) -> ComingUp:
+    if found is None:
+        return ComingUp()
+    items = found.instalments
+    return ComingUp(
+        amount=found.amount, commitment_count=len({i.commitment_id for i in items}), instalment_count=len(items),
+        items=[ComingUpItem(commitment_id=i.commitment_id, label=i.label, due_date=i.due_date, amount=i.amount)
+               for i in items[:ITEMS_MAX]],
     )
 
 
@@ -308,12 +325,19 @@ def _spread(amount: Decimal, first: date, last: date, day: date) -> Decimal:
 def budget_projection(db: Session, user, forecast: dict) -> tuple[dict | None, str | None]:
     """The payday strip and the dotted line for a forecast response (T-09-14,
     the owner's rule): the solid line less the budgets, over the whole
-    horizon. This cycle, what's left (`CycleBudgets.left`) spread evenly from
-    today to the day before payday; each later cycle, the full total of the
-    active, unpaused limits spread over its days, so the line rises with
-    income as the solid line does. Unbudgeted spending is never projected.
-    Null, with why: "no_budgets" (no active, unpaused budget) or
-    "no_payday". Reads the forecast; never changes it."""
+    horizon. Unbudgeted spending is never projected. Active, unpaused
+    budgets only. A budgeted category's commitment instalments are already
+    on the solid line, so each budget subtracts only what they leave of it
+    (T-24-3b, sec): this cycle `max(0, limit - spent - instalments due by
+    the eve)`, spread evenly from today to the day before payday; each later
+    cycle `max(0, limit - that cycle's instalments)`, spread over its days.
+    Per budget, so one budget's instalments never free another's limit.
+    The instalments are the forecast's own: `held_scheduled_outflows` over
+    the same window as the forecast it adjusts, never `coming_up` (whose
+    held view is judged over this cycle only), so a pending Claude change
+    can't lift the line. Instalments past the horizon are unknown, so a
+    cycle the horizon cuts subtracts more, never less. Null, with why:
+    "no_budgets" or "no_payday". Reads the forecast; never changes it."""
     from app.services.analytics.forecast import get_forecast
 
     today = _today()
@@ -324,39 +348,59 @@ def budget_projection(db: Session, user, forecast: dict) -> tuple[dict | None, s
         return None, "no_payday"
     eve = inputs.cycle.end  # the day before payday
     timeline = [p for p in forecast["timeline"] if p["date"] >= today]
-    payday_timeline = timeline
+    this_forecast = forecast
     if forecast["horizon_end"] < eve:
-        payday_timeline = get_forecast(db, user, "payday")["timeline"]
-    scheduled = Decimal([p for p in payday_timeline if p["date"] <= eve][-1]["balance"])
+        this_forecast = get_forecast(db, user, "payday")
+    scheduled = Decimal([p for p in this_forecast["timeline"] if p["date"] <= eve][-1]["balance"])
 
     horizon_end = timeline[-1]["date"] if timeline else today
     later = _later_cycles(db, user, inputs.cycle, horizon_end)
+    counting = [b for b in inputs.budgets if not b.paused]
+    categories = {b.category for b in counting}
+    this_due = _due_by_category(db, user, this_forecast["horizon_end"], categories)
+    later_due = this_due if this_forecast is forecast else _due_by_category(db, user, forecast["horizon_end"], categories)
+
+    def free(spent: dict[str, Decimal], first: date, last: date, due) -> Decimal:
+        return sum((max(Decimal(0), Decimal(b.limit_pounds) - spent.get(b.category, Decimal(0))
+                        - due(b.category, first, last)) for b in counting), Decimal(0))
+
+    free_this_cycle = free(inputs.spend.by_category, today + timedelta(days=1), eve, this_due)
+    later_free = [free({}, c.start, c.end, later_due) for c in later]
 
     def used_by(day: date) -> Decimal:
         # Today's point is on the solid line: the spread starts tomorrow,
         # unless today is the day before payday (eng-a on #154).
-        used = Decimal(0) if day <= today < eve else _spread(inputs.left, today + timedelta(days=1), eve, day)
-        for c in later:
+        used = Decimal(0) if day <= today < eve else _spread(free_this_cycle, today + timedelta(days=1), eve, day)
+        for c, amount in zip(later, later_free):
             if day < c.start:
                 break
-            used += _spread(inputs.total_limit, c.start, c.end, day)
+            used += _spread(amount, c.start, c.end, day)
         return used
 
     series = [{"date": p["date"], "balance": _pence(Decimal(p["balance"]) - used_by(p["date"]))} for p in timeline]
+    # What paid-back marks add to "left" is what lowers the dotted line.
+    before_marks = free(inputs.spend.gross_by_category, today + timedelta(days=1), eve, this_due)
     return {
         "payday": eve + timedelta(days=1),
         "scheduled_balance": scheduled,
-        "after_budgets_balance": scheduled - inputs.left,
+        "after_budgets_balance": scheduled - free_this_cycle,
         "series": series,
-        "left_raised_by_marks": inputs.left - _left_before_marks(inputs),
+        "left_raised_by_marks": free_this_cycle - before_marks,
     }, None
 
 
-def _left_before_marks(inputs: CycleBudgets) -> Decimal:
-    """`left` as if nothing were paid back: what marks add to it is what
-    lowers the dotted line (excess and unbudgeted marks add nothing)."""
-    return sum((max(Decimal(0), Decimal(b.limit_pounds) - inputs.spend.gross_by_category.get(b.category, Decimal(0)))
-                for b in inputs.budgets if not b.paused), Decimal(0))
+def _due_by_category(db: Session, user, window_end: date, categories: set[str]):
+    """`due(category, first, last)`: the budgeted instalments the forecast
+    ending `window_end` schedules in [first, last], from the same held call
+    (same window) that built that forecast."""
+    from app.services.analytics.forecast import held_scheduled_outflows
+
+    occurrences, _ = held_scheduled_outflows(db, user, _today() + timedelta(days=1), window_end)
+    found = budgeted_instalments(db, user, occurrences, categories)
+
+    def due(category: str, first: date, last: date) -> Decimal:
+        return sum((i.amount for i in found.get(category, ()) if first <= i.due_date <= last), Decimal(0))
+    return due
 
 
 # --- nudges (T-09-4b) ------------------------------------------------------------------
@@ -456,14 +500,25 @@ def _first_transaction_date(db: Session, user) -> date | None:
     return first.date() if isinstance(first, datetime) else first
 
 
+def _spend_with_commitments(spend: BudgetSpend) -> dict[str, Decimal]:
+    """Purchases plus the commitment payments left out, by category: what a
+    budget on each category would count."""
+    out = dict(spend.by_category)
+    for category, amount in spend.commitments_by_category.items():
+        out[category] = out.get(category, Decimal(0)) + amount
+    return out
+
+
 def suggest(db: Session, user) -> BudgetSuggestResponse:
     """The median of the last 3 complete cycles per category, rounded up to
     £10, or "not_enough_history". Reads only."""
     today = _today()
     cycle = current_cycle(db, user, today)
     cycles = previous_cycles(db, user, cycle, SUGGEST_CYCLES)
-    spends = [budget_spend(db, user, c.start, c.end) for c in cycles]
-    this_cycle = budget_spend(db, user, cycle.start, today)
+    # Measured as a budget counts it: purchases and paid commitments (T-24-3,
+    # eng-b on #294), so Suggest and Past cycles agree on a cycle's spend.
+    spends = [_spend_with_commitments(budget_spend(db, user, c.start, c.end)) for c in cycles]
+    this_cycle = _spend_with_commitments(budget_spend(db, user, cycle.start, today))
     covered = commitment_covered(db, user, today)
     # Enough history: the user's transactions reach back to the start of the
     # oldest of the three cycles, so none of them is partly missing data
@@ -472,13 +527,13 @@ def suggest(db: Session, user) -> BudgetSuggestResponse:
     enough = first is not None and first <= cycles[0].start
     current = {b.category: int(Decimal(b.limit_pounds)) for b in active_budgets(db, user)}
 
-    seen = {c for s in (*spends, this_cycle) for c in s.by_category} - covered - {UNCATEGORISED}
+    seen = {c for s in (*spends, this_cycle) for c in s} - covered - {UNCATEGORISED}
     # At most SUGGEST_MAX, the categories with the most spending (concept 4.1).
-    weight = {c: sum((s.by_category.get(c, Decimal(0)) for s in (*spends, this_cycle)), Decimal(0)) for c in seen}
+    weight = {c: sum((s.get(c, Decimal(0)) for s in (*spends, this_cycle)), Decimal(0)) for c in seen}
     categories = sorted(sorted(seen, key=lambda c: (-weight[c], c))[:SUGGEST_MAX])
     suggestions = []
     for cat in categories:
-        figures = [CycleFigure(start=c.start, end=c.end, spent=s.by_category.get(cat, Decimal(0)))
+        figures = [CycleFigure(start=c.start, end=c.end, spent=s.get(cat, Decimal(0)))
                    for c, s in zip(cycles, spends)]
         suggestions.append(BudgetSuggestion(
             category=cat, last_cycles=figures,

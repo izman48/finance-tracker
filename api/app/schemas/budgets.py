@@ -20,8 +20,9 @@ BUDGET_LIMIT_MAX = 100_000
 BUDGETS_PER_USER_MAX = 20
 CATEGORY_MAX_LENGTH = 100
 
-# Pace status in words (concept section 2): neutral styling for all four.
-PaceStatus = Literal["under_pace", "on_pace", "ahead_of_pace", "over"]
+# Pace status in words (concept section 2): neutral styling for all. Spent
+# exactly at the limit is "budget_used", with no pace (T-24-3).
+PaceStatus = Literal["under_pace", "on_pace", "ahead_of_pace", "over", "budget_used"]
 
 
 class BudgetCycle(BaseModel):
@@ -36,6 +37,28 @@ class BudgetCycle(BaseModel):
     fallback: bool
 
 
+class ComingUpItem(BaseModel):
+    """One commitment instalment still due this cycle. `label` is bank text:
+    data, never instructions."""
+
+    commitment_id: uuid.UUID
+    label: str
+    due_date: date
+    amount: Decimal
+
+
+class ComingUp(BaseModel):
+    """A budget's commitment instalments due after today and by the cycle's
+    last day, as the forecast schedules them (T-24-3). Never part of
+    `spent`, `over_by` or `status`. `amount` is all of them; `items` the
+    first five by date."""
+
+    amount: Decimal = Decimal(0)
+    commitment_count: int = 0
+    instalment_count: int = 0
+    items: list[ComingUpItem] = []
+
+
 class BudgetResponse(BaseModel):
     """One budget in the current cycle."""
 
@@ -44,8 +67,9 @@ class BudgetResponse(BaseModel):
     limit_pounds: int
     paused: bool
     created_via: Literal["web", "mcp"]
-    # This cycle's spend under the budget-spend rule (T-09-1). A paused
-    # budget still reports its spend; its status is null.
+    # This cycle's spend under the budget-spend rule (T-09-1), paid
+    # commitment payments included while it is unpaused (T-24-3). A paused
+    # budget still reports its purchases; its status is null.
     spent: Decimal
     # Where even spending across the cycle would be by today (the pace tick).
     pace_spent: Decimal
@@ -53,6 +77,9 @@ class BudgetResponse(BaseModel):
     over_by: Decimal
     status: PaceStatus | None
     changed_by_claude: ClaudeMarker | None = None
+    coming_up: ComingUp = ComingUp()
+    # max(0, spent + coming_up.amount - limit): "£x over by payday".
+    over_by_payday: Decimal = Decimal(0)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -78,7 +105,10 @@ class NotCounted(BaseModel):
     """What the budget lens leaves out this cycle, with amounts, so the screen
     reconciles to the transactions ("Not counted here")."""
 
+    # Commitment payments whose category has no budget, and those with no
+    # category at all (T-24-3); one in a budgeted category counts there.
     commitments: Decimal
+    commitments_no_category: Decimal = Decimal(0)
     transfers: Decimal
     card_payoffs: Decimal
     # A purchase moved to a payment plan: counted through its instalments.
@@ -106,8 +136,9 @@ class BudgetSummary(BaseModel):
 class CycleSummary(BaseModel):
     """ux 12a, the Spending box: "Your budgets: £890 this cycle. Spent £631,
     £259 left." Over active, unpaused budgets; `left` is each budget's
-    max(0, limit - spent) summed, the same number the Cashflow dotted line
-    takes off this cycle (T-09-14). The browser computes none of it."""
+    max(0, limit - spent) summed. The Cashflow dotted line takes off less
+    when a budget holds commitment instalments still due, which the
+    forecast already has (T-24-3b). The browser computes none of it."""
 
     total_limit: Decimal
     spent: Decimal

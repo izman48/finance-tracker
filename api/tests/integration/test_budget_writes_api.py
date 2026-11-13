@@ -121,7 +121,6 @@ def test_set_marks_the_budgets_changed_by_claude(w):
 
 @pytest.mark.parametrize("bad_last", [
     {"category": "Holidays", "limit_pounds": 50},     # not a purchase category
-    {"category": "Rent", "limit_pounds": 50},         # commitment-covered
     {"category": "Groceries", "limit_pounds": 0},     # bounds
     {"category": "Eating out", "limit_pounds": 99},   # duplicate in one call
 ])
@@ -130,6 +129,15 @@ def test_set_writes_nothing_when_any_entry_is_invalid(w, bad_last):
                       bad_last], dry_run=False)
     assert r.status_code == 422
     assert (w.count(Budget), w.count(AuditEntry), w.count(BudgetChange)) == (0, 0, 0)
+
+
+def test_set_can_budget_a_category_that_is_mostly_commitments(w):
+    """T-24-3: the covered-category block is lifted for Claude as for the
+    web, and safe to spend doesn't move when Claude budgets the rent."""
+    safe = w.client.get(f"{API}/analytics/summary", headers=_bearer(w.web)).json()["safe_to_spend"]
+    r = w.claude_set([{"category": "Rent", "limit_pounds": 1000}], dry_run=False)
+    assert r.status_code == 200, r.text
+    assert w.client.get(f"{API}/analytics/summary", headers=_bearer(w.web)).json()["safe_to_spend"] == safe
 
 
 def test_set_takes_at_most_8(w):

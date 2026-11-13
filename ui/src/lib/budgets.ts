@@ -10,7 +10,7 @@
 import type { ClaudeMarker } from '../types'
 import { dateDayMonth, gbp, gbp0 } from './format'
 
-export type PaceStatus = 'under_pace' | 'on_pace' | 'ahead_of_pace' | 'over'
+export type PaceStatus = 'under_pace' | 'on_pace' | 'ahead_of_pace' | 'over' | 'budget_used'
 type Money = number | string
 
 export interface Budget {
@@ -111,6 +111,7 @@ export function cycleLabel(cycle: BudgetCycle): string {
 }
 
 const PACE_TEXT: Record<Exclude<PaceStatus, 'over'>, string> = {
+  budget_used: 'Budget used',
   under_pace: 'Under pace',
   on_pace: 'On pace',
   ahead_of_pace: 'Ahead of pace',
@@ -123,7 +124,7 @@ export function statusText(b: Budget): string {
 }
 
 export function footText(b: Budget, daysLeft: number): string {
-  if (b.status === 'over') return daysLeftText(daysLeft)
+  if (b.status === 'over' || b.status === 'budget_used') return daysLeftText(daysLeft)
   return `${money(Math.max(b.limit_pounds - Number(b.spent), 0))} left · ${daysLeftText(daysLeft)}`
 }
 

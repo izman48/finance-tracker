@@ -444,7 +444,7 @@ def test_will_go_over_fires_with_the_spec_copy_and_a_raise_to_the_next_50(w):
                             "new_limit_pounds": -(-int(total) // 50) * 50}
     assert nudge["detail"].startswith("Spent £88 of £100 this pay cycle, from ")
     assert f"Coming up: {KIT} {_money(coming)} (" in nudge["detail"] and nudge["detail"].endswith(f"{_money(total)} in all.")
-    assert nudge["id"].startswith("budget-") and nudge["rank"] == 10
+    assert nudge["id"].startswith("budget-") and nudge["rank"] == 9
 
 
 def test_two_commitments_name_the_largest_and_count_the_others(w):
@@ -498,3 +498,16 @@ def test_no_raise_is_offered_past_the_largest_limit_allowed(w):
     [nudge] = _nudges(w)
     assert nudge["cta"] is None
     assert "Raise the budget or expect to be" in nudge["body"]
+
+
+def test_will_go_over_ranks_before_other_budget_nudges(w):
+    """ux on #302: the feed shows three; "will go over" is the most actionable."""
+    _weekly(w)
+    w.create("Eating out", 100)  # will go over
+    for category in ("Groceries", "Shopping", "Rent"):
+        w.create(category, 50)  # each already at or over: three at-limit nudges
+    r = w.client.get("/api/v1/analytics/nudges", headers=_bearer(w.web)).json()
+    budget = [n for n in r if n["id"].startswith("budget-")]
+    assert len(budget) == 4
+    assert budget[0]["title"] == "Eating out will go over" and budget[0]["rank"] == 9
+    assert [n["rank"] for n in r] == sorted(n["rank"] for n in r)

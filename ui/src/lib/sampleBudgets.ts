@@ -267,7 +267,7 @@ export function sampleBudgetNudges(list: SampleList) {
     const id = `budget-00000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`
     if (spent > limit) body = `${b.category} is ${pounds(Math.round((spent - limit) * 100) / 100)} over its ${pounds(limit)} budget ${leftWords(days_left)}.`
     else if (spent >= limit) body = `${b.category} has reached its ${pounds(limit)} budget ${leftWords(days_left)}.`
-    else if (Number(b.over_by_payday) > 0) return [{ id, rank: 10, source: null, as_of: start, ...willGoOver(b, from) }]
+    else if (Number(b.over_by_payday) > 0) return [{ id, rank: 9, source: null, as_of: start, ...willGoOver(b, from) }]
     else if (b.status === 'ahead_of_pace' && early) body = `${b.category} is ahead of pace: ${pounds(spent)} of ${pounds(limit)} ${leftWords(days_left)}.`
     else return []
     return [{

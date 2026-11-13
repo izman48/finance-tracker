@@ -1,7 +1,9 @@
-import { ReactNode, useState } from 'react'
+import { ReactNode, useEffect, useState } from 'react'
+import axios from 'axios'
 import NudgeRow from './NudgeRow'
 import { budgetsAPI } from '../services/api'
 import { budgetNudgeId, raisedText, type NudgeRaise } from '../lib/budgets'
+import { PAGE_HEADING_ID, focusTargetAfter } from '../lib/nudgeFocus'
 
 export interface UiNudge {
   id: string
@@ -15,6 +17,7 @@ export interface UiNudge {
 }
 
 const MAX_VISIBLE = 3
+
 const key = (id: string) => `nudge.${id}.dismissed`
 
 /** The Cashflow nudge feed: a few honest, dismissible observations. Each one
@@ -29,6 +32,17 @@ export default function NudgeFeed({ nudges }: { nudges: UiNudge[] }) {
   const [raising, setRaising] = useState<string | null>(null)
   const [raiseFailed, setRaiseFailed] = useState<string | null>(null)
   const [announced, setAnnounced] = useState('')
+  // undefined: nothing to move; null: the page heading; else that nudge's first button.
+  const [focusNext, setFocusNext] = useState<string | null | undefined>(undefined)
+
+  useEffect(() => {
+    if (focusNext === undefined) return
+    const target = focusNext === null
+      ? document.getElementById(PAGE_HEADING_ID)
+      : document.querySelector<HTMLElement>(`[data-nudge="${CSS.escape(focusNext)}"] button`)
+    target?.focus()
+    setFocusNext(undefined)
+  }, [focusNext])
 
   const visible = nudges
     .filter((n) => !serverDismissed.has(n.id) && localStorage.getItem(key(n.id)) !== '1')
@@ -38,6 +52,8 @@ export default function NudgeFeed({ nudges }: { nudges: UiNudge[] }) {
   const liveRegion = <p role="status" aria-live="polite" className="sr-only">{announced}</p>
   if (visible.length === 0) return liveRegion
 
+  const gone = (id: string) => setFocusNext(focusTargetAfter(visible.map((n) => n.id), id))
+
   const raise = (n: UiNudge) => {
     if (!n.raise) return
     const r = n.raise
@@ -46,10 +62,12 @@ export default function NudgeFeed({ nudges }: { nudges: UiNudge[] }) {
     budgetsAPI
       .update(r.budgetId, { limit_pounds: r.newLimit })
       .then(() => {
+        gone(n.id)
         setServerDismissed((s) => new Set(s).add(n.id))
         setAnnounced(raisedText(r))
       })
-      .catch(() => setRaiseFailed(n.id))
+      // Demo mode cancels writes and says so in its own toast: no "Try again" here.
+      .catch((e) => { if (!axios.isCancel(e)) setRaiseFailed(n.id) })
       .finally(() => setRaising(null))
   }
 
@@ -61,11 +79,12 @@ export default function NudgeFeed({ nudges }: { nudges: UiNudge[] }) {
       mark(false)
       budgetsAPI
         .dismissNudge(budgetId)
-        .then(() => setServerDismissed((s) => new Set(s).add(id)))
+        .then(() => { gone(id); setServerDismissed((s) => new Set(s).add(id)) })
         .catch(() => mark(true))
       return
     }
     localStorage.setItem(key(id), '1')
+    gone(id)
     setDismissedAt(Date.now())
   }
 

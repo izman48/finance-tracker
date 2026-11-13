@@ -465,7 +465,8 @@ def budget_nudges(db: Session, user) -> list[dict]:
         if nudge is None or nudge.dismissed_at is not None:
             continue
         if kind == OVER_SOON:
-            out.append({"id": f"budget-{nudge.id}", "rank": 10, "source": None, "as_of": cycle_start,
+            # Ranks ahead of the other budget nudges (10): it's the one to act on (ux on #302).
+            out.append({"id": f"budget-{nudge.id}", "rank": 9, "source": None, "as_of": cycle_start,
                         **_will_go_over(b, cycle_start)})
             continue
         out.append({

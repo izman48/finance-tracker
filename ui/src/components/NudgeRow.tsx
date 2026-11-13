@@ -16,7 +16,7 @@ interface Props {
 /** One observation in the Cashflow nudge feed. */
 export default function NudgeRow({ nudge, dismissFailed, onDismiss, onRaise, raising = false, raiseFailed = false }: Props) {
   return (
-    <div className="card px-4 py-3 flex flex-wrap items-center gap-3">
+    <div data-nudge={nudge.id} className="card px-4 py-3 flex flex-wrap items-center gap-3">
       <Lightbulb className="w-4 h-4 text-accent shrink-0" />
       <span className="flex-1 min-w-0 text-sm text-slate-300">
         {nudge.title && <p className="font-semibold text-slate-100">{nudge.title}</p>}
@@ -27,7 +27,8 @@ export default function NudgeRow({ nudge, dismissFailed, onDismiss, onRaise, rai
           </span>
         )}
       </span>
-      <span className="flex flex-wrap gap-2 shrink-0">
+      {/* Below sm the buttons take their own row, so the text keeps the width (mockup E1). */}
+      <span className="flex flex-wrap justify-end gap-2 shrink-0 w-full sm:w-auto">
         {nudge.raise && onRaise && (
           <button onClick={onRaise} disabled={raising} className="btn-ghost !py-1.5 !text-accent min-h-[44px] sm:min-h-0">
             {raising ? 'Raising…' : nudge.raise.label}

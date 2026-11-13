@@ -22,6 +22,7 @@ import { loanLenders } from '../lib/homeOwed'
 import { withLoanLabels } from '../lib/loanLabel'
 import ForecastChart from '../components/ForecastChart'
 import NudgeFeed, { UiNudge } from '../components/NudgeFeed'
+import { PAGE_HEADING_ID } from '../lib/nudgeFocus'
 import { nudgeRaise } from '../lib/budgets'
 import AnimatedNumber from '../components/ui/AnimatedNumber'
 import InfoTip from '../components/ui/InfoTip'
@@ -192,7 +193,7 @@ export default function DashboardPage() {
   return (
     <div ref={revealRef} className="max-w-7xl mx-auto px-4 py-6 sm:py-10">
       <div className="flex items-baseline justify-between gap-3 mb-6 sm:mb-8">
-        <h1 className="font-display font-bold text-2xl sm:text-3xl text-slate-50">Cashflow</h1>
+        <h1 id={PAGE_HEADING_ID} tabIndex={-1} className="font-display font-bold text-2xl sm:text-3xl text-slate-50 outline-none">Cashflow</h1>
         {hasAccounts && (
           <button
             onClick={handleSync}

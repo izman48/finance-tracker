@@ -699,7 +699,9 @@ function decompositionResponse(months: number) {
 }
 
 function nudgesResponse() {
+  // One ranked feed, as the API sorts it (stable for equal ranks).
   return [...cardOverlapNudges(), ...cashDragNudges(), ...sampleBudgetNudges(sampleBudgetList(BUDGET_LEDGER, PAYDAY_AGO, false, SAMPLE_PAID_BACK, SCHEDULED_BILLS))]
+    .sort((a, b) => a.rank - b.rank)
 }
 
 // T-12-7a (ux demo): a manual "Card bill" ticked as a card payment, due

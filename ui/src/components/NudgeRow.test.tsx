@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import NudgeRow from './NudgeRow'
+import { focusTargetAfter } from '../lib/nudgeFocus'
 
 // One nudge in the Cashflow feed. A failed server dismissal says so (ux on #161).
 const nudge = { id: 'budget-1b0c2d3e-0000-4000-8000-000000000001', body: 'Eating out has reached its £150 budget.' }
@@ -51,5 +52,19 @@ describe('NudgeRow with a title and Raise to', () => {
   it('a label from bank text renders as text', () => {
     const h = row({ nudge: { ...willGoOver, body: '<img src=x onerror=alert(1)> has £5 still to come' } })
     expect(h).not.toContain('<img')
+  })
+
+  it('on phones the buttons get their own row under the text (ux on #302, mockup E1)', () => {
+    const h = row()
+    expect(h).toMatch(/<span class="[^"]*w-full sm:w-auto[^"]*"><button[^>]*>Raise to £550/)
+    expect(h).toContain(`data-nudge="${willGoOver.id}"`)
+  })
+})
+
+describe('focus after a nudge leaves (ux on #302)', () => {
+  it('the next remaining nudge, else the one before, else the page heading', () => {
+    expect(focusTargetAfter(['a', 'b', 'c'], 'a')).toBe('b')
+    expect(focusTargetAfter(['a', 'b', 'c'], 'c')).toBe('b')
+    expect(focusTargetAfter(['a'], 'a')).toBeNull()
   })
 })

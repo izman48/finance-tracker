@@ -20,7 +20,12 @@ shown from current figures; the row stores none of them. `cta` offers
 "Raise to £N", the next multiple of £50 at or above spent plus coming up.
 The app applies it through the normal `PATCH /api/v1/budgets/{budget_id}`, hides
 the nudge and announces it in a polite live region. A failure leaves the
-limit and the nudge as they were, with an alert.
+limit and the nudge as they were, with an alert (in demo the write is
+blocked, and the demo toast says so instead). It ranks 9, ahead of the other
+budget nudges (10). `GET /api/v1/analytics/nudges` returns one feed sorted by
+rank, and the app shows the first three. Above the £100,000 limit maximum
+there is no `cta`. After a raise or a dismissal, focus moves to the next
+nudge's first button, or to the "Cashflow" heading if none remain.
 
 **Tables**: none of its own.
 

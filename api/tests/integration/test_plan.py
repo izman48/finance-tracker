@@ -253,3 +253,16 @@ def test_an_unkept_claude_relabel_never_lets_another_payers_credit_count(client,
     before = _income_and_not_planned(w)
     _claude(w).claude_update(w.payer, label="OTHER CO")
     assert _income_and_not_planned(w) == before
+
+
+def test_each_budget_carries_what_it_counts_and_they_add_up(w):
+    """ux on #297: each Budgets row shows max(limit, spent + coming up), so
+    the rows sum to the Budgets line; the browser computes none of it."""
+    w.as_user(lambda: _tx(w.db, w.current, "200.00", TODAY - timedelta(days=1), merchant="Shop Eating out",
+                          category="Eating out"))  # takes Eating out past its £150 limit
+    b = _plan(w)["budgets"]
+    for item in b["items"]:
+        assert D(item["planned"]) == max(D(item["limit"]), D(item["spent"]) + D(item["coming_up"]))
+    assert sum(D(i["planned"]) for i in b["items"]) == D(b["planned_total"])
+    eating = next(i for i in b["items"] if i["category"] == "Eating out")
+    assert D(eating["planned"]) > D(eating["limit"])

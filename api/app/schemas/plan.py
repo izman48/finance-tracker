@@ -81,6 +81,9 @@ class PlanBudget(BaseModel):
     limit: Decimal
     spent: Decimal
     coming_up: Decimal
+    # max(limit, spent + coming_up): what this budget takes off Not planned
+    # (sec); the rows sum to `planned_total` (ux on #297).
+    planned: Decimal
     status: str | None
     over_by: Decimal
     commitments: list[BudgetCommitment]

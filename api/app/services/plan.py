@@ -234,12 +234,13 @@ def _budgets(budgets, paid, coming) -> PlanBudgets:
         found = coming.get(b.category)
         lines += [BudgetCommitment(commitment_id=i.commitment_id, label=i.label, date=i.due_date, amount=i.amount,
                                    status="due") for i in (found.instalments if found else [])]
+        limit = Decimal(b.limit_pounds)
         items.append(PlanBudget(
-            budget_id=b.id, category=b.category, limit=Decimal(b.limit_pounds), spent=b.spent,
-            coming_up=b.coming_up.amount, status=b.status, over_by=b.over_by, commitments=lines[:ITEMS_MAX],
+            budget_id=b.id, category=b.category, limit=limit, spent=b.spent, coming_up=b.coming_up.amount,
+            planned=max(limit, b.spent + b.coming_up.amount), status=b.status, over_by=b.over_by, commitments=lines[:ITEMS_MAX],
             commitment_count=len(lines), other_purchases=max(ZERO, b.spent - paid_sum)))
     return PlanBudgets(
         limits_total=sum((i.limit for i in items), ZERO),
-        planned_total=sum((max(i.limit, i.spent + i.coming_up) for i in items), ZERO),
+        planned_total=sum((i.planned for i in items), ZERO),
         spent=sum((i.spent for i in items), ZERO), coming_up=sum((i.coming_up for i in items), ZERO),
         count=len(items), items=items)

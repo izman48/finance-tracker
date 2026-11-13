@@ -41,7 +41,7 @@ from app.schemas.budgets import (
 )
 from app.services.analytics.commitments import held_next_payday, held_payday_dates, last_payday
 from app.services.analytics.common import _today
-from app.services.budget_coming_up import ITEMS_MAX, coming_up_by_category
+from app.services.budget_coming_up import ITEMS_MAX, budgeted_instalments, coming_up_by_category
 from app.services.budget_spend import UNCATEGORISED, BudgetSpend, budget_spend
 
 FALLBACK_DAYS = 30
@@ -324,12 +324,19 @@ def _spread(amount: Decimal, first: date, last: date, day: date) -> Decimal:
 def budget_projection(db: Session, user, forecast: dict) -> tuple[dict | None, str | None]:
     """The payday strip and the dotted line for a forecast response (T-09-14,
     the owner's rule): the solid line less the budgets, over the whole
-    horizon. This cycle, what's left (`CycleBudgets.left`) spread evenly from
-    today to the day before payday; each later cycle, the full total of the
-    active, unpaused limits spread over its days, so the line rises with
-    income as the solid line does. Unbudgeted spending is never projected.
-    Null, with why: "no_budgets" (no active, unpaused budget) or
-    "no_payday". Reads the forecast; never changes it."""
+    horizon. Unbudgeted spending is never projected. Active, unpaused
+    budgets only. A budgeted category's commitment instalments are already
+    on the solid line, so each budget subtracts only what they leave of it
+    (T-24-3b, sec): this cycle `max(0, limit - spent - instalments due by
+    the eve)`, spread evenly from today to the day before payday; each later
+    cycle `max(0, limit - that cycle's instalments)`, spread over its days.
+    Per budget, so one budget's instalments never free another's limit.
+    The instalments are the forecast's own: `held_scheduled_outflows` over
+    the same window as the forecast it adjusts, never `coming_up` (whose
+    held view is judged over this cycle only), so a pending Claude change
+    can't lift the line. Instalments past the horizon are unknown, so a
+    cycle the horizon cuts subtracts more, never less. Null, with why:
+    "no_budgets" or "no_payday". Reads the forecast; never changes it."""
     from app.services.analytics.forecast import get_forecast
 
     today = _today()
@@ -340,39 +347,59 @@ def budget_projection(db: Session, user, forecast: dict) -> tuple[dict | None, s
         return None, "no_payday"
     eve = inputs.cycle.end  # the day before payday
     timeline = [p for p in forecast["timeline"] if p["date"] >= today]
-    payday_timeline = timeline
+    this_forecast = forecast
     if forecast["horizon_end"] < eve:
-        payday_timeline = get_forecast(db, user, "payday")["timeline"]
-    scheduled = Decimal([p for p in payday_timeline if p["date"] <= eve][-1]["balance"])
+        this_forecast = get_forecast(db, user, "payday")
+    scheduled = Decimal([p for p in this_forecast["timeline"] if p["date"] <= eve][-1]["balance"])
 
     horizon_end = timeline[-1]["date"] if timeline else today
     later = _later_cycles(db, user, inputs.cycle, horizon_end)
+    counting = [b for b in inputs.budgets if not b.paused]
+    categories = {b.category for b in counting}
+    this_due = _due_by_category(db, user, this_forecast["horizon_end"], categories)
+    later_due = this_due if this_forecast is forecast else _due_by_category(db, user, forecast["horizon_end"], categories)
+
+    def free(spent: dict[str, Decimal], first: date, last: date, due) -> Decimal:
+        return sum((max(Decimal(0), Decimal(b.limit_pounds) - spent.get(b.category, Decimal(0))
+                        - due(b.category, first, last)) for b in counting), Decimal(0))
+
+    left = free(inputs.spend.by_category, today + timedelta(days=1), eve, this_due)
+    later_free = [free({}, c.start, c.end, later_due) for c in later]
 
     def used_by(day: date) -> Decimal:
         # Today's point is on the solid line: the spread starts tomorrow,
         # unless today is the day before payday (eng-a on #154).
-        used = Decimal(0) if day <= today < eve else _spread(inputs.left, today + timedelta(days=1), eve, day)
-        for c in later:
+        used = Decimal(0) if day <= today < eve else _spread(left, today + timedelta(days=1), eve, day)
+        for c, amount in zip(later, later_free):
             if day < c.start:
                 break
-            used += _spread(inputs.total_limit, c.start, c.end, day)
+            used += _spread(amount, c.start, c.end, day)
         return used
 
     series = [{"date": p["date"], "balance": _pence(Decimal(p["balance"]) - used_by(p["date"]))} for p in timeline]
+    # What paid-back marks add to "left" is what lowers the dotted line.
+    before_marks = free(inputs.spend.gross_by_category, today + timedelta(days=1), eve, this_due)
     return {
         "payday": eve + timedelta(days=1),
         "scheduled_balance": scheduled,
-        "after_budgets_balance": scheduled - inputs.left,
+        "after_budgets_balance": scheduled - left,
         "series": series,
-        "left_raised_by_marks": inputs.left - _left_before_marks(inputs),
+        "left_raised_by_marks": left - before_marks,
     }, None
 
 
-def _left_before_marks(inputs: CycleBudgets) -> Decimal:
-    """`left` as if nothing were paid back: what marks add to it is what
-    lowers the dotted line (excess and unbudgeted marks add nothing)."""
-    return sum((max(Decimal(0), Decimal(b.limit_pounds) - inputs.spend.gross_by_category.get(b.category, Decimal(0)))
-                for b in inputs.budgets if not b.paused), Decimal(0))
+def _due_by_category(db: Session, user, window_end: date, categories: set[str]):
+    """`due(category, first, last)`: the budgeted instalments the forecast
+    ending `window_end` schedules in [first, last], from the same held call
+    (same window) that built that forecast."""
+    from app.services.analytics.forecast import held_scheduled_outflows
+
+    occurrences, _ = held_scheduled_outflows(db, user, _today() + timedelta(days=1), window_end)
+    found = budgeted_instalments(db, user, occurrences, categories)
+
+    def due(category: str, first: date, last: date) -> Decimal:
+        return sum((i.amount for i in found.get(category, ()) if first <= i.due_date <= last), Decimal(0))
+    return due
 
 
 # --- nudges (T-09-4b) ------------------------------------------------------------------

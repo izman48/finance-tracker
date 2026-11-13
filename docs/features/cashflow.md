@@ -74,10 +74,14 @@ the month adds up. It adds no rule of its own; every line reads the code
 that already owns it:
 
 - **Income**: credits that paid a confirmed income this cycle
-  (`income_payments`, the lateness matcher), plus incomes still due by the
-  eve, held at the lower of now and before Claude. A late income adds nothing.
+  (`income_payments`, the lateness matcher), matched only against the held
+  incomes (confirmed before Claude or kept, the lower amount, the label
+  before Claude's unkept relabels), so an unkept Claude confirm, raise or
+  relabel never lets a credit count (sec on #305); plus incomes still due by
+  the eve, held at the lower of now and before Claude. A late income adds nothing.
 - **Fixed**: paid, which is this cycle's payments `classify_purchase` calls a
-  commitment (in a category with no budget) or a card payoff; and still to
+  commitment (in a category with no budget) or a card payoff (card payoffs
+  are money out this cycle, as safe to spend counts them); and still to
   pay, which is `money_out_items` (safe to spend's own list: commitments,
   card repayments, planned expenses) over (today, eve], bills held at the
   higher of the two, plus any instalment due earlier this cycle with no

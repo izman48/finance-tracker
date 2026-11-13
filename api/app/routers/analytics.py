@@ -65,6 +65,7 @@ from app.services.claude_keep import (
 from app.services.analytics.common import _today, account_role
 from app.services.analytics.repayment_warnings import card_warnings
 from app.services.analytics.planned_matching import planned_states
+from app.services.commitment_category import commitment_categories
 from app.services.linked_commitments import (
     LinkedCommitmentEdit, linked_commitments, refuse_linked_edit,
 )
@@ -293,8 +294,10 @@ def list_commitments(
     markers = claude_markers(db, current_user.id, "commitment", [r.id for r in rules])
     late = late_incomes(db, current_user, _today())
     linked = linked_commitments(db, current_user.id)
+    categories = commitment_categories(db, current_user, rules)
     return [
         CommitmentResponse.model_validate(r).model_copy(update={
+            "category": categories[r.id],
             "changed_by_claude": ClaudeMarker(**markers[r.id]) if r.id in markers else None,
             "late": r.id in late,
             **dict(zip(("keep", "kept_at"), keeps[r.id])),

@@ -21,6 +21,20 @@ detected rules from their label, and `rule_match_keys` (stored key, that key
 re-normalised, a PayPal reference stored before T-10-9 healed, label key) is what dedupes detection and matches payments, so
 a rule keyed under old rules is never suggested again.
 
+## Category (T-24-2)
+
+A commitment has no category of its own to set up: it is the category of its
+most recent payment that `classify_purchase` matches to it, with that
+commitment's own match keys (`services/commitment_category.py`,
+`commitment_categories`). No matched payment means `category: null`. A
+same-key payment that `classify_purchase` calls a transfer, card payoff or
+payment-plan purchase is not a match. The lookup reads the user's own
+transactions once, back 400 days (`WINDOW_DAYS`), for every commitment
+together, so its query count does not grow with the number of commitments.
+The category is returned exactly as stored (bank text, rules, Claude's rule
+edits) and is compared by exact string only. `GET /api/v1/analytics/commitments`
+and Claude's `commitments` tool return it.
+
 ## Linked repayments (T-10-8)
 
 A commitment that carries a liability's repayment (`Liability.linked_commitment_id`)
@@ -56,7 +70,7 @@ unrelated bill of the same amount on another day is still suggested.
 
 | Route | Auth |
 |---|---|
-| `GET /api/v1/analytics/commitments` | `CurrentUserOrMcpRead`; runs `sync_suggestions` first (detection, re-keying, rolling dates), adds late, keep and Claude-marker fields. |
+| `GET /api/v1/analytics/commitments` | `CurrentUserOrMcpRead`; runs `sync_suggestions` first (detection, re-keying, rolling dates), adds late, keep, Claude-marker and `category` fields. |
 | `POST /api/v1/analytics/commitments` | `CurrentUser` (manual add; T-12-12 bounds: direction and cadence enums, label 1-100 visible characters, amount above £0 to £1,000,000 in pence, intervals bounded, match text up to 200; else 422) |
 | `PATCH /api/v1/analytics/commitments/{commitment_id}` | `CurrentUser`; calls `record_user_edit`. Same bounds; status enum; a label is checked only when it changes (bank labels are sent back unchanged). |
 | `POST /api/v1/analytics/commitments/{commitment_id}/skip` | `CurrentUser` |

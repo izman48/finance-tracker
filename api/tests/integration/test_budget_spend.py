@@ -29,6 +29,7 @@ class World:
     def __init__(self, client, db, email="budgets@example.com"):
         self.db = db
         web, _, _ = _connect(client, email=email)
+        self.headers = {"Authorization": f"Bearer {web}"}
         self.dek = _dek_from_token(web)
         self.user = db.query(User).filter(User.email == email).one()
 

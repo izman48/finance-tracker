@@ -472,14 +472,25 @@ def _first_transaction_date(db: Session, user) -> date | None:
     return first.date() if isinstance(first, datetime) else first
 
 
+def _spend_with_commitments(spend: BudgetSpend) -> dict[str, Decimal]:
+    """Purchases plus the commitment payments left out, by category: what a
+    budget on each category would count."""
+    out = dict(spend.by_category)
+    for category, amount in spend.commitments_by_category.items():
+        out[category] = out.get(category, Decimal(0)) + amount
+    return out
+
+
 def suggest(db: Session, user) -> BudgetSuggestResponse:
     """The median of the last 3 complete cycles per category, rounded up to
     £10, or "not_enough_history". Reads only."""
     today = _today()
     cycle = current_cycle(db, user, today)
     cycles = previous_cycles(db, user, cycle, SUGGEST_CYCLES)
-    spends = [budget_spend(db, user, c.start, c.end) for c in cycles]
-    this_cycle = budget_spend(db, user, cycle.start, today)
+    # Measured as a budget counts it: purchases and paid commitments (T-24-3,
+    # eng-b on #294), so Suggest and Past cycles agree on a cycle's spend.
+    spends = [_spend_with_commitments(budget_spend(db, user, c.start, c.end)) for c in cycles]
+    this_cycle = _spend_with_commitments(budget_spend(db, user, cycle.start, today))
     covered = commitment_covered(db, user, today)
     # Enough history: the user's transactions reach back to the start of the
     # oldest of the three cycles, so none of them is partly missing data
@@ -488,13 +499,13 @@ def suggest(db: Session, user) -> BudgetSuggestResponse:
     enough = first is not None and first <= cycles[0].start
     current = {b.category: int(Decimal(b.limit_pounds)) for b in active_budgets(db, user)}
 
-    seen = {c for s in (*spends, this_cycle) for c in s.by_category} - covered - {UNCATEGORISED}
+    seen = {c for s in (*spends, this_cycle) for c in s} - covered - {UNCATEGORISED}
     # At most SUGGEST_MAX, the categories with the most spending (concept 4.1).
-    weight = {c: sum((s.by_category.get(c, Decimal(0)) for s in (*spends, this_cycle)), Decimal(0)) for c in seen}
+    weight = {c: sum((s.get(c, Decimal(0)) for s in (*spends, this_cycle)), Decimal(0)) for c in seen}
     categories = sorted(sorted(seen, key=lambda c: (-weight[c], c))[:SUGGEST_MAX])
     suggestions = []
     for cat in categories:
-        figures = [CycleFigure(start=c.start, end=c.end, spent=s.by_category.get(cat, Decimal(0)))
+        figures = [CycleFigure(start=c.start, end=c.end, spent=s.get(cat, Decimal(0)))
                    for c, s in zip(cycles, spends)]
         suggestions.append(BudgetSuggestion(
             category=cat, last_cycles=figures,

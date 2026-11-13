@@ -17,7 +17,9 @@ otherwise it stays under "Not counted here" (`not_counted.commitments`, or
 `commitments_no_category` for a payment with no category). Any category can
 have a budget now, rent and bills included (the Sprint 09 "mostly
 commitments" block is lifted for the web and `set_budgets`; suggestions
-still leave such categories out).
+still leave such categories out, and measure every other category as its
+budget would count it, paid commitments included, so Suggest and Past
+cycles agree).
 
 Each budget row also has `coming_up`: the commitment instalments due after
 today and by the cycle's last day, taken from `held_scheduled_outflows`

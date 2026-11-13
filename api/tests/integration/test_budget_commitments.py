@@ -266,3 +266,16 @@ def test_a_bill_the_forecast_drops_for_its_card_repayment_is_not_coming_up(bill,
         db_session.commit()
     bill.as_user(card_tie)
     assert _forecast_bill(bill) == [] and _coming(bill) == []
+
+
+def test_suggest_measures_a_commitment_the_way_the_budget_counts_it(w):
+    """eng-b on #294: Suggest and Past cycles must agree on a cycle's spend,
+    so a category's paid commitments are in its suggested figures too."""
+    def last_cycles():
+        rows = w.suggest().json()["suggestions"]
+        return [Decimal(c["spent"]) for c in next(s for s in rows if s["category"] == "Eating out")["last_cycles"]]
+    before = last_cycles()
+    _weekly(w, amount="5.00", paid_days_ago=(26, 33, 40))  # three instalments in the last complete cycle
+    after = last_cycles()
+    assert after[-1] == before[-1] + Decimal("15.00")
+    assert after[:-1] == before[:-1]

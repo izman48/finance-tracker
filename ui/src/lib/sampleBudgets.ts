@@ -10,7 +10,14 @@ export interface BudgetLedgerTx {
   amount: number
   daysAgo: number
   kind: 'purchase' | 'commitment' | 'transfer' | 'card_payoff' | 'other'
+  /** The commitment's label, for a commitment payment. */
+  label?: string
 }
+
+/** A commitment the demo forecast schedules every 30 days from `nextIn`
+ *  days ahead, in its payments' category (T-24-5b). One list feeds both the
+ *  forecast and budgets' coming up, so the two never disagree. */
+export interface SampleScheduledBill { id: string; label: string; category: string | null; amount: number; nextIn: number }
 
 interface SampleBudget { id: string; category: string; limit_pounds: number; paused: boolean }
 
@@ -20,7 +27,10 @@ const SAMPLE_BUDGETS: SampleBudget[] = [
   { id: 'sb2', category: 'Eating out', limit_pounds: 150, paused: false },
   { id: 'sb3', category: 'Transport', limit_pounds: 30, paused: false },
   { id: 'sb4', category: 'Shopping', limit_pounds: 120, paused: true },
+  // Holds the sample's subscriptions, due before payday: the "will go over" bar (T-24-5b).
+  { id: 'sb5', category: 'Subscriptions', limit_pounds: 20, paused: false },
 ]
+const BUDGETED = new Set(SAMPLE_BUDGETS.filter((b) => !b.paused).map((b) => b.category))
 const CYCLE_DAYS = 30
 const PACE_BAND = 0.1
 const HISTORY_CYCLES = 5 // complete cycles the six-month ledger covers
@@ -34,14 +44,36 @@ const isoDaysAgo = (days: number) => {
   return d.toISOString().slice(0, 10)
 }
 
-/** Purchases per category with daysAgo in [toAgo, fromAgo]. */
+/** Purchases per category with daysAgo in [toAgo, fromAgo], and commitment
+ *  payments in a budgeted category (T-24-3). */
 function spendByCategory(ledger: BudgetLedgerTx[], fromAgo: number, toAgo: number) {
   const out = new Map<string, number>()
   for (const tx of ledger) {
-    if (tx.kind !== 'purchase' || tx.daysAgo > fromAgo || tx.daysAgo < toAgo) continue
+    const counts = tx.kind === 'purchase' || (tx.kind === 'commitment' && BUDGETED.has(tx.category))
+    if (!counts || tx.daysAgo > fromAgo || tx.daysAgo < toAgo) continue
     out.set(tx.category, (out.get(tx.category) ?? 0) + tx.amount)
   }
   return out
+}
+
+/** Days ahead (`from` to `to`) a scheduled bill falls on: `nextIn`, then every 30 days. */
+const dueDays = (bill: SampleScheduledBill, from: number, to: number) => {
+  const out: number[] = []
+  for (let d = bill.nextIn; d <= to; d += CYCLE_DAYS) if (d >= from) out.push(d)
+  return out
+}
+
+/** Pace's placed commitments (API: services/budget_pace.py): per bill, its
+ *  payments this cycle up to its amount x instalments due so far; never more than spent. */
+function placed(ledger: BudgetLedgerTx[], bills: SampleScheduledBill[], paydayAgo: number, spent: number) {
+  const total = bills.reduce((t, bill) => {
+    let due = 0
+    for (let d = bill.nextIn - CYCLE_DAYS; d >= -paydayAgo; d -= CYCLE_DAYS) if (d <= 0) due += 1
+    const paid = ledger.filter((tx) => tx.kind === 'commitment' && tx.label === bill.label && tx.category === bill.category
+      && tx.daysAgo <= paydayAgo).reduce((s, tx) => s + tx.amount, 0)
+    return t + Math.min(paid, bill.amount * due)
+  }, 0)
+  return Math.min(total, spent)
 }
 
 function status(spent: number, pace: number, limit: number) {
@@ -57,17 +89,29 @@ function status(spent: number, pace: number, limit: number) {
 export interface SamplePaidBack { label: string; amount: number; against: string; category: string; daysAgo: number }
 
 export function sampleBudgetList(ledger: BudgetLedgerTx[], paydayAgo: number, includeCategories: boolean,
-  paidBack: SamplePaidBack[] = []) {
+  paidBack: SamplePaidBack[] = [], scheduled: SampleScheduledBill[] = []) {
   const netted = paidBack.filter((m) => m.daysAgo <= paydayAgo)
   const elapsed = paydayAgo + 1
+  const daysLeft = CYCLE_DAYS - elapsed
   const spend = spendByCategory(ledger, paydayAgo, 0)
   const rows = SAMPLE_BUDGETS.map((b) => {
     const spent = round2(spend.get(b.category) ?? 0)
-    const pace = round2(b.limit_pounds * (elapsed / CYCLE_DAYS))
+    const bills = b.paused ? [] : scheduled.filter((bill) => bill.category === b.category)
+    const items = bills.flatMap((bill) => dueDays(bill, 1, daysLeft).map((d) => ({
+      commitment_id: bill.id, label: bill.label, due_date: isoDaysAgo(-d), amount: money(bill.amount),
+    }))).sort((x, y) => x.due_date.localeCompare(y.due_date))
+    const coming = round2(items.reduce((t, i) => t + Number(i.amount), 0))
+    const onLine = placed(ledger, bills, paydayAgo, spent)
+    const pace = round2(onLine + Math.max(0, b.limit_pounds - onLine) * (elapsed / CYCLE_DAYS))
     return {
       id: b.id, category: b.category, limit_pounds: b.limit_pounds, paused: b.paused, created_via: 'web' as const,
       spent: money(spent), pace_spent: money(pace), over_by: money(Math.max(0, spent - b.limit_pounds)),
       status: b.paused ? null : status(spent, pace, b.limit_pounds), changed_by_claude: null,
+      coming_up: {
+        amount: money(coming), commitment_count: new Set(items.map((i) => i.commitment_id)).size,
+        instalment_count: items.length, items: items.slice(0, 5),
+      },
+      over_by_payday: money(Math.max(0, spent + coming - b.limit_pounds)),
     }
   })
   const counting = rows.filter((r) => !r.paused)
@@ -76,8 +120,8 @@ export function sampleBudgetList(ledger: BudgetLedgerTx[], paydayAgo: number, in
   const other = [...spend.entries()].filter(([c]) => !tracked.has(c)).reduce((t, [, v]) => t + v, 0)
   const over = counting.filter((r) => r.status === 'over').sort((a, b) => Number(b.over_by) - Number(a.over_by))
   const firstOver = over.length ? { category: over[0].category, over_by: over[0].over_by } : null
-  const excluded = (kind: BudgetLedgerTx['kind']) =>
-    money(ledger.filter((tx) => tx.kind === kind && tx.daysAgo <= paydayAgo).reduce((t, tx) => t + tx.amount, 0))
+  const excluded = (kind: BudgetLedgerTx['kind'], keep: (tx: BudgetLedgerTx) => boolean = () => true) =>
+    money(ledger.filter((tx) => tx.kind === kind && tx.daysAgo <= paydayAgo && keep(tx)).reduce((t, tx) => t + tx.amount, 0))
   return {
     cycle: {
       start: isoDaysAgo(paydayAgo), end: isoDaysAgo(paydayAgo - (CYCLE_DAYS - 1)),
@@ -87,7 +131,8 @@ export function sampleBudgetList(ledger: BudgetLedgerTx[], paydayAgo: number, in
     other_spending: money(other),
     total_spent: money(total),
     not_counted: {
-      commitments: excluded('commitment'), transfers: excluded('transfer'),
+      commitments: excluded('commitment', (tx) => !!tx.category && !BUDGETED.has(tx.category)),
+      commitments_no_category: excluded('commitment', (tx) => !tx.category), transfers: excluded('transfer'),
       card_payoffs: excluded('card_payoff'), financed: '0.00',
       paid_back: money(netted.reduce((t, m) => t + m.amount, 0)),
       paid_back_marks: netted.map((m) => ({ label: m.label, amount: money(m.amount), against: m.against, category: m.category })),
@@ -106,7 +151,8 @@ export function sampleBudgetList(ledger: BudgetLedgerTx[], paydayAgo: number, in
       first_over: firstOver,
     },
     budgetable_categories: includeCategories
-      ? [...new Set(ledger.filter((tx) => tx.kind === 'purchase').map((tx) => tx.category))].sort()
+      ? [...new Set(ledger.filter((tx) => (tx.kind === 'purchase' || tx.kind === 'commitment') && tx.category)
+        .map((tx) => tx.category))].sort()
       : null,
   }
 }
@@ -167,8 +213,17 @@ const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.p
  *  Paused budgets are not counted (the summary leaves them out). Null with
  *  "no_budgets" when nothing is counted. `eveBalance` is the scheduled
  *  balance on the day before payday, from a forecast that reaches it. */
-export function sampleBudgetProjection(list: SampleList, timeline: { date: string; balance: number }[], eveBalance: number) {
-  const left = Number(list.summary_this_cycle.left)
+export function sampleBudgetProjection(list: SampleList, timeline: { date: string; balance: number }[], eveBalance: number,
+  scheduled: SampleScheduledBill[] = []) {
+  // T-24-3b: per unpaused budget, the instalments the forecast already
+  // schedules in its category are netted off, never pooled across budgets.
+  const counting = list.budgets.filter((b) => !b.paused)
+  const left = counting.reduce((t, b) => t + Math.max(0, b.limit_pounds - Number(b.spent) - Number(b.coming_up.amount)), 0)
+  // Instalments past the forecast's horizon are unknown, so they net nothing (the API's safe side).
+  const horizon = timeline.length - 1
+  const later = (from: number) => counting.reduce((t, b) => t + Math.max(0, b.limit_pounds - scheduled
+    .filter((bill) => bill.category === b.category)
+    .reduce((s, bill) => s + bill.amount * dueDays(bill, from, Math.min(from + CYCLE_DAYS - 1, horizon)).length, 0)), 0)
   const total = Number(list.summary_this_cycle.total_limit)
   if (total <= 0 || !timeline.length) return { projection: null, reason: 'no_budgets' as const }
   const today = timeline[0].date
@@ -177,7 +232,7 @@ export function sampleBudgetProjection(list: SampleList, timeline: { date: strin
     d >= last ? amount : (amount * (d - first + 1)) / (last - first + 1)
   const used = (d: number) => {
     let out = d === 0 && toEve > 0 ? 0 : spread(left, 1, toEve, d)
-    for (let start = toEve + 1; start <= d; start += CYCLE_DAYS) out += spread(total, start, start + CYCLE_DAYS - 1, d)
+    for (let start = toEve + 1; start <= d; start += CYCLE_DAYS) out += spread(later(start), start, start + CYCLE_DAYS - 1, d)
     return out
   }
   const payday = new Date(Date.parse(list.cycle.end) + DAY_MS).toISOString().slice(0, 10)

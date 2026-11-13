@@ -45,6 +45,13 @@ earliest first; `amount`, `commitment_count` and `instalment_count` cover
 all of them. A closed cycle's stored snapshot is never rewritten; a cycle
 first loaded after this change is written under the new rule.
 
+**Demo (T-24-5b):** `sampleBudgets.ts` mirrors the counting, coming-up,
+pace and dotted-line rules. A sample Subscriptions budget (£20) holds the
+sample's two subscriptions. They're due before payday, so demo shows the
+"will go over" bar. They come from `SCHEDULED_BILLS` in `sampleAccount.ts`,
+the same list the demo forecast schedules, so coming up never holds an
+instalment the demo forecast doesn't.
+
 ## Code
 
 **API**, web (`api/app/routers/budgets.py`):

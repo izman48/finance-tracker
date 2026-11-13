@@ -98,6 +98,41 @@ def test_money_in_lists_income_credits_by_description_and_leaves_out_transfers_a
     assert D(m["total"]) == D("2575.00")
 
 
+def test_an_income_credit_that_is_a_confirmed_income_counts_once(w):
+    """eng-a on #307: the salary credit categorised Income is listed once, and
+    an income paid early (before its due date) is not also still expected."""
+    _rule(w, "Side job", "120", "income", 2)
+
+    def categorise():
+        from app.models import Transaction
+        for tx in w.db.query(Transaction).filter(Transaction.transaction_type == "credit").all():
+            tx.category = "Income"                       # the salary credit
+        _tx(w.db, w.current, "120.00", TODAY, ttype="credit", merchant="Side job", category="Income")  # paid early
+        w.db.commit()
+    w.as_user(categorise)
+    m = _plan(w)["money_in"]
+    assert [i["label"] for i in m["items"]].count("Salary") == 1
+    assert [i["label"] for i in m["items"]].count("Side job") == 1
+    assert D(m["total"]) == D("2620.00")
+
+
+def test_an_income_paid_in_two_credits_counts_each_once(w):
+    """A payer splitting one income ("MUM AND DAD RENT" + "... GIFT"): both
+    credits are that income, categorised Income or not."""
+    def make():
+        rule = CommitmentRule(user_id=w.user.id, direction="income", label="MUM AND DAD", amount=D("300"),
+                              cadence="monthly", next_date=TODAY - timedelta(days=3), source="manual", status="confirmed")
+        w.db.add(rule)
+        w.db.commit()
+        rule.created_at = rule.created_at - timedelta(days=60)
+        for merchant, amount in [("MUM AND DAD RENT", "200.00"), ("MUM AND DAD GIFT", "100.00")]:
+            _tx(w.db, w.current, amount, TODAY - timedelta(days=3), ttype="credit", merchant=merchant, category="Income")
+        w.db.commit()
+    w.as_user(make)
+    m = _plan(w)["money_in"]
+    assert D(m["total"]) == D("2800.00")
+
+
 # --- Commitments ----------------------------------------------------------------
 
 def test_commitments_group_by_category_with_paid_coming_and_not_seen(w):
@@ -147,13 +182,32 @@ def test_a_bill_paid_today_is_paid_and_one_due_today_unpaid_is_coming(w):
     assert items["ENERGY CO"] == "paid" and items["FIBRE CO"] == "coming"
 
 
-def test_a_holding_linked_commitment_is_savings(w):
+def test_a_holding_linked_commitment_is_savings_and_a_contribution_filed_as_a_transfer_pays_it(w):
     isa = _rule(w, "ISA SAVER", "1", "expense", 4)
-    w.db.add(CommitmentLink(user_id=w.user.id, commitment_id=isa, asset_id=uuid.uuid4(), role="contribution",
-                            commitment_created=False, created_on=TODAY))
+    pension = _rule(w, "PENSION CO", "50", "expense", -2)
+    for cid in (isa, pension):
+        w.db.add(CommitmentLink(user_id=w.user.id, commitment_id=cid, asset_id=uuid.uuid4(), role="contribution",
+                                commitment_created=False, created_on=TODAY))
     w.db.commit()
+    _paid(w, "PENSION CO", "50.00", 1, "Transfers")
     savings = _groups(_plan(w))["Savings"]
-    assert [(i["label"], i["status"], D(i["amount"])) for i in savings["items"]] == [("ISA SAVER", "coming", D("1"))]
+    assert [(i["label"], i["status"], D(i["amount"])) for i in savings["items"]] == [
+        ("PENSION CO", "paid", D("50")), ("ISA SAVER", "coming", D("1"))]
+
+
+def test_a_bill_tied_to_a_card_is_the_card_repayment_and_stays_out(w):
+    """eng-a on #307: a "DD to card" commitment tied to a card with a
+    repayment config is that card's repayment, so not a commitment here."""
+    from app.models import Account
+    tied = _rule(w, "CARD DIRECT DEBIT", "200", "expense", 3)
+
+    def tie():
+        card = w.db.query(Account).filter_by(user_id=w.user.id, account_type="CREDIT_CARD").one()
+        rule = w.db.get(CommitmentRule, tied)
+        rule.card_account_id, rule.card_link_source = card.id, "user"
+        w.db.commit()
+    w.as_user(tie)
+    assert "CARD DIRECT DEBIT" not in {i["label"] for i in _items(_plan(w))}
 
 
 def test_a_budgeted_commitment_counts_once_inside_its_budget(w):

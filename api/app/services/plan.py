@@ -34,7 +34,7 @@ from app.schemas.plan import (
 from app.services.analytics.cadence import _step_back, commitment_occurrences
 from app.services.analytics.commitments import rule_match_keys, transaction_match_key
 from app.services.analytics.common import _d, _load, _today, resolve_roles
-from app.services.analytics.late_income import income_payments, late_incomes
+from app.services.analytics.late_income import income_payments, income_rule_keys, late_incomes
 from app.services.analytics.repayments import card_repayment_rule_ids
 from app.services.analytics.spending import (
     _effective_transfers, classify_noise, classify_purchase, financed_transaction_ids,
@@ -109,9 +109,13 @@ def _money_in(db: Session, user, ledger, start: date, today: date, eve: date) ->
         matched |= {c.id for c in credits}
         items += [MoneyInItem(label=held[rule_id].label, date=c.day, amount=c.amount, status="received",
                               transaction_id=c.id) for c in credits if c.day >= start]
+    # A credit with a confirmed income's key is that income, received or
+    # still expected (paid early): never counted a second time (eng-a on #307).
+    income_keys = {k for rule in held.values() for k in income_rule_keys(rule)}
     items += [MoneyInItem(label=tx.description or tx.merchant_name or "Income", date=tx.transaction_date.date(),
                           amount=_d(tx.amount), status="received", transaction_id=tx.id)
-              for tx in _income_credits(db, user, ledger) if tx.id not in matched]
+              for tx in _income_credits(db, user, ledger)
+              if tx.id not in matched and transaction_match_key(tx) not in income_keys]
 
     first_due = today + timedelta(days=1)
     late = late_incomes(db, user, today)
@@ -128,14 +132,15 @@ def _money_in(db: Session, user, ledger, start: date, today: date, eve: date) ->
 
 def _income_credits(db: Session, user, ledger) -> list[Transaction]:
     """Credits on a current account categorised Income that are not a
-    transfer, a card payment, a refund or marked paid back (lead, T-25-2)."""
+    transfer or card payment (`classify_noise`: paired legs, Transfers
+    category, the user's override), a refund or marked paid back (lead, T-25-2)."""
     noise = classify_noise(ledger.txns, ledger.roles)
     paid_back = marked_credit_ids(db, user.id)
     return [
         tx for tx in ledger.txns
         if tx.transaction_type == "credit" and ledger.roles.get(tx.account_id) == AccountRole.SPENDING
         and (tx.category or "").strip().lower() == INCOME_CATEGORY.lower()
-        and tx.id not in noise and tx.id not in ledger.transfers and tx.id not in paid_back
+        and tx.id not in noise and tx.id not in paid_back
         and not _REFUND_WORD.search(f"{tx.description or ''} {tx.merchant_name or ''}".lower())
     ]
 

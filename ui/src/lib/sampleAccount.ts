@@ -1029,6 +1029,69 @@ function statementsResponse(path: string) {
   }
 }
 
+/** GET /plan (T-24-6), by the contract's rules from the sample's own
+ *  commitments, ledger and budgets: a commitment's category is its latest
+ *  payment's; it is paid when a payment landed this cycle, due when its next
+ *  date falls in the cycle, otherwise not due (adds nothing). None of the
+ *  sample's commitments sit in a budgeted category, so all are Fixed. */
+function planResponse() {
+  const list = sampleBudgetList(BUDGET_LEDGER, PAYDAY_AGO, false, SAMPLE_PAID_BACK)
+  const r2 = (n: number) => (Math.round(n * 100) / 100).toFixed(2)
+  const sum = (xs: { amount: string }[]) => xs.reduce((t, x) => t + Number(x.amount), 0)
+  const payments = (label: string) => L.filter((tx) => tx.description === label && tx.is_commitment)
+  const inCycle = (c: { next_date: string }) => c.next_date <= list.cycle.end
+  const all = commitmentsResponse()
+  const income = all.filter((c) => c.direction === 'income').map((c) => {
+    const paid = payments(c.label).find((tx) => tx.daysAgo <= PAYDAY_AGO)
+    return paid
+      ? { id: c.id, label: c.label, date: isoDate(nowMinus(paid.daysAgo)), amount: r2(paid.amount), status: 'received' as const, transaction_id: paid.id }
+      : { id: c.id, label: c.label, date: c.next_date, amount: r2(c.amount), status: 'expected' as const, transaction_id: null }
+  }).filter((i) => i.status === 'received' || i.date <= list.cycle.end)
+  const groups = new Map<string | null, { commitment_id: string; label: string; due_date: string | null; amount: string; status: 'paid' | 'due' | 'not_due_this_cycle'; transaction_id: string | null }[]>()
+  for (const c of all.filter((x) => x.direction === 'expense')) {
+    const paid = payments(c.label).find((tx) => tx.daysAgo <= PAYDAY_AGO)
+    const category = payments(c.label)[0]?.category ?? null
+    const item = paid
+      ? { commitment_id: c.id, label: c.label, due_date: isoDate(nowMinus(paid.daysAgo)), amount: r2(paid.amount), status: 'paid' as const, transaction_id: paid.id }
+      : { commitment_id: c.id, label: c.label, due_date: inCycle(c) ? c.next_date : null, amount: r2(c.amount), status: inCycle(c) ? 'due' as const : 'not_due_this_cycle' as const, transaction_id: null }
+    groups.set(category, [...(groups.get(category) ?? []), item])
+  }
+  const counted = <T extends { status: string }>(items: T[]) => items.filter((i) => i.status !== 'not_due_this_cycle')
+  const fixedGroups = [...groups].map(([category, items]) => ({
+    category, total: r2(sum(counted(items))), items,
+    paid_count: items.filter((i) => i.status === 'paid').length, count: counted(items).length,
+  }))
+  const fixedItems = fixedGroups.flatMap((g) => counted(g.items))
+  const budgets = list.budgets.filter((b) => !b.paused).map((b) => ({
+    budget_id: b.id, category: b.category, limit: r2(b.limit_pounds), spent: b.spent, coming_up: '0.00',
+    status: b.status, over_by: b.over_by, commitments: [], other_purchases: b.spent,
+  }))
+  const incomeTotal = sum(income)
+  const fixedTotal = sum(fixedItems)
+  const limits = budgets.reduce((t, b) => t + Number(b.limit), 0)
+  const notPlanned = incomeTotal - fixedTotal - limits
+  return {
+    cycle: { start: list.cycle.start, end: list.cycle.end, days_left: list.cycle.days_left },
+    income: {
+      total: r2(incomeTotal), items: income,
+      received_count: income.filter((i) => i.status === 'received').length,
+      expected_count: income.filter((i) => i.status === 'expected').length,
+    },
+    fixed: {
+      total: r2(fixedTotal), paid: r2(sum(fixedItems.filter((i) => i.status === 'paid'))),
+      to_pay: r2(sum(fixedItems.filter((i) => i.status === 'due'))),
+      paid_count: fixedItems.filter((i) => i.status === 'paid').length, count: fixedItems.length, groups: fixedGroups,
+    },
+    budgets: {
+      limits_total: r2(limits), spent: r2(budgets.reduce((t, b) => t + Number(b.spent), 0)),
+      coming_up: '0.00', count: budgets.length, items: budgets,
+    },
+    spent_outside_budgets: list.other_spending,
+    not_planned: r2(notPlanned),
+    outside_vs_not_planned: r2(Number(list.other_spending) - notPlanned),
+  }
+}
+
 export function sampleResponse(url: string, params: unknown): unknown {
   const [path, queryString] = url.split('?')
   const p = readParams(params)
@@ -1070,6 +1133,7 @@ export function sampleResponse(url: string, params: unknown): unknown {
   if (is('/holdings/projection')) return holdingsProjectionResponse(p as Record<string, any>)
   if (is('/liabilities')) return liabilitiesResponse()
   if (is('/card-plans')) return cardPlansResponse()
+  if (is('/plan')) return planResponse()
   if (is('/budgets/history')) return sampleBudgetHistory(BUDGET_LEDGER, PAYDAY_AGO, Number(p.cycles) || 6)
   if (is('/budgets')) return sampleBudgetList(BUDGET_LEDGER, PAYDAY_AGO, p.include === 'categories', SAMPLE_PAID_BACK)
   if (is('/rules')) return { packs: [], personal: [] }

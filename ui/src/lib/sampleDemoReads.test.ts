@@ -25,3 +25,36 @@ describe('demo reads that used to be gaps', () => {
     expect(audit.next_cursor).toBeNull()
   })
 })
+
+// T-24-6: Cashflow > Plan in demo mode, by the contract's invariants.
+describe('demo Plan', () => {
+  const plan = get<import('./plan').PlanResponse>('/plan')
+  const n = (v: string) => Math.round(Number(v) * 100)
+  const sum = (xs: string[]) => xs.reduce((t, x) => t + n(x), 0)
+
+  it('the lines add up to the penny', () => {
+    expect(n(plan.not_planned)).toBe(n(plan.income.total) - n(plan.fixed.total) - n(plan.budgets.limits_total))
+    expect(n(plan.fixed.total)).toBe(n(plan.fixed.paid) + n(plan.fixed.to_pay))
+    expect(n(plan.fixed.total)).toBe(sum(plan.fixed.groups.map((g) => g.total)))
+    expect(n(plan.income.total)).toBe(sum(plan.income.items.map((i) => i.amount)))
+    expect(n(plan.outside_vs_not_planned)).toBe(n(plan.spent_outside_budgets) - n(plan.not_planned))
+  })
+
+  it("budgets match the sample's Budgets tab (unpaused), and outside spending is its other_spending", () => {
+    const list = get<{ budgets: { category: string; limit_pounds: number; spent: string; paused: boolean }[]; other_spending: string }>('/budgets')
+    const active = list.budgets.filter((b) => !b.paused)
+    expect(plan.budgets.items.map((b) => [b.category, n(b.limit), b.spent])).toEqual(active.map((b) => [b.category, b.limit_pounds * 100, b.spent]))
+    expect(n(plan.budgets.spent)).toBe(sum(plan.budgets.items.map((b) => b.spent)))
+    expect(plan.spent_outside_budgets).toBe(list.other_spending)
+  })
+
+  it('income and commitments are the sample commitments, each in one place, paid ones linked to sample transactions', () => {
+    const ids = new Set(get<{ items: { id: string }[] }>('/banking/transactions?page_size=1000').items.map((t) => t.id))
+    const fixed = plan.fixed.groups.flatMap((g) => g.items)
+    const inBudgets = plan.budgets.items.flatMap((b) => b.commitments.map((c) => c.commitment_id))
+    expect(fixed.filter((c) => inBudgets.includes(c.commitment_id))).toEqual([])
+    const linked = [...fixed, ...plan.income.items].filter((i) => i.status === 'paid' || i.status === 'received')
+    expect(linked.length).toBeGreaterThan(0)
+    for (const i of linked) expect(ids.has(i.transaction_id as string)).toBe(true)
+  })
+})

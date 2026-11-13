@@ -1,8 +1,8 @@
 /**
- * Cashflow > Plan (T-24-6; spec docs nilu-s24-plan.md, "Plan section").
- * Types mirror the `GET /plan` contract (T-24-4). Money arrives as decimal
- * strings and every total comes from the API: the UI only formats. Labels
- * and categories are bank or rule text, rendered as text only.
+ * Cashflow > Plan (T-25-2; the owner's approved shape in sprint-25.md).
+ * Types mirror the `GET /plan` contract. Money arrives as decimal strings
+ * and every total comes from the API: the UI only formats. Labels, group
+ * names and categories are bank or rule text, rendered as text only.
  */
 import type { PaceStatus } from './budgets'
 import { dateDayMonth, gbp } from './format'
@@ -11,8 +11,7 @@ type Money = string
 
 export interface PlanCycle { start: string; end: string; days_left: number }
 
-export interface PlanIncomeItem {
-  id: string
+export interface PlanMoneyInItem {
   label: string
   date: string
   amount: Money
@@ -20,28 +19,23 @@ export interface PlanIncomeItem {
   transaction_id: string | null
 }
 
-/** Where a Fixed line comes from (T-24-4): a commitment, a card repayment
- *  or a planned expense; only a commitment has a `commitment_id`. */
-export type PlanSource = 'commitment' | 'card_repayment' | 'planned'
-
-export interface PlanFixedItem {
-  source: PlanSource
-  commitment_id: string | null
+export interface PlanCommitmentItem {
+  commitment_id: string
   label: string
-  due_date: string | null
+  date: string
   amount: Money
-  status: 'paid' | 'due' | 'not_due_this_cycle'
+  /** paid: a matched payment; coming: due today or later; not_seen: due earlier with no payment matched (still counted). */
+  status: 'paid' | 'coming' | 'not_seen'
   transaction_id: string | null
 }
 
-export interface PlanFixedGroup {
-  source: PlanSource
-  /** null: "No category" for commitments; card repayments and planned expenses have their own group. */
-  category: string | null
+export interface PlanCommitmentGroup {
+  /** "Rent & bills", "Debt repayments", "Subscriptions", "Savings", a category's own name, or "Other". */
+  name: string
   total: Money
-  paid_count: number
   count: number
-  items: PlanFixedItem[]
+  paid_count: number
+  items: PlanCommitmentItem[]
 }
 
 export interface PlanBudgetCommitment {
@@ -59,55 +53,50 @@ export interface PlanBudget {
   limit: Money
   spent: Money
   coming_up: Money
-  /** max(limit, spent + coming up), from the API (T-24-4c): what this row counts; rows sum to `planned_total`. */
+  /** max(limit, spent + coming up), from the API: what this row counts; rows sum to `planned_total`. */
   planned: Money
   status: PaceStatus | 'budget_used' | null
   over_by: Money
   commitments: PlanBudgetCommitment[]
-  commitment_count: number
   other_purchases: Money
 }
 
 export interface PlanResponse {
   cycle: PlanCycle
-  income: { total: Money; received_count: number; expected_count: number; items: PlanIncomeItem[] }
-  fixed: { total: Money; paid: Money; to_pay: Money; paid_count: number; count: number; groups: PlanFixedGroup[] }
-  /** `planned_total`: each budget at max(limit, spent + coming up), what Not planned takes off (sec). */
-  budgets: { limits_total: Money; planned_total: Money; spent: Money; coming_up: Money; count: number; items: PlanBudget[] }
-  spent_outside_budgets: Money
-  not_planned: Money
-  outside_vs_not_planned: Money
+  money_in: { total: Money; items: PlanMoneyInItem[] }
+  commitments: { total: Money; groups: PlanCommitmentGroup[] }
+  budgets: { limits_total: Money; planned_total: Money; items: PlanBudget[] }
+  /** money_in.total − commitments.total − budgets.planned_total */
+  left_over: Money
 }
 
 /** £1,450.00: Plan always shows pence so the lines visibly add up. */
 export const planMoney = (value: Money) => gbp(Number(value))
 
 const has = (value: Money) => Number(value) > 0
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
 export const cycleText = (c: PlanCycle) =>
-  `${dateDayMonth(c.start)} – ${dateDayMonth(c.end)} · ${c.days_left} day${c.days_left === 1 ? '' : 's'} left`
+  `${dateDayMonth(c.start)} – ${dateDayMonth(c.end)} · ${plural(c.days_left, 'day')} left`
 
-export const incomeSubline = (i: PlanResponse['income']) =>
-  `${i.received_count} of ${i.received_count + i.expected_count} received`
-
-export function fixedSubline(f: PlanResponse['fixed']): string {
-  const paid = `${f.paid_count} of ${f.count} paid`
-  return has(f.to_pay) ? `${paid} · ${planMoney(f.to_pay)} still to pay` : paid
+export function moneyInSubline(m: PlanResponse['money_in']): string {
+  const expected = m.items.filter((i) => i.status === 'expected').length
+  const received = `${m.items.length - expected} received`
+  return expected ? `${received} · ${expected} expected` : received
 }
 
-/** The row's figure is `planned_total` (each budget at the larger of its
- *  limit and spent + coming up), so the limits are named here. */
-export function budgetsSubline(b: PlanResponse['budgets']): string {
-  const parts = [`${b.count} limit${b.count === 1 ? '' : 's'}, ${planMoney(b.limits_total)} in all`, `${planMoney(b.spent)} spent`]
-  if (has(b.coming_up)) parts.push(`${planMoney(b.coming_up)} coming up`)
-  return parts.join(' · ')
+export function commitmentsSubline(c: PlanResponse['commitments']): string {
+  const count = c.groups.reduce((t, g) => t + g.count, 0)
+  const paid = c.groups.reduce((t, g) => t + g.paid_count, 0)
+  return `${paid} of ${count} paid`
 }
 
-const SOURCE_GROUP: Record<PlanSource, string> = { commitment: 'No category', card_repayment: 'Card repayments', planned: 'Planned' }
+/** "Subscriptions (7)": the group and how many payments it holds. */
+export const groupLabel = (g: PlanCommitmentGroup) => `${g.name} (${g.count})`
 
-/** A Fixed group's name: its category, else what its source is. An empty
- *  category (possible from rule text) reads "No category". */
-export const groupLabel = (g: PlanFixedGroup) => g.category || SOURCE_GROUP[g.source]
+/** The row's figure is `planned_total`, so the limits are named here. */
+export const budgetsSubline = (b: PlanResponse['budgets']) =>
+  `${plural(b.items.length, 'limit')}, ${planMoney(b.limits_total)} in all`
 
 const PACE: Record<string, string> = { under_pace: 'Under pace', on_pace: 'On pace', ahead_of_pace: 'Ahead of pace' }
 
@@ -121,11 +110,11 @@ export function budgetLine(b: PlanBudget): string {
   return parts.join(' · ')
 }
 
-/** The chip on one item: "Paid 4 Nov", "Due 21 Nov", "Received", "Expected 28 Nov". */
-export function itemStatus(status: string, date: string | null): string {
+/** The chip on one item: "Paid 4 Nov", "Coming 21 Nov", "Not seen yet, due 1 Nov", "Received 30 Oct", "Expected 28 Nov". */
+export function itemStatus(status: string, date: string): string {
   if (status === 'paid') return `Paid ${dateDayMonth(date)}`
-  if (status === 'due') return `Due ${dateDayMonth(date)}`
-  if (status === 'received') return 'Received'
+  if (status === 'received') return `Received ${dateDayMonth(date)}`
   if (status === 'expected') return `Expected ${dateDayMonth(date)}`
-  return 'Next due outside this cycle'
+  if (status === 'not_seen') return `Not seen yet, due ${dateDayMonth(date)}`
+  return `Coming ${dateDayMonth(date)}`
 }

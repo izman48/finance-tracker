@@ -21,6 +21,7 @@ import AccountGroups from '../components/cashflow/AccountGroups'
 import { loanLenders } from '../lib/homeOwed'
 import { withLoanLabels } from '../lib/loanLabel'
 import ForecastChart from '../components/ForecastChart'
+import PlanSection, { PlanLink } from '../components/plan/PlanSection'
 import NudgeFeed, { UiNudge } from '../components/NudgeFeed'
 import { PAGE_HEADING_ID } from '../lib/nudgeFocus'
 import { nudgeRaise } from '../lib/budgets'
@@ -305,6 +306,8 @@ export default function DashboardPage() {
                   </div>
                 ))}
               </div>
+              {/* Under the stats, full width: in the safe-to-spend tile it wrapped at 320px (ux on #297). */}
+              <PlanLink />
             </div>
           </div>
 
@@ -364,6 +367,14 @@ export default function DashboardPage() {
       {summary && hasAccounts && (
         <div className="mb-6" data-reveal>
           <ForecastChart refreshKey={forecastKey} lenders={loanLenders(liabilities)} />
+        </div>
+      )}
+
+      {/* Plan (T-24-6, variant B): after the forecast; its own request, so a
+          failed /plan never hides safe to spend or the forecast. */}
+      {summary && hasAccounts && (
+        <div className="mb-6" data-reveal>
+          <PlanSection />
         </div>
       )}
 

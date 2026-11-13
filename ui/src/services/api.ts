@@ -6,6 +6,7 @@ import type { AuditItem, AuditPage } from '../lib/changes'
 import type { BudgetEntry, BudgetsResponse, SuggestResponse } from '../lib/budgets'
 import type { InvestmentGraph } from '../lib/investments'
 import type { HistoryResponse } from '../lib/budgetHistory'
+import type { PlanResponse } from '../lib/plan'
 
 // Unset -> local dev default; empty string -> same-origin (production behind Caddy)
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
@@ -523,6 +524,11 @@ export const budgetsAPI = {
   dismissNudge: (id: string) => api.post(`/budgets/nudges/${id}/dismiss`),
   /** Completed cycles, oldest first; every count and verdict is the server's (T-09-9). */
   history: (cycles: number) => api.get<HistoryResponse>('/budgets/history', { params: { cycles } }),
+}
+
+// Cashflow > Plan (T-24-4 / T-24-6). Web session; the server works out every figure.
+export const planAPI = {
+  get: () => api.get<PlanResponse>('/plan'),
 }
 
 export interface SyncStatusConnection {

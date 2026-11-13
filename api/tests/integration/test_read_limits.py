@@ -16,6 +16,7 @@ API = "/api/v1"
     ("/analytics/forecast", "forecast"),
     ("/analytics/spending", "spending"),
     ("/analytics/spending/trend", "spending"),
+    ("/plan", "plan"),  # T-24-4: decrypts the cycle's ledger (web only)
 ])
 def test_each_read_is_limited_per_user(client, monkeypatch, path, scope):
     monkeypatch.setitem(rate_limit.LIMITS, scope, (2, 60))

@@ -147,6 +147,8 @@ LIMITS: dict[str, tuple[int, int]] = {
     "summary": (120, 60),
     "forecast": (120, 60),
     "spending": (120, 60),
+    # Cashflow > Plan (T-24-4): decrypts the cycle's ledger, loaded with the page.
+    "plan": (120, 60),
 }
 
 

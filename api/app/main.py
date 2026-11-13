@@ -29,6 +29,7 @@ from app.routers import (
     card_statements_router,
     card_plans_router,
     holdings_list_router,
+    plan_router,
 )
 
 settings = get_settings()
@@ -97,6 +98,7 @@ app.include_router(repayments_router, prefix="/api/v1")
 app.include_router(card_statements_router, prefix="/api/v1")
 app.include_router(card_plans_router, prefix="/api/v1")
 app.include_router(holdings_list_router, prefix="/api/v1")
+app.include_router(plan_router, prefix="/api/v1")
 # Discovery lives at the origin root (RFC 8414), not under /api/v1.
 app.include_router(well_known_router)
 

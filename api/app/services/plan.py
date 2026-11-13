@@ -52,7 +52,6 @@ ITEMS_MAX = 50
 ZERO = Decimal(0)
 SAVINGS = "Savings"
 OTHER = "Other"
-OWN_RULE_SOURCES = ("learned", "manual")
 # Display groups by category (compared case-insensitively), in this order;
 # any other category is its own group after them, then "Other".
 GROUPS = {
@@ -150,11 +149,12 @@ def _income_credits(db: Session, user, ledger) -> list[Transaction]:
 
 
 def _chosen(tx: Transaction, rules) -> bool:
-    """Its category is the user's: set by hand, or by his own rule (not a shared pack's)."""
+    """Its category is the user's: set by hand, or by his own rule, pack-less
+    or in a pack he made (not one imported from someone else)."""
     if tx.category_locked:
         return True
     rule = winning_rule(rules, tx)
-    return rule is not None and rule.source in OWN_RULE_SOURCES and rule.category == tx.category
+    return rule is not None and rule.category == tx.category and (rule.pack is None or rule.pack.imported_from is None)
 
 
 _MATCH_FIELDS = ("id", "direction", "label", "match_key", "amount", "cadence", "interval_days", "interval_months",

@@ -78,12 +78,18 @@ def test_money_in_lists_income_credits_the_user_chose_and_leaves_out_defaults_tr
     """sec on #307: the provider files every credit as Income, so only a
     category the user chose (by hand, or by one of his own rules) counts."""
     def credits():
-        from app.models import CategoryRule
-        w.db.add(CategoryRule(user_id=w.user.id, pattern="SISTER", match_type="contains", match_field="any",
-                              category="Income", source="manual"))
+        from app.models import CategoryRule, RulePack
+        own, shared = RulePack(user_id=w.user.id, name="Mine"), RulePack(user_id=w.user.id, name="Shared",
+                                                                          imported_from="Someone's pack")
+        w.db.add_all([own, shared])
+        w.db.flush()
+        for pattern, pack, source in [("SISTER", own, "manual"), ("PARTNER", shared, "imported")]:
+            w.db.add(CategoryRule(user_id=w.user.id, pack_id=pack.id, pattern=pattern, match_type="contains",
+                                  match_field="any", category="Income", source=source))
         for merchant, category, locked in [
             ("AUNT GIFT", "Income", True),          # set by hand: counts, labelled by description
-            ("SISTER RENT", "Income", False),       # his rule says Income: counts
+            ("SISTER RENT", "Income", False),       # a rule in a pack he owns says Income: counts
+            ("PARTNER PAY", "Income", False),       # only an imported pack's rule says so
             ("SHOP CO", "Income", False),           # the provider's default: a refund in disguise
             ("SHOP REFUND", "Income", True),        # a refund
             ("FROM MY SAVINGS", "Transfers", True),  # a transfer

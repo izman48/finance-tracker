@@ -81,6 +81,7 @@ over. Safe to spend and the forecast do not read it.
   expected by the eve, held at the lower of now and before Claude (a late
   income adds nothing); plus any other credit on a current account the user
   filed as Income, by hand (`category_locked`) or by one of his own rules
+  (pack-less or in a pack he made; an imported pack's rule does not count)
   (the provider files every credit as Income, so its default never counts),
   labelled by its description. A credit with a confirmed income's key is
   that income and is not counted again (paid early). Transfers (paired

@@ -39,7 +39,7 @@ describe('BudgetsView', () => {
   it('the cycle and what is measured, with the exclusions named', () => {
     const t = text(html({}))
     expect(t).toContain('14 Oct to 11 Nov · 18 days left')
-    expect(t).toContain('Measuring purchases. Not counted here: commitments, transfers, card payoffs.')
+    expect(t).toContain('Measuring purchases and commitments you have paid. Not counted here: commitments with no budget, transfers, card payoffs.')
   })
 
   it('each row: amounts as text, a labelled meter, status in words, and the pace tick', () => {
@@ -156,5 +156,87 @@ describe('BudgetsView', () => {
   it('a paused budget leaves the tracking list (its spending is in Everything else)', () => {
     const data = budgetsResponse({ budgets: [budget(), budget({ id: 'p', category: 'Hobbies', paused: true, status: null })] })
     expect(text(html({ data }))).not.toContain('Hobbies')
+  })
+
+  // --- commitments coming up (T-24-5; spec "Budget bar", frames A1-A7) -------------
+  const kit = (due: string) => ({ commitment_id: 'c-kit', label: 'Meal kit', due_date: due, amount: '64.00' })
+  const eating = (spent: string, items: ReturnType<typeof kit>[], opb: string) => budget({
+    id: 'e', category: 'Eating out', limit_pounds: 500, spent, pace_spent: '150.00',
+    over_by: Math.max(0, Number(spent) - 500).toFixed(2),
+    status: Number(spent) > 500 ? 'over' : Number(spent) === 500 ? 'budget_used' : 'ahead_of_pace',
+    coming_up: { amount: (64 * items.length).toFixed(2), commitment_count: items.length ? 1 : 0, instalment_count: items.length, items },
+    over_by_payday: opb,
+  })
+  const row = (b: ReturnType<typeof budget>) => html({ data: budgetsResponse({ budgets: [b] }) })
+  const three = [kit('2026-11-18'), kit('2026-11-25'), kit('2026-12-02')]
+  const two = [kit('2026-11-18'), kit('2026-11-25')]
+
+  it('A1: a hatched coming-up segment after the fill, its line, no marker, no "over by payday"', () => {
+    const h = row(eating('92.00', three, '0.00'))
+    expect(h).toMatch(/data-coming[^>]*aria-hidden="true"[^>]*style="left:18\.4\d*%;width:38\.4\d*%/)
+    expect(h).not.toContain('data-limit')
+    expect(text(h)).toContain('£192.00 coming up: Meal kit, 3 more this cycle')
+    expect(text(h)).toContain('Ahead of pace')
+    expect(text(h)).not.toContain('over by payday')
+  })
+
+  it('A2: going over stretches the bar, marks the limit with its label, and says over by payday', () => {
+    const h = row(eating('394.00', three, '86.00'))
+    expect(h).toMatch(/data-limit[^>]*style="left:85\.3\d*%/)
+    expect(text(h)).toMatch(/£500 .*Ahead of pace · £86\.00 over by payday/)
+    expect(text(h)).not.toContain('will take you')
+  })
+
+  it('A3: over with more to come: "£21.70 over · £149.70 over by payday" and the take-you-over line, no end cap', () => {
+    const h = row(eating('521.70', two, '149.70'))
+    expect(h).toMatch(/<span class="chip-out">£21\.70 over<\/span>/)
+    expect(text(h)).toContain('£21.70 over · £149.70 over by payday')
+    expect(text(h)).toContain('Meal kit will take you £128.00 over')
+    expect(h).not.toContain('data-endcap')
+    expect(h).not.toMatch(/text-neg|bg-neg|text-rose|bg-rose/)
+  })
+
+  it('A7: budget used, with more to come', () => {
+    const h = row(eating('500.00', two, '128.00'))
+    expect(h).toMatch(/<span class="chip">Budget used<\/span>/)
+    expect(text(h)).toContain('Budget used · £128.00 over by payday')
+    expect(text(h)).toContain('Meal kit will take you £128.00 over')
+    expect(text(h)).not.toMatch(/On pace|Ahead of pace|Under pace/)
+  })
+
+  it('A4: over with nothing to come renders as today (end cap, no marker, no segment)', () => {
+    const h = row(eating('649.70', [], '149.70'))
+    expect(h).toContain('data-endcap')
+    expect(h).not.toContain('data-limit')
+    expect(h).not.toContain('data-coming')
+  })
+
+  it("the meter's name says what is coming up and that it isn't spent yet", () => {
+    expect(row(eating('521.70', two, '149.70'))).toContain(
+      'aria-label="Eating out: £521.70 of £500, £21.70 over, 18 days left, £128.00 coming up from Meal kit, 2 more this cycle, not counted as spent, £149.70 over by payday if all are paid"')
+  })
+
+  it('the coming-up line is a button that opens each instalment with its date and amount', () => {
+    const h = row(eating('92.00', three, '0.00'))
+    const [, id] = h.match(/<button[^>]*aria-expanded="false"[^>]*aria-controls="([^"]+)"[^>]*>.*?£192\.00 coming up/) ?? []
+    expect(id).toBeTruthy()
+    expect(h).toMatch(new RegExp(`id="${id}"[^>]*hidden`))
+    expect(text(h)).toContain('Meal kit 18 Nov £64.00')
+  })
+
+  it('a coming-up label is text, never markup', () => {
+    const b = eating('92.00', [{ ...kit('2026-11-18'), label: '<img src=x onerror=alert(1)>' }], '0.00')
+    const h = row(b)
+    expect(h).not.toContain('<img')
+    expect(h).toContain('&lt;img src=x onerror=alert(1)&gt;')
+  })
+
+  it('Not counted here: commitments with no budget link to Plan; no category only when there is some', () => {
+    const t = text(html({}))
+    expect(t).toContain('Commitments with no budget See in Plan £1,203')
+    expect(t).not.toContain('Commitments with no category')
+    expect(html({})).toMatch(/<a[^>]*href="\/dashboard#plan"[^>]*>See in Plan<\/a>/)
+    const data = budgetsResponse({ not_counted: { ...budgetsResponse().not_counted, commitments_no_category: '12.50' } })
+    expect(text(html({ data }))).toContain('Commitments with no category £12.50')
   })
 })

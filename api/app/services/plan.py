@@ -43,7 +43,7 @@ from app.services.analytics.spending import _effective_transfers, classify_purch
 from app.services.analytics.summary import money_out_items
 from app.services.budget_coming_up import coming_up_by_category
 from app.services.budgets import budget_list
-from app.services.claude_keep import counted_commitments, held_removed_planned
+from app.services.claude_keep import before_claude_label, claude_rows, counted_commitments, held_removed_planned
 from app.services.commitment_category import commitment_categories
 
 ITEMS_MAX = 50
@@ -106,9 +106,14 @@ def _paid_this_cycle(db: Session, user, rules, start: date, today: date) -> list
 
 def _income(db: Session, user, start: date, today: date, first_due: date, eve: date) -> PlanIncome:
     items: list[IncomeItem] = []
-    for rule_id, credits in income_payments(db, user, today).items():
-        rule = db.get(CommitmentRule, rule_id)
-        items += [IncomeItem(id=c.id, label=rule.label, date=c.day, amount=c.amount, status="received",
+    # Received is matched against the held incomes only (sec on #305): an
+    # income confirmed before Claude (or kept), at the lower amount, so an
+    # unkept confirm or raise never lets a credit count.
+    versions = counted_commitments(db, user.id, CommitmentDirection.INCOME.value, lambda v: _d(v.amount))
+    claude = claude_rows(db, user.id, [v.id for v in versions])
+    held = {v.id: _as_rule(db, v, claude.get(v.id, [])) for v in versions}
+    for rule_id, credits in income_payments(db, user, today, rules=list(held.values())).items():
+        items += [IncomeItem(id=c.id, label=held[rule_id].label, date=c.day, amount=c.amount, status="received",
                              transaction_id=c.id) for c in credits if c.day >= start]
     late = late_incomes(db, user, today)
 
@@ -123,6 +128,20 @@ def _income(db: Session, user, start: date, today: date, first_due: date, eve: d
     return PlanIncome(total=sum((i.amount for i in items), ZERO), items=items,
                       received_count=sum(i.status == "received" for i in items),
                       expected_count=sum(i.status == "expected" for i in items))
+
+
+_MATCH_FIELDS = ("id", "direction", "label", "match_key", "amount", "cadence", "interval_days", "interval_months",
+                 "next_date", "created_at", "skipped_through")
+
+
+def _as_rule(db: Session, version, claude: list):
+    """A held version with every field the income matcher reads: the
+    version's where it has one (Claude's change held back), else the row's,
+    and the label as it was before Claude's unkept relabels."""
+    row = version if isinstance(version, CommitmentRule) else db.get(CommitmentRule, version.id)
+    fields = {f: getattr(version, f, getattr(row, f)) for f in _MATCH_FIELDS}
+    fields["label"] = before_claude_label(row, claude)
+    return SimpleNamespace(**fields)
 
 
 def _fixed(db, user, rules, paid, budgeted, in_budgets, start, today, first_due, eve) -> PlanFixed:

@@ -29,7 +29,18 @@ card-tied bill the forecast drops is not in it. An instalment goes to its
 commitment's category (`services/commitment_category.py`). A £0 rule or one
 linked to a loan or holding adds nothing. `coming_up` never changes `spent`,
 `over_by` or `status`; `over_by_payday = max(0, spent + coming_up − limit)`.
-`status` is `budget_used` when spent equals the limit. Items are at most 5,
+`status` is `budget_used` when spent equals the limit. Pace (lead,
+2026-11-13; sec on #298): `pace_spent = placed + max(0, limit − placed) ×
+share of the cycle gone`; coming up plays no part, so an instalment that is
+only due never moves the status. Placed commitment payments sit on the
+line at their real dates and only the flexible rest is spread, so rent paid
+on day 1 isn't "ahead of pace". `services/budget_pace.py` caps what each
+commitment places at its amount × instalments due so far this cycle (a
+one-off under a subscription's descriptor is spread like any purchase),
+judges an unkept Claude change by the smaller of now and before-Claude
+(confirmed in both, lower amount, fewer instalments, the old match keys),
+and never places more than the budget's spent. With no commitments it is
+the even spread. Status, the pace tick and the pace nudge all read this one figure. Items are at most 5,
 earliest first; `amount`, `commitment_count` and `instalment_count` cover
 all of them. A closed cycle's stored snapshot is never rewritten; a cycle
 first loaded after this change is written under the new rule.
@@ -47,6 +58,13 @@ the forecast the line is drawn on (`budgeted_instalments`, the filter
 cycle only: a pending Claude change can't lift the line at any payday eve
 (tested). Instalments past the horizon are unknown, so a cycle the horizon
 cuts subtracts more, never less.
+
+**Demo (T-24-5b):** `sampleBudgets.ts` mirrors the counting, coming-up,
+pace and dotted-line rules. A sample Subscriptions budget (£20) holds the
+sample's two subscriptions. They're due before payday, so demo shows the
+"will go over" bar. They come from `SCHEDULED_BILLS` in `sampleAccount.ts`,
+the same list the demo forecast schedules, so coming up never holds an
+instalment the demo forecast doesn't.
 
 ## Code
 
@@ -90,7 +108,7 @@ paid-back marks, see
 `BudgetsView`, `BudgetsSegment`, `HistoryView`, `HistoryBars`,
 `ManageSheet`, `ManageModes`, `SuggestSheet`, `PaidBackByOthers`), Home budget line
 (`OverviewPage`), `forecast/BudgetStrip` and `ForecastChart` on Cashflow,
-`NudgeFeed`. `lib/budgets.ts`, `lib/budgetHistory.ts`,
+`NudgeFeed`. `lib/budgets.ts`, `lib/budgetBar.ts` (the bar with coming up: widths only, every figure the API's), `lib/budgetHistory.ts`,
 `lib/budgetProjection.ts`, `lib/budgets.fixtures.ts`.
 
 **MCP**: `list_budgets`, `set_budgets`, `pause_budget`, `resume_budget`,

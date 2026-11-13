@@ -42,6 +42,7 @@ from app.schemas.budgets import (
 from app.services.analytics.commitments import held_next_payday, held_payday_dates, last_payday
 from app.services.analytics.common import _today
 from app.services.budget_coming_up import ITEMS_MAX, budgeted_instalments, coming_up_by_category
+from app.services.budget_pace import placed_by_category, placed_commitments
 from app.services.budget_spend import UNCATEGORISED, BudgetSpend, budget_spend
 
 FALLBACK_DAYS = 30
@@ -229,12 +230,13 @@ def budget_list(db: Session, user, markers: dict | None = None,
     cycle, spend = inputs.cycle, inputs.spend
     share = Decimal(inputs.elapsed) / Decimal(inputs.days_total)
     coming = coming_up_by_category(db, user, today, cycle.end, {b.category for b in inputs.budgets if not b.paused})
+    placed = placed_by_category(spend, placed_commitments(db, user, spend, cycle.start, today))
     rows = []
     for b in inputs.budgets:
         limit = Decimal(b.limit_pounds)
         spent = spend.by_category.get(b.category, Decimal(0))
-        pace = (limit * share).quantize(Decimal("0.01"))
         coming_up = _coming_up(coming.get(b.category)) if not b.paused else ComingUp()
+        pace = _pace(limit, share, placed.get(b.category, Decimal(0)))
         rows.append(BudgetResponse(
             id=b.id, category=b.category, limit_pounds=int(limit), paused=b.paused, created_via=b.created_via,
             spent=spent, pace_spent=pace, over_by=max(Decimal(0), spent - limit),
@@ -266,6 +268,16 @@ def budget_list(db: Session, user, markers: dict | None = None,
         not_counted=_not_counted(spend), summary_this_cycle=this_cycle,
         budgetable_categories=sorted(budgetable_categories(db, user, _today())) if include_categories else None,
     )
+
+
+def _pace(limit: Decimal, share: Decimal, placed: Decimal) -> Decimal:
+    """Where spending would be by today (lead, 2026-11-13): paid commitments
+    sit on the line at their real dates (`placed`, see budget_pace) and the
+    rest of the limit is spread evenly. Coming up plays no part, so an
+    instalment that is only due never moves the status (owner: a hint
+    only). With no commitments this is the even spread, `limit * share`."""
+    flexible = max(Decimal(0), limit - placed)
+    return (placed + flexible * share).quantize(Decimal("0.01"))
 
 
 def _coming_up(found) -> ComingUp:

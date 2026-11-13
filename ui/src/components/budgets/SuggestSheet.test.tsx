@@ -46,7 +46,9 @@ describe('SuggestSheet', () => {
   })
 
   it('commitment-covered categories are explained, not offered', () => {
-    expect(text(html({}))).toContain('Bills and rent are left out because your commitments already cover them.')
+    // T-24-3: such a category can have a budget now; it just isn't suggested.
+    expect(text(html({}))).toContain("Categories that are mostly bills, like rent, aren't suggested. You can still add a budget for one in Manage budgets.")
+    expect(text(html({}))).not.toContain('already cover them')
   })
 
   it('Cancel and Save budgets; while saving, Saving… and both disabled', () => {

@@ -53,10 +53,20 @@ def coming_up_by_category(db: Session, user, today: date, cycle_end: date,
     if not categories or cycle_end <= today:
         return {}
     occurrences, _ = held_scheduled_outflows(db, user, today + timedelta(days=1), cycle_end)
+    out = budgeted_instalments(db, user, occurrences, categories)
+    return {c: ComingUp(items) for c, items in out.items()}
+
+
+def budgeted_instalments(db: Session, user, occurrences, categories: set[str]) -> dict[str, list[Instalment]]:
+    """The expense instalments among `occurrences` (from one
+    `held_scheduled_outflows` call) whose commitment's category is one of
+    `categories`, earliest first. A £0 rule or one linked to a loan or
+    holding adds nothing (B-34). Coming up and the dotted line both read
+    this, each with the occurrences of its own window (T-24-3b)."""
     linked = linked_commitment_ids(db, user.id)
     due = [(v, d) for v, d in occurrences
            if v.direction == CommitmentDirection.EXPENSE.value and _d(v.amount) > 0 and v.id not in linked]
-    if not due:
+    if not due or not categories:
         return {}
     ids = {v.id for v, _ in due}
     rules = db.query(CommitmentRule).filter(CommitmentRule.user_id == user.id, CommitmentRule.id.in_(ids)).all()
@@ -66,4 +76,4 @@ def coming_up_by_category(db: Session, user, today: date, cycle_end: date,
         category = category_of.get(version.id)
         if category in categories:
             out[category].append(Instalment(version.id, version.label, day, _d(version.amount)))
-    return {c: ComingUp(items) for c, items in out.items()}
+    return dict(out)

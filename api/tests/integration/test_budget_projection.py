@@ -6,9 +6,11 @@ whole forecast horizon, one point per timeline day from today:
 - this cycle: what's left of the active, unpaused budgets (each
   max(0, limit - spent), so overspending never raises the line), spread
   evenly from today to the day before payday;
-- each later cycle (paydays as `current_cycle` finds them): the full total
-  of those limits, spread evenly over that cycle's days, so the line rises
-  with income exactly as the solid line does.
+- each later cycle (paydays as `current_cycle` finds them): the total of
+  those limits, spread evenly over that cycle's days, so the line rises
+  with income exactly as the solid line does; less, per budget, the
+  commitment instalments the forecast already has in that category
+  (T-24-3b, below).
 Unbudgeted spending is never projected; paused and removed budgets don't
 count. The strip: scheduled_balance and after_budgets_balance on the day
 before payday.
@@ -269,3 +271,106 @@ def test_a_longer_horizon_reads_the_paydays_no_more_often(w, monkeypatch):
     calls.clear()
     _forecast(w, "365")
     assert len(calls) <= short
+
+
+# --- commitments inside budgets (T-24-3b; sec's T-24-3 criteria) ---------------
+# A budgeted category's commitment instalments are already on the solid line
+# (the forecast schedules them), so the dotted line subtracts, per budget,
+# only what the instalments leave of it: this cycle max(0, limit - spent -
+# instalments due by the eve), each later cycle max(0, limit - that cycle's
+# instalments). The instalments are the forecast's own (one held call, the
+# same window), never GET /budgets' coming_up.
+
+from tests.integration.test_budget_commitments import KIT, _weekly, bill  # noqa: E402,F401
+
+
+def _events(body, label, after: date, until: date) -> Decimal:
+    """What the solid line schedules for `label` in (after, until]."""
+    return sum((-Decimal(str(e["amount"])) for p in body["timeline"] for e in p["events"]
+                if e.get("label") == label and after.isoformat() < p["date"] <= until.isoformat()), Decimal(0))
+
+
+def test_this_cycle_nets_off_the_instalments_the_forecast_schedules(w):
+    _weekly(w)  # £16 a week in Eating out: 3 paid this cycle, the next in 2 days
+    w.create("Eating out", 200)
+    body = _forecast(w, "90")
+    strip = body["budget_projection"]
+    payday = date.fromisoformat(strip["payday"])
+    due = _events(body, KIT, TODAY, payday - timedelta(days=1))
+    assert due > 0
+    left = Decimal("200") - Decimal("88.00") - due  # £40 purchases + 3 x £16 paid
+    assert _drops(body)[_eve(payday)] == left
+    assert Decimal(strip["after_budgets_balance"]) == Decimal(strip["scheduled_balance"]) - left
+
+
+def test_each_budget_nets_only_its_own_instalments(w):
+    """sec: £0 left with £50 due, and £100 left with nothing due, subtract
+    £100 (per budget, never max(0, total left - total due))."""
+    _weekly(w, label="SHOP CLUB", amount="25.00", category="Shopping", paid_days_ago=(23,), next_in=1)
+    w.create("Shopping", 120)    # £120 spent: nothing left, £50 due
+    w.create("Groceries", 180)   # £80 spent: £100 left
+    body = _forecast(w, "90")
+    payday = date.fromisoformat(body["budget_projection"]["payday"])
+    assert _events(body, "SHOP CLUB", TODAY, payday - timedelta(days=1)) == Decimal("50.00")
+    assert _drops(body)[_eve(payday)] == Decimal("100")
+
+
+def test_a_later_cycle_nets_that_cycles_instalments(w):
+    """sec: rent (£950 a month, category Rent) inside a £1,000 Rent budget
+    takes £50 off each later cycle, not £1,000: the forecast already has the
+    rent (the 2026-10-12 double count)."""
+    w.create("Rent", 1000)
+    body = _forecast(w, "90")
+    payday = date.fromisoformat(body["budget_projection"]["payday"])
+    drops = _drops(body)
+    assert drops[_eve(payday)] == 0  # £950 paid, £950 due: nothing left to spend
+    assert drops[_eve(_add_months(payday, 1))] - drops[_eve(payday)] == Decimal("50")
+
+
+def test_a_weekly_commitment_nets_the_instalments_of_each_later_cycle(w):
+    _weekly(w)
+    w.create("Eating out", 200)
+    body = _forecast(w, "90")
+    payday = date.fromisoformat(body["budget_projection"]["payday"])
+    drops = _drops(body)
+    for n in (1, 2):
+        start, eve = _add_months(payday, n - 1), _add_months(payday, n) - timedelta(days=1)
+        if eve.isoformat() not in drops:
+            continue
+        due = _events(body, KIT, start - timedelta(days=1), eve)
+        assert due >= Decimal("64.00")  # 4 or 5 instalments
+        assert drops[eve.isoformat()] - drops[_eve(start)] == Decimal("200") - due
+
+
+@pytest.mark.parametrize("change", ["cut", "dismiss", "raise", "weekly_from_next_cycle"])
+def test_a_pending_claude_change_never_raises_the_dotted_line(bill, change):
+    """sec probe: whatever Claude changes on a budgeted bill (£300 Phone bill
+    due in 5 days, £400 Phone budget, payday in 10), the strip's "after
+    budgets" and the dotted line at every cycle's eve are no higher than
+    before. "Monthly, due this cycle" to "weekly from next cycle" is the
+    case where coming_up (held over this cycle only) would keep £300 the
+    3-month forecast no longer schedules, lifting this eve by £300.
+
+    Checked at the eves, not every day: the budget is spread evenly while a
+    bill is a lump, so between a bill's date and the eve the dotted line
+    follows the solid one, which the held view itself may move (here the
+    bill leaves this cycle)."""
+    def line():
+        body = bill.client.get(f"{API}/analytics/forecast", params={"horizon": "90"}, headers=_bearer(bill.web)).json()
+        strip = body["budget_projection"]
+        series = {p["date"]: Decimal(p["balance"]) for p in strip["series"]}
+        payday = date.fromisoformat(strip["payday"])
+        eves = [_eve(_add_months(payday, n)) for n in range(3) if _eve(_add_months(payday, n)) in series]
+        return Decimal(strip["after_budgets_balance"]), {d: series[d] for d in eves}
+    before_strip, before = line()
+    assert len(before) >= 2
+    if change == "dismiss":
+        bill.claude_dismiss(bill.bill)
+    elif change == "weekly_from_next_cycle":
+        bill.claude_update(bill.bill, cadence="weekly", next_date=(TODAY + timedelta(days=12)).isoformat())
+    else:
+        bill.claude_update(bill.bill, amount="100.00" if change == "cut" else "350.00")
+    after_strip, after = line()
+    assert after_strip <= before_strip
+    assert after.keys() == before.keys()
+    assert [d for d in after if after[d] > before[d]] == []

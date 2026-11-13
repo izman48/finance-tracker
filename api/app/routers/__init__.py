@@ -18,6 +18,7 @@ from app.routers.repayments import router as repayments_router
 from app.routers.card_statements import router as card_statements_router
 from app.routers.card_plans import router as card_plans_router
 from app.routers.holdings_list import router as holdings_list_router
+from app.routers.plan import router as plan_router
 
 __all__ = [
     "health_router",
@@ -34,6 +35,7 @@ __all__ = [
     "planning_router",
     "commitment_writes_router",
     "budgets_router",
+    "plan_router",
     "budget_writes_router",
     "rule_writes_router",
     "repayment_writes_router",

@@ -232,8 +232,8 @@ def budget_list(db: Session, user, markers: dict | None = None,
     for b in inputs.budgets:
         limit = Decimal(b.limit_pounds)
         spent = spend.by_category.get(b.category, Decimal(0))
-        pace = (limit * share).quantize(Decimal("0.01"))
         coming_up = _coming_up(coming.get(b.category)) if not b.paused else ComingUp()
+        pace = _pace(limit, share, spend.commitments_counted.get(b.category, Decimal(0)), coming_up.amount)
         rows.append(BudgetResponse(
             id=b.id, category=b.category, limit_pounds=int(limit), paused=b.paused, created_via=b.created_via,
             spent=spent, pace_spent=pace, over_by=max(Decimal(0), spent - limit),
@@ -265,6 +265,15 @@ def budget_list(db: Session, user, markers: dict | None = None,
         not_counted=_not_counted(spend), summary_this_cycle=this_cycle,
         budgetable_categories=sorted(budgetable_categories(db, user, _today())) if include_categories else None,
     )
+
+
+def _pace(limit: Decimal, share: Decimal, paid_commitments: Decimal, coming_up: Decimal) -> Decimal:
+    """Where spending would be by today (lead, 2026-11-13): commitments sit
+    on the line at their real dates (paid ones now, coming ones later), and
+    only the flexible rest of the limit is spread evenly. With no
+    commitments this is the even spread, `limit * share`."""
+    flexible = max(Decimal(0), limit - paid_commitments - coming_up)
+    return (paid_commitments + flexible * share).quantize(Decimal("0.01"))
 
 
 def _coming_up(found) -> ComingUp:

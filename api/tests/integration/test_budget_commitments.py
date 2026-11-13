@@ -279,3 +279,45 @@ def test_suggest_measures_a_commitment_the_way_the_budget_counts_it(w):
     after = last_cycles()
     assert after[-1] == before[-1] + Decimal("15.00")
     assert after[:-1] == before[:-1]
+
+
+# --- pace with commitments (lead, 2026-11-13) ---------------------------------
+# pace_spent = paid commitments + max(0, limit - paid commitments - coming up)
+# x the share of the cycle gone: commitments sit on the pace line at their real
+# dates; only the flexible rest is spread evenly.
+
+def _share(body) -> Decimal:
+    c = body["cycle"]
+    return Decimal(c["days_total"] - c["days_left"]) / Decimal(c["days_total"])
+
+
+def test_with_no_commitments_pace_is_todays_even_spread(w):
+    w.create("Groceries", 300)
+    body, row = _row(w, "Groceries")
+    assert Decimal(row["pace_spent"]) == (Decimal(300) * _share(body)).quantize(Decimal("0.01"))
+
+
+def test_rent_paid_early_in_the_cycle_is_not_ahead_of_pace(w):
+    """Should not count as ahead: a £950 rent payment leaves early in the cycle."""
+    w.create("Rent", 2000)
+    body, row = _row(w, "Rent")
+    flexible = Decimal(2000) - Decimal("950.00") - Decimal(row["coming_up"]["amount"])
+    assert Decimal(row["pace_spent"]) == (Decimal("950.00") + flexible * _share(body)).quantize(Decimal("0.01"))
+    assert row["status"] in ("under_pace", "on_pace")
+
+
+def test_rent_plus_heavy_day_to_day_spending_is_ahead_of_pace(w):
+    """Should count as ahead: the flexible part runs ahead even with rent placed."""
+    w.as_user(lambda: _tx(w.db, w.current, "300.00", TODAY - timedelta(days=1), merchant="HOME STORE",
+                          category="Rent"))
+    w.create("Rent", 2000)
+    _, row = _row(w, "Rent")
+    assert Decimal(row["spent"]) == Decimal("1250.00")
+    assert row["status"] == "ahead_of_pace"
+
+
+def test_pace_never_sits_below_the_paid_commitments(w):
+    """Coming up beyond the limit floors the flexible part at £0."""
+    w.create("Rent", 1000)  # £950 paid + £950 coming up > £1,000
+    _, row = _row(w, "Rent")
+    assert Decimal(row["pace_spent"]) == Decimal("950.00")

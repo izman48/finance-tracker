@@ -60,6 +60,9 @@ class BudgetSpend:
     # Commitment-matched spending left out, by category: suggestions skip a
     # category that is mostly commitments (T-09-2).
     commitments_by_category: dict[str, Decimal] = field(default_factory=dict)
+    # Commitment payments counted above, by category: they sit on the pace
+    # line at their real dates (lead, 2026-11-13).
+    commitments_counted: dict[str, Decimal] = field(default_factory=dict)
     # Before marks: which categories may have a budget (T-03-2 T5).
     gross_by_category: dict[str, Decimal] = field(default_factory=dict)
     # "Paid back by others": every mark netted here, excess included.
@@ -95,12 +98,15 @@ def budget_spend(db: Session, user, start: date, end: date,
     by_category: dict[str, Decimal] = defaultdict(Decimal)
     excluded = {name: Decimal(0) for name in (*EXCLUDED.values(), "commitments_no_category")}
     commitments: dict[str, Decimal] = defaultdict(Decimal)
+    commitments_counted: dict[str, Decimal] = defaultdict(Decimal)
     counted: dict[uuid.UUID, Transaction] = {}
     for tx in txns:
         kind = classify_purchase(tx, transfers, roles, financed, commitment_keys)
         if kind in ("credit", "cash") or (kind == "commitment" and tx.category in budgeted):
             by_category[tx.category or UNCATEGORISED] += _d(tx.amount)
             counted[tx.id] = tx
+            if kind == "commitment":
+                commitments_counted[tx.category] += _d(tx.amount)
         elif kind == "commitment" and not tx.category:
             excluded["commitments_no_category"] += _d(tx.amount)
         elif kind is not None:
@@ -112,6 +118,7 @@ def budget_spend(db: Session, user, start: date, end: date,
     paid_back, excess = net_paid_back(by_category, marks, counted, start, end)
     return BudgetSpend(
         by_category=dict(by_category), excluded=excluded, commitments_by_category=dict(commitments),
+        commitments_counted=dict(commitments_counted),
         gross_by_category=gross, paid_back=sum((p.amount for p in paid_back), Decimal(0)),
         paid_back_marks=paid_back, paid_back_excess=excess,
     )

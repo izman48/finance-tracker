@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  nudgeRaise,
+  raisedText,
   cycleLabel,
   footText,
   lastCyclesText,
@@ -289,5 +291,22 @@ describe('budgetNudgeId', () => {
     expect(budgetNudgeId('budget-1b0c2d3e-0000-4000-8000-000000000001')).toBe('1b0c2d3e-0000-4000-8000-000000000001')
     expect(budgetNudgeId('cash_drag')).toBeNull()
     expect(budgetNudgeId('budget-../../x')).toBeNull()
+  })
+})
+
+describe('nudgeRaise (T-24-5: "will go over")', () => {
+  it('maps the API cta to a raise, with the category from the title', () => {
+    expect(nudgeRaise({ title: 'Eating out will go over', cta: { label: 'Raise to £550', budget_id: 'b-1', new_limit_pounds: 550 } }))
+      .toEqual({ label: 'Raise to £550', budgetId: 'b-1', newLimit: 550, category: 'Eating out' })
+  })
+
+  it('no cta, no raise', () => {
+    expect(nudgeRaise({ title: null, cta: null })).toBeUndefined()
+    expect(nudgeRaise({})).toBeUndefined()
+  })
+
+  it('what is announced after a raise', () => {
+    expect(raisedText({ label: 'Raise to £550', budgetId: 'b-1', newLimit: 550, category: 'Eating out' }))
+      .toBe('Eating out budget raised to £550.')
   })
 })

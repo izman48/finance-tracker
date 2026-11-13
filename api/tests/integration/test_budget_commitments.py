@@ -414,3 +414,100 @@ def test_friends_paying_back_never_open_pace_headroom(w):
     spend = BudgetSpend(by_category={"Rent": Decimal("400.00")})
     placed = {"Rent": Decimal("950.00")}
     assert placed_by_category(spend, placed) == {"Rent": Decimal("400.00")}
+
+
+# --- the "will go over" nudge (T-24-5c; spec "Will go over" nudge) ------------
+
+def _nudges(w) -> list[dict]:
+    r = w.client.get("/api/v1/analytics/nudges", headers=_bearer(w.web))
+    assert r.status_code == 200, r.text
+    return [n for n in r.json() if n.get("title", "") and n["title"].endswith("will go over")]
+
+
+def _money(v) -> str:
+    d = Decimal(v)
+    return f"£{d:,.0f}" if d == d.to_integral_value() else f"£{d:,.2f}"
+
+
+def test_will_go_over_fires_with_the_spec_copy_and_a_raise_to_the_next_50(w):
+    _weekly(w)  # £88 spent; meal kit instalments still to come
+    w.create("Eating out", 100)
+    _, row = _row(w)
+    coming, opb = Decimal(row["coming_up"]["amount"]), Decimal(row["over_by_payday"])
+    assert opb > 0 and Decimal(row["spent"]) < 100
+    [nudge] = _nudges(w)
+    assert nudge["title"] == "Eating out will go over"
+    assert nudge["body"] == (f"£12 left, but {KIT} has {_money(coming)} still to come before payday. "
+                             f"Raise the budget or expect to be {_money(opb)} over.")
+    total = Decimal("88.00") + coming
+    assert nudge["cta"] == {"label": f"Raise to £{-(-int(total) // 50) * 50}", "budget_id": row["id"],
+                            "new_limit_pounds": -(-int(total) // 50) * 50}
+    assert nudge["detail"].startswith("Spent £88 of £100 this pay cycle, from ")
+    assert f"Coming up: {KIT} {_money(coming)} (" in nudge["detail"] and nudge["detail"].endswith(f"{_money(total)} in all.")
+    assert nudge["id"].startswith("budget-") and nudge["rank"] == 9
+
+
+def test_two_commitments_name_the_largest_and_count_the_others(w):
+    _weekly(w)
+    _weekly(w, label="SUPPER CLUB", amount="30.00", paid_days_ago=(40,), next_in=3)
+    w.create("Eating out", 100)
+    [nudge] = _nudges(w)
+    assert nudge["body"].startswith("£12 left, but SUPPER CLUB and 1 other have ")
+
+
+@pytest.mark.parametrize("limit", ["exactly", "already_over"])
+def test_no_will_go_over_when_it_would_land_on_the_limit_or_is_already_over(w, limit):
+    _weekly(w)
+    if limit == "exactly":
+        w.create("Eating out", 150)
+        _, row = _row(w)
+        w.patch(row["id"], limit_pounds=int(Decimal("88.00") + Decimal(row["coming_up"]["amount"])))
+    else:
+        w.create("Eating out", 80)
+    assert _nudges(w) == []
+
+
+def test_will_go_over_fires_once_and_stays_dismissed(w):
+    _weekly(w)
+    w.create("Eating out", 100)
+    [first] = _nudges(w)
+    [again] = _nudges(w)
+    assert again["id"] == first["id"]
+    nudge_id = first["id"].removeprefix("budget-")
+    assert w.client.post(f"/api/v1/budgets/nudges/{nudge_id}/dismiss", headers=_bearer(w.web)).status_code < 300
+    assert _nudges(w) == []
+
+
+def test_the_kind_fits_the_stored_column():
+    from app.models import BudgetNudge
+    from app.services.budgets import OVER_SOON
+
+    assert len(OVER_SOON) <= BudgetNudge.__table__.c.kind.type.length
+
+
+def test_no_raise_is_offered_past_the_largest_limit_allowed(w):
+    """sec on #302: never offer a raise the server would refuse."""
+    from app.schemas.budgets import BUDGET_LIMIT_MAX
+
+    _weekly(w)
+    w.as_user(lambda: _tx(w.db, w.current, "99900.00", TODAY - timedelta(days=1), merchant="BANQUET HALL",
+                          category="Eating out"))
+    w.create("Eating out", BUDGET_LIMIT_MAX)
+    _, row = _row(w)
+    assert Decimal(row["spent"]) < BUDGET_LIMIT_MAX < Decimal(row["spent"]) + Decimal(row["coming_up"]["amount"])
+    [nudge] = _nudges(w)
+    assert nudge["cta"] is None
+    assert "Raise the budget or expect to be" in nudge["body"]
+
+
+def test_will_go_over_ranks_before_other_budget_nudges(w):
+    """ux on #302: the feed shows three; "will go over" is the most actionable."""
+    _weekly(w)
+    w.create("Eating out", 100)  # will go over
+    for category in ("Groceries", "Shopping", "Rent"):
+        w.create(category, 50)  # each already at or over: three at-limit nudges
+    r = w.client.get("/api/v1/analytics/nudges", headers=_bearer(w.web)).json()
+    budget = [n for n in r if n["id"].startswith("budget-")]
+    assert len(budget) == 4
+    assert budget[0]["title"] == "Eating out will go over" and budget[0]["rank"] == 9
+    assert [n["rank"] for n in r] == sorted(n["rank"] for n in r)

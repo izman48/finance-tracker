@@ -633,6 +633,10 @@ export interface Nudge {
   detail: string
   source: string | null
   as_of: string | null
+  /** "Eating out will go over" (T-24-5). */
+  title?: string | null
+  /** "Raise to £550": the app updates that budget's limit. */
+  cta?: { label: string; budget_id: string; new_limit_pounds: number } | null
 }
 
 export const analyticsAPI = {

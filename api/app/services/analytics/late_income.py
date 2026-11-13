@@ -92,13 +92,20 @@ def income_credit_ids(db: Session, user, today: date) -> set[uuid.UUID]:
     """Credits that pay a confirmed income's latest expected payment, late or
     not yet (inside the grace days): marking one paid back would make that
     income late (T-03-3 guard)."""
-    _, used = _settle(db, user, today, due_before=today + timedelta(days=1))
-    return used
+    return {c.id for credits in income_payments(db, user, today).values() for c in credits}
 
 
-def _settle(db: Session, user, today: date, due_before: date) -> tuple[dict[uuid.UUID, LateIncome], set[uuid.UUID]]:
-    """(late incomes, ids of the credits that paid the others) for confirmed
-    incomes expected before `due_before`."""
+def income_payments(db: Session, user, today: date) -> dict[uuid.UUID, list[_Credit]]:
+    """Each confirmed income's credits that paid its latest expected payment
+    on or before today, by the same matching as lateness (Plan's
+    "received", T-24-4). A late income has none."""
+    _, paid = _settle(db, user, today, due_before=today + timedelta(days=1))
+    return paid
+
+
+def _settle(db: Session, user, today: date, due_before: date) -> tuple[dict[uuid.UUID, LateIncome], dict[uuid.UUID, list[_Credit]]]:
+    """(late incomes, the credits that paid each of the others) for
+    confirmed incomes expected before `due_before`."""
     rules = (
         db.query(CommitmentRule)
         .filter(
@@ -116,12 +123,12 @@ def _settle(db: Session, user, today: date, due_before: date) -> tuple[dict[uuid
         if expected < due_before and created <= expected and not skipped:
             candidates.append((rule, expected))
     if not candidates:
-        return {}, set()
+        return {}, {}
     credits = _income_credits(db, user, min(e for _, e in candidates) - timedelta(days=EARLY_DAYS))
     # Each credit pays one income (eng-a on #133): exact matches first, then
     # the payer's leftover credits, soonest expected income first.
     unused = list(credits)
-    used: set[uuid.UUID] = set()
+    used: dict[uuid.UUID, list[_Credit]] = {}
     waiting = []
     for rule, expected in sorted(candidates, key=lambda c: c[1]):
         match = _exact_match(rule, expected, unused)
@@ -129,7 +136,7 @@ def _settle(db: Session, user, today: date, due_before: date) -> tuple[dict[uuid
             waiting.append((rule, expected))
         else:
             unused.remove(match)
-            used.add(match.id)
+            used[rule.id] = [match]
     out = {}
     for rule, expected in waiting:
         split = _split_match(rule, expected, unused)
@@ -138,7 +145,7 @@ def _settle(db: Session, user, today: date, due_before: date) -> tuple[dict[uuid
         else:
             for c in split:
                 unused.remove(c)
-                used.add(c.id)
+            used[rule.id] = split
     return out, used
 
 

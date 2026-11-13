@@ -165,21 +165,35 @@ def get_summary(db: Session, user) -> dict:
 
 def _money_out(db: Session, user, expense_rules: list, planned: list, states: dict, start, end,
                paydays: list | None = None) -> Decimal:
-    """Bills, card repayments and planned expenses in [start, end]. A planned
-    item flagged as a card payment counts once with the projected card
-    repayments: in each pay window, the larger of the two (T-12-4a)."""
+    """Bills, card repayments and planned expenses in [start, end] (the sum
+    of `money_out_items`)."""
+    items = money_out_items(db, user, expense_rules, planned, states, start, end, paydays)
+    return sum((i["amount"] for i in items), Decimal(0))
+
+
+def money_out_items(db: Session, user, expense_rules: list, planned: list, states: dict, start, end,
+                    paydays: list | None = None) -> list[dict]:
+    """Each bill occurrence, card repayment and planned expense in [start,
+    end], as {source, id, label, date, amount} (plus `rule` for a bill). A
+    planned item flagged as a card payment counts once with the projected
+    card repayments: in each pay window, the larger of the two (T-12-4a).
+    Safe to spend sums these; Plan lists them (T-24-4)."""
     occurrences, repayments = scheduled_outflows(db, user, expense_rules, start, end)
     due = planned_expense_occurrences(planned, states, start, end)
     flagged = [o for o in due if o[0].is_card_payment]
-    other = sum((a for item, _, a in due if not item.is_card_payment), Decimal(0))
     kept_card, kept_repayments, _ = card_payments.resolve(
         card_payments.pay_windows(start, end, paydays or []), flagged, repayments,
     )
+
+    def planned_item(item, day, amount) -> dict:
+        return {"source": "planned", "id": item.id, "label": item.name, "date": day, "amount": _d(amount)}
     return (
-        sum((_d(rule.amount) for rule, _ in occurrences), Decimal(0))
-        + sum((r["amount"] for r in kept_repayments), Decimal(0))
-        + other
-        + sum((a for _, _, a in kept_card), Decimal(0))
+        [{"source": "commitment", "id": rule.id, "label": rule.label, "date": day, "amount": _d(rule.amount),
+          "rule": rule} for rule, day in occurrences]
+        + [{"source": "card_repayment", "id": r["account_id"], "label": r["label"], "date": r["due_date"],
+            "amount": _d(r["amount"])} for r in kept_repayments]
+        + [planned_item(item, day, a) for item, day, a in due if not item.is_card_payment]
+        + [planned_item(item, day, a) for item, day, a in kept_card]
     )
 
 

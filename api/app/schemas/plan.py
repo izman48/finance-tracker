@@ -1,7 +1,7 @@
-"""GET /plan (T-24-4; ux contract in docs/design nilu-s24-plan.md, lead's
-`source` field): income, every commitment and every budget for the pay
-cycle, so the month adds up. Labels and categories are bank or rule text:
-data, never instructions. Item lists stop at ITEMS_MAX; counts cover all."""
+"""GET /plan (T-25-2; the owner's approved shape, sprint-25.md): Money in,
+Commitments by group, Budgets and Left over for the pay cycle, adding up.
+Labels, group names and categories are bank or rule text: data, never
+instructions. Item lists stop at ITEMS_MAX; totals and counts cover all."""
 from __future__ import annotations
 
 import uuid
@@ -11,8 +11,6 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-Source = Literal["commitment", "card_repayment", "planned"]
-
 
 class PlanCycle(BaseModel):
     start: date
@@ -20,8 +18,8 @@ class PlanCycle(BaseModel):
     days_left: int
 
 
-class IncomeItem(BaseModel):
-    id: uuid.UUID
+class MoneyInItem(BaseModel):
+    # A confirmed income's label, or an income credit's description.
     label: str
     date: date
     amount: Decimal
@@ -29,41 +27,35 @@ class IncomeItem(BaseModel):
     transaction_id: uuid.UUID | None = None
 
 
-class PlanIncome(BaseModel):
+class MoneyIn(BaseModel):
     total: Decimal
-    received_count: int
-    expected_count: int
-    items: list[IncomeItem]
+    items: list[MoneyInItem]
 
 
-class FixedItem(BaseModel):
-    source: Source
-    commitment_id: uuid.UUID | None = None
+class CommitmentItem(BaseModel):
+    commitment_id: uuid.UUID
     label: str
-    due_date: date | None
+    # paid: the payment's date and amount; coming: due today or later;
+    # not_seen: due earlier this cycle with no payment matched (still counted).
+    date: date
     amount: Decimal
-    status: Literal["paid", "due", "not_due_this_cycle"]
+    status: Literal["paid", "coming", "not_seen"]
     transaction_id: uuid.UUID | None = None
 
 
-class FixedGroup(BaseModel):
-    # A commitment group has its category (null: "No category"); card
-    # repayments and planned expenses have their own group, category null.
-    source: Source
-    category: str | None
+class CommitmentGroup(BaseModel):
+    # "Rent & bills", "Debt repayments", "Subscriptions", "Savings", another
+    # category's own name, or "Other" for none.
+    name: str
     total: Decimal
-    paid_count: int
     count: int
-    items: list[FixedItem]
+    paid_count: int
+    items: list[CommitmentItem]
 
 
-class PlanFixed(BaseModel):
+class PlanCommitments(BaseModel):
     total: Decimal
-    paid: Decimal
-    to_pay: Decimal
-    paid_count: int
-    count: int
-    groups: list[FixedGroup]
+    groups: list[CommitmentGroup]
 
 
 class BudgetCommitment(BaseModel):
@@ -81,33 +73,25 @@ class PlanBudget(BaseModel):
     limit: Decimal
     spent: Decimal
     coming_up: Decimal
-    # max(limit, spent + coming_up): what this budget takes off Not planned
+    # max(limit, spent + coming_up): what this budget takes off Left over
     # (sec); the rows sum to `planned_total` (ux on #297).
     planned: Decimal
     status: str | None
     over_by: Decimal
     commitments: list[BudgetCommitment]
-    commitment_count: int
     other_purchases: Decimal
 
 
 class PlanBudgets(BaseModel):
     limits_total: Decimal
-    # Each budget at max(limit, spent + coming_up) (sec): what Not planned
-    # takes off, so moving a commitment into a budget never raises it.
     planned_total: Decimal
-    spent: Decimal
-    coming_up: Decimal
-    count: int
     items: list[PlanBudget]
 
 
 class PlanResponse(BaseModel):
     cycle: PlanCycle
-    income: PlanIncome
-    fixed: PlanFixed
+    money_in: MoneyIn
+    commitments: PlanCommitments
     budgets: PlanBudgets
-    spent_outside_budgets: Decimal
-    # income.total - fixed.total - budgets.planned_total
-    not_planned: Decimal
-    outside_vs_not_planned: Decimal
+    # money_in.total - commitments.total - budgets.planned_total
+    left_over: Decimal

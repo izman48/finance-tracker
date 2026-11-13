@@ -2,7 +2,7 @@ import { useId, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronRight } from 'lucide-react'
 import {
-  budgetLine, budgetsSubline, cycleText, fixedSubline, groupLabel, incomeSubline, itemStatus, planMoney,
+  budgetLine, budgetsSubline, commitmentsSubline, cycleText, groupLabel, itemStatus, moneyInSubline, planMoney,
   type PlanResponse,
 } from '../../lib/plan'
 
@@ -43,7 +43,7 @@ function Row({ label, sub, amount, children }: { label: string; sub?: ReactNode;
 }
 
 function Item({ label, status, amount }: { label: string; status: string; amount: string }) {
-  const chip = status.startsWith('Paid') || status === 'Received' ? 'chip-pos' : 'chip'
+  const chip = status.startsWith('Paid') || status.startsWith('Received') ? 'chip-pos' : 'chip'
   return (
     <li className="flex items-center gap-2 py-1.5 text-sm">
       {/* Label and chip wrap together at 320px; the amount keeps its place. */}
@@ -69,37 +69,31 @@ function Empty({ label, note, to, action }: { label: string; note: string; to: s
 }
 
 function Lines({ data }: { data: PlanResponse }) {
-  const { income, fixed, budgets } = data
-  const hasIncome = income.items.length > 0
-  const notPlanned = Number(data.not_planned)
-  // Compare outside spending with what is left only when something is left (ux on #297).
-  const outsideOver = notPlanned > 0 && Number(data.spent_outside_budgets) > 0 && Number(data.outside_vs_not_planned) > 0
+  const { money_in: moneyIn, commitments, budgets } = data
+  const hasMoneyIn = moneyIn.items.length > 0
+  const leftOver = Number(data.left_over)
   return (
     <>
       <div className="divide-y divide-white/[0.06]">
-        {hasIncome ? (
-          <Row label="Income" sub={incomeSubline(income)} amount={planMoney(income.total)}>
-            <ul>{income.items.map((i, n) => <Item key={n} label={i.label} status={itemStatus(i.status, i.date)} amount={planMoney(i.amount)} />)}</ul>
+        {hasMoneyIn ? (
+          <Row label="Money in" sub={moneyInSubline(moneyIn)} amount={planMoney(moneyIn.total)}>
+            <ul>{moneyIn.items.map((i, n) => <Item key={n} label={i.label} status={itemStatus(i.status, i.date)} amount={planMoney(i.amount)} />)}</ul>
           </Row>
         ) : (
-          <Empty label="Income" note="No income found this cycle" to="/commitments" action="Check your income" />
+          <Empty label="Money in" note="No money in found this cycle" to="/commitments" action="Check your income" />
         )}
-        {fixed.groups.length > 0 ? (
-          <Row label="Fixed" sub={fixedSubline(fixed)} amount={planMoney(fixed.total)}>
-            {fixed.groups.map((g, i) => (
-              <Row key={i} label={groupLabel(g)} sub={`${g.paid_count} of ${g.count} paid`} amount={planMoney(g.total)}>
+        {commitments.groups.length > 0 ? (
+          <Row label="Commitments" sub={commitmentsSubline(commitments)} amount={planMoney(commitments.total)}>
+            {commitments.groups.map((g) => (
+              <Row key={g.name} label={groupLabel(g)} sub={`${g.paid_count} of ${g.count} paid`} amount={planMoney(g.total)}>
                 <ul>
-                  {/* Card and planned items have no commitment id: key by position (eng-a on #297). */}
-                  {g.items.map((c, i) => (
-                    <Item key={i} label={c.label} status={itemStatus(c.status, c.due_date)}
-                      amount={planMoney(c.status === 'not_due_this_cycle' ? '0' : c.amount)} />
-                  ))}
+                  {g.items.map((c, i) => <Item key={i} label={c.label} status={itemStatus(c.status, c.date)} amount={planMoney(c.amount)} />)}
                 </ul>
               </Row>
             ))}
           </Row>
         ) : (
-          <Empty label="Fixed" note="Nothing scheduled" to="/commitments" action="Add a commitment" />
+          <Empty label="Commitments" note="Nothing scheduled" to="/commitments" action="Add a commitment" />
         )}
         {budgets.items.length > 0 ? (
           <Row label="Budgets" sub={budgetsSubline(budgets)} amount={planMoney(budgets.planned_total)}>
@@ -120,38 +114,26 @@ function Lines({ data }: { data: PlanResponse }) {
         ) : (
           <Empty label="Budgets" note="No budgets set" to="/insights?section=budgets" action="Suggest budgets" />
         )}
-        {hasIncome && <Row label="Not planned" sub="What is left after Fixed and Budgets" amount={planMoney(data.not_planned)} />}
+        {hasMoneyIn && <Row label="Left over" amount={planMoney(data.left_over)} />}
       </div>
 
-      <div className="mt-4 rounded-xl bg-white/[0.03] px-3 py-3 text-sm">
-        <div className="flex items-baseline justify-between gap-3">
-          <span className="text-slate-300">Spent so far in categories with no budget</span>{' '}
-          <span className="shrink-0 tnum text-slate-100">{planMoney(data.spent_outside_budgets)}</span>
-        </div>
-        {hasIncome && outsideOver && (
-          <p className="mt-1 text-xs text-slate-400">
-            That is {planMoney(data.outside_vs_not_planned)} more than the {planMoney(data.not_planned)} left.
-          </p>
-        )}
-        {hasIncome && notPlanned < 0 && (
-          <p className="mt-1 text-xs text-slate-400">
-            Fixed and Budgets come to {planMoney(String(-notPlanned))} more than your income this cycle.
-          </p>
-        )}
-      </div>
-
-      {hasIncome && (
+      {hasMoneyIn && (
         <p className="mt-4 text-xs text-slate-400 tnum">
-          {planMoney(income.total)} − {planMoney(fixed.total)} − {planMoney(budgets.planned_total)} = {planMoney(data.not_planned)}
-          <span className="block text-slate-500">Income − Fixed − Budgets = Not planned</span>
+          {planMoney(moneyIn.total)} − {planMoney(commitments.total)} − {planMoney(budgets.planned_total)} = {planMoney(data.left_over)}
+          <span className="block text-slate-500">Money in − Commitments − Budgets = Left over</span>
+          {leftOver < 0 && (
+            <span className="block mt-1">
+              Commitments and Budgets come to {planMoney(String(-leftOver))} more than your money in this cycle.
+            </span>
+          )}
         </p>
       )}
     </>
   )
 }
 
-/** Cashflow > Plan (T-24-6): income, every commitment and every budget for
- *  the pay cycle. Figures are the API's; this only lays them out. */
+/** Cashflow > Plan (T-25-2): money in, commitments by group, budgets and
+ *  what is left over this pay cycle. Figures are the API's; this only lays them out. */
 export default function PlanView({ status, data, onRetry }: PlanViewProps) {
   return (
     <section id="plan" aria-labelledby="plan-heading" className="card-pad">

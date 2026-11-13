@@ -67,38 +67,44 @@ provider's status (T-12-5b, see liabilities.md).
 `BudgetStrip.test.tsx`, `ForecastError.test.tsx`, `forecastLoad.test.ts`,
 `late.test.ts`, `upcoming.test.ts`.
 
-## Plan (T-24-4)
+## Plan (T-24-4, rebuilt T-25-2)
 
-`services/plan.py` lists the pay cycle (today to the day before payday) so
-the month adds up. It adds no rule of its own; every line reads the code
-that already owns it:
+`services/plan.py` lays out the pay cycle (last payday to the day before the
+next) in the owner's approved shape: Money in − Commitments − Budgets = Left
+over. Safe to spend and the forecast do not read it.
 
-- **Income**: credits that paid a confirmed income this cycle
+- **Money in**: credits this cycle that paid a confirmed income
   (`income_payments`, the lateness matcher), matched only against the held
   incomes (confirmed before Claude or kept, the lower amount, the label
   before Claude's unkept relabels), so an unkept Claude confirm, raise or
-  relabel never lets a credit count (sec on #305); plus incomes still due by
-  the eve, held at the lower of now and before Claude. A late income adds nothing.
-- **Fixed**: paid, which is this cycle's payments `classify_purchase` calls a
-  commitment (in a category with no budget) or a card payoff (card payoffs
-  are money out this cycle, as safe to spend counts them); and still to
-  pay, which is `money_out_items` (safe to spend's own list: commitments,
-  card repayments, planned expenses) over (today, eve], bills held at the
-  higher of the two, plus any instalment due earlier this cycle with no
-  payment matched to it (a missed match lists it twice: the safe side). Groups by commitment category, plus one group each for
-  card repayments and planned items (`source`). A confirmed commitment with
-  nothing in the cycle is listed `not_due_this_cycle` and adds nothing.
+  relabel never lets a credit count (sec on #305); plus incomes still
+  expected by the eve, held at the lower of now and before Claude (a late
+  income adds nothing); plus any other credit on a current account
+  categorised Income, labelled by its description. Transfers (paired legs,
+  Transfers category, the user's transfer override), card payments,
+  refund or reversal wording and credits marked paid back never count.
+- **Commitments**: confirmed expense commitments only, held at the higher of
+  now and before Claude, £0 rules and card-tied bills (`_card_ties`) left
+  out. Grouped for display: Rent, Council tax, Utilities, Phone, Insurance
+  are "Rent & bills"; Debt repayments; Subscriptions; holding-linked
+  (ISA, pension) are "Savings"; any other category is its own group; none
+  is "Other". Each payment this cycle (`classify_purchase` with that
+  commitment's keys; a savings contribution may be a transfer) is `paid`;
+  each instalment due this cycle that no payment took is `coming` (due
+  today or later) or `not_seen` (due earlier, still counted: a missed match
+  lists it twice, the safe side). No card repayments, planned items or
+  one-off purchases. A commitment with nothing due or paid this cycle is
+  not listed.
 - **Budgets**: `budget_list`, each with its commitment payments and
-  instalments (`coming_up`) and the other purchases. A commitment in a
-  budget is never also in Fixed. Each budget counts at
-  `max(limit, spent + coming_up)` (its `planned`; they sum to `planned_total`), so moving a commitment
-  into a budget never raises Not planned.
-- **Not planned** = income − Fixed − `planned_total`.
-  `spent_outside_budgets` is `other_spending`.
+  instalments (`coming_up`) and the other purchases. A commitment whose
+  category has a budget is counted there only. Each budget counts at
+  `max(limit, spent + coming_up)` (its `planned`; they sum to
+  `planned_total`), so moving a commitment into a budget never raises Left over.
+- **Left over** = Money in − Commitments − `planned_total`.
 
-Lists stop at 50 items per group with the full count. Errors return
-"Couldn't load your plan." and log only the exception type. Tests:
-`tests/integration/test_plan.py`.
+Lists stop at 50 items per group; totals cover all. Errors return
+"Couldn't load your plan." and log only the exception type. Web session
+only; no MCP tool reads it. Tests: `tests/integration/test_plan.py`.
 
 ## Touchpoints
 

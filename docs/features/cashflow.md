@@ -13,7 +13,7 @@ or zero breaches, late income and the budget projection.
 |---|---|---|
 | `GET /api/v1/analytics/summary` | `CurrentUserOrMcpRead` | Also returns the totals Claude's unkept changes are holding back, `total_owed` (cards + liabilities) and each card's current `statement` (T-10-14a, see accounts.md). |
 | `GET /api/v1/analytics/forecast` | `CurrentUserOrMcpRead` | `horizon` = `payday` (default), `month` or N days (max 730). Adds `late_income`, `late_planned`, `budget_projection`. |
-| `GET /api/v1/plan` | `CurrentUser` (web only), `limit_user("plan")` | Plan (T-24-4): income, Fixed, Budgets and Not planned for the pay cycle; see "Plan" below. |
+| `GET /api/v1/plan` | `CurrentUser` (web only), `limit_user("plan")` | Plan (T-24-4, rebuilt T-25-2): Money in, Commitments by group, Budgets and Left over for the pay cycle; also read by Budgets (T-25-3); see "Plan" below. |
 
 **Tables**: none of its own. Reads `accounts`, `account_settings`,
 `commitment_rules`, `planned_items`, `repayment_schedule_items`, `assets`,

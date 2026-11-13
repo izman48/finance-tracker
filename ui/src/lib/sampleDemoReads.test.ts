@@ -33,7 +33,8 @@ describe('demo Plan', () => {
   const sum = (xs: string[]) => xs.reduce((t, x) => t + n(x), 0)
 
   it('the lines add up to the penny', () => {
-    expect(n(plan.not_planned)).toBe(n(plan.income.total) - n(plan.fixed.total) - n(plan.budgets.limits_total))
+    expect(n(plan.not_planned)).toBe(n(plan.income.total) - n(plan.fixed.total) - n(plan.budgets.planned_total))
+    expect(n(plan.budgets.planned_total)).toBe(sum(plan.budgets.items.map((b) => String(Math.max(Number(b.limit), Number(b.spent) + Number(b.coming_up))))))
     expect(n(plan.fixed.total)).toBe(n(plan.fixed.paid) + n(plan.fixed.to_pay))
     expect(n(plan.fixed.total)).toBe(sum(plan.fixed.groups.map((g) => g.total)))
     expect(n(plan.income.total)).toBe(sum(plan.income.items.map((i) => i.amount)))
@@ -52,9 +53,40 @@ describe('demo Plan', () => {
     const ids = new Set(get<{ items: { id: string }[] }>('/banking/transactions?page_size=1000').items.map((t) => t.id))
     const fixed = plan.fixed.groups.flatMap((g) => g.items)
     const inBudgets = plan.budgets.items.flatMap((b) => b.commitments.map((c) => c.commitment_id))
-    expect(fixed.filter((c) => inBudgets.includes(c.commitment_id))).toEqual([])
+    expect(fixed.filter((c) => c.commitment_id !== null && inBudgets.includes(c.commitment_id))).toEqual([])
     const linked = [...fixed, ...plan.income.items].filter((i) => i.status === 'paid' || i.status === 'received')
     expect(linked.length).toBeGreaterThan(0)
     for (const i of linked) expect(ids.has(i.transaction_id as string)).toBe(true)
+  })
+})
+
+// eng-a on #296: demo Fixed holds every money-out source the API would, for
+// the demo cycle: card repayments, a planned expense, and a bill due earlier
+// this cycle and not paid.
+describe('demo Plan: three sources and overdue bills', () => {
+  const plan = get<import('./plan').PlanResponse>('/plan')
+  const forecast = get<{ timeline: { date: string; events: { kind: string; amount: number }[] }[] }>('/analytics/forecast')
+  const today = forecast.timeline[0].date
+  const inCycle = (d: string) => d > today && d <= plan.cycle.end
+  const group = (source: string) => plan.fixed.groups.filter((g) => g.source === source).flatMap((g) => g.items)
+  const pence = (xs: number[]) => Math.round(xs.reduce((t, x) => t + x, 0) * 100)
+
+  it("card repayments are the ones the demo forecast schedules before payday", () => {
+    const scheduled = forecast.timeline.filter((t) => inCycle(t.date)).flatMap((t) => t.events)
+      .filter((e) => e.kind === 'repayment').map((e) => -e.amount)
+    expect(scheduled.length).toBeGreaterThan(0)
+    expect(pence(group('card_repayment').map((i) => Number(i.amount)))).toBe(pence(scheduled))
+    expect(group('card_repayment').every((i) => i.commitment_id === null && i.status === 'due')).toBe(true)
+  })
+
+  it('a planned expense due this cycle is listed; a card-flagged one the repayments cover is not', () => {
+    const labels = group('planned').map((i) => i.label)
+    expect(labels).toContain('New laptop')
+    expect(labels).not.toContain('Card bill')
+  })
+
+  it('the mortgage, last due 3 days ago and not paid, is still to pay', () => {
+    const mortgage = group('commitment').filter((i) => i.label === 'Sample Bank mortgage payment')
+    expect(mortgage.map((i) => [i.status, (i.due_date ?? "") < today])).toEqual([["due", true]])
   })
 })

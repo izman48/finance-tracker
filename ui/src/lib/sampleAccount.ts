@@ -1029,47 +1029,89 @@ function statementsResponse(path: string) {
   }
 }
 
-/** GET /plan (T-24-6), by the contract's rules from the sample's own
- *  commitments, ledger and budgets: a commitment's category is its latest
- *  payment's; it is paid when a payment landed this cycle, due when its next
- *  date falls in the cycle, otherwise not due (adds nothing). None of the
- *  sample's commitments sit in a budgeted category, so all are Fixed. */
+/** GET /plan (T-24-6), by the API's rules (services/plan.py) from the
+ *  sample's own commitments, ledger, card repayments, planned items and
+ *  budgets. A commitment's category is its latest payment's. Paid: a
+ *  payment this cycle. Due: its next date by the eve, or due earlier this
+ *  cycle and not paid. In an unpaused budget's category (and not £0 or
+ *  linked) it sits under that budget; otherwise in Fixed. Card repayments
+ *  are the ones the demo forecast schedules; a card-flagged planned item
+ *  counts only where it is larger than them (safe to spend's rule). */
 function planResponse() {
+  type Status = 'paid' | 'due' | 'not_due_this_cycle'
+  type Item = { source: 'commitment' | 'card_repayment' | 'planned'; commitment_id: string | null; label: string;
+    due_date: string | null; amount: string; status: Status; transaction_id: string | null }
   const list = sampleBudgetList(BUDGET_LEDGER, PAYDAY_AGO, false, SAMPLE_PAID_BACK)
+  const eveIn = list.cycle.days_left
   const r2 = (n: number) => (Math.round(n * 100) / 100).toFixed(2)
   const sum = (xs: { amount: string }[]) => xs.reduce((t, x) => t + Number(x.amount), 0)
+  const daysTo = (iso: string) => Math.round((Date.parse(iso) - Date.parse(isoDate(new Date()))) / 86400000)
   const payments = (label: string) => L.filter((tx) => tx.description === label && tx.is_commitment)
-  const inCycle = (c: { next_date: string }) => c.next_date <= list.cycle.end
+  const budgets = list.budgets.filter((b) => !b.paused)
+  const budgeted = new Set(budgets.map((b) => b.category))
   const all = commitmentsResponse()
+
   const income = all.filter((c) => c.direction === 'income').map((c) => {
     const paid = payments(c.label).find((tx) => tx.daysAgo <= PAYDAY_AGO)
     return paid
       ? { id: c.id, label: c.label, date: isoDate(nowMinus(paid.daysAgo)), amount: r2(paid.amount), status: 'received' as const, transaction_id: paid.id }
       : { id: c.id, label: c.label, date: c.next_date, amount: r2(c.amount), status: 'expected' as const, transaction_id: null }
-  }).filter((i) => i.status === 'received' || i.date <= list.cycle.end)
-  const groups = new Map<string | null, { commitment_id: string; label: string; due_date: string | null; amount: string; status: 'paid' | 'due' | 'not_due_this_cycle'; transaction_id: string | null }[]>()
-  for (const c of all.filter((x) => x.direction === 'expense')) {
-    const paid = payments(c.label).find((tx) => tx.daysAgo <= PAYDAY_AGO)
-    const category = payments(c.label)[0]?.category ?? null
-    const item = paid
-      ? { commitment_id: c.id, label: c.label, due_date: isoDate(nowMinus(paid.daysAgo)), amount: r2(paid.amount), status: 'paid' as const, transaction_id: paid.id }
-      : { commitment_id: c.id, label: c.label, due_date: inCycle(c) ? c.next_date : null, amount: r2(c.amount), status: inCycle(c) ? 'due' as const : 'not_due_this_cycle' as const, transaction_id: null }
-    groups.set(category, [...(groups.get(category) ?? []), item])
+  }).filter((i) => i.status === 'received' || daysTo(i.date) <= eveIn)
+
+  const groups = new Map<string, Item[]>()
+  const add = (source: Item['source'], category: string | null, item: Omit<Item, 'source'>) => {
+    const key = JSON.stringify([source, category])
+    groups.set(key, [...(groups.get(key) ?? []), { source, ...item }])
   }
-  const counted = <T extends { status: string }>(items: T[]) => items.filter((i) => i.status !== 'not_due_this_cycle')
-  const fixedGroups = [...groups].map(([category, items]) => ({
-    category, total: r2(sum(counted(items))), items,
-    paid_count: items.filter((i) => i.status === 'paid').length, count: counted(items).length,
-  }))
-  const fixedItems = fixedGroups.flatMap((g) => counted(g.items))
-  const budgets = list.budgets.filter((b) => !b.paused).map((b) => ({
-    budget_id: b.id, category: b.category, limit: r2(b.limit_pounds), spent: b.spent, coming_up: '0.00',
-    status: b.status, over_by: b.over_by, commitments: [], other_purchases: b.spent,
-  }))
+  const inBudget = new Map<string, { commitment_id: string; label: string; date: string; amount: string; status: 'paid' | 'due'; transaction_id: string | null }[]>()
+  for (const c of all.filter((x) => x.direction === 'expense')) {
+    const paid = payments(c.label).filter((tx) => tx.daysAgo <= PAYDAY_AGO)
+    const category = payments(c.label)[0]?.category ?? null
+    const budget = category !== null && budgeted.has(category) && c.amount > 0 && !('linked_holding' in c) && !('linked_liability' in c)
+    const nextIn = daysTo(c.next_date)
+    const due = [nextIn - 30].filter((d) => d >= -PAYDAY_AGO && d <= 0).slice(paid.length)  // due earlier, unpaid
+      .concat(nextIn > 0 && nextIn <= eveIn ? [nextIn] : [])
+    const lines = [
+      ...paid.map((tx) => ({ date: isoDate(nowMinus(tx.daysAgo)), amount: r2(tx.amount), status: 'paid' as const, transaction_id: tx.id })),
+      ...due.map((d) => ({ date: isoDate(nowPlus(d)), amount: r2(c.amount), status: 'due' as const, transaction_id: null })),
+    ]
+    if (budget && category) {
+      inBudget.set(category, [...(inBudget.get(category) ?? []), ...lines.map((l) => ({ commitment_id: c.id, label: c.label, ...l }))])
+    } else if (lines.length) {
+      for (const l of lines) add('commitment', category, { commitment_id: c.id, label: c.label, due_date: l.date, amount: l.amount, status: l.status, transaction_id: l.transaction_id })
+    } else {
+      add('commitment', category, { commitment_id: c.id, label: c.label, due_date: null, amount: r2(c.amount), status: 'not_due_this_cycle', transaction_id: null })
+    }
+  }
+  const repayments = cardRepaymentsDue().filter((r) => r.due_in > 0 && r.due_in <= eveIn)
+  const planned = [
+    { label: 'New laptop', dueIn: 13, amount: 1200 / 6, card: false },
+    { label: SAMPLE_CARD_BILL.name, dueIn: SAMPLE_CARD_BILL.dueIn, amount: SAMPLE_CARD_BILL.amount, card: true },
+  ].filter((x) => x.dueIn > 0 && x.dueIn <= eveIn)
+  const cardPlanned = planned.filter((x) => x.card).reduce((t, x) => t + x.amount, 0)
+  const keepRepayments = repayments.reduce((t, r) => t + r.amount, 0) >= cardPlanned
+  if (keepRepayments) repayments.forEach((r) => add('card_repayment', null, { commitment_id: null, label: r.label, due_date: isoDate(nowPlus(r.due_in)), amount: r2(r.amount), status: 'due', transaction_id: null }))
+  planned.filter((x) => !x.card || !keepRepayments).forEach((x) => add('planned', null, { commitment_id: null, label: x.label, due_date: isoDate(nowPlus(x.dueIn)), amount: r2(x.amount), status: 'due', transaction_id: null }))
+
+  const fixedGroups = [...groups].map(([key, items]) => {
+    const [source, category] = JSON.parse(key) as [Item['source'], string | null]
+    const counted = items.filter((i) => i.status !== 'not_due_this_cycle')
+    return { source, category, total: r2(sum(counted)), items, paid_count: items.filter((i) => i.status === 'paid').length, count: counted.length }
+  })
+  const fixedItems = fixedGroups.flatMap((g) => g.items.filter((i) => i.status !== 'not_due_this_cycle'))
+  const planBudgets = budgets.map((b) => {
+    const commitments = inBudget.get(b.category) ?? []
+    const coming = sum(commitments.filter((c) => c.status === 'due'))
+    return {
+      budget_id: b.id, category: b.category, limit: r2(b.limit_pounds), spent: b.spent, coming_up: r2(coming),
+      status: b.status, over_by: b.over_by, commitments, commitment_count: commitments.length,
+      other_purchases: r2(Math.max(0, Number(b.spent) - sum(commitments.filter((c) => c.status === 'paid')))),
+    }
+  })
   const incomeTotal = sum(income)
   const fixedTotal = sum(fixedItems)
-  const limits = budgets.reduce((t, b) => t + Number(b.limit), 0)
-  const notPlanned = incomeTotal - fixedTotal - limits
+  const plannedTotal = planBudgets.reduce((t, b) => t + Math.max(Number(b.limit), Number(b.spent) + Number(b.coming_up)), 0)
+  const notPlanned = incomeTotal - fixedTotal - plannedTotal
   return {
     cycle: { start: list.cycle.start, end: list.cycle.end, days_left: list.cycle.days_left },
     income: {
@@ -1083,8 +1125,9 @@ function planResponse() {
       paid_count: fixedItems.filter((i) => i.status === 'paid').length, count: fixedItems.length, groups: fixedGroups,
     },
     budgets: {
-      limits_total: r2(limits), spent: r2(budgets.reduce((t, b) => t + Number(b.spent), 0)),
-      coming_up: '0.00', count: budgets.length, items: budgets,
+      limits_total: r2(planBudgets.reduce((t, b) => t + Number(b.limit), 0)), planned_total: r2(plannedTotal),
+      spent: r2(planBudgets.reduce((t, b) => t + Number(b.spent), 0)),
+      coming_up: r2(planBudgets.reduce((t, b) => t + Number(b.coming_up), 0)), count: planBudgets.length, items: planBudgets,
     },
     spent_outside_budgets: list.other_spending,
     not_planned: r2(notPlanned),

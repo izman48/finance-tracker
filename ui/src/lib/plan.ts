@@ -20,8 +20,13 @@ export interface PlanIncomeItem {
   transaction_id: string | null
 }
 
+/** Where a Fixed line comes from (T-24-4): a commitment, a card repayment
+ *  or a planned expense; only a commitment has a `commitment_id`. */
+export type PlanSource = 'commitment' | 'card_repayment' | 'planned'
+
 export interface PlanFixedItem {
-  commitment_id: string
+  source: PlanSource
+  commitment_id: string | null
   label: string
   due_date: string | null
   amount: Money
@@ -30,6 +35,8 @@ export interface PlanFixedItem {
 }
 
 export interface PlanFixedGroup {
+  source: PlanSource
+  /** null: "No category" for commitments; card repayments and planned expenses have their own group. */
   category: string | null
   total: Money
   paid_count: number
@@ -55,6 +62,7 @@ export interface PlanBudget {
   status: PaceStatus | 'budget_used' | null
   over_by: Money
   commitments: PlanBudgetCommitment[]
+  commitment_count: number
   other_purchases: Money
 }
 
@@ -62,7 +70,8 @@ export interface PlanResponse {
   cycle: PlanCycle
   income: { total: Money; received_count: number; expected_count: number; items: PlanIncomeItem[] }
   fixed: { total: Money; paid: Money; to_pay: Money; paid_count: number; count: number; groups: PlanFixedGroup[] }
-  budgets: { limits_total: Money; spent: Money; coming_up: Money; count: number; items: PlanBudget[] }
+  /** `planned_total`: each budget at max(limit, spent + coming up), what Not planned takes off (sec). */
+  budgets: { limits_total: Money; planned_total: Money; spent: Money; coming_up: Money; count: number; items: PlanBudget[] }
   spent_outside_budgets: Money
   not_planned: Money
   outside_vs_not_planned: Money

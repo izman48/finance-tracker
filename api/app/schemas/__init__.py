@@ -966,6 +966,9 @@ class CommitmentResponse(BaseModel):
     # use, for each that Claude moved the favourable way (ux KP18); else null.
     held_amount: Decimal | None = None
     held_next_date: date | None = None
+    # The category of its most recent matched payment; null with none
+    # (T-24-2). Stored text: compare by exact string only.
+    category: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

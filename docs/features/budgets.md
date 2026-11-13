@@ -1,11 +1,52 @@
 # Budgets
 
 A whole-pound limit per spending category, per pay cycle. Budgets track
-purchases only and never change safe to spend or any other money figure. Up
+purchases and, once paid, the payments of commitments in a budgeted
+category; they never change safe to spend or any other money figure. Up
 to 20 per user, one active budget per category. Users get suggestions
 (median of the last 3 cycles, rounded up to £10), a history of past cycles,
 nudges when a budget is at risk, and a budget line on the forecast. Claude can
 set, pause, resume and remove budgets.
+
+## Commitments inside a budget (T-24-3a)
+
+Owner, 2026-11-13: a commitment counts inside its budget category, only when
+paid. A payment `classify_purchase` calls a commitment counts in `spent`
+when its own category (exact text) has an active, unpaused budget;
+otherwise it stays under "Not counted here" (`not_counted.commitments`, or
+`commitments_no_category` for a payment with no category). Any category can
+have a budget now, rent and bills included (the Sprint 09 "mostly
+commitments" block is lifted for the web and `set_budgets`; suggestions
+still leave such categories out, and measure every other category as its
+budget would count it, paid commitments included, so Suggest and Past
+cycles agree).
+
+Each budget row also has `coming_up`: the commitment instalments due after
+today and by the cycle's last day, taken from `held_scheduled_outflows`
+(`services/analytics/forecast.py`), the same held view the forecast
+schedules, so Claude's pending cut or dismissal never lowers it and a
+card-tied bill the forecast drops is not in it. An instalment goes to its
+commitment's category (`services/commitment_category.py`). A £0 rule or one
+linked to a loan or holding adds nothing. `coming_up` never changes `spent`,
+`over_by` or `status`; `over_by_payday = max(0, spent + coming_up − limit)`.
+`status` is `budget_used` when spent equals the limit. Items are at most 5,
+earliest first; `amount`, `commitment_count` and `instalment_count` cover
+all of them. A closed cycle's stored snapshot is never rewritten; a cycle
+first loaded after this change is written under the new rule.
+
+### The dotted line with commitments (T-24-3b)
+
+A budgeted category's instalments are already on the forecast's solid line,
+so `budget_projection` subtracts, per budget, only what they leave of the
+limit: this cycle `max(0, limit − spent − instalments due by the day before
+payday)`, each later cycle `max(0, limit − that cycle's instalments)`. Each
+budget on its own, so one budget's instalments never free another's limit.
+The instalments come from `held_scheduled_outflows` over the same window as
+the forecast the line is drawn on (`budgeted_instalments`, the filter
+`coming_up` uses), not from `coming_up`, whose held view is judged over this
+cycle only: a pending Claude change can't lift the line at any payday eve
+(tested). Instalments past the horizon are unknown, so a cycle the horizon
+cuts subtracts more, never less.
 
 ## Code
 
@@ -38,9 +79,11 @@ set, pause, resume and remove budgets.
 
 **Services**: `services/budgets.py` (cycles, cap, `budget_list`,
 `budget_projection`, `budget_nudges`, `suggest`), `services/budget_spend.py`
-(the one counting rule, `classify_purchase`: excludes commitments,
-transfers, card payoffs, financed purchases; nets paid-back marks, see
-[paid-back.md](paid-back.md) "Figures"), `services/budget_history.py`,
+(the one counting rule, `classify_purchase`: excludes commitments outside
+a budgeted category, transfers, card payoffs, financed purchases; nets
+paid-back marks, see
+[paid-back.md](paid-back.md) "Figures"), `services/budget_coming_up.py`,
+`services/budget_history.py`,
 `api/app/schemas/budgets.py`.
 
 **UI**: Spending tab, `?section=budgets` (`components/budgets/BudgetsPanel`,
@@ -57,7 +100,7 @@ transfers, card payoffs, financed purchases; nets paid-back marks, see
 `test_budget_spend.py`, `test_budget_history.py`,
 `test_budget_projection.py`, `test_budget_invariance.py`, `test_budget_paid_back.py`,
 `test_budget_home_nudges.py`, `test_budgets_consent.py`,
-`test_budget_writes_api.py`; `api/mcp/tests/test_budget_tools.py`; UI tests
+`test_budget_writes_api.py`, `test_budget_commitments.py`; `api/mcp/tests/test_budget_tools.py`; UI tests
 next to every component and lib file above.
 
 ## Touchpoints

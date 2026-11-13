@@ -117,8 +117,9 @@ def preview_figures(db: Session, user, plans: list[PlannedMark], today) -> list[
         cycle = _cycle_of(db, user, today, (p.spend or p.credit).transaction_date.date())
         key = (cycle.start, cycle.end)
         if key not in spends:
-            spends[key] = (budget_spend(db, user, cycle.start, cycle.end),
-                           budget_spend(db, user, cycle.start, cycle.end, extra_marks=proposed))
+            spends[key] = (budget_spend(db, user, cycle.start, cycle.end, budgeted=set(budgets)),
+                           budget_spend(db, user, cycle.start, cycle.end, extra_marks=proposed,
+                                        budgeted=set(budgets)))
         before, after = spends[key]
         category = (p.spend.category or UNCATEGORISED) if p.spend is not None else p.entry.category
         out.append(_figures(p, cycle, today, category, before, after, budgets.get(category), applied))

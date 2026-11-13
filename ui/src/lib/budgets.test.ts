@@ -57,6 +57,12 @@ describe('status and row text (section 4.2, 4.3; status is never colour alone)',
     expect(statusText(budget({ status: null, paused: true }))).toBe('Paused')
   })
 
+  it('spent exactly at the limit reads "Budget used", with no pace (T-24-3)', () => {
+    const used = budget({ status: 'budget_used', limit_pounds: 150, spent: '150.00', over_by: '0' })
+    expect(statusText(used)).toBe('Budget used')
+    expect(footText(used, 18)).toBe('18 days left')
+  })
+
   it('no spending: £0 of £150 · Under pace (section 5)', () => {
     const b = budget({ limit_pounds: 150, spent: '0', status: 'under_pace' })
     expect(meterLabel(b, 18)).toBe('Groceries: £0 of £150, under pace, 18 days left')

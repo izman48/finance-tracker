@@ -29,6 +29,7 @@ class World:
     def __init__(self, client, db, email="budgets@example.com"):
         self.db = db
         web, _, _ = _connect(client, email=email)
+        self.headers = {"Authorization": f"Bearer {web}"}
         self.dek = _dek_from_token(web)
         self.user = db.query(User).filter(User.email == email).one()
 
@@ -129,3 +130,41 @@ def test_a_purchase_moved_to_a_payment_plan_is_reported_not_counted(client, db_s
     spend = w.spend()
     assert "Shopping" not in spend.by_category
     assert spend.excluded["financed"] == Decimal("600.00")
+
+
+# --- commitments inside a budgeted category (T-24-3) -------------------------
+
+def test_a_commitment_payment_counts_when_its_category_has_a_budget(client, db_session):
+    """Should count: the rent's own category (Bills) is budgeted."""
+    w = World(client, db_session)
+    w.seed()
+    spend = w.as_user(lambda: budget_spend(w.db, w.user, START, TODAY, budgeted={"Bills"}))
+    assert spend.by_category["Bills"] == Decimal("950.00")
+    assert spend.excluded["commitments"] == 0
+
+
+def test_a_commitment_payment_stays_out_when_its_category_has_no_budget(client, db_session):
+    """Should NOT count: another category is budgeted, or the name differs
+    only by case (exact text only)."""
+    w = World(client, db_session)
+    w.seed()
+    for budgeted in ({"Eating out"}, {"bills"}):
+        spend = w.as_user(lambda: budget_spend(w.db, w.user, START, TODAY, budgeted=budgeted))
+        assert "Bills" not in spend.by_category
+        assert spend.excluded["commitments"] == Decimal("950.00")
+
+
+def test_an_uncategorised_commitment_payment_is_reported_on_its_own(client, db_session):
+    w = World(client, db_session)
+
+    def make():
+        current = _account(w.db, w.user.id, name="Current")
+        _tx(w.db, current, "12.00", TODAY - timedelta(days=1), merchant="STREAMING CO")
+        w.db.add(CommitmentRule(user_id=w.user.id, direction="expense", label="STREAMING CO", amount=Decimal("12"),
+                                cadence="monthly", next_date=TODAY + timedelta(days=29),
+                                source="manual", status="confirmed"))
+        w.db.commit()
+    w.as_user(make)
+    spend = w.as_user(lambda: budget_spend(w.db, w.user, START, TODAY, budgeted={"Uncategorized"}))
+    assert spend.by_category == {}
+    assert (spend.excluded["commitments"], spend.excluded["commitments_no_category"]) == (0, Decimal("12.00"))

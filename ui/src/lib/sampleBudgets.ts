@@ -46,6 +46,7 @@ function spendByCategory(ledger: BudgetLedgerTx[], fromAgo: number, toAgo: numbe
 
 function status(spent: number, pace: number, limit: number) {
   if (spent > limit) return 'over' as const
+  if (spent === limit) return 'budget_used' as const
   if (spent > pace * (1 + PACE_BAND)) return 'ahead_of_pace' as const
   if (spent < pace * (1 - PACE_BAND)) return 'under_pace' as const
   return 'on_pace' as const

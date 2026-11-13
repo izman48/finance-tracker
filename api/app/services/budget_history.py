@@ -109,7 +109,10 @@ def write_snapshots(db: Session, user) -> None:
         live = [b for b in budgets if states[b.id] is not None and states[b.id].active]
         if not live:
             continue
-        spend = budget_spend(db, user, c.start, c.end).by_category
+        # Commitments count in the budgets live and unpaused at the close
+        # (T-24-3); a stored snapshot is never rewritten.
+        budgeted = {b.category for b in live if not states[b.id].paused}
+        spend = budget_spend(db, user, c.start, c.end, budgeted=budgeted).by_category
         # One transaction per cycle (sec on #160): a request that dies partway
         # leaves none of this cycle's rows, never some, because a partial
         # cycle would move "the last stored end" past budgets never written.

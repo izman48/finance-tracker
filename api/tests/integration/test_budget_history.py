@@ -365,3 +365,28 @@ def test_a_snapshot_always_has_its_written_at(w):
     _backdate(w, w.create("Eating out", 50).json()["id"])
     _history(w, cycles=3)
     assert w.db.execute(text("SELECT count(*) FROM budget_cycle_snapshots WHERE written_at IS NULL")).scalar() == 0
+
+
+def test_a_stored_snapshot_is_never_rewritten_by_the_commitment_rule(w):
+    """T-24-3 (sec): a cycle closed and stored before a commitment's
+    payments counted keeps its stored spent; a cycle first loaded after the
+    change is written under the new rule (accepted, lead 2026-11-13)."""
+    budget_id = w.create("Rent", 1000).json()["id"]
+    _backdate(w, budget_id)
+    _history(w, cycles=3)
+    from app.models import BudgetCycleSnapshot
+
+    def as_the_old_rule_stored_them():
+        for snap in w.db.query(BudgetCycleSnapshot).all():
+            snap.spent = Decimal("1.23")
+        w.db.commit()
+    w.as_user(as_the_old_rule_stored_them)
+    slots = _budget(_history(w, cycles=3), "Rent")["cycles"]
+    assert [Decimal(s["spent"]) for s in slots] == [Decimal("1.23")] * 3
+
+
+def test_a_cycle_first_loaded_now_counts_the_paid_commitment(w):
+    budget_id = w.create("Rent", 1000).json()["id"]
+    _backdate(w, budget_id)
+    slots = _budget(_history(w, cycles=3), "Rent")["cycles"]
+    assert [Decimal(s["spent"]) for s in slots] == [Decimal("950.00")] * 3

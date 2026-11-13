@@ -19,9 +19,18 @@ have a budget now, rent and bills included (the Sprint 09 "mostly
 commitments" block is lifted for the web and `set_budgets`; suggestions
 still leave such categories out).
 
-`status` is `budget_used` when spent equals the limit. A closed cycle's
-stored snapshot is never rewritten; a cycle first loaded after this change
-is written under the new rule.
+Each budget row also has `coming_up`: the commitment instalments due after
+today and by the cycle's last day, taken from `held_scheduled_outflows`
+(`services/analytics/forecast.py`), the same held view the forecast
+schedules, so Claude's pending cut or dismissal never lowers it and a
+card-tied bill the forecast drops is not in it. An instalment goes to its
+commitment's category (`services/commitment_category.py`). A £0 rule or one
+linked to a loan or holding adds nothing. `coming_up` never changes `spent`,
+`over_by` or `status`; `over_by_payday = max(0, spent + coming_up − limit)`.
+`status` is `budget_used` when spent equals the limit. Items are at most 5,
+earliest first; `amount`, `commitment_count` and `instalment_count` cover
+all of them. A closed cycle's stored snapshot is never rewritten; a cycle
+first loaded after this change is written under the new rule.
 
 ## Code
 
@@ -57,7 +66,8 @@ is written under the new rule.
 (the one counting rule, `classify_purchase`: excludes commitments outside
 a budgeted category, transfers, card payoffs, financed purchases; nets
 paid-back marks, see
-[paid-back.md](paid-back.md) "Figures"), `services/budget_history.py`,
+[paid-back.md](paid-back.md) "Figures"), `services/budget_coming_up.py`,
+`services/budget_history.py`,
 `api/app/schemas/budgets.py`.
 
 **UI**: Spending tab, `?section=budgets` (`components/budgets/BudgetsPanel`,

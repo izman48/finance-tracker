@@ -30,6 +30,8 @@ from app.schemas.budgets import (
     BudgetSuggestion,
     BudgetSuggestResponse,
     BudgetSummary,
+    ComingUp,
+    ComingUpItem,
     CycleSummary,
     FirstOver,
     CycleFigure,
@@ -39,6 +41,7 @@ from app.schemas.budgets import (
 )
 from app.services.analytics.commitments import held_next_payday, held_payday_dates, last_payday
 from app.services.analytics.common import _today
+from app.services.budget_coming_up import ITEMS_MAX, coming_up_by_category
 from app.services.budget_spend import UNCATEGORISED, BudgetSpend, budget_spend
 
 FALLBACK_DAYS = 30
@@ -220,19 +223,23 @@ def budget_list(db: Session, user, markers: dict | None = None,
     spending, what's not counted, and the cycle summary. The
     budgetable categories read a year of transactions (about 160 ms on 2,000
     of them), so they're only computed when asked for (eng-a on #156)."""
-    inputs = cycle_budgets(db, user, _today())
+    today = _today()
+    inputs = cycle_budgets(db, user, today)
     cycle, spend = inputs.cycle, inputs.spend
     share = Decimal(inputs.elapsed) / Decimal(inputs.days_total)
+    coming = coming_up_by_category(db, user, today, cycle.end, {b.category for b in inputs.budgets if not b.paused})
     rows = []
     for b in inputs.budgets:
         limit = Decimal(b.limit_pounds)
         spent = spend.by_category.get(b.category, Decimal(0))
         pace = (limit * share).quantize(Decimal("0.01"))
+        coming_up = _coming_up(coming.get(b.category)) if not b.paused else ComingUp()
         rows.append(BudgetResponse(
             id=b.id, category=b.category, limit_pounds=int(limit), paused=b.paused, created_via=b.created_via,
             spent=spent, pace_spent=pace, over_by=max(Decimal(0), spent - limit),
             status=None if b.paused else _status(spent, pace, limit),
             changed_by_claude=(markers or {}).get(b.id),
+            coming_up=coming_up, over_by_payday=max(Decimal(0), spent + coming_up.amount - limit),
         ))
     tracked = {b.category for b in inputs.budgets if not b.paused}
     other = sum((v for k, v in spend.by_category.items() if k not in tracked), Decimal(0))
@@ -257,6 +264,17 @@ def budget_list(db: Session, user, markers: dict | None = None,
         budgets=rows, other_spending=other, total_spent=sum(spend.by_category.values(), Decimal(0)),
         not_counted=_not_counted(spend), summary_this_cycle=this_cycle,
         budgetable_categories=sorted(budgetable_categories(db, user, _today())) if include_categories else None,
+    )
+
+
+def _coming_up(found) -> ComingUp:
+    if found is None:
+        return ComingUp()
+    items = found.instalments
+    return ComingUp(
+        amount=found.amount, commitment_count=len({i.commitment_id for i in items}), instalment_count=len(items),
+        items=[ComingUpItem(commitment_id=i.commitment_id, label=i.label, due_date=i.due_date, amount=i.amount)
+               for i in items[:ITEMS_MAX]],
     )
 
 

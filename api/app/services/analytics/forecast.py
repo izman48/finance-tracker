@@ -129,6 +129,26 @@ def _account_breaches(
 CLAUDE_PLAN_LABEL = "Card plan instalment"
 
 
+def held_scheduled_outflows(db: Session, user, start: date, end: date):
+    """The commitment occurrences and card repayments the forecast schedules
+    in [start, end] (`scheduled_outflows`), with Claude's pending changes
+    held: no Claude change moves the forecast up until the user keeps it, as
+    in the summary and projection (T-12-9a). A bill counts the higher of now
+    and before-Claude over the window, an income the lower. Budgets' coming
+    up reads this too (T-24-3), so it never holds an instalment the forecast
+    does not."""
+    def worth(version) -> Decimal:
+        return _d(version.amount) * len(commitment_occurrences(version, start, end))
+
+    confirmed = [
+        version
+        for direction in (CommitmentDirection.INCOME.value, CommitmentDirection.EXPENSE.value)
+        for version in counted_commitments(db, user.id, direction, worth)
+    ]
+    # Each card's repayment is counted once (see scheduled_outflows).
+    return scheduled_outflows(db, user, confirmed, start, end)
+
+
 def get_forecast(db: Session, user, horizon: str = "payday", for_claude: bool = False) -> dict:
     """Project the spending-account balance forward across the horizon.
 
@@ -176,19 +196,7 @@ def get_forecast(db: Session, user, horizon: str = "payday", for_claude: bool = 
         if acc is not SKIP:
             moves.append((day, acc, event["amount"]))
 
-    # No Claude change moves the forecast up until the user keeps it, as in
-    # the summary and projection (T-12-9a): a bill counts the higher of now
-    # and before-Claude over the horizon, an income the lower.
-    def worth(version) -> Decimal:
-        return _d(version.amount) * len(commitment_occurrences(version, today + timedelta(days=1), end))
-
-    confirmed = [
-        version
-        for direction in (CommitmentDirection.INCOME.value, CommitmentDirection.EXPENSE.value)
-        for version in counted_commitments(db, user.id, direction, worth)
-    ]
-    # Each card's repayment is counted once (see scheduled_outflows).
-    occurrences, repayments = scheduled_outflows(db, user, confirmed, today + timedelta(days=1), end)
+    occurrences, repayments = held_scheduled_outflows(db, user, today + timedelta(days=1), end)
     for rule, occ in occurrences:
         sign = Decimal(1) if rule.direction == CommitmentDirection.INCOME.value else Decimal(-1)
         add(occ, rule.account_id, {

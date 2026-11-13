@@ -176,3 +176,15 @@ def test_a_group_lists_at_most_fifty_items_and_counts_them_all():
              for n in range(60)]
     group = plan_service._group("commitment", "Bills", items)
     assert len(group.items) == 50 and group.count == 60 and group.total == D("60.00")
+
+
+def test_a_bill_due_earlier_this_cycle_and_unpaid_is_still_to_pay(w):
+    """eng-a on #296: a £40 monthly water bill last due 10 days ago (inside
+    this cycle) with no payment stays in Fixed as due, so Not planned isn't
+    overstated. Rent, paid, is not listed twice."""
+    _rule(w, "WATER CO", "40", "expense", 20)  # monthly: last due 10 days ago
+    p = _plan(w)
+    water = [i for i in _fixed_items(p) if i["label"] == "WATER CO"]
+    assert [(i["status"], i["due_date"]) for i in water] == [("due", (TODAY - timedelta(days=10)).isoformat())]
+    rent = next(g for g in p["fixed"]["groups"] if g["category"] == "Rent")
+    assert [i["status"] for i in rent["items"]] == ["paid", "due"]

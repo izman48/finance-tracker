@@ -8,7 +8,8 @@ is read from the code that already owns it:
   income adds nothing, as in safe to spend.
 - Fixed: what is still to pay is `money_out_items` (safe to spend's own
   list: commitments, card repayments, planned expenses) over (today, eve],
-  bills held the higher of now and before-Claude. What is paid is this
+  bills held the higher of now and before-Claude, plus any instalment due
+  earlier this cycle with no payment matched to it. What is paid is this
   cycle's payments `classify_purchase` calls a commitment or a card payoff.
   A commitment instalment that is in a budget's `coming_up`, and a payment
   that budget spend counts, sit under that budget, never also here.
@@ -21,6 +22,7 @@ Every row is the caller's own; nothing is logged here.
 from __future__ import annotations
 
 from collections import defaultdict
+from types import SimpleNamespace
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -31,7 +33,7 @@ from app.schemas.plan import (
     BudgetCommitment, FixedGroup, FixedItem, IncomeItem, PlanBudget, PlanBudgets, PlanCycle, PlanFixed,
     PlanIncome, PlanResponse,
 )
-from app.services.analytics.cadence import commitment_occurrences
+from app.services.analytics.cadence import _step_back, commitment_occurrences
 from app.services.analytics.commitments import commitment_match_keys, payday_dates, rule_match_keys, \
     transaction_match_key
 from app.services.analytics.common import _d, _load, _today, resolve_roles
@@ -63,7 +65,7 @@ def plan(db: Session, user) -> PlanResponse:
     paid = _paid_this_cycle(db, user, expense_rules, start, today)
 
     income = _income(db, user, start, today, first_due, eve)
-    fixed = _fixed(db, user, expense_rules, paid, budgeted, in_budgets, today, first_due, eve)
+    fixed = _fixed(db, user, expense_rules, paid, budgeted, in_budgets, start, today, first_due, eve)
     plan_budgets = _budgets(budgets, paid, coming)
     not_planned = income.total - fixed.total - plan_budgets.planned_total
     return PlanResponse(
@@ -123,7 +125,7 @@ def _income(db: Session, user, start: date, today: date, first_due: date, eve: d
                       expected_count=sum(i.status == "expected" for i in items))
 
 
-def _fixed(db, user, rules, paid, budgeted, in_budgets, today, first_due, eve) -> PlanFixed:
+def _fixed(db, user, rules, paid, budgeted, in_budgets, start, today, first_due, eve) -> PlanFixed:
     groups: dict[tuple, list[FixedItem]] = defaultdict(list)
     for tx, kind, rule in paid:
         if kind == "commitment" and tx.category in budgeted:
@@ -137,11 +139,25 @@ def _fixed(db, user, rules, paid, budgeted, in_budgets, today, first_due, eve) -
     def worth(version) -> Decimal:
         return _d(version.amount) * len(commitment_occurrences(version, first_due, eve))
     held = counted_commitments(db, user.id, CommitmentDirection.EXPENSE.value, worth)
+    category_of = commitment_categories(db, user, rules)
+    # Due earlier this cycle and not paid: still to pay (eng-a on #296). A
+    # missed match lists it twice, which only lowers Not planned.
+    paid_count = defaultdict(int)
+    for _, kind, rule in paid:
+        if kind == "commitment" and rule is not None:
+            paid_count[rule.id] += 1
+    for version in held:
+        category = category_of.get(version.id)
+        if _d(version.amount) <= 0 or category in budgeted:
+            continue
+        for day in _since(version, start, today)[paid_count[version.id]:]:
+            groups[("commitment", category)].append(FixedItem(
+                source="commitment", commitment_id=version.id, label=version.label, due_date=day,
+                amount=_d(version.amount), status="due"))
     planned = db.query(PlannedItem).filter(PlannedItem.user_id == user.id, PlannedItem.active.is_(True)).all()
     planned += held_removed_planned(db, user.id)
     due = money_out_items(db, user, held, planned, planned_states(db, user, planned, today), first_due, eve,
                           payday_dates(db, user, first_due, eve))
-    category_of = commitment_categories(db, user, rules)
     listed = {i.commitment_id for items in groups.values() for i in items}
     for item in due:
         if item["source"] == "commitment" and (item["id"], item["date"]) in in_budgets:
@@ -164,6 +180,20 @@ def _fixed(db, user, rules, paid, budgeted, in_budgets, today, first_due, eve) -
                  key=lambda g: (g.source != "commitment", g.category is None, g.category or ""))
     return PlanFixed(total=paid_total + to_pay, paid=paid_total, to_pay=to_pay,
                      paid_count=sum(g.paid_count for g in out), count=sum(g.count for g in out), groups=out)
+
+
+def _since(version, start: date, today: date) -> list[date]:
+    """Its instalment dates in [start, today]. The stored next date is
+    usually ahead, so step back past `start` first (lessons, #210)."""
+    d, guard = version.next_date, 0
+    while d is not None and d >= start and guard < 600:
+        d = _step_back(d, version.cadence, version.interval_days, version.interval_months)
+        guard += 1
+    if d is None:
+        return []
+    walk = SimpleNamespace(next_date=d, cadence=version.cadence, interval_days=version.interval_days,
+                           interval_months=version.interval_months, ends_on=getattr(version, "ends_on", None))
+    return commitment_occurrences(walk, start, today)
 
 
 def _group(source, category, items: list[FixedItem]) -> FixedGroup:

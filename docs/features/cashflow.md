@@ -80,7 +80,8 @@ that already owns it:
   commitment (in a category with no budget) or a card payoff; and still to
   pay, which is `money_out_items` (safe to spend's own list: commitments,
   card repayments, planned expenses) over (today, eve], bills held at the
-  higher of the two. Groups by commitment category, plus one group each for
+  higher of the two, plus any instalment due earlier this cycle with no
+  payment matched to it (a missed match lists it twice: the safe side). Groups by commitment category, plus one group each for
   card repayments and planned items (`source`). A confirmed commitment with
   nothing in the cycle is listed `not_due_this_cycle` and adds nothing.
 - **Budgets**: `budget_list`, each with its commitment payments and

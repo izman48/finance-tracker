@@ -242,7 +242,27 @@ const statementStates = {
   empty: { statements: [], current: null, missing_statement: false, conflict: false, next_payment: { ...nextPayment, amount: '642.31', date: daysFromNow(30) } },
 }
 
+// Cashflow > Plan (T-24-6): synthetic, and the lines add up (3,100.00 − 989.49 − 550.00 = 1,560.51).
+const planItem = (id, label, days, amount, status) => ({ commitment_id: id, label, due_date: daysFromNow(days), amount, status, transaction_id: status === 'paid' ? `tx-${id}` : null })
+const plan = {
+  cycle: { start: daysFromNow(-14), end: daysFromNow(16), days_left: 16 },
+  income: { total: '3100.00', received_count: 1, expected_count: 1, items: [
+    { id: 'in1', label: 'Salary', date: daysFromNow(-14), amount: '2800.00', status: 'received', transaction_id: 'tx-in1' },
+    { id: 'in2', label: 'Side job', date: daysFromNow(15), amount: '300.00', status: 'expected', transaction_id: null }] },
+  fixed: { total: '989.49', paid: '959.99', to_pay: '29.50', paid_count: 2, count: 4, groups: [
+    { category: 'Housing', total: '950.00', paid_count: 1, count: 1, items: [planItem('rent', 'Rent', -12, '950.00', 'paid')] },
+    { category: 'Subscriptions', total: '14.49', paid_count: 1, count: 2, items: [planItem('str', 'Streamly', -9, '9.99', 'paid'), planItem('cb', 'Cloudbox with a very long bank description', 8, '4.50', 'due'),
+      { ...planItem('pass', 'Annual pass', 0, '120.00', 'not_due_this_cycle'), due_date: null }] },
+    { category: null, total: '25.00', paid_count: 0, count: 1, items: [planItem('gym', 'Gym club', 7, '25.00', 'due')] }] },
+  budgets: { limits_total: '550.00', spent: '450.50', coming_up: '40.00', count: 2, items: [
+    { budget_id: 'pb1', category: 'Eating out', limit: '300.00', spent: '330.50', coming_up: '40.00', status: 'over', over_by: '30.50', other_purchases: '310.50',
+      commitments: [{ ...planItem('pz', 'Pizza club', -7, '20.00', 'paid'), date: daysFromNow(-7) }, { ...planItem('pz', 'Pizza club', 7, '20.00', 'due'), date: daysFromNow(7) }, { ...planItem('pz', 'Pizza club', 14, '20.00', 'due'), date: daysFromNow(14) }] },
+    { budget_id: 'pb2', category: 'Groceries', limit: '250.00', spent: '120.00', coming_up: '0.00', status: 'under_pace', over_by: '0.00', other_purchases: '120.00', commitments: [] }] },
+  spent_outside_budgets: '1700.00', not_planned: '1560.51', outside_vs_not_planned: '139.49',
+}
+
 const routes = [
+  ['**/api/v1/plan', plan],
   ['**/api/v1/auth/me', { id: 'u1', email: 'demo@example.com' }],
   ['**/api/v1/banking/status', { is_connected: true, connections_count: 2, last_synced_at: new Date(Date.now() - 42 * 60000).toISOString(), connections: [ { id: 'b1', provider_name: 'Monzo', is_expired: false, expires_at: null }, { id: 'b2', provider_name: 'American Express', is_expired: true, expires_at: null } ], message: 'ok' }],
   ['**/api/v1/analytics/summary', summary],
@@ -318,12 +338,15 @@ for (const [vpName, viewport] of viewports) {
 
   const page = await ctx.newPage()
   page.on('console', (msg) => {
+    if (msg.type() === 'error' && msg.text().includes('status of 429')) return // the staged Plan 429
     if (msg.type() === 'error') errors.push(`[${vpName}] ${page.url()}: ${msg.text()}`)
   })
   page.on('pageerror', (err) => errors.push(`[${vpName}] ${page.url()}: PAGEERROR ${err.message}`))
   page.on('response', (res) => {
     // The loan form's 409 choose_commitment is staged on purpose (below).
     if (res.status() === 409 && res.url().endsWith('/api/v1/liabilities')) return
+    // The Plan 429 is staged on purpose (below).
+    if (res.status() === 429 && res.url().endsWith('/api/v1/plan')) return
     if (res.status() >= 400) errors.push(`[${vpName}] HTTP ${res.status()} ${res.url()}`)
   })
 
@@ -349,6 +372,27 @@ for (const [vpName, viewport] of viewports) {
       await page.unroute('**/api/v1/analytics/accounts/a3/statements')
     }
   }
+  // T-24-6: Plan opens row by row, the link moves focus to it, no sideways
+  // scroll, and a 429 on /plan leaves safe to spend and the forecast in place.
+  await page.goto(`${BASE}/dashboard`, { waitUntil: 'networkidle' })
+  await page.getByRole('link', { name: /See your month in Plan/ }).click()
+  if ((await page.evaluate(() => document.activeElement?.id)) !== 'plan-heading') errors.push(`[${vpName}] Plan link did not focus the Plan heading`)
+  for (const name of [/^Fixed/, /^Subscriptions/, /^Budgets/, /^Eating out/]) await page.getByRole('button', { name }).click()
+  if ((await page.getByRole('button', { name: /^Fixed/ }).getAttribute('aria-expanded')) !== 'true') errors.push(`[${vpName}] Fixed did not expand`)
+  const sideways = await page.evaluate(() => [document.documentElement, document.getElementById('plan')].some((el) => el.scrollWidth > el.clientWidth))
+  if (sideways) errors.push(`[${vpName}] Plan overflows sideways`)
+  await page.waitForTimeout(400)
+  await page.locator('#plan').screenshot({ path: `${OUT}/plan-open-${vpName}.png` })
+  console.log(`shot plan-open-${vpName}`)
+  await page.route('**/api/v1/plan', (route) => route.fulfill({ status: 429, contentType: 'application/json', body: '{"detail":"Too many requests"}' }))
+  await page.reload({ waitUntil: 'networkidle' })
+  await page.getByText("Couldn't load your plan. Your balances and safe to spend are unaffected.").waitFor()
+  if (!(await page.getByText('Safe to spend').first().isVisible())) errors.push(`[${vpName}] safe to spend hidden by a Plan 429`)
+  if (!(await page.locator('.recharts-surface').count())) errors.push(`[${vpName}] forecast hidden by a Plan 429`)
+  await page.locator('#plan').screenshot({ path: `${OUT}/plan-error-${vpName}.png` })
+  console.log(`shot plan-error-${vpName}`)
+  await page.unroute('**/api/v1/plan')
+
   // T-10-12: Home's notice opens that card's settings on Wealth.
   if (vpName === 'desktop' || vpName === 'mobile') {
     await page.goto(`${BASE}/home`, { waitUntil: 'networkidle' })

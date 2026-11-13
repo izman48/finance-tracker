@@ -21,6 +21,7 @@ import AccountGroups from '../components/cashflow/AccountGroups'
 import { loanLenders } from '../lib/homeOwed'
 import { withLoanLabels } from '../lib/loanLabel'
 import ForecastChart from '../components/ForecastChart'
+import PlanSection, { PlanLink } from '../components/plan/PlanSection'
 import NudgeFeed, { UiNudge } from '../components/NudgeFeed'
 import AnimatedNumber from '../components/ui/AnimatedNumber'
 import InfoTip from '../components/ui/InfoTip'
@@ -283,7 +284,7 @@ export default function DashboardPage() {
 
               <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-4">
                 {[
-                  { icon: Banknote, label: 'Safe to spend', value: formatCurrency(summary.safe_to_spend), tone: safeToSpendNegative ? 'text-neg' : 'text-slate-100', explain: EXPLAIN.safeToSpend, note: <SafeToSpendNote total={summary.safe_to_spend_pending_keep_total} /> },
+                  { icon: Banknote, label: 'Safe to spend', value: formatCurrency(summary.safe_to_spend), tone: safeToSpendNegative ? 'text-neg' : 'text-slate-100', explain: EXPLAIN.safeToSpend, note: <><SafeToSpendNote total={summary.safe_to_spend_pending_keep_total} /><PlanLink /></> },
                   { icon: CalendarClock, label: 'Committed soon', value: `−${formatCurrency(summary.committed_before_payday)}`, tone: 'text-neg', explain: EXPLAIN.committedSoon },
                   { icon: PiggyBank, label: 'Savable (30d)', value: formatCurrency(summary.savable), tone: 'text-pos', explain: EXPLAIN.savable, note: <SavableNote total={summary.savable_pending_keep_total} /> },
                   { icon: ShieldAlert, label: 'Overdraft cushion', value: formatCurrency(summary.overdraft_cushion), tone: 'text-slate-400', explain: EXPLAIN.overdraftCushion },
@@ -360,6 +361,14 @@ export default function DashboardPage() {
       {summary && hasAccounts && (
         <div className="mb-6" data-reveal>
           <ForecastChart refreshKey={forecastKey} lenders={loanLenders(liabilities)} />
+        </div>
+      )}
+
+      {/* Plan (T-24-6, variant B): after the forecast; its own request, so a
+          failed /plan never hides safe to spend or the forecast. */}
+      {summary && hasAccounts && (
+        <div className="mb-6" data-reveal>
+          <PlanSection />
         </div>
       )}
 

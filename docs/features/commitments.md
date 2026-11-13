@@ -21,7 +21,8 @@ FT, DDR, BGC, CPM, SO, DD, "FIRST DDR PAYMENT", "FIRST PAYMENT"), so rent
 set up from "… FT" matches its "… STO" payments and a direct debit set up
 from its first collection matches the later ones. Only whole trailing
 words go, and never the last word ("DD SHOP" and a payee called "SO" keep
-their names). Mark-as-recurring dedupes on `rule_match_keys` too.
+their names). Mark-as-recurring dedupes on `rule_match_keys` too, but reuses
+a confirmed rule only when the amount is within the matcher bound (sec on #308).
 Changing normalisation is a two-part change: `sync_suggestions` heals
 detected rules from their label, and `rule_match_keys` (stored key, that key
 re-normalised, a PayPal reference stored before T-10-9 healed, label key) is what dedupes detection and matches payments, so

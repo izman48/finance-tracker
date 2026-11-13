@@ -15,7 +15,8 @@ import pytest
 from sqlalchemy import text
 
 from app.core import user_crypto
-from app.models import CommitmentRule, User
+from app.models import Account, CommitmentRule, User
+from app.services.analytics.common import _d
 from app.services import plan as plan_service
 from app.services.analytics.late_income import income_payments, late_incomes
 from app.services.budget_spend import budget_spend
@@ -35,9 +36,10 @@ def _days(n):
 
 class World:
     def __init__(self, client, db):
-        self.db = db
+        self.db, self.client = db, client
         _register(client, email=EMAIL)
-        self.dek = _dek_from_token(_login(client, email=EMAIL))
+        self.token = _login(client, email=EMAIL)
+        self.dek = _dek_from_token(self.token)
         self.user = db.query(User).filter(User.email == EMAIL).one()
         self.ids = self.as_user(self._seed)
 
@@ -125,3 +127,31 @@ def test_an_income_whose_key_ends_in_bgc_is_received_from_a_credit_without_it(wo
     paid = world.as_user(lambda: income_payments(world.db, user, TODAY))
     assert [c.id for c in paid.get(lodger, [])] == [world.ids["txs"]["lodger"]]
     assert lodger not in world.as_user(lambda: late_incomes(world.db, user, TODAY + timedelta(days=5)))
+
+
+def _mark_recurring(world, amount, description):
+    def add():
+        account = world.db.query(Account).filter_by(user_id=world.user.id).first()
+        return _tx(world.db, account, amount, _days(0), merchant=description).id
+    tx_id = world.as_user(add)
+    res = world.client.post("/api/v1/analytics/commitments/from-transaction", json={"transaction_id": str(tx_id)},
+                            headers={"Authorization": f"Bearer {world.token}"})
+    assert res.status_code in (200, 201), res.text
+
+
+def _rules_named(world, prefix):
+    def read():
+        rules = world.db.query(CommitmentRule).filter_by(user_id=world.user.id).all()
+        return sorted(_d(r.amount) for r in rules if r.label.startswith(prefix))
+    return world.as_user(read)
+
+
+def test_marking_a_small_payment_recurring_never_rewrites_a_confirmed_bill_on_its_key(world):
+    """sec on #308: a GBP 40 "... STO" to the letting agent is not the rent."""
+    _mark_recurring(world, "40.00", "ACME LETTINGS RENT 12HIGHSTREE STO")
+    assert _rules_named(world, "ACME LETTINGS") == [Decimal("40.00"), Decimal("1500.00")]
+
+
+def test_marking_a_payment_of_the_same_bill_recurring_updates_it(world):
+    _mark_recurring(world, "1510.00", "ACME LETTINGS RENT 12HIGHSTREE STO")
+    assert _rules_named(world, "ACME LETTINGS") == [Decimal("1510.00")]

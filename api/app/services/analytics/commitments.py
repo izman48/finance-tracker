@@ -377,17 +377,21 @@ def commitment_from_transaction(db: Session, user, transaction_id: str, cadence:
 
     key = _match_key(direction, label)
     # match_key is encrypted at rest — dedupe against the user's rules in Python.
+    same_key = [
+        r for r in db.query(CommitmentRule).filter(CommitmentRule.user_id == user.id)
+        if key in rule_match_keys(r)
+    ]
+    for r in same_key:
+        # A loan's repayment changes only through the loan (T-10-8).
+        check_linked(db, user.id, r.id, {"amount", "cadence", "status"})
+    # A confirmed rule is this payment's only if the amount is close too (sec
+    # on #308): a GBP 40 payment to the letting agent never rewrites the rent.
     rule = next(
-        (
-            r
-            for r in db.query(CommitmentRule).filter(CommitmentRule.user_id == user.id)
-            if key in rule_match_keys(r)
-        ),
+        (r for r in same_key
+         if r.status != CommitmentStatus.CONFIRMED.value or amount_matches(_d(tx.amount), _d(r.amount))),
         None,
     )
     if rule:
-        # A loan's repayment changes only through the loan (T-10-8).
-        check_linked(db, user.id, rule.id, {"amount", "cadence", "status"})
         rule.status = CommitmentStatus.CONFIRMED.value
         rule.amount = _d(tx.amount)
         rule.cadence = cadence

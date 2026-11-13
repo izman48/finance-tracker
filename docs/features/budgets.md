@@ -29,7 +29,18 @@ card-tied bill the forecast drops is not in it. An instalment goes to its
 commitment's category (`services/commitment_category.py`). A £0 rule or one
 linked to a loan or holding adds nothing. `coming_up` never changes `spent`,
 `over_by` or `status`; `over_by_payday = max(0, spent + coming_up − limit)`.
-`status` is `budget_used` when spent equals the limit. Items are at most 5,
+`status` is `budget_used` when spent equals the limit. Pace (lead,
+2026-11-13; sec on #298): `pace_spent = placed + max(0, limit − placed) ×
+share of the cycle gone`; coming up plays no part, so an instalment that is
+only due never moves the status. Placed commitment payments sit on the
+line at their real dates and only the flexible rest is spread, so rent paid
+on day 1 isn't "ahead of pace". `services/budget_pace.py` caps what each
+commitment places at its amount × instalments due so far this cycle (a
+one-off under a subscription's descriptor is spread like any purchase),
+judges an unkept Claude change by the smaller of now and before-Claude
+(confirmed in both, lower amount, fewer instalments, the old match keys),
+and never places more than the budget's spent. With no commitments it is
+the even spread. Status, the pace tick and the pace nudge all read this one figure. Items are at most 5,
 earliest first; `amount`, `commitment_count` and `instalment_count` cover
 all of them. A closed cycle's stored snapshot is never rewritten; a cycle
 first loaded after this change is written under the new rule.

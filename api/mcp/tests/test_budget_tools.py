@@ -156,3 +156,15 @@ def test_set_budgets_no_longer_says_commitment_categories_are_refused():
     async def description():
         return {t.name: t for t in await _local(FakeApi()).list_tools()}["set_budgets"].description
     assert "can't have a budget" not in anyio.run(description)
+
+
+def test_list_budgets_explains_pace_with_commitments():
+    import anyio
+
+    from test_bank_sync_tool import _local
+
+    async def description():
+        return {t.name: t for t in await _local(FakeApi()).list_tools()}["list_budgets"].description
+    text = anyio.run(description)
+    assert "where even spending would be by today" not in text
+    assert "commitments on their real dates, the rest spread evenly" in text

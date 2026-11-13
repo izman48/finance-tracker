@@ -58,7 +58,7 @@ export interface BudgetCycle {
 export interface SummaryThisCycle {
   total_limit: Money
   spent: Money
-  /** Σ max(limit − spent, 0): what the dotted line on Cashflow takes away. */
+  /** Σ max(limit − spent, 0): what is left of active budgets. The Cashflow dotted line also nets their commitment instalments (T-24-3b). */
   left: Money
   first_over: { category: string; over_by: Money } | null
   paused_count: number

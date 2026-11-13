@@ -92,7 +92,9 @@ class World:
         user = self.db.get(User, self.user.id)
         def paid():
             rules = self.db.query(CommitmentRule).filter_by(user_id=user.id, direction="expense").all()
-            return plan_service._paid_this_cycle(self.db, user, rules, START, TODAY)
+            ledger = plan_service._ledger(self.db, user, START, TODAY)
+            payments = plan_service._payments(self.db, user, ledger, rules, {r.id: r for r in rules}, set())
+            return {tx.id: rule_id for rule_id, txs in payments.items() for tx in txs}
         return self.as_user(paid)
 
 
@@ -105,11 +107,8 @@ def test_plan_pays_each_bill_with_its_own_payment_and_never_the_phone(world):
     """Plan's paid list: rent (STO vs FT), the loan (DDR vs FIRST DDR
     PAYMENT DDR), the weekly box (a different date, 87p more) and the
     subscription itself are paid; the phone and the refund are not."""
-    paid = {tx.id: (kind, rule.id if rule else None) for tx, kind, rule in world.paid_this_cycle()}
     txs, rules = world.ids["txs"], world.ids["rules"]
-    assert paid == {
-        txs[name]: ("commitment", rules[name]) for name in ("rent", "loan", "box", "sub")
-    }
+    assert world.paid_this_cycle() == {txs[name]: rules[name] for name in ("rent", "loan", "box", "sub")}
 
 
 def test_budgets_count_the_phone_as_spending_and_the_bills_as_commitments(world):

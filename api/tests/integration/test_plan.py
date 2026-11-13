@@ -179,10 +179,12 @@ def test_commitments_hold_no_card_repayments_planned_items_one_offs_or_later_bil
         w.db.commit()
     w.as_user(yearly)
     _paid(w, "PHONE SHOP", "999.00", 2, "Shopping")          # a one-off purchase
+    _rule(w, "APP STORE", "11.99", "expense", 3)
+    _paid(w, "APP STORE", "1999.00", 1, "Shopping")          # a phone, under the subscription's descriptor (T-25-1)
     p = _plan(w)
     labels = {i["label"] for i in _items(p)}
-    assert not {"ANNUAL CLUB", "PHONE SHOP", "Sofa", "Card"} & labels
-    assert labels == {"LANDLORD RENT"}
+    assert labels == {"LANDLORD RENT", "APP STORE"}
+    assert [(i["status"], D(i["amount"])) for i in _items(p) if i["label"] == "APP STORE"] == [("coming", D("11.99"))]
 
 
 def test_a_bill_paid_today_is_paid_and_one_due_today_unpaid_is_coming(w):

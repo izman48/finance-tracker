@@ -92,8 +92,9 @@ over. Safe to spend and the forecast do not read it.
   out. Grouped for display: Rent, Council tax, Utilities, Phone, Insurance
   are "Rent & bills"; Debt repayments; Subscriptions; holding-linked
   (ISA, pension) are "Savings"; any other category is its own group; none
-  is "Other". Each payment this cycle (`classify_purchase` with that
-  commitment's keys; a savings contribution may be a transfer) is `paid`
+  is "Other". Each payment this cycle (`commitment_matcher`, key and
+  amount, as budget spend uses; a savings contribution may be a transfer)
+  is `paid`
   and takes the nearest instalment within half a cadence, last cycle's
   included; each instalment due this cycle that no payment took is
   `coming` (due today or later) or `not_seen` (due earlier, still counted:

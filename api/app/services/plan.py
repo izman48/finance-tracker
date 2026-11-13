@@ -32,7 +32,7 @@ from app.schemas.plan import (
     PlanCommitments, PlanCycle, PlanResponse,
 )
 from app.services.analytics.cadence import _step, _step_back, commitment_occurrences
-from app.services.analytics.commitments import rule_match_keys, transaction_match_key
+from app.services.analytics.commitments import commitment_matcher, transaction_match_key
 from app.services.analytics.common import _d, _load, _today, resolve_roles
 from app.services.analytics.late_income import income_payments, income_rule_keys, late_incomes
 from app.services.analytics.repayments import card_repayment_rule_ids
@@ -184,7 +184,7 @@ def _commitments(db: Session, user, ledger, budgeted: set[str], start: date, tod
     category_of = commitment_categories(db, user, rows.values())
     savings = {cid for cid, owner in linked_commitments(db, user.id).items() if owner.kind == "holding"}
     card_bills = card_repayment_rule_ids(db, user, versions, today)
-    payments = _payments(ledger, [rows[v.id] for v in versions], savings)
+    payments = _payments(db, user, ledger, versions, rows, savings)
 
     groups: dict[str, list[CommitmentItem]] = defaultdict(list)
     budgeted_paid: dict[str, list] = defaultdict(list)
@@ -213,25 +213,25 @@ def _commitments(db: Session, user, ledger, budgeted: set[str], start: date, tod
     return PlanCommitments(total=sum((g.total for g in out), ZERO), groups=out), budgeted_paid
 
 
-def _payments(ledger, rules: list[CommitmentRule], savings: set) -> dict:
-    """Each rule's payments this cycle so far. A payment pays one rule at
-    most. A savings contribution may be filed as a transfer, so it matches
-    on its key alone."""
-    keys = {r.id: rule_match_keys(r) for r in rules}
+def _payments(db: Session, user, ledger, versions: list, rows: dict, savings: set) -> dict:
+    """Each commitment's payments this cycle so far, by the one matcher
+    (`commitment_matcher`: key and amount, key alone for a linked holding or
+    loan). A held version's amount (Claude's change not kept) is matched
+    too, so an unkept cut never unpairs a payment. A savings contribution
+    may be filed as a transfer."""
+    held = [SimpleNamespace(id=v.id, direction=rows[v.id].direction, label=rows[v.id].label,
+                            match_key=rows[v.id].match_key, amount=v.amount)
+            for v in versions if v.amount != rows[v.id].amount]
+    matcher = commitment_matcher(db, user, [rows[v.id] for v in versions] + held)
     out: dict = defaultdict(list)
     for tx in ledger.txns:
-        key = transaction_match_key(tx)
-        for rule in rules:
-            if key in keys[rule.id] and _pays(tx, keys[rule.id], ledger, rule.id in savings):
-                out[rule.id].append(tx)
-                break
+        rule = matcher.rule_for(tx)
+        if rule is None:
+            continue
+        kind = classify_purchase(tx, ledger.transfers, ledger.roles, ledger.financed, matcher)
+        if kind == "commitment" or (rule.id in savings and kind == "transfer"):
+            out[rule.id].append(tx)
     return out
-
-
-def _pays(tx, keys: set[str], ledger, savings: bool) -> bool:
-    """The one commitment matcher (`classify_purchase`, as budget spend uses)."""
-    kind = classify_purchase(tx, ledger.transfers, ledger.roles, ledger.financed, keys)
-    return kind == "commitment" or (savings and kind == "transfer")
 
 
 def _settle(version, payments: list[Transaction], start: date, eve: date) -> tuple[list[Transaction], list[date]]:

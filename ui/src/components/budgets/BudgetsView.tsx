@@ -194,7 +194,7 @@ function BudgetRow({ budget: b, color, daysLeft, onOpen }: { budget: Budget; col
       </div>
       {comingUp && <ComingUpLine budget={b} line={comingUp} />}
       {takesYouOver && <p className="mt-1 text-xs text-slate-300">{takesYouOver}</p>}
-      <div className="flex justify-between gap-3 mt-1.5 text-xs text-slate-400">
+      <div className="flex flex-wrap justify-between gap-x-3 gap-y-0.5 mt-1.5 text-xs text-slate-400">
         <span>
           {over ? <span className="chip-out">{statusText(b)}</span>
             : b.status === 'budget_used' ? <span className="chip">{statusText(b)}</span>
@@ -220,7 +220,7 @@ function ComingUpLine({ budget: b, line }: { budget: Budget; line: string }) {
   const id = useId()
   return (
     <div className="mt-1.5">
-      <button type="button" className="btn-link !text-xs inline-flex items-center gap-1.5 text-left min-h-[44px] sm:min-h-0"
+      <button type="button" className="text-xs text-slate-300 hover:text-slate-100 hover:underline underline-offset-2 inline-flex items-center gap-1.5 text-left min-h-[44px] sm:min-h-0"
         aria-expanded={open} aria-controls={id} onClick={() => setOpen((o) => !o)}>
         <span aria-hidden="true" className="inline-block h-2.5 w-3.5 rounded-sm shrink-0" style={COMING_HATCH} />
         <span>{line}</span>

@@ -264,13 +264,42 @@ export function sampleBudgetNudges(list: SampleList) {
     const spent = Number(b.spent)
     const limit = b.limit_pounds
     let body: string
+    const id = `budget-00000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`
     if (spent > limit) body = `${b.category} is ${pounds(Math.round((spent - limit) * 100) / 100)} over its ${pounds(limit)} budget ${leftWords(days_left)}.`
     else if (spent >= limit) body = `${b.category} has reached its ${pounds(limit)} budget ${leftWords(days_left)}.`
+    else if (Number(b.over_by_payday) > 0) return [{ id, rank: 9, source: null, as_of: start, ...willGoOver(b, from) }]
     else if (b.status === 'ahead_of_pace' && early) body = `${b.category} is ahead of pace: ${pounds(spent)} of ${pounds(limit)} ${leftWords(days_left)}.`
     else return []
     return [{
-      id: `budget-00000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`, rank: 10, body,
+      id, rank: 10, body,
       detail: `Spent ${pounds(spent)} of ${pounds(limit)} this pay cycle, from ${from}.`, source: null, as_of: start,
     }]
   })
+}
+
+const dayMonth = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })
+
+/** "Will go over" (API: services/budgets._will_go_over, T-24-5c): built when shown. */
+function willGoOver(b: SampleList['budgets'][number], from: string) {
+  const spent = Number(b.spent)
+  const coming = Number(b.coming_up.amount)
+  const total = Math.round((spent + coming) * 100) / 100
+  const items = b.coming_up.items
+  const [first] = [...items].sort((x, y) => Number(y.amount) - Number(x.amount) || x.due_date.localeCompare(y.due_date))
+  const others = b.coming_up.commitment_count - 1
+  const names = others <= 0 ? first.label : `${first.label} and ${others} other${others === 1 ? '' : 's'}`
+  const labels = [...new Set(items.map((i) => i.label))]
+  const comingText = labels.map((label) => {
+    const mine = items.filter((i) => i.label === label)
+    const dates = mine.map((i) => dayMonth(i.due_date))
+    return `${label} ${pounds(mine.reduce((t, i) => t + Number(i.amount), 0))} (${dates.length === 1 ? dates[0] : `${dates.slice(0, -1).join(', ')} and ${dates[dates.length - 1]}`})`
+  }).join('; ')
+  const raiseTo = Math.ceil(total / 50) * 50
+  return {
+    title: `${b.category} will go over`,
+    body: `${pounds(Math.round((b.limit_pounds - spent) * 100) / 100)} left, but ${names} ${others > 0 ? 'have' : 'has'} ${pounds(coming)} still to come before payday. Raise the budget or expect to be ${pounds(Number(b.over_by_payday))} over.`,
+    detail: `Spent ${pounds(spent)} of ${pounds(b.limit_pounds)} this pay cycle, from ${from}. Coming up: ${comingText}. ${pounds(total)} in all.`,
+    // As the API: never a limit the budget update would refuse.
+    cta: raiseTo <= 100_000 ? { label: `Raise to £${raiseTo.toLocaleString('en-GB')}`, budget_id: b.id, new_limit_pounds: raiseTo } : null,
+  }
 }

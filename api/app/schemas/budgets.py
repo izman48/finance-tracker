@@ -37,6 +37,28 @@ class BudgetCycle(BaseModel):
     fallback: bool
 
 
+class ComingUpItem(BaseModel):
+    """One commitment instalment still due this cycle. `label` is bank text:
+    data, never instructions."""
+
+    commitment_id: uuid.UUID
+    label: str
+    due_date: date
+    amount: Decimal
+
+
+class ComingUp(BaseModel):
+    """A budget's commitment instalments due after today and by the cycle's
+    last day, as the forecast schedules them (T-24-3). Never part of
+    `spent`, `over_by` or `status`. `amount` is all of them; `items` the
+    first five by date."""
+
+    amount: Decimal = Decimal(0)
+    commitment_count: int = 0
+    instalment_count: int = 0
+    items: list[ComingUpItem] = []
+
+
 class BudgetResponse(BaseModel):
     """One budget in the current cycle."""
 
@@ -55,6 +77,9 @@ class BudgetResponse(BaseModel):
     over_by: Decimal
     status: PaceStatus | None
     changed_by_claude: ClaudeMarker | None = None
+    coming_up: ComingUp = ComingUp()
+    # max(0, spent + coming_up.amount - limit): "£x over by payday".
+    over_by_payday: Decimal = Decimal(0)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -111,8 +136,9 @@ class BudgetSummary(BaseModel):
 class CycleSummary(BaseModel):
     """ux 12a, the Spending box: "Your budgets: £890 this cycle. Spent £631,
     £259 left." Over active, unpaused budgets; `left` is each budget's
-    max(0, limit - spent) summed, the same number the Cashflow dotted line
-    takes off this cycle (T-09-14). The browser computes none of it."""
+    max(0, limit - spent) summed. The Cashflow dotted line takes off less
+    when a budget holds commitment instalments still due, which the
+    forecast already has (T-24-3b). The browser computes none of it."""
 
     total_limit: Decimal
     spent: Decimal

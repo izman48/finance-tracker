@@ -31,7 +31,7 @@ from app.schemas.plan import (
     BudgetCommitment, CommitmentGroup, CommitmentItem, MoneyIn, MoneyInItem, PlanBudget, PlanBudgets,
     PlanCommitments, PlanCycle, PlanResponse,
 )
-from app.services.analytics.cadence import _step_back, commitment_occurrences
+from app.services.analytics.cadence import _step, _step_back, commitment_occurrences
 from app.services.analytics.commitments import rule_match_keys, transaction_match_key
 from app.services.analytics.common import _d, _load, _today, resolve_roles
 from app.services.analytics.late_income import income_payments, income_rule_keys, late_incomes
@@ -42,7 +42,7 @@ from app.services.analytics.spending import (
 from app.services.analytics.statements import _REFUND_WORD
 from app.services.budget_coming_up import coming_up_by_category
 from app.services.budgets import budget_list
-from app.services.categorization import INCOME_CATEGORY
+from app.services.categorization import INCOME_CATEGORY, active_rules, winning_rule
 from app.services.claude_keep import before_claude_label, claude_rows, counted_commitments
 from app.services.commitment_category import commitment_categories
 from app.services.linked_commitments import linked_commitments
@@ -52,6 +52,7 @@ ITEMS_MAX = 50
 ZERO = Decimal(0)
 SAVINGS = "Savings"
 OTHER = "Other"
+OWN_RULE_SOURCES = ("learned", "manual")
 # Display groups by category (compared case-insensitively), in this order;
 # any other category is its own group after them, then "Other".
 GROUPS = {
@@ -131,18 +132,29 @@ def _money_in(db: Session, user, ledger, start: date, today: date, eve: date) ->
 
 
 def _income_credits(db: Session, user, ledger) -> list[Transaction]:
-    """Credits on a current account categorised Income that are not a
-    transfer or card payment (`classify_noise`: paired legs, Transfers
-    category, the user's override), a refund or marked paid back (lead, T-25-2)."""
+    """Credits on a current account the user filed as Income, by hand or by
+    one of his own rules: the provider files every credit as Income, a
+    refund included (sec on #307). Never a transfer or card payment
+    (`classify_noise`: paired legs, Transfers category, the user's
+    override), refund wording or a credit marked paid back."""
     noise = classify_noise(ledger.txns, ledger.roles)
     paid_back = marked_credit_ids(db, user.id)
+    rules = active_rules(db, user.id)
     return [
         tx for tx in ledger.txns
         if tx.transaction_type == "credit" and ledger.roles.get(tx.account_id) == AccountRole.SPENDING
-        and (tx.category or "").strip().lower() == INCOME_CATEGORY.lower()
+        and tx.category == INCOME_CATEGORY and _chosen(tx, rules)
         and tx.id not in noise and tx.id not in paid_back
         and not _REFUND_WORD.search(f"{tx.description or ''} {tx.merchant_name or ''}".lower())
     ]
+
+
+def _chosen(tx: Transaction, rules) -> bool:
+    """Its category is the user's: set by hand, or by his own rule (not a shared pack's)."""
+    if tx.category_locked:
+        return True
+    rule = winning_rule(rules, tx)
+    return rule is not None and rule.source in OWN_RULE_SOURCES and rule.category == tx.category
 
 
 _MATCH_FIELDS = ("id", "direction", "label", "match_key", "amount", "cadence", "interval_days", "interval_months",
@@ -177,15 +189,27 @@ def _commitments(db: Session, user, ledger, budgeted: set[str], start: date, tod
     groups: dict[str, list[CommitmentItem]] = defaultdict(list)
     budgeted_paid: dict[str, list] = defaultdict(list)
     for version in versions:
-        category = category_of.get(version.id)
         if version.id in card_bills:
             continue
-        if version.id not in savings and category in budgeted:
-            budgeted_paid[category] += [(tx, version) for tx in payments[version.id]]
-            continue
-        groups[_group_name(category, version.id in savings)] += _instalments(
-            version, payments[version.id], start, today, eve)
-    out = [_group(name, items) for name, items in sorted(groups.items(), key=lambda g: _order(g[0]))]
+        category = category_of.get(version.id)
+        name = _group_name(category, version.id in savings)
+        paid, unpaid = _settle(version, payments[version.id], start, eve)
+        # A payment goes where budget spend counts it: by its own category
+        # (sec on #307), so it is in exactly one of a budget or Commitments.
+        for tx in paid:
+            if tx.category in budgeted and tx.id not in ledger.transfers:
+                budgeted_paid[tx.category].append((tx, version))
+            else:
+                groups[name].append(CommitmentItem(
+                    commitment_id=version.id, label=version.label, date=tx.transaction_date.date(),
+                    amount=_d(tx.amount), status="paid", transaction_id=tx.id))
+        # An instalment still to pay goes by the commitment's category, as
+        # the budget's coming up does.
+        if version.id in savings or category not in budgeted:
+            groups[name] += [CommitmentItem(commitment_id=version.id, label=version.label, date=d,
+                                            amount=_d(version.amount), status="coming" if d >= today else "not_seen")
+                             for d in unpaid]
+    out = [_group(name, items) for name, items in sorted(groups.items(), key=lambda g: _order(g[0])) if items]
     return PlanCommitments(total=sum((g.total for g in out), ZERO), groups=out), budgeted_paid
 
 
@@ -210,22 +234,29 @@ def _pays(tx, keys: set[str], ledger, savings: bool) -> bool:
     return kind == "commitment" or (savings and kind == "transfer")
 
 
-def _instalments(version, paid: list[Transaction], start: date, today: date, eve: date) -> list[CommitmentItem]:
-    """Its payments this cycle, then each instalment due this cycle that no
-    payment has taken (earliest taken first): coming from today on, not seen
-    before today. A missed match lists a bill twice, which only lowers Left
-    over (the safe side)."""
-    items = [CommitmentItem(commitment_id=version.id, label=version.label, date=tx.transaction_date.date(),
-                            amount=_d(tx.amount), status="paid", transaction_id=tx.id) for tx in paid]
-    items += [CommitmentItem(commitment_id=version.id, label=version.label, date=d, amount=_d(version.amount),
-                             status="coming" if d >= today else "not_seen")
-              for d in _due(version, start, eve)[len(paid):]]
-    return items
+def _settle(version, payments: list[Transaction], start: date, eve: date) -> tuple[list[Transaction], list[date]]:
+    """(its payments this cycle, its instalments due this cycle that no
+    payment took). Each payment takes the nearest instalment within half a
+    cadence of its date, last cycle's included, so a late payment for last
+    cycle never takes this cycle's (sec on #307). A missed match leaves a
+    bill unpaid and still counted: the safe side."""
+    first = _step_back(start, version.cadence, version.interval_days, version.interval_months)
+    due = _due(version, first, eve)
+    for tx in payments:
+        day = tx.transaction_date.date()
+        near = [d for d in due if abs((day - d).days) * 2 <= _cadence_days(version, d)]
+        if near:
+            due.remove(min(near, key=lambda d: abs((day - d).days)))
+    return payments, [d for d in due if d >= start]
+
+
+def _cadence_days(version, d: date) -> int:
+    return (_step(d, version.cadence, version.interval_days, version.interval_months) - d).days
 
 
 def _due(version, start: date, eve: date) -> list[date]:
     """Its instalment dates in [start, eve]. The stored next date may be
-    ahead of the cycle, so step back past `start` first (lessons, #210)."""
+    ahead of the window, so step back past `start` first (lessons, #210)."""
     d, guard = version.next_date, 0
     while d is not None and d >= start and guard < 600:
         d = _step_back(d, version.cadence, version.interval_days, version.interval_months)

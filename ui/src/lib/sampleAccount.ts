@@ -1052,8 +1052,8 @@ const PLAN_ORDER = ['Rent & bills', 'Debt repayments', 'Subscriptions', 'Savings
 
 /** GET /plan (T-25-2), by the API's rules (services/plan.py) from the
  *  sample's own commitments, ledger and budgets. Money in: each income
- *  paid this cycle or still expected by the eve, plus other Income credits
- *  on a current account that are not a transfer or marked paid back.
+ *  paid this cycle or still expected by the eve (no sample credit is one the
+ *  user filed as Income by hand or rule, so none is added by description).
  *  Commitments: confirmed expenses only, by display group (the ISA is
  *  Savings); each payment this cycle is paid, each instalment due this cycle
  *  that no payment took is coming (from today) or not seen. A commitment in
@@ -1069,7 +1069,6 @@ function planResponse() {
   const budgets = list.budgets.filter((b) => !b.paused)
   const budgeted = new Set(budgets.map((b) => b.category))
   const all = commitmentsResponse()
-  const marked = new Set(SAMPLE_MARKS.map((m) => m.credit))
 
   const moneyIn = all.filter((c) => c.direction === 'income').map((c) => {
     const paid = payments(c.label).find((tx) => tx.daysAgo <= PAYDAY_AGO)
@@ -1077,9 +1076,6 @@ function planResponse() {
       ? { label: c.label, date: isoDate(nowMinus(paid.daysAgo)), amount: r2(paid.amount), status: 'received' as const, transaction_id: paid.id }
       : { label: c.label, date: c.next_date, amount: r2(c.amount), status: 'expected' as const, transaction_id: null }
   }).filter((i) => i.status === 'received' || daysTo(i.date) <= eveIn)
-  const credits = L.filter((tx) => tx.transaction_type === 'credit' && tx.daysAgo <= PAYDAY_AGO && ROLE[tx.account_id] === 'spending'
-    && tx.category === 'Income' && !tx.is_commitment && !tx.excluded_reason && !marked.has(tx.id))
-  moneyIn.push(...credits.map((tx) => ({ label: tx.description, date: isoDate(nowMinus(tx.daysAgo)), amount: r2(tx.amount), status: 'received' as const, transaction_id: tx.id })))
   moneyIn.sort((x, y) => x.date.localeCompare(y.date))
 
   const groups = new Map<string, (Line & { status: 'paid' | 'coming' | 'not_seen' })[]>()

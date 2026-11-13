@@ -79,9 +79,12 @@ over. Safe to spend and the forecast do not read it.
   before Claude's unkept relabels), so an unkept Claude confirm, raise or
   relabel never lets a credit count (sec on #305); plus incomes still
   expected by the eve, held at the lower of now and before Claude (a late
-  income adds nothing); plus any other credit on a current account
-  categorised Income, labelled by its description. Transfers (paired legs,
-  Transfers category, the user's transfer override), card payments,
+  income adds nothing); plus any other credit on a current account the user
+  filed as Income, by hand (`category_locked`) or by one of his own rules
+  (the provider files every credit as Income, so its default never counts),
+  labelled by its description. A credit with a confirmed income's key is
+  that income and is not counted again (paid early). Transfers (paired
+  legs, Transfers category, the user's transfer override), card payments,
   refund or reversal wording and credits marked paid back never count.
 - **Commitments**: confirmed expense commitments only, held at the higher of
   now and before Claude, £0 rules and card-tied bills (`_card_ties`) left
@@ -89,10 +92,14 @@ over. Safe to spend and the forecast do not read it.
   are "Rent & bills"; Debt repayments; Subscriptions; holding-linked
   (ISA, pension) are "Savings"; any other category is its own group; none
   is "Other". Each payment this cycle (`classify_purchase` with that
-  commitment's keys; a savings contribution may be a transfer) is `paid`;
-  each instalment due this cycle that no payment took is `coming` (due
-  today or later) or `not_seen` (due earlier, still counted: a missed match
-  lists it twice, the safe side). No card repayments, planned items or
+  commitment's keys; a savings contribution may be a transfer) is `paid`
+  and takes the nearest instalment within half a cadence, last cycle's
+  included; each instalment due this cycle that no payment took is
+  `coming` (due today or later) or `not_seen` (due earlier, still counted:
+  a missed match lists it twice, the safe side). A payment goes by its own
+  category, as budget spend counts it: in a budgeted category it is under
+  that budget, otherwise here. Instalments still to pay go by the
+  commitment's category, as the budget's coming up does. No card repayments, planned items or
   one-off purchases. A commitment with nothing due or paid this cycle is
   not listed.
 - **Budgets**: `budget_list`, each with its commitment payments and

@@ -15,7 +15,7 @@ import pytest
 
 from app.models import CommitmentLink, CommitmentRule
 from tests.clock import TODAY
-from tests.integration.test_budget_commitments import KIT
+from tests.integration.test_budget_commitments import KIT, _weekly
 from tests.integration.test_budgets_api import API, World
 from tests.integration.test_money_out_items import _rule, plan_world
 from tests.integration.test_oauth import _bearer
@@ -74,28 +74,30 @@ def test_money_in_counts_matched_and_expected_income_but_not_late_income(w):
     assert D(m["total"]) == D("2620.00")
 
 
-def test_money_in_lists_income_credits_by_description_and_leaves_out_transfers_and_refunds(w):
+def test_money_in_lists_income_credits_the_user_chose_and_leaves_out_defaults_transfers_and_refunds(w):
+    """sec on #307: the provider files every credit as Income, so only a
+    category the user chose (by hand, or by one of his own rules) counts."""
     def credits():
-        for merchant, category, account in [
-            ("AUNT GIFT", "Income", w.current),              # counts, labelled by description
-            ("SHOP REFUND", "Income", w.current),            # a refund
-            ("FROM MY SAVINGS", "Transfers", w.current),     # a transfer
-            ("COFFEE CO", "Eating out", w.current),          # not categorised Income
+        from app.models import CategoryRule
+        w.db.add(CategoryRule(user_id=w.user.id, pattern="SISTER", match_type="contains", match_field="any",
+                              category="Income", source="manual"))
+        for merchant, category, locked in [
+            ("AUNT GIFT", "Income", True),          # set by hand: counts, labelled by description
+            ("SISTER RENT", "Income", False),       # his rule says Income: counts
+            ("SHOP CO", "Income", False),           # the provider's default: a refund in disguise
+            ("SHOP REFUND", "Income", True),        # a refund
+            ("FROM MY SAVINGS", "Transfers", True),  # a transfer
         ]:
-            _tx(w.db, account, "75.00", TODAY - timedelta(days=3), ttype="credit", merchant=merchant, category=category)
-        tx = _tx(w.db, w.current, "60.00", TODAY - timedelta(days=2), ttype="credit", merchant="MOVED IN",
-                 category="Income")
-        tx.counts_as_override = "transfer"                   # the user marked it a transfer
-        _tx(w.db, w.current, "80.00", TODAY - timedelta(days=40), ttype="credit", merchant="OLD GIFT",
-            category="Income")                               # last cycle
+            tx = _tx(w.db, w.current, "75.00", TODAY - timedelta(days=3), ttype="credit", merchant=merchant,
+                     category=category)
+            tx.category_locked = locked
+        moved = _tx(w.db, w.current, "60.00", TODAY - timedelta(days=2), ttype="credit", merchant="MOVED IN",
+                    category="Income")
+        moved.category_locked, moved.counts_as_override = True, "transfer"   # the user marked it a transfer
         w.db.commit()
     w.as_user(credits)
-    m = _plan(w)["money_in"]
-    labels = [i["label"] for i in m["items"]]
-    assert "AUNT GIFT" in labels
-    assert not {"SHOP REFUND", "FROM MY SAVINGS", "COFFEE CO", "MOVED IN", "OLD GIFT"} & set(labels)
-    assert labels.count("Salary") == 1  # the matched salary credit is not listed again by description
-    assert D(m["total"]) == D("2575.00")
+    labels = [i["label"] for i in _plan(w)["money_in"]["items"]]
+    assert sorted(labels) == ["AUNT GIFT", "SISTER RENT", "Salary"]
 
 
 def test_an_income_credit_that_is_a_confirmed_income_counts_once(w):
@@ -106,8 +108,9 @@ def test_an_income_credit_that_is_a_confirmed_income_counts_once(w):
     def categorise():
         from app.models import Transaction
         for tx in w.db.query(Transaction).filter(Transaction.transaction_type == "credit").all():
-            tx.category = "Income"                       # the salary credit
-        _tx(w.db, w.current, "120.00", TODAY, ttype="credit", merchant="Side job", category="Income")  # paid early
+            tx.category, tx.category_locked = "Income", True     # the salary credit
+        early = _tx(w.db, w.current, "120.00", TODAY, ttype="credit", merchant="Side job", category="Income")
+        early.category_locked = True                             # paid early
         w.db.commit()
     w.as_user(categorise)
     m = _plan(w)["money_in"]
@@ -126,7 +129,9 @@ def test_an_income_paid_in_two_credits_counts_each_once(w):
         w.db.commit()
         rule.created_at = rule.created_at - timedelta(days=60)
         for merchant, amount in [("MUM AND DAD RENT", "200.00"), ("MUM AND DAD GIFT", "100.00")]:
-            _tx(w.db, w.current, amount, TODAY - timedelta(days=3), ttype="credit", merchant=merchant, category="Income")
+            tx = _tx(w.db, w.current, amount, TODAY - timedelta(days=3), ttype="credit", merchant=merchant,
+                     category="Income")
+            tx.category_locked = True
         w.db.commit()
     w.as_user(make)
     m = _plan(w)["money_in"]
@@ -180,6 +185,35 @@ def test_a_bill_paid_today_is_paid_and_one_due_today_unpaid_is_coming(w):
     _paid(w, "ENERGY CO", "70.00", 0, "Utilities")
     items = {i["label"]: i["status"] for i in _items(_plan(w))}
     assert items["ENERGY CO"] == "paid" and items["FIBRE CO"] == "coming"
+
+
+def test_a_late_payment_for_last_cycle_does_not_take_this_cycles_instalment(w):
+    """sec on #307: due 25 days ago, paid 18 days ago (this cycle): this
+    cycle's instalment, due in 5 days, is still coming."""
+    _rule(w, "WATER CO", "40", "expense", 5)
+    _paid(w, "WATER CO", "40.00", 18, "Utilities")
+    water = [(i["status"], i["date"]) for i in _items(_plan(w)) if i["label"] == "WATER CO"]
+    assert water == [("paid", (TODAY - timedelta(days=18)).isoformat()), ("coming", (TODAY + timedelta(days=5)).isoformat())]
+
+
+def test_each_payment_lands_in_exactly_one_of_commitments_or_a_budget(w):
+    """sec on #307: a payment goes by its own category, as budget spend
+    counts it. A veg box (latest payment Groceries, so its category is the
+    budgeted Groceries) paid once as Shopping: that payment is a commitment."""
+    _weekly(w, label="VEG BOX", amount="10.00", category="Groceries", paid_days_ago=(3,), next_in=4)
+    _paid(w, "VEG BOX", "10.00", 10, "Shopping")
+    p = _plan(w)
+    veg = [(i["status"], i["date"]) for i in _items(p) if i["label"] == "VEG BOX"]
+    assert veg == [("paid", (TODAY - timedelta(days=10)).isoformat())]  # its coming ones are in Groceries
+    groceries = next(b for b in p["budgets"]["items"] if b["category"] == "Groceries")
+    assert [(c["status"], c["date"]) for c in groceries["commitments"] if c["label"] == "VEG BOX"][0] == (
+        "paid", (TODAY - timedelta(days=3)).isoformat())
+    paid_ids = [i["transaction_id"] for i in _items(p) if i["status"] == "paid"] + [
+        c["transaction_id"] for b in p["budgets"]["items"] for c in b["commitments"] if c["status"] == "paid"]
+    assert len(paid_ids) == len(set(paid_ids))
+    nc = w.get().json()["not_counted"]
+    assert sum(D(i["amount"]) for i in _items(p) if i["status"] == "paid") == D(nc["commitments"]) + D(
+        nc["commitments_no_category"])
 
 
 def test_a_holding_linked_commitment_is_savings_and_a_contribution_filed_as_a_transfer_pays_it(w):

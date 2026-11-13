@@ -118,3 +118,20 @@ export function itemStatus(status: string, date: string): string {
   if (status === 'not_seen') return `Not seen yet, due ${dateDayMonth(date)}`
   return `Coming ${dateDayMonth(date)}`
 }
+
+/** "Includes Foodery £129.74" (T-25-3): the commitments a budget's spend
+ *  counts, each with its paid payments this cycle summed. Null when none. */
+export function budgetIncludes(plan: PlanResponse | null, category: string): string | null {
+  const paid = plan?.budgets.items.find((b) => b.category === category)?.commitments.filter((c) => c.status === 'paid') ?? []
+  const byLabel = new Map<string, number>()
+  for (const c of paid) byLabel.set(c.label, (byLabel.get(c.label) ?? 0) + Number(c.amount))
+  if (!byLabel.size) return null
+  return `Includes ${[...byLabel].map(([label, amount]) => `${label} ${gbp(amount)}`).join(', ')}`
+}
+
+/** Plan's Subscriptions group, for a card on Budgets when no budget (paused
+ *  or not) is for Subscriptions (T-25-3). Null otherwise. */
+export function subscriptionsWithoutBudget(plan: PlanResponse | null, budgetCategories: string[]): PlanCommitmentGroup | null {
+  if (budgetCategories.some((c) => c.trim().toLowerCase() === 'subscriptions')) return null
+  return plan?.commitments.groups.find((g) => g.name === 'Subscriptions') ?? null
+}

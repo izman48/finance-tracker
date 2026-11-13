@@ -5,10 +5,11 @@ import ManageSheet from './ManageSheet'
 import BudgetsSegment, { type BudgetsPeriod } from './BudgetsSegment'
 import HistoryView from './HistoryView'
 import { useToast } from '../ui/Toast'
-import { budgetsAPI, syncStatusAPI } from '../../services/api'
+import { budgetsAPI, planAPI, syncStatusAPI } from '../../services/api'
 import { failureFromError, type UndoFailure } from '../../lib/changes'
 import { withTimeout } from '../../lib/forecastLoad'
 import { writeFailure, type Budget, type BudgetEntry, type BudgetsResponse } from '../../lib/budgets'
+import type { PlanResponse } from '../../lib/plan'
 import { HISTORY_MAX, HISTORY_PAGE, nowSpent, type HistoryResponse } from '../../lib/budgetHistory'
 
 /** A request that hasn't answered by then is shown as an error (or an unknown outcome for a save). */
@@ -33,6 +34,7 @@ export default function BudgetsPanel({ onOpenCategory }: { onOpenCategory: (cate
   const [history, setHistory] = useState<HistoryLoad | null>(null)
   const [historyRetrying, setHistoryRetrying] = useState(false)
   const [more, setMore] = useState<'idle' | 'loading' | 'error'>('idle')
+  const [plan, setPlan] = useState<PlanResponse | null>(null)
   const mounted = useRef(true)
   const toast = useToast()
 
@@ -60,6 +62,10 @@ export default function BudgetsPanel({ onOpenCategory }: { onOpenCategory: (cate
         )
       })
       .catch(() => {}) // the note is a nicety; budgets still show
+    // The Subscriptions card and "includes" lines (T-25-3); budgets still show without them.
+    withTimeout(planAPI.get(), TIMEOUT_MS)
+      .then((res) => { if (mounted.current) setPlan(res.data) })
+      .catch(() => {})
     return () => {
       mounted.current = false
     }
@@ -210,6 +216,7 @@ export default function BudgetsPanel({ onOpenCategory }: { onOpenCategory: (cate
           onSuggest={openSuggest}
           onManage={openManage}
           onOpenCategory={onOpenCategory}
+          plan={plan}
         />
       )}
       {suggest && (

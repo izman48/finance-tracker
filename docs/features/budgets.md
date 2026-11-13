@@ -110,6 +110,12 @@ paid-back marks, see
 (`OverviewPage`), `forecast/BudgetStrip` and `ForecastChart` on Cashflow,
 `NudgeFeed`. `lib/budgets.ts`, `lib/budgetBar.ts` (the bar with coming up: widths only, every figure the API's), `lib/budgetHistory.ts`,
 `lib/budgetProjection.ts`, `lib/budgets.fixtures.ts`.
+`BudgetsPanel` also reads `GET /plan` (T-25-3; fail-soft, the page shows
+without it): each budget with commitment payments says "Includes Foodery
+£129.74" (`lib/plan.budgetIncludes`), and when no budget, paused or not, is
+for Subscriptions, a Subscriptions card lists Plan's Subscriptions group,
+each paid or coming, with its total and no limit or pace
+(`subscriptionsWithoutBudget`).
 
 **MCP**: `list_budgets`, `set_budgets`, `pause_budget`, `resume_budget`,
 `remove_budget`.

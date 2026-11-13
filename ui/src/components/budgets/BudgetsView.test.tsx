@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter } from 'react-router-dom'
 import BudgetsView, { type BudgetsViewProps } from './BudgetsView'
 import { budget, budgetsResponse, summaryThisCycle } from '../../lib/budgets.fixtures'
+import { planResponse } from '../../lib/plan.fixtures'
 
 // Spending > Budgets, this cycle (concept 4.1-4.3, 5, 9; T-09-6). Node suite: static markup.
 const noop = () => {}
@@ -238,5 +239,33 @@ describe('BudgetsView', () => {
     expect(html({})).toMatch(/<a[^>]*href="\/dashboard#plan"[^>]*>See in Plan<\/a>/)
     const data = budgetsResponse({ not_counted: { ...budgetsResponse().not_counted, commitments_no_category: '12.50' } })
     expect(text(html({ data }))).toContain('Commitments with no category £12.50')
+  })
+})
+
+// T-25-3: the Subscriptions card and each budget's "includes" line, from GET /plan.
+describe('BudgetsView with the plan', () => {
+  it('a Subscriptions card lists each subscription, paid or coming, and the total; no limit or pace', () => {
+    const t = text(html({ plan: planResponse() }))
+    expect(t).toContain('Subscriptions £14.49')
+    expect(t).toContain('Streamly Paid 4 Nov £9.99')
+    expect(t).toContain('Cloudbox Coming 21 Nov £4.50')
+    expect(t).toContain('No budget: listed so you can see them.')
+  })
+
+  it('no Subscriptions card when a Subscriptions budget exists', () => {
+    const data = budgetsResponse()
+    data.budgets.push(budget({ id: 'b9', category: 'Subscriptions', paused: true }))
+    expect(text(html({ data, plan: planResponse() }))).not.toContain('No budget: listed so you can see them.')
+  })
+
+  it('a budget with commitments in it says so', () => {
+    const t = text(html({ plan: planResponse() }))
+    expect(t).toContain('Includes Pizza club £20.00')
+  })
+
+  it('without the plan, the page is as before', () => {
+    const t = text(html({}))
+    expect(t).not.toContain('Includes')
+    expect(t).not.toContain('No budget: listed so you can see them.')
   })
 })

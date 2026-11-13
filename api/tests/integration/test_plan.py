@@ -19,6 +19,7 @@ from tests.integration.test_budget_commitments import KIT
 from tests.integration.test_budgets_api import API, World
 from tests.integration.test_money_out_items import _rule, plan_world
 from tests.integration.test_oauth import _bearer
+from tests.integration.test_transactions_endpoint import _tx
 
 D = Decimal
 
@@ -188,3 +189,67 @@ def test_a_bill_due_earlier_this_cycle_and_unpaid_is_still_to_pay(w):
     assert [(i["status"], i["due_date"]) for i in water] == [("due", (TODAY - timedelta(days=10)).isoformat())]
     rent = next(g for g in p["fixed"]["groups"] if g["category"] == "Rent")
     assert [i["status"] for i in rent["items"]] == ["paid", "due"]
+
+
+def _held_income_world(client, db_session, status, amount):
+    """sec on #305: a £500 income from PAYER LTD, `status` and `amount` as
+    the rule stands; a credit of `amount` already landed 3 days ago."""
+    world = plan_world(client, db_session)
+
+    def make():
+        rule = CommitmentRule(user_id=world.user.id, direction="income", label="PAYER LTD", amount=D("500"),
+                              cadence="monthly", next_date=TODAY - timedelta(days=3), source="detected", status=status)
+        db_session.add(rule)
+        db_session.commit()
+        rule.created_at = rule.created_at - timedelta(days=60)
+        _tx(db_session, world.current, amount, TODAY - timedelta(days=3), ttype="credit", merchant="PAYER LTD")
+        db_session.commit()
+        return rule.id
+    world.payer = world.as_user(make)
+    return world
+
+
+def _income_and_not_planned(w):
+    p = _plan(w)
+    return D(p["income"]["total"]), D(p["not_planned"])
+
+
+def test_an_unkept_claude_confirm_never_counts_a_received_income(client, db_session):
+    w = _held_income_world(client, db_session, "suggested", "500.00")
+    before = _income_and_not_planned(w)
+    _claude(w).claude_update(w.payer, status="confirmed")
+    assert _income_and_not_planned(w) == before
+
+
+def test_an_unkept_claude_raise_never_lets_a_larger_credit_count(client, db_session):
+    w = _held_income_world(client, db_session, "confirmed", "1000.00")
+    before = _income_and_not_planned(w)
+    _claude(w).claude_update(w.payer, amount="1000.00")
+    assert _income_and_not_planned(w) == before
+
+
+def _claude(w):
+    """Claude, connected to the Plan world's user with planning writes."""
+    from tests.integration.test_claude_income_parity import PLANNING
+    from tests.integration.test_oauth import READ, _connect
+    _, _, tokens = _connect(w.client, scopes=(READ, PLANNING), email="plan@example.com")
+
+    class Claude:
+        n = 0
+
+        def claude_update(self, cid, **fields):
+            self.n += 1
+            r = w.client.post(f"{API}/planning/commitments/{cid}/update", headers=_bearer(tokens["access_token"]),
+                              json={**fields, "dry_run": False, "idempotency_key": f"plan-held-{self.n:04d}"})
+            assert r.status_code == 200, r.text
+    return Claude()
+
+
+def test_an_unkept_claude_relabel_never_lets_another_payers_credit_count(client, db_session):
+    """The matcher keys on the label too, so a relabel is held like a raise."""
+    w = _held_income_world(client, db_session, "confirmed", "50.00")  # PAYER LTD's credit is too small
+    w.as_user(lambda: _tx(db_session, w.current, "500.00", TODAY - timedelta(days=2), ttype="credit",
+                          merchant="OTHER CO"))
+    before = _income_and_not_planned(w)
+    _claude(w).claude_update(w.payer, label="OTHER CO")
+    assert _income_and_not_planned(w) == before

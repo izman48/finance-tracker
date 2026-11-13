@@ -377,6 +377,20 @@ def before_claude(rule: CommitmentRule, rows: list[AuditEntry], applied: frozens
     return view
 
 
+def before_claude_label(rule: CommitmentRule, rows: list[AuditEntry]) -> str:
+    """The label before Claude's unkept relabels (Plan's income matcher keys
+    on it, sec on #305). Every unkept change is reverted, so a hand edit made
+    after one also falls back: the older label, the safe side for matching."""
+    label = rule.label
+    for entry in reversed(rows):
+        if entry.kept_at is not None:
+            continue
+        for c in json.loads(entry.changes):
+            if c["field"] == "label" and c["before"] is not None:
+                label = c["before"]
+    return label
+
+
 def planned_removal_states(db: Session, user_id: uuid.UUID,
                            pending_only: bool = False) -> dict[uuid.UUID, tuple[str, PlannedItem]]:
     """{audit id: (`pending` | `kept`, item)} for Claude's not-undone removals

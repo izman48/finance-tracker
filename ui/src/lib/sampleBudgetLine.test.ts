@@ -9,12 +9,21 @@ import type { BudgetProjection } from './budgetProjection'
 // is left of this cycle's budgets, spread evenly to the day before payday,
 // less the full budget total spread over each later cycle. Paused budgets
 // don't count. Figures reconcile with the demo Budgets section. Synthetic.
-type Forecast = { timeline: { date: string; balance: number }[]; budget_projection: BudgetProjection | null; budget_projection_reason: string | null }
+type Forecast = { timeline: { date: string; balance: number; events: { label: string; amount: number }[] }[]; budget_projection: BudgetProjection | null; budget_projection_reason: string | null }
 const forecast = (horizon: string) => sampleResponse('/api/v1/analytics/forecast', { horizon }) as Forecast
 const budgets = () => sampleResponse('/api/v1/budgets', {}) as BudgetsResponse
 const n = (v: unknown) => Number(v)
 const day = 86400000
 const daysFrom = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / day)
+
+// This cycle, per unpaused budget: the limit less spent and the instalments still due (T-24-3b).
+const thisCycleFree = (list: BudgetsResponse) => list.budgets.filter((b) => !b.paused)
+  .reduce((t, b) => t + Math.max(0, b.limit_pounds - n(b.spent) - n(b.coming_up?.amount ?? 0)), 0)
+// The sample's subscriptions in a category's budget, as the demo forecast schedules them, days [from, to] ahead.
+const SUBSCRIPTIONS = new Set(['Netflix', 'Spotify'])
+const due = (f: Forecast, category: string, from: number, to: number) =>
+  category !== 'Subscriptions' ? 0 : f.timeline.filter((_, d) => d >= from && d <= to)
+    .reduce((t, p) => t + p.events.filter((e) => SUBSCRIPTIONS.has(e.label)).reduce((s, e) => s - e.amount, 0), 0)
 
 describe.each(['payday', '30', '90', '180', '365'])('the %s forecast in demo mode', (horizon) => {
   it('has a budget line over the whole chart, starting on the solid line', () => {
@@ -27,19 +36,21 @@ describe.each(['payday', '30', '90', '180', '365'])('the %s forecast in demo mod
     p.series.forEach((s, i) => expect(n(s.balance)).toBeLessThanOrEqual(f.timeline[i].balance + 0.005))
   })
 
-  it('follows the API rule on every day', () => {
+  it('follows the API rule on every day, netting each budget\'s scheduled instalments (T-24-3b)', () => {
     const f = forecast(horizon)
     const list = budgets()
-    const left = n(list.summary_this_cycle!.left)
-    const total = n(list.summary_this_cycle!.total_limit)
+    const counting = list.budgets.filter((b) => !b.paused)
+    const left = thisCycleFree(list)
     const eve = list.cycle.end
     const today = f.timeline[0].date
     const toEve = daysFrom(today, eve)
+    // Each later cycle: per budget, the limit less that cycle's instalments in its category.
+    const later = (start: number) => counting.reduce((t, b) => t + Math.max(0, b.limit_pounds - due(f, b.category, start, start + 29)), 0)
     f.timeline.forEach((t, i) => {
       const d = daysFrom(today, t.date)
       let used = d === 0 ? 0 : d >= toEve ? left : (left * d) / toEve
       // Later cycles: 30 days each from payday (the sample's pay cycle).
-      for (let start = toEve + 1; start <= d; start += 30) used += d >= start + 29 ? total : (total * (d - start + 1)) / 30
+      for (let start = toEve + 1; start <= d; start += 30) used += d >= start + 29 ? later(start) : (later(start) * (d - start + 1)) / 30
       expect(n(f.budget_projection!.series[i].balance)).toBeCloseTo(t.balance - used, 1)
     })
   })
@@ -54,7 +65,7 @@ describe('the payday strip', () => {
     expect(p.payday).toBe(summary.next_payday)
     const eve = f.timeline.find((t) => t.date === list.cycle.end)!
     expect(n(p.scheduled_balance)).toBeCloseTo(eve.balance, 2)
-    expect(n(p.after_budgets_balance)).toBeCloseTo(eve.balance - n(list.summary_this_cycle!.left), 2)
+    expect(n(p.after_budgets_balance)).toBeCloseTo(eve.balance - thisCycleFree(list), 2)
   })
 
   it('the payday horizon ends on payday and still has the strip', () => {

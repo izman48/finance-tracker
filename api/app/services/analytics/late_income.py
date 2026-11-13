@@ -95,31 +95,37 @@ def income_credit_ids(db: Session, user, today: date) -> set[uuid.UUID]:
     return {c.id for credits in income_payments(db, user, today).values() for c in credits}
 
 
-def income_payments(db: Session, user, today: date) -> dict[uuid.UUID, list[_Credit]]:
+def income_payments(db: Session, user, today: date, rules: list | None = None) -> dict[uuid.UUID, list[_Credit]]:
     """Each confirmed income's credits that paid its latest expected payment
     on or before today, by the same matching as lateness (Plan's
-    "received", T-24-4). A late income has none."""
-    _, paid = _settle(db, user, today, due_before=today + timedelta(days=1))
+    "received", T-24-4). A late income has none. `rules`: the incomes to
+    match (Plan passes the held versions, sec on #305); default every
+    confirmed income as it stands."""
+    _, paid = _settle(db, user, today, due_before=today + timedelta(days=1), rules=rules)
     return paid
 
 
-def _settle(db: Session, user, today: date, due_before: date) -> tuple[dict[uuid.UUID, LateIncome], dict[uuid.UUID, list[_Credit]]]:
+def _settle(db: Session, user, today: date, due_before: date,
+            rules: list | None = None) -> tuple[dict[uuid.UUID, LateIncome], dict[uuid.UUID, list[_Credit]]]:
     """(late incomes, the credits that paid each of the others) for
     confirmed incomes expected before `due_before`."""
-    rules = (
-        db.query(CommitmentRule)
-        .filter(
-            CommitmentRule.user_id == user.id,
-            CommitmentRule.direction == CommitmentDirection.INCOME.value,
-            CommitmentRule.status == CommitmentStatus.CONFIRMED.value,
+    if rules is None:
+        rules = (
+            db.query(CommitmentRule)
+            .filter(
+                CommitmentRule.user_id == user.id,
+                CommitmentRule.direction == CommitmentDirection.INCOME.value,
+                CommitmentRule.status == CommitmentStatus.CONFIRMED.value,
+            )
+            .all()
         )
-        .all()
-    )
     candidates = []
     for rule in rules:
         expected = last_expected(rule, today)
-        created = rule.created_at.date() if rule.created_at else expected
-        skipped = rule.skipped_through is not None and expected <= rule.skipped_through
+        created_at = getattr(rule, "created_at", None)
+        created = created_at.date() if created_at else expected
+        skipped_through = getattr(rule, "skipped_through", None)
+        skipped = skipped_through is not None and expected <= skipped_through
         if expected < due_before and created <= expected and not skipped:
             candidates.append((rule, expected))
     if not candidates:

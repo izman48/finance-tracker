@@ -149,7 +149,7 @@ function SuggestForm({ data, saving, failure, onCancel, onSave, onDirty }: FormP
         ))}
       </ul>
       {data.commitment_covered.length > 0 && (
-        <p className="text-xs text-slate-400 mt-3">Bills and rent are left out because your commitments already cover them.</p>
+        <p className="text-xs text-slate-400 mt-3">Categories that are mostly bills, like rent, aren&apos;t suggested. You can still add a budget for one in Manage budgets.</p>
       )}
       {nothing && (
         <p role="alert" className="text-sm text-neg mt-3">{NOTHING_TICKED}</p>

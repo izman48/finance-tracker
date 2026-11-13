@@ -299,6 +299,7 @@ function willGoOver(b: SampleList['budgets'][number], from: string) {
     title: `${b.category} will go over`,
     body: `${pounds(Math.round((b.limit_pounds - spent) * 100) / 100)} left, but ${names} ${others > 0 ? 'have' : 'has'} ${pounds(coming)} still to come before payday. Raise the budget or expect to be ${pounds(Number(b.over_by_payday))} over.`,
     detail: `Spent ${pounds(spent)} of ${pounds(b.limit_pounds)} this pay cycle, from ${from}. Coming up: ${comingText}. ${pounds(total)} in all.`,
-    cta: { label: `Raise to £${raiseTo.toLocaleString('en-GB')}`, budget_id: b.id, new_limit_pounds: raiseTo },
+    // As the API: never a limit the budget update would refuse.
+    cta: raiseTo <= 100_000 ? { label: `Raise to £${raiseTo.toLocaleString('en-GB')}`, budget_id: b.id, new_limit_pounds: raiseTo } : null,
   }
 }

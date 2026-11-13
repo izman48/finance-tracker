@@ -483,3 +483,18 @@ def test_the_kind_fits_the_stored_column():
     from app.services.budgets import OVER_SOON
 
     assert len(OVER_SOON) <= BudgetNudge.__table__.c.kind.type.length
+
+
+def test_no_raise_is_offered_past_the_largest_limit_allowed(w):
+    """sec on #302: never offer a raise the server would refuse."""
+    from app.schemas.budgets import BUDGET_LIMIT_MAX
+
+    _weekly(w)
+    w.as_user(lambda: _tx(w.db, w.current, "99900.00", TODAY - timedelta(days=1), merchant="BANQUET HALL",
+                          category="Eating out"))
+    w.create("Eating out", BUDGET_LIMIT_MAX)
+    _, row = _row(w)
+    assert Decimal(row["spent"]) < BUDGET_LIMIT_MAX < Decimal(row["spent"]) + Decimal(row["coming_up"]["amount"])
+    [nudge] = _nudges(w)
+    assert nudge["cta"] is None
+    assert "Raise the budget or expect to be" in nudge["body"]

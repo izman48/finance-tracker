@@ -23,6 +23,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.models import Account, Budget, BudgetNudge, Transaction
 from app.schemas.budgets import (
+    BUDGET_LIMIT_MAX,
     BUDGETS_PER_USER_MAX,
     BudgetCycle,
     BudgetListResponse,
@@ -493,7 +494,9 @@ def _will_go_over(b: BudgetResponse, cycle_start: date) -> dict:
                  f"before payday. Raise the budget or expect to be {_money(b.over_by_payday)} over."),
         "detail": (f"Spent {_money(b.spent)} of {_money(limit)} this pay cycle, from {cycle_start:%-d %b}. "
                    f"Coming up: {coming_text}. {_money(total)} in all."),
-        "cta": {"label": f"Raise to £{raise_to:,}", "budget_id": b.id, "new_limit_pounds": raise_to},
+        # Never offer a limit the budget update would refuse (sec on #302).
+        "cta": ({"label": f"Raise to £{raise_to:,}", "budget_id": b.id, "new_limit_pounds": raise_to}
+                if raise_to <= BUDGET_LIMIT_MAX else None),
     }
 
 

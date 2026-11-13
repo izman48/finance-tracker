@@ -255,9 +255,9 @@ const plan = {
       { ...planItem('pass', 'Annual pass', 0, '120.00', 'not_due_this_cycle'), due_date: null }] },
     { source: 'commitment', category: null, total: '25.00', paid_count: 0, count: 1, items: [planItem('gym', 'Gym club', 7, '25.00', 'due')] }] },
   budgets: { limits_total: '550.00', planned_total: '620.50', spent: '450.50', coming_up: '40.00', count: 2, items: [
-    { budget_id: 'pb1', category: 'Eating out', limit: '300.00', spent: '330.50', coming_up: '40.00', status: 'over', over_by: '30.50', other_purchases: '310.50',
+    { budget_id: 'pb1', category: 'Eating out', limit: '300.00', spent: '330.50', coming_up: '40.00', planned: '370.50', status: 'over', over_by: '30.50', other_purchases: '310.50',
       commitments: [{ ...planItem('pz', 'Pizza club', -7, '20.00', 'paid'), date: daysFromNow(-7) }, { ...planItem('pz', 'Pizza club', 7, '20.00', 'due'), date: daysFromNow(7) }, { ...planItem('pz', 'Pizza club', 14, '20.00', 'due'), date: daysFromNow(14) }] },
-    { budget_id: 'pb2', category: 'Groceries', limit: '250.00', spent: '120.00', coming_up: '0.00', status: 'under_pace', over_by: '0.00', other_purchases: '120.00', commitments: [] }] },
+    { budget_id: 'pb2', category: 'Groceries', limit: '250.00', spent: '120.00', coming_up: '0.00', planned: '250.00', status: 'under_pace', over_by: '0.00', other_purchases: '120.00', commitments: [] }] },
   spent_outside_budgets: '1700.00', not_planned: '1490.01', outside_vs_not_planned: '209.99',
 }
 

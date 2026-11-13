@@ -108,11 +108,39 @@ describe('PlanView', () => {
 
   it('a budget row: spent of limit, status in words, coming up; opens to its commitments and other purchases', () => {
     const t = text(html({}))
-    expect(t).toContain('Eating out £330.50 spent of £300.00 · Over by £30.50 · £40.00 coming up £300.00')
+    // The row shows what the budget counts (API `planned`); the limit stays in the sub-line (ux on #297).
+    expect(t).toContain('Eating out £330.50 spent of £300.00 · Over by £30.50 · £40.00 coming up £370.50')
     expect(t).toContain('Groceries £120.00 spent of £250.00 · Under pace £250.00')
     expect(t).toContain('Pizza club Paid 6 Nov £20.00')
     expect(t).toContain('Pizza club Due 20 Nov £20.00')
     expect(t).toContain('Other purchases Paid £310.50')
+  })
+
+  it('the budget rows add up to the Budgets line', () => {
+    const t = text(html({}))
+    expect(t).toContain('Budgets 2 limits, £550.00 in all · £450.50 spent · £40.00 coming up £620.50')
+    expect(t).toContain('Groceries £120.00 spent of £250.00 · Under pace £250.00') // 370.50 + 250.00 = 620.50
+  })
+
+  it('other purchases of £0.00 are not listed', () => {
+    const data = planResponse()
+    data.budgets.items[0].other_purchases = '0.00'
+    const t = text(html({ data }))
+    expect(t).not.toContain('Other purchases Paid £0.00')
+    expect(t).toContain('Other purchases Paid £120.00') // Groceries still lists its own
+  })
+
+  it('when Fixed and Budgets come to more than income, it says so and makes no comparison', () => {
+    const data = planResponse({ not_planned: '-122.28', outside_vs_not_planned: '1822.28' })
+    const t = text(html({ data }))
+    expect(t).toContain('Fixed and Budgets come to £122.28 more than your income this cycle.')
+    expect(t).not.toContain('more than the')
+    expect(t).not.toContain('£122.28 left')
+  })
+
+  it('no comparison when nothing was spent outside budgets', () => {
+    const data = planResponse({ spent_outside_budgets: '0.00', outside_vs_not_planned: '-1490.01' })
+    expect(text(html({ data }))).not.toContain('more than the')
   })
 
   it('a used budget says "Budget used", not a pace', () => {

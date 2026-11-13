@@ -71,13 +71,15 @@ function Empty({ label, note, to, action }: { label: string; note: string; to: s
 function Lines({ data }: { data: PlanResponse }) {
   const { income, fixed, budgets } = data
   const hasIncome = income.items.length > 0
-  const outsideOver = Number(data.outside_vs_not_planned) > 0
+  const notPlanned = Number(data.not_planned)
+  // Compare outside spending with what is left only when something is left (ux on #297).
+  const outsideOver = notPlanned > 0 && Number(data.spent_outside_budgets) > 0 && Number(data.outside_vs_not_planned) > 0
   return (
     <>
       <div className="divide-y divide-white/[0.06]">
         {hasIncome ? (
           <Row label="Income" sub={incomeSubline(income)} amount={planMoney(income.total)}>
-            <ul>{income.items.map((i) => <Item key={i.id} label={i.label} status={itemStatus(i.status, i.date)} amount={planMoney(i.amount)} />)}</ul>
+            <ul>{income.items.map((i, n) => <Item key={n} label={i.label} status={itemStatus(i.status, i.date)} amount={planMoney(i.amount)} />)}</ul>
           </Row>
         ) : (
           <Empty label="Income" note="No income found this cycle" to="/commitments" action="Check your income" />
@@ -87,8 +89,9 @@ function Lines({ data }: { data: PlanResponse }) {
             {fixed.groups.map((g, i) => (
               <Row key={i} label={groupLabel(g)} sub={`${g.paid_count} of ${g.count} paid`} amount={planMoney(g.total)}>
                 <ul>
-                  {g.items.map((c) => (
-                    <Item key={`${c.commitment_id}-${c.due_date}`} label={c.label} status={itemStatus(c.status, c.due_date)}
+                  {/* Card and planned items have no commitment id: key by position (eng-a on #297). */}
+                  {g.items.map((c, i) => (
+                    <Item key={i} label={c.label} status={itemStatus(c.status, c.due_date)}
                       amount={planMoney(c.status === 'not_due_this_cycle' ? '0' : c.amount)} />
                   ))}
                 </ul>
@@ -101,14 +104,14 @@ function Lines({ data }: { data: PlanResponse }) {
         {budgets.items.length > 0 ? (
           <Row label="Budgets" sub={budgetsSubline(budgets)} amount={planMoney(budgets.planned_total)}>
             {budgets.items.map((b) => (
-              <Row key={b.budget_id} label={b.category} sub={budgetLine(b)} amount={planMoney(b.limit)}>
+              <Row key={b.budget_id} label={b.category} sub={budgetLine(b)} amount={planMoney(b.planned)}>
                 <ul>
-                  {b.commitments.filter((c) => c.status === 'paid').map((c) => (
-                    <Item key={`${c.commitment_id}-${c.date}`} label={c.label} status={itemStatus(c.status, c.date)} amount={planMoney(c.amount)} />
+                  {b.commitments.filter((c) => c.status === 'paid').map((c, i) => (
+                    <Item key={`paid-${i}`} label={c.label} status={itemStatus(c.status, c.date)} amount={planMoney(c.amount)} />
                   ))}
-                  <Item label="Other purchases" status="Paid" amount={planMoney(b.other_purchases)} />
-                  {b.commitments.filter((c) => c.status === 'due').map((c) => (
-                    <Item key={`${c.commitment_id}-${c.date}`} label={c.label} status={itemStatus(c.status, c.date)} amount={planMoney(c.amount)} />
+                  {Number(b.other_purchases) > 0 && <Item label="Other purchases" status="Paid" amount={planMoney(b.other_purchases)} />}
+                  {b.commitments.filter((c) => c.status === 'due').map((c, i) => (
+                    <Item key={`due-${i}`} label={c.label} status={itemStatus(c.status, c.date)} amount={planMoney(c.amount)} />
                   ))}
                 </ul>
               </Row>
@@ -128,6 +131,11 @@ function Lines({ data }: { data: PlanResponse }) {
         {hasIncome && outsideOver && (
           <p className="mt-1 text-xs text-slate-400">
             That is {planMoney(data.outside_vs_not_planned)} more than the {planMoney(data.not_planned)} left.
+          </p>
+        )}
+        {hasIncome && notPlanned < 0 && (
+          <p className="mt-1 text-xs text-slate-400">
+            Fixed and Budgets come to {planMoney(String(-notPlanned))} more than your income this cycle.
           </p>
         )}
       </div>

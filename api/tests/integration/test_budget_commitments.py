@@ -279,3 +279,138 @@ def test_suggest_measures_a_commitment_the_way_the_budget_counts_it(w):
     after = last_cycles()
     assert after[-1] == before[-1] + Decimal("15.00")
     assert after[:-1] == before[:-1]
+
+
+# --- pace with commitments (lead, 2026-11-13; sec on #298) ---------------------
+# pace_spent = placed + max(0, limit - placed) x the share of the cycle gone.
+# Coming up plays no part: an instalment only due never moves the status. "Placed" is the commitment payments that sit on the line at their
+# real dates: per commitment, at most its amount x its instalments due so far
+# this cycle, judged by the before-Claude version while a Claude change is
+# unkept, and never more than the budget's spent.
+
+def _share(body) -> Decimal:
+    c = body["cycle"]
+    return Decimal(c["days_total"] - c["days_left"]) / Decimal(c["days_total"])
+
+
+def _pace(body, limit, placed) -> Decimal:
+    flexible = max(Decimal(0), Decimal(limit) - Decimal(placed))
+    return (Decimal(placed) + flexible * _share(body)).quantize(Decimal("0.01"))
+
+
+def _rent_due_when_paid(w):
+    """The fixture's rent, due on the day it was paid (5 days ago), next in a month."""
+    def move():
+        [rule] = [r for r in w.db.query(CommitmentRule).filter(CommitmentRule.user_id == w.user.id)
+                  if r.label == "LANDLORD RENT"]  # label is encrypted: compared in Python
+        rule.next_date = TODAY - timedelta(days=5) + timedelta(days=30)
+        w.db.commit()
+    w.as_user(move)
+
+
+def _planning_token(w) -> str:
+    from tests.integration.test_oauth import READ, _connect
+
+    return _connect(w.client, scopes=(READ, "finance:planning.write"), email="budgets@example.com")[2]["access_token"]
+
+
+def _claude_update(w, token, rule_id, n, **fields):
+    r = w.client.post(f"/api/v1/planning/commitments/{rule_id}/update", headers=_bearer(token),
+                      json={**fields, "dry_run": False, "idempotency_key": f"pace-claude-{n:04d}"})
+    assert r.status_code == 200, r.text
+
+
+def test_with_no_commitments_pace_is_todays_even_spread(w):
+    w.create("Groceries", 300)
+    body, row = _row(w, "Groceries")
+    assert Decimal(row["pace_spent"]) == (Decimal(300) * _share(body)).quantize(Decimal("0.01"))
+
+
+def test_rent_paid_early_in_the_cycle_is_not_ahead_of_pace(w):
+    """Should not count as ahead: rent paid on its due date sits on the line."""
+    _rent_due_when_paid(w)
+    w.create("Rent", 1100)
+    body, row = _row(w, "Rent")
+    assert Decimal(row["pace_spent"]) == _pace(body, 1100, "950.00")
+    assert row["status"] in ("under_pace", "on_pace")
+
+
+def test_rent_plus_heavy_day_to_day_spending_is_ahead_of_pace(w):
+    """Should count as ahead: the flexible part runs ahead even with rent placed."""
+    _rent_due_when_paid(w)
+    # £1,040 of the £1,050 flexible part spent with about two thirds of the cycle gone.
+    w.as_user(lambda: _tx(w.db, w.current, "1040.00", TODAY - timedelta(days=1), merchant="HOME STORE",
+                          category="Rent"))
+    w.create("Rent", 2000)
+    _, row = _row(w, "Rent")
+    assert Decimal(row["spent"]) == Decimal("1990.00")
+    assert row["status"] == "ahead_of_pace"
+
+
+def test_pace_never_sits_below_the_placed_commitments(w):
+    """Placed beyond the limit floors the flexible part at £0."""
+    _weekly(w)  # 3 x £16 paid on their due dates
+    w.create("Eating out", 40)
+    _, row = _row(w)
+    assert Decimal(row["pace_spent"]) == Decimal("48.00")
+
+
+def test_an_instalment_only_due_never_changes_pace_or_status(w):
+    """eng-b on #298, owner settled item 1: coming up is a hint only."""
+    w.create("Eating out", 200)
+    before = _row(w)[1]
+    _weekly(w, label="SUPPER CLUB", amount="30.00", paid_days_ago=(40,), next_in=2)  # paid last cycle only
+    after = _row(w)[1]
+    assert Decimal(after["coming_up"]["amount"]) > 0
+    assert (after["pace_spent"], after["status"]) == (before["pace_spent"], before["status"])
+
+
+def test_a_one_off_under_a_commitments_descriptor_is_not_placed(w):
+    """sec's probe: a £600 one-off under a £10 weekly descriptor is
+    discretionary spending, so Shopping stays ahead of pace."""
+    _weekly(w, label="GADGET STORE", amount="10.00", category="Shopping", paid_days_ago=(3, 10, 17), next_in=4)
+    w.as_user(lambda: _tx(w.db, w.current, "600.00", TODAY - timedelta(days=3), merchant="GADGET STORE",
+                          category="Shopping"))
+    w.create("Shopping", 800)
+    body, row = _row(w, "Shopping")
+    assert Decimal(row["spent"]) == Decimal("750.00")  # £120 + 3 x £10 + £600
+    assert Decimal(row["pace_spent"]) == _pace(body, 800, "30.00")
+    assert row["status"] == "ahead_of_pace"
+
+
+def test_an_unkept_claude_confirm_leaves_pace_as_it_was(w):
+    def suggested():
+        _tx(w.db, w.current, "90.00", TODAY - timedelta(days=2), merchant="CORNER CAFE", category="Eating out")
+        rule = CommitmentRule(user_id=w.user.id, direction="expense", label="CORNER CAFE", amount=Decimal("90"),
+                              cadence="monthly", next_date=TODAY - timedelta(days=2) + timedelta(days=30),
+                              source="detected", status="suggested")
+        w.db.add(rule)
+        w.db.commit()
+        return rule.id
+    rule_id = w.as_user(suggested)
+    w.create("Eating out", 200)
+    before = _row(w)[1]["pace_spent"]
+    _claude_update(w, _planning_token(w), rule_id, 1, status="confirmed")
+    assert _row(w)[1]["pace_spent"] == before
+
+
+def test_an_unkept_claude_rename_leaves_pace_as_it_was(w):
+    # Three instalments due so far but only one paid: under the old name it
+    # places £16; under the new one the £60 cafe payment would place up to £48.
+    kit = _weekly(w, paid_days_ago=(5,), next_in=30)
+    w.as_user(lambda: _tx(w.db, w.current, "60.00", TODAY - timedelta(days=1), merchant="CORNER CAFE",
+                          category="Eating out"))
+    w.create("Eating out", 300)
+    before = _row(w)[1]["pace_spent"]
+    _claude_update(w, _planning_token(w), kit, 1, label="CORNER CAFE")
+    assert _row(w)[1]["pace_spent"] == before
+
+
+def test_friends_paying_back_never_open_pace_headroom(w):
+    """sec nit: placed is never more than the budget's spent (net of marks)."""
+    from app.services.budget_spend import BudgetSpend
+    from app.services.budget_pace import placed_by_category
+
+    spend = BudgetSpend(by_category={"Rent": Decimal("400.00")})
+    placed = {"Rent": Decimal("950.00")}
+    assert placed_by_category(spend, placed) == {"Rent": Decimal("400.00")}

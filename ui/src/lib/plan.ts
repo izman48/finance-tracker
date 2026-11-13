@@ -123,15 +123,19 @@ export function itemStatus(status: string, date: string): string {
  *  counts, each with its paid payments this cycle summed. Null when none. */
 export function budgetIncludes(plan: PlanResponse | null, category: string): string | null {
   const paid = plan?.budgets.items.find((b) => b.category === category)?.commitments.filter((c) => c.status === 'paid') ?? []
-  const byLabel = new Map<string, number>()
-  for (const c of paid) byLabel.set(c.label, (byLabel.get(c.label) ?? 0) + Number(c.amount))
-  if (!byLabel.size) return null
-  return `Includes ${[...byLabel].map(([label, amount]) => `${label} ${gbp(amount)}`).join(', ')}`
+  const byCommitment = new Map<string, { label: string; amount: number }>()
+  for (const c of paid) {
+    const seen = byCommitment.get(c.commitment_id)
+    byCommitment.set(c.commitment_id, { label: c.label, amount: (seen?.amount ?? 0) + Number(c.amount) })
+  }
+  if (!byCommitment.size) return null
+  return `Includes ${[...byCommitment.values()].map((c) => `${c.label} ${gbp(c.amount)}`).join(', ')}`
 }
 
 /** Plan's Subscriptions group, for a card on Budgets when no budget (paused
- *  or not) is for Subscriptions (T-25-3). Null otherwise. */
+ *  or not) is for Subscriptions (T-25-3). Exact category, as the API
+ *  compares budgets. Null otherwise. */
 export function subscriptionsWithoutBudget(plan: PlanResponse | null, budgetCategories: string[]): PlanCommitmentGroup | null {
-  if (budgetCategories.some((c) => c.trim().toLowerCase() === 'subscriptions')) return null
+  if (budgetCategories.includes('Subscriptions')) return null
   return plan?.commitments.groups.find((g) => g.name === 'Subscriptions') ?? null
 }

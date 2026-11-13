@@ -231,8 +231,8 @@ function SubscriptionsCard({ group }: { group: PlanCommitmentGroup }) {
       </div>
       <p className="text-xs text-slate-400 mt-1 mb-3">No budget: listed so you can see them.</p>
       <ul className="space-y-1.5 text-sm">
-        {group.items.map((i, n) => (
-          <li key={n} className="flex items-center gap-2">
+        {group.items.map((i) => (
+          <li key={`${i.commitment_id}-${i.date}-${i.transaction_id ?? i.status}`} className="flex items-center gap-2">
             <span className="min-w-0 flex-1 flex flex-wrap items-center gap-x-2 gap-y-1">
               <span className="min-w-0 break-words text-slate-300">{i.label}</span>{' '}
               <span className={i.status === 'paid' ? 'chip-pos' : 'chip'}>{itemStatus(i.status, i.date)}</span>

@@ -22,15 +22,28 @@ describe('budgetIncludes', () => {
   })
 })
 
+it('two commitments with the same label are named separately (eng-a on #309)', () => {
+  const plan = planResponse()
+  plan.budgets.items[0].commitments.push(
+    { commitment_id: 'c-pz2', label: 'Pizza club', date: '2026-11-13', amount: '5.00', status: 'paid', transaction_id: 'tx-pz9' },
+  )
+  expect(budgetIncludes(plan, 'Eating out')).toBe('Includes Pizza club £20.00, Pizza club £5.00')
+})
+
 describe('subscriptionsWithoutBudget', () => {
+  it('matches the budget category exactly, as the API does (eng-a on #309)', () => {
+    // A "subscriptions" budget does not take the "Subscriptions" category, so Plan still lists them.
+    expect(subscriptionsWithoutBudget(planResponse(), ['subscriptions'])).not.toBeNull()
+  })
+
   const plan = planResponse()
 
   it("is the plan's Subscriptions group when no budget is for Subscriptions", () => {
     expect(subscriptionsWithoutBudget(plan, ['Groceries'])?.items.map((i) => i.label)).toEqual(['Streamly', 'Cloudbox'])
   })
 
-  it('is nothing when a budget (paused or not, any case) covers Subscriptions, or there are none', () => {
-    expect(subscriptionsWithoutBudget(plan, ['subscriptions'])).toBeNull()
+  it('is nothing when a budget (paused or not) is for Subscriptions, or there are none', () => {
+    expect(subscriptionsWithoutBudget(plan, ['Subscriptions'])).toBeNull()
     const none = planResponse()
     none.commitments.groups = none.commitments.groups.filter((g) => g.name !== 'Subscriptions')
     expect(subscriptionsWithoutBudget(none, [])).toBeNull()

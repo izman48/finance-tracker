@@ -39,6 +39,11 @@ export default function BudgetsPanel({ onOpenCategory }: { onOpenCategory: (cate
   const toast = useToast()
 
   const fetchBudgets = useCallback(async () => {
+    // The Subscriptions card and "includes" lines (T-25-3), reloaded with the
+    // budgets so an edit never leaves them stale; budgets still show without them.
+    withTimeout(planAPI.get(), TIMEOUT_MS)
+      .then((res) => { if (mounted.current) setPlan(res.data) })
+      .catch(() => {})
     try {
       const res = await withTimeout(budgetsAPI.list(), TIMEOUT_MS)
       if (mounted.current) setLoad({ status: 'ready', data: res.data })
@@ -62,10 +67,6 @@ export default function BudgetsPanel({ onOpenCategory }: { onOpenCategory: (cate
         )
       })
       .catch(() => {}) // the note is a nicety; budgets still show
-    // The Subscriptions card and "includes" lines (T-25-3); budgets still show without them.
-    withTimeout(planAPI.get(), TIMEOUT_MS)
-      .then((res) => { if (mounted.current) setPlan(res.data) })
-      .catch(() => {})
     return () => {
       mounted.current = false
     }

@@ -284,7 +284,7 @@ export default function DashboardPage() {
 
               <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-4">
                 {[
-                  { icon: Banknote, label: 'Safe to spend', value: formatCurrency(summary.safe_to_spend), tone: safeToSpendNegative ? 'text-neg' : 'text-slate-100', explain: EXPLAIN.safeToSpend, note: <><SafeToSpendNote total={summary.safe_to_spend_pending_keep_total} /><PlanLink /></> },
+                  { icon: Banknote, label: 'Safe to spend', value: formatCurrency(summary.safe_to_spend), tone: safeToSpendNegative ? 'text-neg' : 'text-slate-100', explain: EXPLAIN.safeToSpend, note: <SafeToSpendNote total={summary.safe_to_spend_pending_keep_total} /> },
                   { icon: CalendarClock, label: 'Committed soon', value: `−${formatCurrency(summary.committed_before_payday)}`, tone: 'text-neg', explain: EXPLAIN.committedSoon },
                   { icon: PiggyBank, label: 'Savable (30d)', value: formatCurrency(summary.savable), tone: 'text-pos', explain: EXPLAIN.savable, note: <SavableNote total={summary.savable_pending_keep_total} /> },
                   { icon: ShieldAlert, label: 'Overdraft cushion', value: formatCurrency(summary.overdraft_cushion), tone: 'text-slate-400', explain: EXPLAIN.overdraftCushion },
@@ -302,6 +302,8 @@ export default function DashboardPage() {
                   </div>
                 ))}
               </div>
+              {/* Under the stats, full width: in the safe-to-spend tile it wrapped at 320px (ux on #297). */}
+              <PlanLink />
             </div>
           </div>
 

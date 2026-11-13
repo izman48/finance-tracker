@@ -30,15 +30,22 @@ export default function PlanSection() {
     }
   }, [fetchPlan])
 
+  // Arriving with #plan (Budgets' "See in Plan"): the card renders after its
+  // own request, too late for the browser's jump, so focus the heading once it has loaded.
+  useEffect(() => {
+    if (load.status === 'ready' && window.location.hash === '#plan') document.getElementById('plan-heading')?.focus()
+  }, [load.status])
+
   return <PlanView {...load} onRetry={fetchPlan} />
 }
 
-/** "See your month in Plan": jumps to the Plan card and moves focus to its heading. */
+/** "See your month in Plan": jumps to the Plan card and moves focus to its
+ *  heading (focus also scrolls it into view). */
 export function PlanLink() {
   return (
     <a
       href="#plan"
-      className="btn-link !text-xs inline-flex items-center min-h-[44px] lg:min-h-[24px]"
+      className="btn-link !text-xs inline-flex items-center whitespace-nowrap mt-2 min-h-[44px] lg:min-h-[24px]"
       onClick={(e) => {
         const heading = document.getElementById('plan-heading')
         if (!heading) return

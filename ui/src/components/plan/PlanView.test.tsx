@@ -32,23 +32,26 @@ describe('PlanView', () => {
     const h = html({})
     expect(h).toMatch(/<h2[^>]*id="plan-heading"[^>]*tabindex="-1"[^>]*>Plan<\/h2>/)
     expect(text(h)).toContain('30 Oct – 29 Nov · 16 days left')
-    expect(text(h)).toContain('Where this pay cycle goes. Every line opens to the transactions behind it.')
+    // Paid items don't link to transactions yet (B-46), so the copy promises no more than the rows do.
+    expect(text(h)).toContain('Where this pay cycle goes. Open a line to see what is in it.')
+    expect(text(h)).not.toContain('transactions behind it')
   })
 
   it('collapsed: the four lines with the API figures, and the sum that reconciles them', () => {
     const t = text(html({}))
     expect(t).toContain('Income 1 of 2 received £3,100.00')
     expect(t).toContain('Fixed 2 of 4 paid · £29.50 still to pay £989.49')
-    expect(t).toContain('Budgets 2 limits · £450.50 spent · £40.00 coming up £550.00')
-    expect(t).toContain('Not planned What is left after Fixed and Budgets £1,560.51')
-    expect(t).toContain('£3,100.00 − £989.49 − £550.00 = £1,560.51')
-    expect(t).toContain('Income − Fixed − Budget limits = Not planned')
+    // Budgets counts each budget at the larger of its limit and spent + coming up (sec): £370.50 + £250.00.
+    expect(t).toContain('Budgets 2 limits, £550.00 in all · £450.50 spent · £40.00 coming up £620.50')
+    expect(t).toContain('Not planned What is left after Fixed and Budgets £1,490.01')
+    expect(t).toContain('£3,100.00 − £989.49 − £620.50 = £1,490.01')
+    expect(t).toContain('Income − Fixed − Budgets = Not planned')
   })
 
   it('spending outside budgets shows without opening anything, neutral', () => {
     const h = html({})
     expect(text(h)).toContain('Spent so far in categories with no budget £1,700.00')
-    expect(text(h)).toContain('That is £139.49 more than the £1,560.51 left.')
+    expect(text(h)).toContain('That is £209.99 more than the £1,490.01 left.')
     expect(h).not.toMatch(/text-neg|chip-neg/)
   })
 
@@ -68,6 +71,29 @@ describe('PlanView', () => {
     expect(t).toContain('Rent Paid 1 Nov £950.00')
     expect(t).toContain('Cloudbox Due 21 Nov £4.50')
     expect(t).toContain('No category 0 of 1 paid £25.00')
+  })
+
+  it('rows show the 2px accent focus ring', () => {
+    const rows = [...html({}).matchAll(/<button[^>]*aria-expanded[^>]*>/g)].map((m) => m[0])
+    expect(rows.length).toBeGreaterThan(0)
+    expect(rows.every((r) => r.includes('focus-visible:outline-2') && r.includes('focus-visible:outline-accent/60'))).toBe(true)
+  })
+
+  it('card repayments and planned expenses have their own groups; an empty category reads "No category"', () => {
+    const data = planResponse()
+    data.fixed.groups.push(
+      { source: 'card_repayment', category: null, total: '550.30', paid_count: 0, count: 1, items: [
+        { source: 'card_repayment', commitment_id: null, label: 'Harbor Card', due_date: '2026-11-16', amount: '550.30', status: 'due', transaction_id: null }] },
+      { source: 'planned', category: null, total: '200.00', paid_count: 0, count: 1, items: [
+        { source: 'planned', commitment_id: null, label: 'New laptop', due_date: '2026-11-26', amount: '200.00', status: 'due', transaction_id: null }] },
+      { source: 'commitment', category: '', total: '5.00', paid_count: 0, count: 1, items: [
+        { source: 'commitment', commitment_id: 'c-x', label: 'Mystery', due_date: '2026-11-22', amount: '5.00', status: 'due', transaction_id: null }] },
+    )
+    const t = text(html({ data }))
+    expect(t).toContain('Card repayments 0 of 1 paid £550.30')
+    expect(t).toContain('Harbor Card Due 16 Nov £550.30')
+    expect(t).toContain('Planned 0 of 1 paid £200.00')
+    expect(t.match(/No category 0 of 1 paid/g)).toHaveLength(2)
   })
 
   it('a commitment not due this cycle shows £0.00 and says so', () => {
@@ -96,7 +122,7 @@ describe('PlanView', () => {
   })
 
   it('no budgets: "No budgets set" with Suggest budgets', () => {
-    const data = planResponse({ budgets: { limits_total: '0.00', spent: '0.00', coming_up: '0.00', count: 0, items: [] } })
+    const data = planResponse({ budgets: { limits_total: '0.00', planned_total: '0.00', spent: '0.00', coming_up: '0.00', count: 0, items: [] } })
     const h = html({ data })
     expect(text(h)).toContain('No budgets set')
     expect(h).toMatch(/<a[^>]*href="\/insights\?section=budgets"[^>]*>Suggest budgets<\/a>/)

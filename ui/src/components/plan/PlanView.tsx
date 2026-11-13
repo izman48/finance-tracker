@@ -2,7 +2,7 @@ import { useId, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronRight } from 'lucide-react'
 import {
-  budgetLine, budgetsSubline, cycleText, fixedSubline, incomeSubline, itemStatus, planMoney,
+  budgetLine, budgetsSubline, cycleText, fixedSubline, groupLabel, incomeSubline, itemStatus, planMoney,
   type PlanResponse,
 } from '../../lib/plan'
 
@@ -12,7 +12,8 @@ export interface PlanViewProps {
   onRetry: () => void
 }
 
-const rowClass = 'w-full min-h-[44px] flex items-center gap-2 py-2 text-left text-sm'
+// The 2px accent focus ring `.btn` uses, offset inward so the card doesn't clip it (ux on #297).
+const rowClass = 'w-full min-h-[44px] flex items-center gap-2 py-2 text-left text-sm rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent/60 focus-visible:-outline-offset-2'
 
 /** One line of the plan. With children it is a disclosure button whose panel
  *  is always in the markup (so aria-controls points at something), hidden
@@ -83,8 +84,8 @@ function Lines({ data }: { data: PlanResponse }) {
         )}
         {fixed.groups.length > 0 ? (
           <Row label="Fixed" sub={fixedSubline(fixed)} amount={planMoney(fixed.total)}>
-            {fixed.groups.map((g) => (
-              <Row key={g.category ?? ''} label={g.category ?? 'No category'} sub={`${g.paid_count} of ${g.count} paid`} amount={planMoney(g.total)}>
+            {fixed.groups.map((g, i) => (
+              <Row key={i} label={groupLabel(g)} sub={`${g.paid_count} of ${g.count} paid`} amount={planMoney(g.total)}>
                 <ul>
                   {g.items.map((c) => (
                     <Item key={`${c.commitment_id}-${c.due_date}`} label={c.label} status={itemStatus(c.status, c.due_date)}
@@ -98,7 +99,7 @@ function Lines({ data }: { data: PlanResponse }) {
           <Empty label="Fixed" note="Nothing scheduled" to="/commitments" action="Add a commitment" />
         )}
         {budgets.items.length > 0 ? (
-          <Row label="Budgets" sub={budgetsSubline(budgets)} amount={planMoney(budgets.limits_total)}>
+          <Row label="Budgets" sub={budgetsSubline(budgets)} amount={planMoney(budgets.planned_total)}>
             {budgets.items.map((b) => (
               <Row key={b.budget_id} label={b.category} sub={budgetLine(b)} amount={planMoney(b.limit)}>
                 <ul>
@@ -133,8 +134,8 @@ function Lines({ data }: { data: PlanResponse }) {
 
       {hasIncome && (
         <p className="mt-4 text-xs text-slate-400 tnum">
-          {planMoney(income.total)} − {planMoney(fixed.total)} − {planMoney(budgets.limits_total)} = {planMoney(data.not_planned)}
-          <span className="block text-slate-500">Income − Fixed − Budget limits = Not planned</span>
+          {planMoney(income.total)} − {planMoney(fixed.total)} − {planMoney(budgets.planned_total)} = {planMoney(data.not_planned)}
+          <span className="block text-slate-500">Income − Fixed − Budgets = Not planned</span>
         </p>
       )}
     </>
@@ -148,7 +149,7 @@ export default function PlanView({ status, data, onRetry }: PlanViewProps) {
     <section id="plan" aria-labelledby="plan-heading" className="card-pad">
       <h2 id="plan-heading" tabIndex={-1} className="font-display font-semibold text-lg text-slate-50 focus:outline-none">Plan</h2>
       {data && <p className="text-xs text-slate-500 mt-0.5">{cycleText(data.cycle)}</p>}
-      <p className="text-sm text-slate-400 mt-1 mb-3">Where this pay cycle goes. Every line opens to the transactions behind it.</p>
+      <p className="text-sm text-slate-400 mt-1 mb-3">Where this pay cycle goes. Open a line to see what is in it.</p>
       {status === 'error' ? (
         <div role="alert" className="text-sm text-slate-300">
           <p>Couldn&apos;t load your plan. Your balances and safe to spend are unaffected.</p>

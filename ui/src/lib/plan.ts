@@ -93,11 +93,19 @@ export function fixedSubline(f: PlanResponse['fixed']): string {
   return has(f.to_pay) ? `${paid} · ${planMoney(f.to_pay)} still to pay` : paid
 }
 
+/** The row's figure is `planned_total` (each budget at the larger of its
+ *  limit and spent + coming up), so the limits are named here. */
 export function budgetsSubline(b: PlanResponse['budgets']): string {
-  const parts = [`${b.count} limit${b.count === 1 ? '' : 's'}`, `${planMoney(b.spent)} spent`]
+  const parts = [`${b.count} limit${b.count === 1 ? '' : 's'}, ${planMoney(b.limits_total)} in all`, `${planMoney(b.spent)} spent`]
   if (has(b.coming_up)) parts.push(`${planMoney(b.coming_up)} coming up`)
   return parts.join(' · ')
 }
+
+const SOURCE_GROUP: Record<PlanSource, string> = { commitment: 'No category', card_repayment: 'Card repayments', planned: 'Planned' }
+
+/** A Fixed group's name: its category, else what its source is. An empty
+ *  category (possible from rule text) reads "No category". */
+export const groupLabel = (g: PlanFixedGroup) => g.category || SOURCE_GROUP[g.source]
 
 const PACE: Record<string, string> = { under_pace: 'Under pace', on_pace: 'On pace', ahead_of_pace: 'Ahead of pace' }
 

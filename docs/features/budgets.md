@@ -81,7 +81,7 @@ paid-back marks, see
 `BudgetsView`, `BudgetsSegment`, `HistoryView`, `HistoryBars`,
 `ManageSheet`, `ManageModes`, `SuggestSheet`, `PaidBackByOthers`), Home budget line
 (`OverviewPage`), `forecast/BudgetStrip` and `ForecastChart` on Cashflow,
-`NudgeFeed`. `lib/budgets.ts`, `lib/budgetHistory.ts`,
+`NudgeFeed`. `lib/budgets.ts`, `lib/budgetBar.ts` (the bar with coming up: widths only, every figure the API's), `lib/budgetHistory.ts`,
 `lib/budgetProjection.ts`, `lib/budgets.fixtures.ts`.
 
 **MCP**: `list_budgets`, `set_budgets`, `pause_budget`, `resume_budget`,

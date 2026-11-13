@@ -28,6 +28,21 @@ export interface Budget {
   /** Decided by the API, so pace has one definition; null while paused. */
   status: PaceStatus | null
   changed_by_claude?: ClaudeMarker | null
+  /** Commitment instalments due before payday (T-24-3): a hint, never in spent, over_by or status. */
+  coming_up?: ComingUp
+  /** max(0, spent + coming_up.amount - limit), from the API. */
+  over_by_payday?: Money
+}
+
+/** One instalment still due this cycle. `label` is bank text: rendered as text only. */
+export interface ComingUpItem { commitment_id: string; label: string; due_date: string; amount: Money }
+
+export interface ComingUp {
+  amount: Money
+  commitment_count: number
+  instalment_count: number
+  /** The first five by date. */
+  items: ComingUpItem[]
 }
 
 export interface BudgetCycle {
@@ -69,7 +84,10 @@ export interface BudgetsResponse {
 export interface PaidBackMark { label: string; amount: Money; against: string; category: string }
 
 export interface NotCounted {
+  /** Commitment payments whose category has no budget (T-24-3). */
   commitments: Money
+  /** Commitment payments with no category at all. */
+  commitments_no_category?: Money
   transfers: Money
   card_payoffs: Money
   financed: Money

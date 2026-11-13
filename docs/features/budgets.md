@@ -45,6 +45,20 @@ earliest first; `amount`, `commitment_count` and `instalment_count` cover
 all of them. A closed cycle's stored snapshot is never rewritten; a cycle
 first loaded after this change is written under the new rule.
 
+### The dotted line with commitments (T-24-3b)
+
+A budgeted category's instalments are already on the forecast's solid line,
+so `budget_projection` subtracts, per budget, only what they leave of the
+limit: this cycle `max(0, limit − spent − instalments due by the day before
+payday)`, each later cycle `max(0, limit − that cycle's instalments)`. Each
+budget on its own, so one budget's instalments never free another's limit.
+The instalments come from `held_scheduled_outflows` over the same window as
+the forecast the line is drawn on (`budgeted_instalments`, the filter
+`coming_up` uses), not from `coming_up`, whose held view is judged over this
+cycle only: a pending Claude change can't lift the line at any payday eve
+(tested). Instalments past the horizon are unknown, so a cycle the horizon
+cuts subtracts more, never less.
+
 **Demo (T-24-5b):** `sampleBudgets.ts` mirrors the counting, coming-up,
 pace and dotted-line rules. A sample Subscriptions budget (£20) holds the
 sample's two subscriptions. They're due before payday, so demo shows the
